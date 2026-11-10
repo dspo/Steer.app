@@ -226,7 +226,7 @@
 | UI | 每容器/语言族一个客户端；**全文** `didOpen/didChange/didSave/didClose`（诚实：`didChange` 发整份文本，不是增量 range）；诊断进 `Editor.diagnostics` 与 Problems；hover 卡片（`Overlay` + `TextView`）；F12/Mod-click 定义跳转；补全列表；Problems `problems:{containerId}` + 顶栏入口 + 重启 |
 | 语言 | `rust-analyzer`、`typescript-language-server --stdio`、`gopls`；只同步容器根内的文件 |
 
-**状态（2026-11-11，实现完成、验收达成，有限制）**：Rust fixture（`/tmp` 下真实 Cargo 项目，故意
+**状态（2026-11-11，`3772680`，实现完成、验收达成，有限制）**：Rust fixture（`/tmp` 下真实 Cargo 项目，故意
 类型错误）经真实 `rust-analyzer 1.99.1` 跑通 initialize（42 ms）→ didOpen → diagnostics
 （697 ms，`E0308 expected i32, found &'static str`）→ hover（含 `pub fn add(left: i32, right:
 i32) -> i32`）→ definition（`src/lib.rs`，selection `0:7–0:10`）→ completion（`value` 的
