@@ -89,8 +89,16 @@
 | Q56 | 编辑器的文件访问与保存语义 | **`zu/fs` 是唯一文件面，UI 不开 `capabilities.fs`**。每次调用显式传工作区根（active container cwd），Rust 侧 canonicalize 后拒绝 `..`、根外绝对路径与越界 symlink；读上限 2 MiB、目录上限 1000 项；保存写同目录临时文件再 `rename`，保留 mode 与 UTF-8 BOM；`write` 接收 `expected {mtimeMs,size}`，不符即 `ERR_FS_STALE`（附当前版本），编辑器转只读直到 reload；保存后 `read` 回读校验；所有错误带 `code`；`mkdir` 只允许根内一级创建 | `src/fs.rs`、`fs.ts`、`editors.ts`；arch §3.6 |
 | Q57 | M8 的 Diff 做到哪一步 | **M8 只做两文件 `DiffView`**（文件树行/对话框选两个真实路径，稳定 sheet id `diff:{containerId}:{old~new}`），**不做工作区 git diff**；M9 的 `zu/git` 提供 `status`/`diff` 后，Changes 面板用 `git diff` 驱动。文件树保留为通用入口，不把「两文件对比」伪装成 git diff | `files.tsx`、`editors.ts`、roadmap M8/M9；arch §3.6 |
 
+## Git（M9）
+
+| # | 问题 | 裁决 | 落点 |
+|---|---|---|---|
+| Q58 | Git 怎么执行、根与路径的边界 | **shell out `git`，只走 argv，不引 libgit2**。每次调用显式传工作区根；根必须等于 `git rev-parse --show-toplevel`（容器 cwd 是仓库子目录 → `ERR_GIT_NOT_REPO`，不显示半份状态）；`git` 以 `Command` 的 argv 数组、`current_dir(root)` 执行，不经 shell，清掉 `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` 等重定向变量；路径只接受根内相对路径，拒绝 `..`、绝对路径、pathspec magic 与 `-` 开头。**不做网络操作**（无 fetch/pull/push/remote），**不改全局 git 配置**；唯一写配置的是 `setIdentity`，且 `--local`。status 走 porcelain v2 `-z`；diff 固定 `--no-ext-diff --no-textconv --unified=3`，untracked 走 `--no-index /dev/null`，补丁上限 2 MiB；命令失败带 `exit`/`stderr`（`ERR_GIT_COMMAND`），缺身份 `ERR_GIT_IDENTITY` | `src/git.rs`、`git.ts`；arch §3.6 |
+| Q59 | Changes 与 History 的形态、DiffView 复用 | **两个稳定 sheet，不合并**：`changes:{containerId}` 是「现在」——staged/工作区/未跟踪/冲突分组、单文件与全部 stage/unstage、选中文件的真实 `git diff`、提交行；`history:{containerId}` 是「过去」——真实 log、分支菜单 checkout、新建分支。工作区 diff **复用 M8 的 `DiffView` 的 `patch` 模式**（统一 diff 直接喂给同一组件），不新增 diff 组件、不把两文件对比当 git diff。顶栏 `open-changes`/`open-history` 是入口；checkout 后重读两表并 reload 该容器中**没有未保存改动**的编辑器（脏文档保持原文，保存时走既有的 stale 冲突路径） | `git-ui.tsx`、`git.ts`、`shell.tsx`、`sheets.tsx`；arch §3.6/§4.3 |
+| Q60 | 未初始化仓库与缺失身份 | Changes 的 `ERR_GIT_NOT_REPO` 空态提供 **初始化仓库**（`Git.init` → `git init --quiet`，只在该根建仓）；commit 前用 `git var GIT_AUTHOR_IDENT/GIT_COMMITTER_IDENT` 检查身份，缺失时弹一次身份对话框，`Git.setIdentity` **只写该仓库的 `.git/config`**，随后重试同一次提交。测试自建仓库也走这两条路，因此不依赖机器的全局 git 身份 | `src/git.rs`、`git-ui.tsx`、`git.test.ts`；arch §3.6 |
+
 ## 决策编号说明
 
-- Q1–Q57 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（Q56/§3.6 的 `zu/fs`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）。
+- Q1–Q60 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（Q56/§3.6 的 `zu/fs`）、git 执行与根/路径边界（Q58/§3.6 的 `zu/git`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）。
 - 原 engine/ui/domain 三份文档里的 E/U 编号已废弃，统一并入本表。
 - 条件性里程碑（M-tty / M-arch / M-web）的触发条件见 [roadmap.md](roadmap.md) §17。

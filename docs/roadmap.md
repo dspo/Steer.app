@@ -159,7 +159,7 @@
 > **状态（2026-11-11，`6ff8097`，M8）**：实现完成，验收达成一半。
 > **已实现并实测**：`zu/fs`（`list`/`stat`/`read`/`write`/`mkdir`；每次调用显式传工作区根，Rust 侧 canonicalize 并拒绝 `..`、根外绝对路径与越界 symlink；2 MiB 读上限、1000 项目录上限；临时文件 + rename 原子写并保留 mode/BOM；`ERR_FS_STALE` 带当前 mtime/size）、文件树 sheet（`files:{containerId}`，目录优先、懒加载子目录、空/加载/错误态、按文件对比）、真 `Editor` sheet（`editor:{containerId}:{base64url path}`，按扩展名或文件名决定语法高亮、折叠、查找/替换、脏标记、Save + Mod+S、冲突/错误只读、reload/close）、两文件 `DiffView` sheet（`diff:{containerId}:{old~new}`，split/unified、真实 hunk 统计）；Pi 与 external 容器都用其 cwd。
 > **已验证**：headless 打开真实 `/tmp` 文件 → 编辑 → Mod+S → 用 `zu/fs` 读回磁盘一致；外部改写后保存被 `ERR_FS_STALE` 拒绝、编辑器转只读、reload 后恢复；两真实文件的 `DiffView` 统计 `+2 −1 · 1`（hunk 正确）。门禁 `nsh check`/`nsh build`/`cargo check --all-targets`/`cargo test --lib`/`nsh test .` 全绿（99 条）。证据见 [evidence/m8-editor-diff.md](evidence/m8-editor-diff.md)。
-> **未达成**：「看一次 git diff」不在 M8——没有 git 模块，不做伪造的 worktree diff；两文件对比已实现，工作区 diff 留给 M9（Q57）。
+> **未达成（M9 已补）**：「看一次 git diff」不在 M8——没有 git 模块，不做伪造的 worktree diff；两文件对比已实现，工作区 diff 留给 M9（Q57）。M9 的 `zu/git` + Changes 面板已用真实 `git diff` 补齐（§12）。
 
 | 项 | 内容 |
 |---|---|
@@ -167,18 +167,24 @@
 | UI | Editor sheet（真文件读写、语法高亮、折叠、find/replace）；DiffView sheet（两文件对比已实现；工作区 diff 待 M9）；文件树 sheet（`files:{containerId}`，不是独立 dock） |
 | 边界 | 2 MiB/1000 项上限；二进制/非 UTF-8 拒绝并显示状态；BOM 往返；外部修改冲突（转只读，reload 后恢复） |
 
-**验收**：打开文件 → 编辑 → 保存 → 磁盘一致（✓，`files.ui.test.tsx`）；看一次 git diff，hunk 正确（✗ M8；两文件 DiffView 的 hunk 已正确，git worktree diff 在 M9）。
+**验收**：打开文件 → 编辑 → 保存 → 磁盘一致（✓，`files.ui.test.tsx`）；看一次 git diff，hunk 正确（✗ M8；由 M9 的 `zu/git` + Changes 面板补齐，见 §12 与 `git.ui.test.tsx`）。
 
 ## 12. M9 — Git
 
+> **状态（2026-11-11，基线 `a856fa0` 的 M9 工作区，未提交）**：实现完成，验收全部达成。
+> **已实现并实测**：`src/git.rs` 导出 `zu/git`（`status`/`diff`/`log`/`branches`/`stage`/`unstage`/`commit`/`checkout`/`createBranch`/`init`/`setIdentity`）。每次调用显式传工作区根；根必须是仓库顶层，`..`、绝对路径、pathspec magic 与 `-` 开头的路径一律拒绝；`git` 以 argv 数组执行、cwd 即根，不经过 shell，清掉 `GIT_DIR` 等重定向变量，不做任何 fetch/pull/push；唯一写入的 git 配置是仓库自己的 author identity（`--local`，全局配置不动）。status 用 porcelain v2 `-z` 解析（branch/oid/ahead/behind、staged/unstaged/untracked/conflicted、rename 的旧路径）；diff 用 `--no-ext-diff --no-textconv --unified=3`，untracked 走 `--no-index /dev/null`，补丁上限 2 MiB；log 用控制字符分隔的记录；commit 前用 `git var` 检查身份，缺失返回 `ERR_GIT_IDENTITY`。
+> **UI**：`changes:{containerId}`（真实文件列表按 staged/工作区/未跟踪/冲突分组、单文件与全部 stage/unstage、选中文件后用 M8 的 `DiffView` 的 `patch` 模式显示真实 `git diff`、提交行、身份对话框、空/加载/错误/未初始化仓库态）与 `history:{containerId}`（真实 log、分支菜单 checkout、新建分支对话框）；顶栏新增 `open-changes` / `open-history`。checkout 后重读 changes/history，并 reload 该容器中没有未保存改动的编辑器。
+> **已验证**：`git.test.ts` 对测试自建的真实临时仓库走完 status → stage → commit → `git log` → 修改 → `git diff`（hunk/行数）→ 分支创建/切换，并覆盖路径越界、非仓库、仓库子目录、空提交信息；`git.ui.test.tsx` 在真实 `Workbench` 顶栏打开 Changes，UI 内 stage 一个真实文件、提交并用 `zu/git` 的 `git log` 验证 author/subject/hash，DiffView 画出工作区 hunk（`+2 −1`），History 菜单 checkout 后 Changes 分支与打开的编辑器内容都跟着变。门禁 `nsh check`/`nsh build`/`cargo check --all-targets`/`cargo test --lib`/`nsh test .` 全绿。证据见 [evidence/m9-git.md](evidence/m9-git.md)。
+
 | 项 | 内容 |
 |---|---|
-| native module | `zu/git`（shell out `git`）：status/diff/log/branches/stage/commit/checkout |
-| UI | Changes 面板（DiffView + 文件列表 + stage）；History；分支切换 |
+| native module | `zu/git`（shell out `git`）：status/diff/log/branches/stage/unstage/commit/checkout/createBranch/init/setIdentity |
+| UI | Changes 面板（真实 status + `DiffView` patch + stage/unstage + 提交行）；History（真实 log + 分支菜单）；顶栏入口 |
+| 边界 | 根必须为仓库顶层；路径不得越出根；补丁 2 MiB；无网络操作；不写全局 git 配置；commit 缺身份时只写仓库本地身份 |
 
-**验收**：改文件 → Changes 显示 → stage → 提交（`git log` 验证）→ 切分支。
+**验收**：改文件 → Changes 显示 ✓（`git.ui.test.tsx`）→ stage ✓ → 提交（`zu/git` 的 `git log` 与 CLI transcript 验证）✓ → 切分支 ✓（Changes/History/编辑器跟随）。
 
-> M8 已交付两文件 `DiffView`（`zu/fs` + 稳定 sheet id）。M9 只补 git 数据面（`zu/git`）与 Changes/History 面板；工作区 diff 从 M9 起用 `git diff` 驱动，不再走“两文件对比”作为替代。
+> M8 已交付两文件 `DiffView`（`zu/fs` + 稳定 sheet id）。M9 补 git 数据面（`zu/git`）与 Changes/History 面板；工作区 diff 从 M9 起用 `git diff` 驱动 `DiffView` 的 `patch` 模式，不再走“两文件对比”作为替代。
 
 ## 13. M10 — 浏览器
 

@@ -29,7 +29,7 @@ import {
 } from "./file-tree";
 import { visiblePanels } from "./dock";
 import { K, t } from "./i18n";
-import { Glyph, motionStyle, shadowDialog, type GlyphName } from "./ui";
+import { Glyph, motionStyle, shadowDialog, SheetAction as Action, SheetIconButton as IconButton } from "./ui";
 
 /**
  * The workspace sheets: the file tree, one editor per file, and a two-file
@@ -64,66 +64,6 @@ function failureText(problem: FsFailure): string {
   }
 }
 
-/** A quiet icon button; every sheet control is this shape. */
-function IconButton(props: {
-  testID: string;
-  label: string;
-  glyph: GlyphName;
-  tint?: string;
-  disabled?: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <View
-      role="button"
-      testID={props.testID}
-      accessibilityLabel={props.label}
-      tooltip={props.label}
-      disabled={props.disabled ?? false}
-      class={
-        props.disabled
-          ? "h-6 w-6 items-center justify-center rounded-md opacity-40"
-          : "h-6 w-6 items-center justify-center rounded-md hover:bg-hover active:opacity-60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-      }
-      style={{ ...motionStyle("fast") }}
-      onPress={props.onPress}
-    >
-      <Glyph name={props.glyph} size={12} tint={token((props.tint ?? "muted-foreground") as any)} />
-    </View>
-  );
-}
-
-/** A labelled action in a sheet's header; the primary one uses `primary`. */
-function Action(props: {
-  testID: string;
-  label: string;
-  primary?: boolean;
-  disabled?: boolean;
-  onPress: () => void;
-}) {
-  const base =
-    "h-7 flex-row items-center justify-center rounded-lg px-2.5 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1";
-  const look = props.disabled
-    ? "border border-line opacity-40"
-    : props.primary
-      ? "bg-primary hover:bg-primary/90 active:opacity-80"
-      : "border border-line hover:bg-hover active:opacity-70";
-  return (
-    <View
-      role="button"
-      testID={props.testID}
-      accessibilityLabel={props.label}
-      disabled={props.disabled ?? false}
-      class={`${base} ${look}`}
-      style={{ ...motionStyle("fast") }}
-      onPress={props.onPress}
-    >
-      <Text class={`text-[11.5px] font-medium ${props.primary ? "text-primary-foreground" : "text-foreground"}`}>
-        {props.label}
-      </Text>
-    </View>
-  );
-}
 
 /** The file tree of one container's cwd. */
 export function FilesBody(props: { containerId: string }) {

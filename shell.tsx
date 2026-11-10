@@ -36,6 +36,7 @@ import { error as sessionError, refreshSessions, sessions, activeId } from "./se
 import { SheetBody, sheetGlyph, sheetTitle } from "./sheets";
 import { externalKindLabel } from "./terminals";
 import { saveActiveEditor } from "./editors";
+import { openChangesSheet, openHistorySheet } from "./git";
 import { K, shellLocale, t, toggleShellLocale } from "./i18n";
 import { UIHost, statuses, unsupportedMethods } from "./ui-host";
 import { openSubagents } from "./subagents";
@@ -461,6 +462,38 @@ function EngineBar() {
         onPress={() => openFilesSheet()}
       >
         <Glyph name="folder" size={15} tint={token("muted-foreground")} />
+      </View>
+      <View
+        role="button"
+        testID="open-changes"
+        accessibilityLabel={t(K.git.changesTitle)}
+        tooltip={t(K.git.changesTitle)}
+        disabled={activeContainerId() === null}
+        class={
+          activeContainerId() === null
+            ? "h-7 w-7 items-center justify-center rounded-lg opacity-40"
+            : "h-7 w-7 items-center justify-center rounded-lg hover:bg-hover active:opacity-60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+        }
+        style={{ ...motionStyle("fast") }}
+        onPress={() => openChangesSheet()}
+      >
+        <Glyph name="diff" size={15} tint={token("muted-foreground")} />
+      </View>
+      <View
+        role="button"
+        testID="open-history"
+        accessibilityLabel={t(K.git.historyTitle)}
+        tooltip={t(K.git.historyTitle)}
+        disabled={activeContainerId() === null}
+        class={
+          activeContainerId() === null
+            ? "h-7 w-7 items-center justify-center rounded-lg opacity-40"
+            : "h-7 w-7 items-center justify-center rounded-lg hover:bg-hover active:opacity-60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+        }
+        style={{ ...motionStyle("fast") }}
+        onPress={() => openHistorySheet()}
+      >
+        <Glyph name="commit" size={15} tint={token("muted-foreground")} />
       </View>
       <View
         role="button"

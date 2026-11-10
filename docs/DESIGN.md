@@ -224,3 +224,46 @@ M8 不新增 token、半径或阴影：文件树、编辑器与 Diff 都复用 M
 `could not load module 'zu/native'`，截图没有产出。未做 light/dark 双主题截图，因此「Finishing checklist」
 的像素项（半径、字体、对齐、hover/pressed 视觉）只核对代码与既有 M6 基线，不声称已逐项截图通过。
 运行中的用户 app 未被重启，故本里程碑没有新的真实宿主截图。
+
+## 10. M9 Git（Changes 与 History 的表面与动效）
+
+M9 不新增 token、半径或阴影：Changes 与 History 沿用 M6/M8 的 `card`/`inset`/`line`/`hover`/`accent`/
+`primary` 与 `shadowCard()`/`shadowDialog()`/`shadowRaised()`。按钮与输入复用 M8 的 28pt 行内控件语言；
+Changes 的文件行 28pt，History 的提交行约 44pt（两行）。
+
+| 表面 | 几何 | 状态 |
+|---|---|---|
+| Changes 头部 | 左 12 / 右 12，py 6；分支名 12/600 + ahead/behind 10 tabular-nums；仓库根 10 等宽 `faint`；右侧刷新 24pt | ahead 用 `up`、behind 用 `warn`，文字与 tooltip 同时表达，不只靠颜色 |
+| 分组标题 | 10/600 `faint` + 「· N」；右侧批量动作 28pt outline，仅在该组有文件时出现 | hover `bg-hover`；pressed 0.7 |
+| 文件行 | 28pt；状态字母 10/600 占固定 12pt 车道（M/A/D/R/C/T/U/?）；路径 12 `muted-foreground`，选中 `foreground`；行尾 stage/unstage 24pt 方形 ghost（`plus`/`minus`，12pt `faint`） | rest 透明；hover `bg-hover`；pressed 0.7；选中 `bg-accent`；disabled（动作进行中）40% |
+| Diff 头部 | 左 12 / 右 12，py 6；路径 11.5/500；右侧模式（已暂存/工作区）、`+N −M`、split/unified | 模式随选中行；统计来自 git 补丁的解析 |
+| 提交行 | inset 底，上边框 `line`；单行输入 30pt + 主按钮 28pt；第二行 10.5 `faint` 的已暂存计数与 Enter 提示 | 无输入或无暂存时主按钮 40% 且无 hover/pressed；提交中标签换「提交中…」 |
+| 身份/新建分支对话框 | 440 / 420 宽、20 内边距、半径 12、`border`、`shadowDialog()`、backdrop `scrim`；打开时焦点在第一个输入 | `Dialog animation="fade"`；Escape/backdrop 关闭 |
+| 结果提示条 | 列表上方一行，`bg-inset` + 下边框 `line`；图标 `check`/`alert` + 11pt 文案 | 成功与失败各有图标与文字，不只靠颜色 |
+| 空/错误/加载态 | 居中：图标 18–20pt + 12pt 标题/正文 + 重试/初始化按钮 | 未初始化仓库给「初始化仓库」主操作 |
+| History 提交行 | 两行：subject 12.5；第二行 hash 10 等宽 `faint` · author · 日期 10 tabular-nums | 行不可点，不加 hover（没有可执行动作） |
+| 分支菜单 | M6 的统一 `Menu` 表面（`popover`、半径 12、`shadowRaised()`）；当前分支 checked + `menuitemradio`；远程分支 disable；「新建分支…」在底部分隔线后 | 打开态由 `Menu` 负责；Escape/选择关闭 |
+
+**M9 动效清单**（写屏前列，交付后逐条核对；没有 `motion.*` 之外的时长）：
+
+| 变化 | 工具 / token | 减少动态效果 | 验证 |
+|---|---|---|---|
+| 文件行 hover | `motionStyle("fast")`（120ms 颜色） | 立即 | headless 状态断言；未截帧 |
+| 文件行 pressed | `active:opacity-70`，`fast` | 立即 | 代码路径 |
+| 文件行选中 | `bg-accent` + `fast` | 立即 | headless：stage 后选中行随分组移动 |
+| stage/unstage 图标 pressed | `active:opacity-60`，`fast` | 立即 | 行为测试（stage 后行进入 staged 组） |
+| 分组出现/消失 | 无动画（行集合即时变化；不移动选择目标） | — | 行为测试（stage/commit 后分组计数） |
+| 提交按钮可用/不可用 | 背景 + 透明度 `fast` | 立即 | headless：提交后行离开 staged 组 |
+| 提交中标签 | 文字即时换「提交中…」，无 spinner（操作短、避免常驻动画） | — | 代码路径 |
+| 提交/切分支结果提示 | 提示条即时插入，无入场动画（同 M6 toast 的理由） | — | headless：`git-notice` 出现 |
+| Diff 加载 → 补丁 | 内容即时替换；`DiffView` 无入场动画 | — | headless：`git-diff-view` 出现 |
+| split ↔ unified | `DiffView` 自身重排 | 运行时 | headless：切换后仍显示 |
+| 身份/新建分支对话框 | `Dialog animation="fade"` | 运行时 | 代码路径；机器已有全局身份，身份对话框路径未在测试中触发 |
+| 页面签（Changes/History） | 沿用 M6 页签 `medium`（180ms 背景/阴影） | 运行时 | 未截帧 |
+| checkout 后编辑器内容 | 无动画（文档重载，文字即时替换） | — | headless：`fixture-docs` 从 BASE 变 FEATURE |
+
+**验证边界（诚实）**：M9 的验证同样是 headless 行为测试（真实 `Workbench`、真实仓库、真实 `DiffView`），
+没有 light/dark 截图；`nsh test --target macos` 的 development host 仍报
+`could not load module 'zu/native'`（与 M8 相同的 nsh 开发宿主限制），因此 Finishing checklist 的像素项
+（半径、字体、对齐、hover/pressed 视觉）只按 M6/M8 基线核对代码，不声称已逐项截图通过。运行中的用户 app
+没有重启，本里程碑没有真实宿主截图。

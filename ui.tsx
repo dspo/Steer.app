@@ -27,7 +27,9 @@ export type GlyphName =
   | "globe"
   | "pulse"
   | "stop"
-  | "alert";
+  | "alert"
+  | "commit"
+  | "minus";
 
 type Draw = (c: CanvasRenderingContext2D) => void;
 
@@ -206,6 +208,12 @@ const glyphs: Record<GlyphName, Draw> = {
     c.rect(6, 6, 8, 8);
     c.fill();
   },
+  commit: (c) => {
+    line(c, [2.5, 10, 7, 10]);
+    line(c, [13, 10, 17.5, 10]);
+    arc(c, 10, 10, 3);
+  },
+  minus: (c) => line(c, [5, 10, 15, 10]),
   alert: (c) => {
     c.beginPath();
     c.moveTo(10, 3.5);
@@ -317,6 +325,75 @@ export function Chip(props: { label: string; tint?: string; filled?: boolean }) 
           fontWeight: "500",
           color: props.filled ? token("primary-foreground") : (props.tint ?? token("muted-foreground")),
         }}
+      >
+        {props.label}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * A quiet square icon control for a sheet's header: `tint` colors the glyph
+ * (muted by default); `disabled` drops the hover and the pressed wash. Every
+ * one is a labelled button, since the glyph alone is not its name.
+ */
+export function SheetIconButton(props: {
+  testID: string;
+  label: string;
+  glyph: GlyphName;
+  tint?: string;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <View
+      role="button"
+      testID={props.testID}
+      accessibilityLabel={props.label}
+      tooltip={props.label}
+      disabled={props.disabled ?? false}
+      class={
+        props.disabled
+          ? "h-6 w-6 items-center justify-center rounded-md opacity-40"
+          : "h-6 w-6 items-center justify-center rounded-md hover:bg-hover active:opacity-60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+      }
+      style={{ ...motionStyle("fast") }}
+      onPress={props.onPress}
+    >
+      <Glyph name={props.glyph} size={12} tint={token((props.tint ?? "muted-foreground") as any)} />
+    </View>
+  );
+}
+
+/** A labelled sheet action; `primary` is the one strong action of a surface. */
+export function SheetAction(props: {
+  testID: string;
+  label: string;
+  primary?: boolean;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  const base =
+    "h-7 flex-row items-center justify-center rounded-lg px-2.5 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1";
+  const look = props.disabled
+    ? "border border-line opacity-40"
+    : props.primary
+      ? "bg-primary hover:bg-primary/90 active:opacity-80"
+      : "border border-line hover:bg-hover active:opacity-70";
+  return (
+    <View
+      role="button"
+      testID={props.testID}
+      accessibilityLabel={props.label}
+      disabled={props.disabled ?? false}
+      class={`${base} ${look}`}
+      style={{ ...motionStyle("fast") }}
+      onPress={() => {
+        if (!props.disabled) props.onPress();
+      }}
+    >
+      <Text
+        class={`text-[11.5px] font-medium ${props.primary ? "text-primary-foreground" : "text-foreground"}`}
       >
         {props.label}
       </Text>

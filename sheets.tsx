@@ -19,6 +19,7 @@ import {
 import { K, t } from "./i18n";
 import { Chip, Dot, Glyph, motionStyle, shadowCard, type GlyphName } from "./ui";
 import { DiffBody, EditorBody, FilesBody } from "./files";
+import { ChangesBody, HistoryBody } from "./git-ui";
 import { diffSheetPaths, editorSheetPath } from "./editors";
 import { baseName } from "./fs";
 
@@ -44,6 +45,8 @@ export type SheetKind =
   | "editor"
   | "diff"
   | "files"
+  | "changes"
+  | "history"
   | "subagents"
   | "tasks"
   | "traces"
@@ -69,6 +72,8 @@ const SPECS: Record<SheetKind, SheetSpec> = {
   editor: { title: K.sheet.editorTitle, glyph: "file", tint: "muted-foreground", note: K.sheet.editorNote },
   diff: { title: K.sheet.diffTitle, glyph: "diff", tint: "muted-foreground", note: K.sheet.diffNote },
   files: { title: K.sheet.filesTitle, glyph: "folder", tint: "muted-foreground", note: K.sheet.filesNote },
+  changes: { title: K.sheet.changesTitle, glyph: "diff", tint: "muted-foreground", note: K.sheet.changesNote },
+  history: { title: K.sheet.historyTitle, glyph: "commit", tint: "muted-foreground", note: K.sheet.historyNote },
   subagents: { title: K.sheet.subagentsTitle, glyph: "branch", tint: "muted-foreground", note: K.sheet.subagentsNote },
   tasks: { title: K.sheet.tasksTitle, glyph: "archive", tint: "muted-foreground", note: K.sheet.tasksNote },
   traces: { title: K.sheet.tracesTitle, glyph: "tree", tint: "muted-foreground", note: K.sheet.tracesNote },
@@ -104,10 +109,16 @@ export function sheetTitle(id: string): string {
     const pair = diffSheetPaths(id);
     return pair ? `${baseName(pair.oldPath)} ↔ ${baseName(pair.newPath)}` : id;
   }
-  if (kind === "files") {
+  if (kind === "files" || kind === "changes" || kind === "history") {
     const container = containers().find((row) => row.id === instance);
     const folder = container ? baseName(container.cwd) : "";
-    return folder ? `${t(K.sheet.filesTitle)} · ${folder}` : t(K.sheet.filesTitle);
+    const title =
+      kind === "files"
+        ? t(K.sheet.filesTitle)
+        : kind === "changes"
+          ? t(K.sheet.changesTitle)
+          : t(K.sheet.historyTitle);
+    return folder ? `${title} · ${folder}` : title;
   }
   const spec = SPECS[kind];
   return spec ? (instance ? `${t(spec.title)} · ${instance}` : t(spec.title)) : id;
@@ -145,6 +156,8 @@ export function SheetBody(props: { id: string }) {
   if (kind === "subagents") return <SubagentsBody containerId={instance} />;
   if (kind === "terminal") return <TerminalBody containerId={instance} />;
   if (kind === "files") return <FilesBody containerId={instance} />;
+  if (kind === "changes") return <ChangesBody containerId={instance} />;
+  if (kind === "history") return <HistoryBody containerId={instance} />;
   if (kind === "editor") return <EditorBody sheetId={props.id} />;
   if (kind === "diff") return <DiffBody sheetId={props.id} />;
   return (
