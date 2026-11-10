@@ -12,7 +12,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ContainerLayoutData, ContainerRecord } from "../../contracts/protocol";
+import type { ContainerLayoutData, ContainerRecord, ProjectRecord } from "../../contracts/protocol";
 
 export const REGISTRY_VERSION = 1;
 
@@ -30,6 +30,12 @@ export interface Registry {
   activeContainerId: string | null;
 }
 
+export interface ProjectsFile {
+  v: number;
+  projects: ProjectRecord[];
+  membership: Record<string, string | null>;
+}
+
 /** The state directory: `ZU_STATE_DIR`, else `~/.pi/zu`. */
 export function stateDir(): string {
   const override = process.env.ZU_STATE_DIR?.trim();
@@ -43,6 +49,10 @@ export function registryPath(): string {
 
 export function layoutPath(containerId: string): string {
   return join(stateDir(), "layouts", `${encodeURIComponent(containerId)}.json`);
+}
+
+export function projectsPath(): string {
+  return join(stateDir(), "projects.json");
 }
 
 function readJson(path: string): unknown {
@@ -128,4 +138,41 @@ export function writeLayout(containerId: string, layout: unknown, zoom: string |
   const record: ContainerLayoutData = { containerId, layout, zoom, updatedAt: Date.now() };
   atomicWrite(layoutPath(containerId), { v: REGISTRY_VERSION, ...record });
   return record;
+}
+
+export function emptyProjects(): ProjectsFile {
+  return { v: REGISTRY_VERSION, projects: [], membership: {} };
+}
+
+/**
+ * Reads `projects.json`. Membership is explicit and only ever comes from
+ * here; a container absent from it is in the Chats bucket.
+ */
+export function readProjects(): ProjectsFile {
+  const raw = readJson(projectsPath());
+  if (!raw || typeof raw !== "object") return emptyProjects();
+  const value = raw as Record<string, unknown>;
+  const projects = Array.isArray(value.projects)
+    ? value.projects.filter((entry): entry is ProjectRecord => {
+        if (!entry || typeof entry !== "object") return false;
+        const project = entry as Record<string, unknown>;
+        return (
+          typeof project.id === "string" &&
+          typeof project.name === "string" &&
+          Array.isArray(project.roots) &&
+          project.roots.some((root: any) => root && root.primary === true)
+        );
+      })
+    : [];
+  const membership: Record<string, string | null> = {};
+  if (value.membership && typeof value.membership === "object" && !Array.isArray(value.membership)) {
+    for (const [containerId, projectId] of Object.entries(value.membership as Record<string, unknown>)) {
+      if (projectId === null || typeof projectId === "string") membership[containerId] = projectId;
+    }
+  }
+  return { v: REGISTRY_VERSION, projects, membership };
+}
+
+export function writeProjects(projects: ProjectsFile): void {
+  atomicWrite(projectsPath(), projects);
 }

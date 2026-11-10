@@ -22,7 +22,7 @@
 /** The protocol this build speaks. Bump it only for an incompatible change. */
 export const PROTOCOL_VERSION = 1;
 
-export type CommandGroup = "engine" | "session" | "state" | "container" | "layout" | "ui";
+export type CommandGroup = "engine" | "session" | "state" | "container" | "project" | "layout" | "ui";
 
 /**
  * What replaying the same command envelope means:
@@ -120,6 +120,30 @@ export const COMMANDS = {
     idempotent: true,
     replay: "safe",
     note: "Drops the engine's in-memory session; the file stays.",
+  },
+  "project.list": {
+    group: "project",
+    idempotent: true,
+    replay: "safe",
+    note: "Projects and the container-to-project membership map.",
+  },
+  "project.create": {
+    group: "project",
+    idempotent: false,
+    replay: "duplicate",
+    note: "Creates a user project from one or more roots, exactly one primary.",
+  },
+  "project.update": {
+    group: "project",
+    idempotent: true,
+    replay: "safe",
+    note: "Renames a project or replaces its roots; container cwds are snapshots and do not move.",
+  },
+  "project.setMembership": {
+    group: "project",
+    idempotent: true,
+    replay: "safe",
+    note: "Puts a container in a project, or in Chats (null); explicit, never inferred from cwd.",
   },
   "container.list": {
     group: "container",
@@ -391,6 +415,51 @@ export interface ContainerRecord {
   createdAt: number;
   updatedAt: number;
   sessions: ContainerSession[];
+  /** Its project, from the explicit membership map; null is the Chats bucket. */
+  projectId?: string | null;
+}
+
+/** One root of a project; exactly one root is primary. */
+export interface ProjectRoot {
+  path: string;
+  primary: boolean;
+}
+
+/** A user-created project. */
+export interface ProjectRecord {
+  id: string;
+  name: string;
+  /** True when the name was given, false while it follows the primary folder. */
+  nameOverridden: boolean;
+  roots: ProjectRoot[];
+  position: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ProjectsData {
+  projects: ProjectRecord[];
+  membership: Record<string, string | null>;
+}
+
+export interface ProjectCreatePayload {
+  name?: string;
+  roots: Array<{ path: string; primary?: boolean }>;
+}
+
+export interface ProjectUpdatePayload {
+  projectId: string;
+  name?: string;
+  roots?: Array<{ path: string; primary?: boolean }>;
+}
+
+export interface ProjectMembershipPayload {
+  containerId: string;
+  projectId: string | null;
+}
+
+export interface ProjectData extends ProjectsData {
+  project: ProjectRecord;
 }
 
 /** Kept as the snapshot's name for a container. */
@@ -416,6 +485,7 @@ export interface ContainerListData {
 
 export interface ContainerCreatePayload {
   cwd?: string;
+  projectId?: string | null;
 }
 
 export interface ContainerIdPayload {

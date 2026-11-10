@@ -15,8 +15,16 @@ use std::{
 
 use nsh_core::prelude::*;
 
-/// The sidecar's loopback port, fixed so the capability grant can name it.
+/// The sidecar's default loopback port; `ZU_PORT` overrides it for a second
+/// development instance and for tests that must not touch a running app.
 const ENGINE_PORT: u16 = 47823;
+
+fn engine_port() -> u16 {
+    std::env::var("ZU_PORT")
+        .ok()
+        .and_then(|port| port.parse().ok())
+        .unwrap_or(ENGINE_PORT)
+}
 
 struct EngineState {
     child: Child,
@@ -76,7 +84,7 @@ impl Engine {
             command.env("ZU_NO_EXTENSIONS", "1");
         }
         let child = command
-            .env("ZU_PORT", ENGINE_PORT.to_string())
+            .env("ZU_PORT", engine_port().to_string())
             .env("ZU_TOKEN", &token)
             .stdin(Stdio::null())
             .stdout(Stdio::from(log))
@@ -145,9 +153,9 @@ impl Engine {
         }
     }
 
-    /// The loopback port the sidecar listens on.
+    /// The loopback port the sidecar listens on (`ZU_PORT` overrides it).
     pub fn port() -> u16 {
-        ENGINE_PORT
+        engine_port()
     }
 
     /// The handshake token the sidecar expects; created on first use.
@@ -218,6 +226,13 @@ fn zu_dir() -> Result<PathBuf, String> {
     if let Some(dir) = STATE_DIR.lock().ok().and_then(|dir| dir.clone()) {
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         return Ok(dir);
+    }
+    if let Ok(dir) = std::env::var("ZU_STATE_DIR") {
+        if !dir.trim().is_empty() {
+            let dir = PathBuf::from(dir.trim());
+            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            return Ok(dir);
+        }
     }
     let home = std::env::var("HOME").map_err(|_| "HOME is not set".to_owned())?;
     let dir = PathBuf::from(home).join(".pi").join("zu");

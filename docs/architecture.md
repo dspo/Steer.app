@@ -66,6 +66,7 @@ UI 与引擎之间唯一的共享面：TS 类型 + 运行时校验 + `protocol.m
 |---|---|---|---|
 | `engine.*` | `ping`、`info`、`health` | engine | 是 |
 | `session.*` | `list`、`create`、`open`、`info`、`extensions`、`prompt`、`steer`、`followUp`、`abort`、`close` | engine（pi） | `open` 按 path 幂等；`create`/`prompt`/`steer`/`followUp` 非幂等 |
+| `project.*` | `list`、`create`、`update`、`setMembership` | engine（Zu 状态） | `create` 非幂等；其余幂等 |
 | `container.*` | `list`、`create`、`show`、`attachSession`、`archive`、`unarchive` | engine（Zu 状态） | `create` 非幂等；其余幂等 |
 | `layout.*` | `get`、`put` | engine（Zu 状态） | 是（last write wins） |
 | `state.*` | `snapshot`、`subscribe` | engine（Zu 状态） | 是 |
@@ -162,7 +163,7 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 - **panel** 是带页签条的容器，可任意多个，可拖手调宽、拖拽停靠重排、zoom。
 - **sheet** 是页签内容：Pi 会话（含 subagents/后台任务/轨迹/统计等派生视图）、终端、各 agent TUI（Claude/Codex/Copilot）、webview、编辑器、Diff。
 - sheet 可跨 panel 拖拽（移动语义），**状态不丢**（`renderPanel` 按 key 渲染一次）。
-- **单容器画布、单窗口**：侧栏一行 = 一个容器 = 一组面板的入口；切换行 = stash 当前布局 + restore 目标布局。多窗口不在设计中。M3 的过渡侧栏在容器行之下保留「全部会话」，M4 改为项目/分组聚合。
+- **单容器画布、单窗口**：侧栏一行 = 一个容器 = 一组面板的入口；切换行 = stash 当前布局 + restore 目标布局。多窗口不在设计中。M4 的侧栏按 Project → 容器分组，无归属容器落 Chats；「全部会话」用虚拟化 `List` 放在底部，打开会话即归入当前容器。
 
 ### 4.3 布局与状态
 
@@ -214,7 +215,7 @@ v1 最小集：`⌘W` 关闭 sheet、`⌘1-9` 切 sheet、`⌘K` 命令面板（
 
 ### 5.2 Project
 
-`{ id, name, nameOverridden, roots: [{ path, primary }], position }`；恰一根 primary；根存在且为目录；嵌套允许；去重静默。
+`{ id, name, nameOverridden, roots: [{ path, primary }], position, createdAt, updatedAt }`；恰一根 primary；根存在且为目录；嵌套允许；去重静默。落 `~/.pi/zu/projects.json` 的 `{ v, projects, membership }`；`membership` 是容器归属的唯一事实源（缺省 = Chats）。M4 的 `project.create` 校验绝对路径/目录/唯一 primary，`project.setMembership` 显式移动；侧栏支持菜单与拖行两种移动方式。
 
 - 容器创建时 `cwd = primary`（快照，此后不可变）；根组编辑只影响以后创建的容器。
 - **归属显式**：`membership` 是唯一事实源，不按 cwd 猜；无归属落 Chats 桶。
@@ -323,6 +324,7 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 - **M1 完成**：`engine.ts`（连接/请求/事件）、`sessions.ts`（会话 store，16 ms 批 flush）、`sheets.tsx` 的会话 sheet（`TextView` 流式 Markdown、工具卡、composer）、`App.tsx` 的会话侧栏与引擎状态条。turn 结束时 engine 写 `zu.turn` custom entry；流式中停止会广播 idle 并保留已生成文本；引擎重启后用 `session.info` 拿到的文件路径续聊。
 - **M2 完成**：`contracts/protocol.ts` + `protocol.md`（信封、命令/事件表、幂等/重放、UI 矩阵）；`engine.ts` 的快照重连与监督（心跳、指数退避、`generation`）；`ui-host.tsx`（confirm 的 `AlertDialog`、select/input/editor 的 Dialog、toast/status/title）；`i18n.ts` + `locales/*.ts`（Q39）。门禁 22/22。
 - **M3 完成**：`registry.json`/`layouts/`、容器生命周期与 archive 单点 teardown、按需 rehydrate 与 LRU、`containers.ts` 的按容器布局/zoom、`sessions.ts` 的多会话视图、可见性节流；侧栏容器 + 全部会话过渡形态。门禁 35/35。
+- **M4 完成**：`projects.json` + `project.*` 命令、Launcher（composer 先行、项目 chip、锁定目标）、项目/拖拽归属、虚拟化全部会话 `List`、会话索引按 mtime 水位缓存。门禁 45/45。
 - **外部审计**：2026-11-10 的一轮事实审计与架构评审，成立的 P0/P1 已并入本文；其中「alt screen 污染 scrollback」一条被证伪并撤回（`push_scrollback` 有 `primary.is_some()` 守卫），教训记在 [evidence/terminal-emulator.md](evidence/terminal-emulator.md)。审计材料已随收敛删除。
 - **已知问题**：开发期热更新（`nsh run` 的 hot reload）在 TSX 变更后报 `nsh hot: no module zu/native`——native module 在 hot bundle 期间不可解析。重启 app 即可；不影响运行期。正式打包不受影响（无 hot reload）。另：headless 测试运行器没有帧循环，`requestAnimationFrame` 不跑，流式批 flush 因此用 `setTimeout(16)`。
 - **打包**：`script/bundle-mac.sh`——`nsh package` 出 `.app`，sidecar 拷进 `Contents/Helpers`，嵌套 ad-hoc 签名，`hdiutil` 出 dmg（127 MB app / 51 MB dmg）。打包后 app 优先用包内 sidecar（仓库的构建不能遮蔽它）。

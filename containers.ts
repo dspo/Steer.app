@@ -135,12 +135,13 @@ export async function switchContainer(id: string, force = false): Promise<void> 
 }
 
 /** Creates a pi container in `cwd` (the active one's cwd when omitted). */
-export async function createContainer(cwd?: string): Promise<void> {
+export async function createContainer(cwd?: string, projectId?: string | null): Promise<string | null> {
   await flushLayout();
   try {
     const payload: Record<string, unknown> = {};
     const target = cwd ?? activeCwd() ?? undefined;
     if (target) payload.cwd = target;
+    if (projectId !== undefined) payload.projectId = projectId;
     const data = await transport("container.create", payload, 120000);
     const container = data?.container as ContainerRecord;
     const session = data?.session as SessionData | undefined;
@@ -154,9 +155,14 @@ export async function createContainer(cwd?: string): Promise<void> {
     zoomedPanel.set(null);
     syncVisible();
     await flushLayout();
-    if (session) focusSession(session.id);
+    if (session) {
+      focusSession(session.id);
+      return session.id;
+    }
+    return null;
   } catch (failure) {
     containerError.set(String(failure));
+    return null;
   }
 }
 

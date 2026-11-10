@@ -63,11 +63,15 @@
 | Q41 | 布局与 zoom 的归属 | 布局树与 zoom 仍归 UI；经 `layout.get/put` 落 `~/.pi/zu/layouts/`（UI 不持 fs）；切容器前 flush、恢复时先离开现有 zoom 再用 panel id 找 group 灌回 | `containers.ts`、`engine/src/store.ts`；arch §4.3 |
 | Q42 | 多会话的转录取景 | `sessions.ts` 由单一 transcript 改为按 session id 的多视图；sheet id 稳定为 `session:{sessionId}`，切容器/拖 panel 时 `renderPanel` 按 key 保留状态 | `sessions.ts`、`dock.ts`；arch §4.2/§4.3 |
 | Q43 | 非可见 sheet 的节流 | 先对会话 sheet 生效：`visiblePanels` 由布局的 active tab（或 zoom panel）算出；不可见时只画占位、不挂 Markdown 树/composer，转录取景继续更新，可见时一次渲染 | `dock.ts`、`sheets.tsx`；arch §4.3 |
+| Q45 | Project 的存储与校验 | `projects.json` v1（projects/membership）；只由用户显式创建；多根、恰一 primary；绝对路径且必须是目录；名称未自定义时跟随 primary basename；容器 cwd 是创建时的 primary 快照，改根不移动活容器 | `engine/src/store.ts`、`engine/src/server.ts`；arch §5.2 |
+| Q46 | Launcher 的顺序 | **先 composer 后容器**：空画布或「＋」进入 Launcher，项目 chip 选目标（从项目行进入则锁定），提交才 `container.create` + `session.prompt` | `launcher.tsx`、`projects.ts`；arch §4.2 |
+| Q47 | 归属的移动方式 | membership 显式；侧栏容器行提供项目菜单与拖行（PanResponder 量项目头位置，落下按 pageY 选组），二者走同一 `project.setMembership` | `shell.tsx`、`projects.ts`；arch §5.2 |
+| Q48 | 660+ 会话的列表 | 全部会话用虚拟化 `List`（只挂视口附近的行）；引擎 `session.list` 先用会话目录的最大 mtime 做水位，水位不变直接回缓存，变了才 `listAll`；上限扩到 2000 | `shell.tsx`、`engine/src/server.ts`；arch §3.3 |
 | Q44 | 侧栏的过渡形态 | M3 在容器行下保留 M1 的「全部会话」，让无主会话可打开/归入容器；M4 再改为 Project → 分组的两层聚合。容器行提供 archive 动作，但不做归档管理页（Q34） | `shell.tsx`、`containers.ts`；arch §4.2 |
 | Q39 | i18n 运行时 | nsh 0.4.0 发布运行时未导出 `nsh/i18n`/`localeSettings`（checkout 有、发布版没有），**键表落为纯 TS**（`i18n.ts` + `locales/*.ts`，`%{name}` 插值），zh-CN 为源语言、en 为 fallback；`nsh test` 的 parity 用例保证两表与 `K` 集合同构 | `i18n.ts`、`locales/`、`i18n.test.ts` |
 
 ## 决策编号说明
 
-- Q1–Q44 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（§3.6 的 `zu/fs`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）。
+- Q1–Q48 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（§3.6 的 `zu/fs`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）。
 - 原 engine/ui/domain 三份文档里的 E/U 编号已废弃，统一并入本表。
 - 条件性里程碑（M-tty / M-arch / M-web）的触发条件见 [roadmap.md](roadmap.md) §17。

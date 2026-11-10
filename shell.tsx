@@ -1,5 +1,5 @@
-import { Scroll, signal, Text, token, View } from "nsh";
-import { DockArea, type DockAreaLayout } from "nsh/base";
+import { List, PanResponder, signal, Text, token, View } from "nsh";
+import { DockArea, Menu, MenuItem, type DockAreaLayout } from "nsh/base";
 import { connect, disconnect, info, lastError, phase, recovered, retry, type EnginePhase } from "./engine";
 import {
   activeContainerId,
@@ -8,7 +8,6 @@ import {
   containerCount,
   containerError,
   containerTitle,
-  createContainer,
   layout,
   liveContainers,
   loadContainers,
@@ -18,6 +17,16 @@ import {
   setZoom,
   switchContainer,
 } from "./containers";
+import {
+  containersIn,
+  launcherOpen,
+  loadProjects,
+  moveContainer,
+  openLauncher,
+  projects,
+  projectError,
+} from "./projects";
+import { Launcher, openProjectDialog, ProjectDialog } from "./launcher";
 import { sheetCount } from "./dock";
 import { error as sessionError, refreshSessions, sessions, activeId } from "./sessions";
 import { SheetBody, sheetGlyph, sheetTitle } from "./sheets";
@@ -38,7 +47,10 @@ import { Chip, Dot, Glyph, Logo } from "./ui";
 /** Boots the engine and loads the registry; the app calls it once. */
 export async function bootShell(): Promise<void> {
   await connect();
-  if (phase() === "connected") await loadContainers();
+  if (phase() === "connected") {
+    await loadContainers();
+    await loadProjects();
+  }
 }
 
 /** "now", "5m", "3h", "2d", then the date. */
@@ -108,124 +120,261 @@ function Rail() {
   );
 }
 
-/** Container rows (one canvas each) over the all-sessions list. */
+const projectAnchors = new Map<string, any>();
+const projectTops = new Map<string, number>();
+const dragContainer = signal<string | null>(null);
+const dragOver = signal<string | null>(null);
+
+async function measureProjects(): Promise<void> {
+  for (const [id, ref] of projectAnchors) {
+    const measured = await ref?.measure();
+    if (measured) projectTops.set(id, measured.pagePosition.y);
+  }
+}
+
+function projectAt(pageY: number): string | null | undefined {
+  const entries = [...projectTops.entries()]
+    .filter(([, top]) => typeof top === "number")
+    .sort((a, b) => a[1] - b[1]);
+  let found: string | null | undefined;
+  for (const [id, top] of entries) {
+    if (pageY >= top - 8) found = id === "__chats" ? null : id;
+  }
+  return found;
+}
+
+/** One container row, under its project; membership moves by menu or drag. */
+function ContainerRow(props: { container: any }) {
+  const container = () => props.container;
+  const active = () => container().id === activeContainerId();
+  const pan = PanResponder.create({
+    onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dy) > 8,
+    onPanResponderGrant: () => {
+      dragContainer.set(container().id);
+      dragOver.set(null);
+      void measureProjects();
+    },
+    onPanResponderMove: (event) => {
+      dragOver.set(projectAt(event.pageY) ?? null);
+    },
+    onPanResponderRelease: (event) => {
+      const target = projectAt(event.pageY);
+      const id = dragContainer();
+      dragContainer.set(null);
+      dragOver.set(null);
+      if (id && target !== undefined) void moveContainer(id, target);
+    },
+    onPanResponderTerminate: () => {
+      dragContainer.set(null);
+      dragOver.set(null);
+    },
+  });
+  return (
+    <View
+      class={active() ? "bg-accent" : ""}
+      style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 2, gap: 2 }}
+    >
+      <View
+        role="button"
+        accessibilityLabel={`Open container ${containerTitle(container())}`}
+        class={dragContainer() === container().id ? "flex-1 rounded-md opacity-50" : "flex-1 rounded-md hover:bg-hover"}
+        style={{ paddingVertical: 4, gap: 2 }}
+        onPress={() => void switchContainer(container().id)}
+        {...pan.panHandlers}
+      >
+        <Text style={{ fontSize: 12.5, fontWeight: active() ? "600" : "400", color: token("foreground"), numberOfLines: 1 }}>
+          {containerTitle(container())}
+        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Text style={{ fontSize: 10.5, color: token("faint"), numberOfLines: 1 }}>{shortPath(container().cwd)}</Text>
+          <Text style={{ fontSize: 10.5, color: token("faint") }}>
+            {t(K.container.sessions, { count: container().sessions.length })}
+          </Text>
+        </View>
+      </View>
+      <Menu
+        trigger={
+          <View
+            role="button"
+            testID={`container-menu-${container().id}`}
+            accessibilityLabel={t(K.project.move)}
+            class="h-6 w-5 items-center justify-center rounded-md hover:bg-hover active:opacity-70"
+          >
+            <Glyph name="caret-down" size={11} tint={token("faint")} />
+          </View>
+        }
+        popupClass="rounded-lg border border-line bg-card p-1"
+      >
+        <MenuItem class="rounded-md px-2 py-1.5 hover:bg-hover" onSelect={() => void moveContainer(container().id, null)}>
+          <Text class="text-[12px] text-foreground">{t(K.project.chats)}</Text>
+        </MenuItem>
+        <Each of={projects()} key={(project) => project.id}>
+          {(project) => (
+            <MenuItem
+              class="rounded-md px-2 py-1.5 hover:bg-hover"
+              onSelect={() => void moveContainer(container().id, project().id)}
+            >
+              <Text class="text-[12px] text-foreground">{project().name}</Text>
+            </MenuItem>
+          )}
+        </Each>
+      </Menu>
+      <View
+        role="button"
+        testID={`archive-${container().id}`}
+        accessibilityLabel={`${t(K.container.archive)} ${containerTitle(container())}`}
+        class="h-6 w-5 items-center justify-center rounded-md hover:bg-hover active:opacity-70"
+        onPress={() => void archiveContainer(container().id)}
+      >
+        <Glyph name="archive" size={11} tint={token("faint")} />
+      </View>
+    </View>
+  );
+}
+
+/** A project's header and its containers. */
+function ProjectGroup(props: { projectId: string | null; name: string; roots?: number; onCreate?: () => void }) {
+  const rows = () => containersIn(props.projectId);
+  const key = props.projectId ?? "__chats";
+  return (
+    <View style={{ gap: 2, paddingBottom: 4 }}>
+      <View
+        ref={(ref) => projectAnchors.set(key, ref)}
+        class={dragOver() === (props.projectId ?? null) && dragContainer() ? "bg-brand-tint" : ""}
+        style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 2 }}
+      >
+        <Glyph name={props.projectId === null ? "chat" : "folder"} size={13} tint={token("muted-foreground")} />
+        <Text class="flex-1 text-[12px] font-semibold text-foreground" style={{ numberOfLines: 1 }}>
+          {props.name}
+        </Text>
+        {props.roots !== undefined ? (
+          <Text class="text-[10px] text-faint">{t(K.project.rootsCount, { count: props.roots })}</Text>
+        ) : null}
+        <If when={!!props.onCreate}>
+          <View
+            role="button"
+            testID={`new-container-${props.projectId ?? "chats"}`}
+            accessibilityLabel={t(K.container.create)}
+            class="h-5 w-5 items-center justify-center rounded-md hover:bg-hover active:opacity-70"
+            onPress={props.onCreate}
+          >
+            <Glyph name="plus" size={10} tint={token("faint")} />
+          </View>
+        </If>
+      </View>
+      <If
+        when={rows().length === 0}
+        else={
+          <Each of={rows()} key={(row) => row.id}>
+            {(row) => <ContainerRow container={row()} />}
+          </Each>
+        }
+      >
+        <Text class="px-3 pb-1 text-[10.5px] text-faint">{t(K.project.empty)}</Text>
+      </If>
+    </View>
+  );
+}
+
+/** Project groups over a virtualized all-sessions list. */
 function Sidebar() {
+  const moved = () => projectError();
   return (
     <View class="bg-sidebar border-r border-line" style={{ width: 244 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingTop: 14, paddingBottom: 4 }}>
-        <Glyph name="archive" size={15} tint={token("muted-foreground")} />
-        <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: token("foreground") }}>{t(K.container.title)}</Text>
-        <Chip label={String(containerCount())} />
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 4 }}>
+        <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: token("foreground") }}>{t(K.project.title)}</Text>
+        <View
+          role="button"
+          testID="new-project"
+          accessibilityLabel={t(K.project.create)}
+          class="h-6 w-6 items-center justify-center rounded-md border border-line hover:bg-hover active:opacity-70"
+          onPress={openProjectDialog}
+        >
+          <Glyph name="plus" size={11} tint={token("foreground")} />
+        </View>
         <View
           role="button"
           testID="new-container"
           accessibilityLabel={t(K.container.create)}
           class="h-6 w-6 items-center justify-center rounded-md border border-line hover:bg-hover active:opacity-70"
-          onPress={() => void createContainer()}
+          onPress={() => openLauncher(null)}
         >
-          <Glyph name="plus" size={12} tint={token("foreground")} />
+          <Glyph name="chat" size={11} tint={token("foreground")} />
         </View>
-      </View>
-      <View style={{ paddingBottom: 4 }}>
-        <If
-          when={liveContainers().length === 0}
-          else={
-            <Each of={liveContainers()} key={(row) => row.id}>
-              {(row) => {
-                const container = row();
-                const active = container.id === activeContainerId();
-                return (
-                  <View
-                    class={active ? "bg-accent" : ""}
-                    style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 3, gap: 4 }}
-                  >
-                    <View
-                      role="button"
-                      accessibilityLabel={`Open container ${containerTitle(container)}`}
-                      class="flex-1 hover:bg-hover rounded-md"
-                      style={{ paddingVertical: 4, gap: 2 }}
-                      onPress={() => void switchContainer(container.id)}
-                    >
-                      <Text style={{ fontSize: 12.5, fontWeight: active ? "600" : "400", color: token("foreground"), numberOfLines: 1 }}>
-                        {containerTitle(container)}
-                      </Text>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                        <Text style={{ fontSize: 10.5, color: token("faint"), numberOfLines: 1 }}>{shortPath(container.cwd)}</Text>
-                        <Text style={{ fontSize: 10.5, color: token("faint") }}>
-                          {t(K.container.sessions, { count: container.sessions.length })}
-                        </Text>
-                      </View>
-                    </View>
-                    <View
-                      role="button"
-                      testID={`archive-${container.id}`}
-                      accessibilityLabel={`${t(K.container.archive)} ${containerTitle(container)}`}
-                      class="h-6 w-6 items-center justify-center rounded-md hover:bg-hover active:opacity-70"
-                      onPress={() => void archiveContainer(container.id)}
-                    >
-                      <Glyph name="archive" size={12} tint={token("faint")} />
-                    </View>
-                  </View>
-                );
-              }}
-            </Each>
-          }
-        >
-          <View style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
-            <Text style={{ fontSize: 11.5, color: token("muted-foreground") }}>{t(K.container.empty)}</Text>
-          </View>
-        </If>
       </View>
 
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 4, borderTopWidth: 1, borderColor: token("border") }}>
-        <Glyph name="chat" size={14} tint={token("muted-foreground")} />
-        <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: token("foreground") }}>{t(K.sidebar.allSessions)}</Text>
-        <Chip label={String(sessions().length)} />
-        <View
-          role="button"
-          accessibilityLabel={t(K.engine.refresh)}
-          class="h-6 w-6 items-center justify-center rounded-md hover:bg-hover active:opacity-70"
-          onPress={() => void refreshSessions()}
-        >
-          <Glyph name="pulse" size={12} tint={token("faint")} />
-        </View>
-      </View>
-      <Scroll style={{ flex: 1, paddingBottom: 12 }}>
-        <If
-          when={sessions().length === 0}
-          else={
-            <Each of={sessions()} key={(row) => row.path}>
-              {(row) => {
-                const meta = row();
-                const active = meta.id === activeId();
-                return (
-                  <View
-                    role="button"
-                    accessibilityLabel={`Open ${meta.name || meta.preview || meta.id}`}
-                    class={active ? "bg-accent" : "hover:bg-hover"}
-                    style={{ paddingHorizontal: 12, paddingVertical: 6, gap: 2 }}
-                    onPress={() => void openPath(meta.path)}
-                  >
-                    <Text style={{ fontSize: 12, fontWeight: active ? "600" : "400", color: token("foreground"), numberOfLines: 1 }}>
-                      {meta.name || meta.preview || meta.id}
-                    </Text>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <Text style={{ fontSize: 10.5, color: token("faint"), numberOfLines: 1 }}>{shortPath(meta.cwd)}</Text>
-                      <View style={{ flex: 1 }} />
-                      <Text style={{ fontSize: 10.5, color: token("faint") }}>{`${meta.messageCount}`}</Text>
-                      <Text style={{ fontSize: 10.5, color: token("faint") }}>{relative(meta.modified)}</Text>
-                    </View>
-                  </View>
-                );
-              }}
-            </Each>
-          }
-        >
-          <View style={{ paddingHorizontal: 12, paddingVertical: 16 }}>
-            <Text style={{ fontSize: 12, color: token("muted-foreground") }}>{t(K.sidebar.empty)}</Text>
+      <Each of={projects()} key={(project) => project.id}>
+        {(project) => (
+          <ProjectGroup
+            projectId={project().id}
+            name={project().name}
+            roots={project().roots.length}
+            onCreate={() => openLauncher(project().id, true)}
+          />
+        )}
+      </Each>
+      <ProjectGroup
+        projectId={null}
+        name={t(K.project.chats)}
+        onCreate={() => openLauncher(null, true)}
+      />
+
+      <If when={!!moved()}>
+        <Text class="px-3 py-1 text-[10.5px] text-destructive" style={{ numberOfLines: 1 }}>
+          {moved() ?? ""}
+        </Text>
+      </If>
+
+      <List
+        testID="session-list"
+        each={sessions()}
+        keyExtractor={(row) => row.path}
+        style={{ flex: 1 }}
+        header={
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4, borderTopWidth: 1, borderColor: token("border") }}>
+            <Glyph name="chat" size={13} tint={token("muted-foreground")} />
+            <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: token("foreground") }}>{t(K.sidebar.allSessions)}</Text>
+            <Chip label={String(sessions().length)} />
+            <View
+              role="button"
+              accessibilityLabel={t(K.engine.refresh)}
+              class="h-6 w-6 items-center justify-center rounded-md hover:bg-hover active:opacity-70"
+              onPress={() => void refreshSessions()}
+            >
+              <Glyph name="pulse" size={11} tint={token("faint")} />
+            </View>
           </View>
-        </If>
-      </Scroll>
+        }
+        empty={
+          <View style={{ paddingHorizontal: 12, paddingVertical: 12 }}>
+            <Text style={{ fontSize: 11.5, color: token("muted-foreground") }}>{t(K.sidebar.empty)}</Text>
+          </View>
+        }
+      >
+        {(row) => {
+          const meta = row();
+          const active = meta.id === activeId();
+          return (
+            <View
+              role="button"
+              accessibilityLabel={`Open ${meta.name || meta.preview || meta.id}`}
+              class={active ? "bg-accent" : "hover:bg-hover"}
+              style={{ paddingHorizontal: 12, paddingVertical: 6, gap: 2 }}
+              onPress={() => void openPath(meta.path)}
+            >
+              <Text style={{ fontSize: 12, fontWeight: active ? "600" : "400", color: token("foreground"), numberOfLines: 1 }}>
+                {meta.name || meta.preview || meta.id}
+              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={{ fontSize: 10.5, color: token("faint"), numberOfLines: 1 }}>{shortPath(meta.cwd)}</Text>
+                <View style={{ flex: 1 }} />
+                <Text style={{ fontSize: 10.5, color: token("faint") }}>{`${meta.messageCount}`}</Text>
+                <Text style={{ fontSize: 10.5, color: token("faint") }}>{relative(meta.modified)}</Text>
+              </View>
+            </View>
+          );
+        }}
+      </List>
     </View>
   );
 }
@@ -303,6 +452,10 @@ export function Workbench() {
       <Sidebar />
       <View class="flex-1 bg-inset" style={{ flexDirection: "column" }}>
         <EngineBar />
+        <If when={launcherOpen() || activeContainerId() === null}>
+          <Launcher />
+        </If>
+        <If when={!(launcherOpen() || activeContainerId() === null)}>
         <DockArea
           ref={(ref) => bindDock(ref)}
           class="flex-1"
@@ -338,6 +491,7 @@ export function Workbench() {
             </View>
           )}
         />
+        </If>
         <View class="flex-row items-center gap-4 border-t border-line bg-background px-3" style={{ height: 26 }}>
           <Text class="text-[11px] tabular-nums text-faint">{t(K.status.sheets, { count: sheetCount(layout()) })}</Text>
           <Text class="text-[11px] text-faint">{t(K.status.containers, { count: containerCount() })}</Text>
@@ -346,15 +500,16 @@ export function Workbench() {
             <Text class="text-[11px] text-warn">{t(K.status.unsupported, { count: unsupportedMethods().length })}</Text>
           </If>
           <View style={{ flex: 1 }} />
-          <If when={!!(sessionError() ?? containerError())}>
+          <If when={!!(sessionError() ?? containerError() ?? projectError())}>
             <Text class="text-[11px] text-destructive" style={{ numberOfLines: 1 }}>
-              {sessionError() ?? containerError() ?? ""}
+              {sessionError() ?? containerError() ?? projectError() ?? ""}
             </Text>
           </If>
           <Text class="text-[11px] text-faint">{t(K.status.hint)}</Text>
         </View>
       </View>
       <UIHost />
+      <ProjectDialog />
     </View>
   );
 }

@@ -1,7 +1,7 @@
 import { expect, open, test } from "nsh/test";
 test("the shell shows the session list and engine controls", async () => {
   const app = await open("./App.tsx", { network: "live", width: 1200, height: 800 });
-  expect(app.texts()).toContain("容器");
+  expect(app.texts()).toContain("项目");
   expect(app.texts()).toContain("全部会话");
   expect(app.texts()).toContain("刷新");
   // The engine starts in the background; any phase label is valid here.
@@ -18,7 +18,7 @@ test("the shell shows the session list and engine controls", async () => {
 test("the shell speaks English when the user prefers it", async () => {
   const app = await open("./App.tsx", { network: "live", width: 1200, height: 800 });
   await app.press("id:language");
-  expect(app.texts()).toContain("Containers");
+  expect(app.texts()).toContain("Projects");
   expect(app.texts()).toContain("All sessions");
   expect(app.texts()).toContain("Refresh");
   await app.waitUntil(() => app.texts().includes("Running"), { timeout: 20000 });

@@ -98,6 +98,26 @@ dropped after the first was matched).
 arrives as events. `session.steer` and `session.followUp` are allowed only
 while a turn runs and map to pi's `streamingBehavior`.
 
+### project.*
+
+A project is user-created: one or more absolute roots, exactly one primary.
+`projects.json` stores `{ v, projects, membership }`; membership is the only
+source of a container's project (absent means Chats), never inferred from cwd.
+A container's cwd is the primary root's snapshot at creation, so editing roots
+never moves a live container.
+
+| Command | Payload | Idempotent | Replay | Reply |
+|---|---|---|---|---|
+| `project.list` | — | yes | safe | `{ projects, membership }` |
+| `project.create` | `{ name?, roots: [{ path, primary? }] }` | no | duplicate | `{ project, projects, membership }` |
+| `project.update` | `{ projectId, name?, roots? }` | yes | safe | `{ project, projects, membership }` |
+| `project.setMembership` | `{ containerId, projectId: string \| null }` | yes | safe | `{ container, projects, membership }` |
+
+`project.create` rejects zero roots, non-absolute paths, non-directories, and
+more than one primary. With no primary the first root becomes primary; with no
+name the primary's basename is followed. `project.setMembership` takes `null`
+for Chats.
+
 ### container.*
 
 A container is M3's first relational object: a group of panels with a kind,
@@ -107,7 +127,7 @@ owns the registry; the shell owns the layout stash and asks for it by id.
 | Command | Payload | Idempotent | Replay | Reply |
 |---|---|---|---|---|
 | `container.list` | — | yes | safe | `{ containers, activeContainerId }` |
-| `container.create` | `{ cwd? }` | no | duplicate | `{ container, session }`; also makes it active |
+| `container.create` | `{ cwd?, projectId? }` | no | duplicate | `{ container, session }`; also makes it active. With `projectId`, cwd is the project's primary snapshot |
 | `container.show` | `{ containerId }` | yes | safe | `{ container }`; sets the active container |
 | `container.attachSession` | `{ containerId, path }` | yes (by path) | safe | `{ container, session }` |
 | `container.archive` | `{ containerId }` | yes | safe | `{ containers, activeContainerId }`; aborts and disposes its sessions |
@@ -153,7 +173,7 @@ gone and the engine has already resolved it with its timeout's default.
   pi: string,
   pid: number,
   startedAt: number,
-  containers: ContainerRecord[], // archived ones included; the shell filters
+  containers: ContainerRecord[], // archived ones included; projectId from membership
   activeContainerId: string | null,
   openSessions: [{ sessionId, path, cwd, name?, containerId?, running }],
   activeRuns: string[],        // session ids with a running turn

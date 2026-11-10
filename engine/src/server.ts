@@ -12,8 +12,8 @@
  * so a reconnecting shell can tell a restart from a dropped socket.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join } from "node:path";
 
 import {
   createAgentSession,
@@ -39,6 +39,10 @@ import {
   type ContainerData,
   type ContainerListData,
   type ContainerRecord,
+  type ProjectData,
+  type ProjectRecord,
+  type ProjectRoot,
+  type ProjectsData,
   type Envelope,
   type EventMessage,
   type EventType,
@@ -49,7 +53,17 @@ import {
   type UIMethod,
   type UIResponsePayload,
 } from "../../contracts/protocol";
-import { readLayout, readRegistry, stateDir, writeLayout, writeRegistry, type Registry } from "./store";
+import {
+  readLayout,
+  readProjects,
+  readRegistry,
+  stateDir,
+  writeLayout,
+  writeProjects,
+  writeRegistry,
+  type ProjectsFile,
+  type Registry,
+} from "./store";
 import { PI_VERSION } from "./version";
 
 const PORT = Number(process.env.ZU_PORT ?? 47823);
@@ -91,7 +105,9 @@ const trustStore = new ProjectTrustStore(AGENT_DIR);
 let uiSeq = 0;
 
 let registry: Registry = readRegistry();
+let projectsFile: ProjectsFile = readProjects();
 let runSeq = 0;
+let projectSeq = 0;
 
 const startedAt = Date.now();
 const generation = nextGeneration();
@@ -166,7 +182,7 @@ function snapshot(): StateSnapshot {
     pi: PI_VERSION,
     pid: process.pid,
     startedAt,
-    containers: registry.containers,
+    containers: registry.containers.map(containerView),
     activeContainerId: registry.activeContainerId,
     openSessions: [...open.values()].map((rec) => ({
       sessionId: rec.id,
@@ -183,6 +199,101 @@ function snapshot(): StateSnapshot {
 
 function saveRegistry(): void {
   writeRegistry(registry);
+}
+
+function saveProjects(): void {
+  writeProjects(projectsFile);
+}
+
+/** A container as the shell sees it: the registry record plus its explicit project. */
+function containerView(container: ContainerRecord): ContainerRecord {
+  return { ...container, projectId: projectsFile.membership[container.id] ?? null };
+}
+
+function findProject(id: string): ProjectRecord | undefined {
+  return projectsFile.projects.find((project) => project.id === id);
+}
+
+function primaryRoot(project: ProjectRecord): ProjectRoot {
+  return project.roots.find((root) => root.primary) ?? project.roots[0];
+}
+
+function projectsData(project?: ProjectRecord): ProjectsData | ProjectData {
+  const data = { projects: projectsFile.projects, membership: projectsFile.membership };
+  return project ? { ...data, project } : data;
+}
+
+/**
+ * Exactly one primary root; omitted flags make the first root primary and
+ * several primaries are an error. Roots must be existing directories, since
+ * a container's cwd is snapshotted from the primary.
+ */
+function normalizeRoots(roots: Array<{ path: string; primary?: boolean }>): ProjectRoot[] {
+  if (!Array.isArray(roots) || roots.length === 0) throw new Error("a project needs at least one root");
+  const seen = new Set<string>();
+  const normalized: ProjectRoot[] = [];
+  let primaries = 0;
+  for (const root of roots) {
+    const path = String(root?.path ?? "").trim();
+    if (!path || !isAbsolute(path)) throw new Error(`project root is not an absolute path: ${path}`);
+    if (seen.has(path)) continue;
+    seen.add(path);
+    if (!existsSync(path) || !statSync(path).isDirectory()) {
+      throw new Error(`project root is not a directory: ${path}`);
+    }
+    const primary = root.primary === true;
+    if (primary) primaries++;
+    normalized.push({ path, primary });
+  }
+  if (normalized.length === 0) throw new Error("a project needs at least one root");
+  if (primaries > 1) throw new Error("a project has exactly one primary root");
+  if (primaries === 0) normalized[0].primary = true;
+  return normalized;
+}
+
+function createProject(payload: { name?: string; roots: Array<{ path: string; primary?: boolean }> }): ProjectRecord {
+  const roots = normalizeRoots(payload?.roots ?? []);
+  const primary = primaryRoot({ roots } as ProjectRecord);
+  const requested = String(payload?.name ?? "").trim();
+  const now = Date.now();
+  const project: ProjectRecord = {
+    id: `p-${now.toString(36)}-${++projectSeq}`,
+    name: requested || basename(primary.path),
+    nameOverridden: requested.length > 0,
+    roots,
+    position: projectsFile.projects.length,
+    createdAt: now,
+    updatedAt: now,
+  };
+  projectsFile.projects.push(project);
+  saveProjects();
+  return project;
+}
+
+function updateProject(project: ProjectRecord, payload: { name?: string; roots?: Array<{ path: string; primary?: boolean }> }): ProjectRecord {
+  if (payload.roots !== undefined) project.roots = normalizeRoots(payload.roots);
+  const requested = payload.name === undefined ? undefined : String(payload.name).trim();
+  if (requested !== undefined) {
+    if (requested.length > 0) {
+      project.name = requested;
+      project.nameOverridden = true;
+    } else if (!project.nameOverridden) {
+      project.name = basename(primaryRoot(project).path);
+    }
+  } else if (!project.nameOverridden) {
+    project.name = basename(primaryRoot(project).path);
+  }
+  project.updatedAt = Date.now();
+  saveProjects();
+  return project;
+}
+
+function setMembership(containerId: string, projectId: string | null): void {
+  if (!findContainer(containerId)) throw new Error("container not found");
+  if (projectId !== null && !findProject(projectId)) throw new Error("project not found");
+  if (projectId === null) delete projectsFile.membership[containerId];
+  else projectsFile.membership[containerId] = projectId;
+  saveProjects();
 }
 
 function touch(rec: Rec): void {
@@ -628,14 +739,17 @@ async function createSession(cwd: string, ws: any) {
 }
 
 /** The single entry that creates a container and its captain session. */
-async function createContainer(cwd: string, ws: any): Promise<ContainerData> {
-  const rec = await createSession(cwd, ws);
+async function createContainer(cwd: string, ws: any, projectId: string | null = null): Promise<ContainerData> {
+  const project = projectId ? findProject(projectId) : undefined;
+  if (projectId && !project) throw new Error("project not found");
+  const targetCwd = project ? primaryRoot(project).path : cwd;
+  const rec = await createSession(targetCwd, ws);
   const now = Date.now();
   const containerPath = rec.path;
   const container: ContainerRecord = {
     id: `pi:${rec.id}`,
     kind: "Pi",
-    cwd,
+    cwd: targetCwd,
     archived: false,
     createdAt: now,
     updatedAt: now,
@@ -645,7 +759,10 @@ async function createContainer(cwd: string, ws: any): Promise<ContainerData> {
   registry.activeContainerId = container.id;
   rec.containerId = container.id;
   saveRegistry();
-  return { container, session: sessionData(rec) };
+  if (projectId) projectsFile.membership[container.id] = projectId;
+  else delete projectsFile.membership[container.id];
+  saveProjects();
+  return { container: containerView(container), session: sessionData(rec) };
 }
 
 function setActiveContainer(id: string | null): void {
@@ -658,7 +775,7 @@ function showContainer(id: string): ContainerRecord | undefined {
   const container = findContainer(id);
   if (!container || container.archived) return undefined;
   setActiveContainer(container.id);
-  return container;
+  return containerView(container);
 }
 
 /** Adds a pi session file to a container; a session lives in one container. */
@@ -680,7 +797,7 @@ async function attachSession(containerId: string, path: string, ws: any): Promis
   container.updatedAt = Date.now();
   rec.containerId = container.id;
   saveRegistry();
-  return { container, session: sessionData(rec) };
+  return { container: containerView(container), session: sessionData(rec) };
 }
 
 function nextActiveContainer(): string | null {
@@ -724,7 +841,10 @@ async function setArchived(id: string, archived: boolean): Promise<ContainerList
     if (registry.activeContainerId === id) registry.activeContainerId = nextActiveContainer();
   }
   saveRegistry();
-  return { containers: registry.containers, activeContainerId: registry.activeContainerId };
+  return {
+    containers: registry.containers.map(containerView),
+    activeContainerId: registry.activeContainerId,
+  };
 }
 
 function startRun(rec: Rec): void {
@@ -747,10 +867,46 @@ function finishRun(rec: Rec): void {
   saveRegistry();
 }
 
+/**
+ * The newest mtime under pi's session directory (directories included, so a
+ * created or deleted file moves the watermark). The index below re-parses
+ * only when this changes; 660+ sessions otherwise come from the cache.
+ */
+let sessionIndex: { watermark: number; sessions: SessionMeta[] } | null = null;
+
+function sessionWatermark(): number {
+  let newest = 0;
+  const visit = (dir: string): void => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+      newest = Math.max(newest, statSync(dir).mtimeMs);
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        visit(path);
+      } else {
+        try {
+          newest = Math.max(newest, statSync(path).mtimeMs);
+        } catch {
+          // A file removed while walking: the directory mtime already moved.
+        }
+      }
+    }
+  };
+  visit(join(AGENT_DIR, "sessions"));
+  return newest;
+}
+
 async function listSessions(): Promise<SessionMeta[]> {
+  const watermark = sessionWatermark();
+  if (sessionIndex && sessionIndex.watermark === watermark) return sessionIndex.sessions;
   const infos = await SessionManager.listAll();
   infos.sort((a, b) => +new Date(b.modified) - +new Date(a.modified));
-  return infos.slice(0, 200).map((info) => ({
+  const sessions = infos.slice(0, 2000).map((info) => ({
     id: info.id,
     path: info.path,
     cwd: info.cwd,
@@ -760,6 +916,8 @@ async function listSessions(): Promise<SessionMeta[]> {
     messageCount: info.messageCount,
     preview: (info.firstMessage ?? "").slice(0, 160),
   }));
+  sessionIndex = { watermark, sessions };
+  return sessions;
 }
 
 /**
@@ -846,9 +1004,57 @@ async function handle(ws: any, message: Envelope): Promise<void> {
       );
       return;
     }
+    case "project.list": {
+      reply(ws, makeReply(id, message.type, projectsData()));
+      return;
+    }
+    case "project.create": {
+      try {
+        const project = createProject({
+          name: payload.name === undefined ? undefined : String(payload.name),
+          roots: Array.isArray(payload.roots) ? payload.roots : [],
+        });
+        reply(ws, makeReply(id, message.type, projectsData(project)));
+      } catch (error: any) {
+        reply(ws, makeErrorReply(id, message.type, String(error?.message ?? error), "project_create_failed"));
+      }
+      return;
+    }
+    case "project.update": {
+      const project = findProject(String(payload.projectId ?? ""));
+      if (!project) {
+        reply(ws, makeErrorReply(id, message.type, "project not found", "project_not_found"));
+        return;
+      }
+      try {
+        const updated = updateProject(project, {
+          name: payload.name === undefined ? undefined : String(payload.name),
+          roots: Array.isArray(payload.roots) ? payload.roots : undefined,
+        });
+        reply(ws, makeReply(id, message.type, projectsData(updated)));
+      } catch (error: any) {
+        reply(ws, makeErrorReply(id, message.type, String(error?.message ?? error), "project_update_failed"));
+      }
+      return;
+    }
+    case "project.setMembership": {
+      try {
+        const containerId = String(payload.containerId ?? "");
+        const projectId = payload.projectId === null ? null : String(payload.projectId ?? "");
+        setMembership(containerId, projectId);
+        reply(ws, makeReply(id, message.type, {
+          container: containerView(findContainer(containerId)!),
+          projects: projectsFile.projects,
+          membership: projectsFile.membership,
+        }));
+      } catch (error: any) {
+        reply(ws, makeErrorReply(id, message.type, String(error?.message ?? error), "membership_failed"));
+      }
+      return;
+    }
     case "container.list": {
       const data: ContainerListData = {
-        containers: registry.containers,
+        containers: registry.containers.map(containerView),
         activeContainerId: registry.activeContainerId,
       };
       reply(ws, makeReply(id, message.type, data));
@@ -856,9 +1062,14 @@ async function handle(ws: any, message: Envelope): Promise<void> {
     }
     case "container.create": {
       try {
+        const projectId = payload.projectId === null ? null : payload.projectId ? String(payload.projectId) : null;
+        const project = projectId ? findProject(projectId) : undefined;
+        if (projectId && !project) throw new Error("project not found");
         const active = registry.activeContainerId ? findContainer(registry.activeContainerId) : undefined;
-        const cwd = String(payload.cwd ?? active?.cwd ?? process.cwd());
-        reply(ws, makeReply(id, message.type, await createContainer(cwd, ws)));
+        const cwd = project
+          ? primaryRoot(project).path
+          : String(payload.cwd ?? active?.cwd ?? process.cwd());
+        reply(ws, makeReply(id, message.type, await createContainer(cwd, ws, projectId)));
       } catch (error: any) {
         reply(ws, makeErrorReply(id, message.type, String(error?.message ?? error), "container_create_failed"));
       }

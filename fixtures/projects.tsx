@@ -1,0 +1,123 @@
+import { mount } from "nsh";
+import { Workbench } from "../shell";
+import { activeContainerId, containers, layout, setContainerTransport, syncVisible } from "../containers";
+import { phase } from "../engine";
+import { membership, projects, setProjectTransport } from "../projects";
+import { seedSession } from "../sessions";
+import { defaultLayoutForSessions } from "../dock";
+
+seedSession("s1", [{ role: "assistant", text: "alpha body" }], {
+  path: "/tmp/p-alpha.jsonl",
+  name: "Alpha",
+  loaded: true,
+});
+seedSession("s2", [{ role: "assistant", text: "beta body" }], {
+  path: "/tmp/p-beta.jsonl",
+  name: "Beta",
+  loaded: true,
+});
+
+const projectOne = {
+  id: "p1",
+  name: "Project One",
+  nameOverridden: true,
+  roots: [{ path: "/tmp", primary: true }],
+  position: 0,
+  createdAt: 1,
+  updatedAt: 1,
+};
+const projectTwo = {
+  id: "p2",
+  name: "Project Two",
+  nameOverridden: true,
+  roots: [{ path: "/tmp", primary: true }],
+  position: 1,
+  createdAt: 1,
+  updatedAt: 1,
+};
+
+const records: any[] = [
+  { id: "c1", kind: "Pi", cwd: "/tmp", archived: false, createdAt: 1, updatedAt: 3, projectId: "p1", sessions: [{ sessionId: "s1", path: "/tmp/p-alpha.jsonl", name: "Alpha" }] },
+  { id: "c2", kind: "Pi", cwd: "/tmp", archived: false, createdAt: 1, updatedAt: 2, projectId: "p2", sessions: [{ sessionId: "s2", path: "/tmp/p-beta.jsonl", name: "Beta" }] },
+];
+
+let projectList: any[] = [projectOne, projectTwo];
+let membershipMap: Record<string, string | null> = { c1: "p1", c2: "p2" };
+let active = "c1";
+
+projects.set([projectOne, projectTwo] as any);
+containers.set(records);
+membership.set(membershipMap);
+activeContainerId.set("c1");
+layout.set(defaultLayoutForSessions(["s1"]));
+syncVisible();
+phase.set("connected");
+
+async function containerTransport(type: string, payload: any = {}): Promise<any> {
+  switch (type) {
+    case "container.create": {
+      const id = `c${records.length + 1}`;
+      const sessionId = `s${records.length + 1}`;
+      const record = {
+        id,
+        kind: "Pi",
+        cwd: payload.cwd ?? "/tmp",
+        archived: false,
+        createdAt: 5,
+        updatedAt: 5,
+        projectId: payload.projectId ?? null,
+        sessions: [{ sessionId, path: `/tmp/${sessionId}.jsonl`, name: "Chat" }],
+      };
+      records.push(record);
+      containers.set([...records]);
+      active = id;
+      return {
+        container: record,
+        session: { id: sessionId, path: `/tmp/${sessionId}.jsonl`, cwd: record.cwd, name: "Chat", containerId: id, messages: [] },
+      };
+    }
+    case "layout.put":
+      return { containerId: payload.containerId, layout: payload.layout, zoom: payload.zoom };
+    default:
+      throw new Error(`project fixture container transport: ${type}`);
+  }
+}
+
+async function projectTransport(type: string, payload: any = {}): Promise<any> {
+  switch (type) {
+    case "project.list":
+      return { projects: projectList, membership: membershipMap };
+    case "project.setMembership": {
+      const next = { ...membershipMap };
+      if (payload.projectId === null) delete next[payload.containerId];
+      else next[payload.containerId] = payload.projectId;
+      membershipMap = next;
+      membership.set(next);
+      records.forEach((row) => {
+        if (row.id === payload.containerId) row.projectId = payload.projectId;
+      });
+      containers.set([...records]);
+      return { container: records.find((row) => row.id === payload.containerId), projects: projectList, membership: next };
+    }
+    case "project.create": {
+      const project = {
+        id: `p${projectList.length + 1}`,
+        name: payload.name || "project",
+        nameOverridden: true,
+        roots: payload.roots,
+        position: projectList.length,
+        createdAt: 5,
+        updatedAt: 5,
+      };
+      projectList = [...projectList, project];
+      projects.set([...projectList] as any);
+      return { project, projects: projectList, membership: membershipMap };
+    }
+    default:
+      throw new Error(`project fixture transport: ${type}`);
+  }
+}
+
+setContainerTransport(containerTransport);
+setProjectTransport(projectTransport);
+mount(Workbench);
