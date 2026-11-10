@@ -156,7 +156,7 @@
 
 ## 11. M8 — 编辑器与 Diff
 
-> **状态（2026-11-11，M8）**：实现完成，验收达成一半。
+> **状态（2026-11-11，`6ff8097`，M8）**：实现完成，验收达成一半。
 > **已实现并实测**：`zu/fs`（`list`/`stat`/`read`/`write`/`mkdir`；每次调用显式传工作区根，Rust 侧 canonicalize 并拒绝 `..`、根外绝对路径与越界 symlink；2 MiB 读上限、1000 项目录上限；临时文件 + rename 原子写并保留 mode/BOM；`ERR_FS_STALE` 带当前 mtime/size）、文件树 sheet（`files:{containerId}`，目录优先、懒加载子目录、空/加载/错误态、按文件对比）、真 `Editor` sheet（`editor:{containerId}:{base64url path}`，按扩展名或文件名决定语法高亮、折叠、查找/替换、脏标记、Save + Mod+S、冲突/错误只读、reload/close）、两文件 `DiffView` sheet（`diff:{containerId}:{old~new}`，split/unified、真实 hunk 统计）；Pi 与 external 容器都用其 cwd。
 > **已验证**：headless 打开真实 `/tmp` 文件 → 编辑 → Mod+S → 用 `zu/fs` 读回磁盘一致；外部改写后保存被 `ERR_FS_STALE` 拒绝、编辑器转只读、reload 后恢复；两真实文件的 `DiffView` 统计 `+2 −1 · 1`（hunk 正确）。门禁 `nsh check`/`nsh build`/`cargo check --all-targets`/`cargo test --lib`/`nsh test .` 全绿（99 条）。证据见 [evidence/m8-editor-diff.md](evidence/m8-editor-diff.md)。
 > **未达成**：「看一次 git diff」不在 M8——没有 git 模块，不做伪造的 worktree diff；两文件对比已实现，工作区 diff 留给 M9（Q57）。
