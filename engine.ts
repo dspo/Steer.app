@@ -1,4 +1,5 @@
 import { signal } from "nsh";
+import { K, t } from "./i18n";
 import { Engine } from "zu/native";
 import {
   PROTOCOL_VERSION,
@@ -153,7 +154,13 @@ export async function connect(): Promise<void> {
   if (result === "incompatible") return;
   if (result !== "ok") {
     phase.set("error");
-    lastError.set(`engine did not answer on 127.0.0.1:${Engine.port()} — see ${Engine.logPath()}`);
+    // A port someone else holds is a different failure from a sidecar that
+    // started but did not speak the protocol: say which one it is.
+    if (!Engine.portAvailable()) {
+      lastError.set(t(K.engine.portBusy, { port: Engine.port() }));
+    } else {
+      lastError.set(`engine did not answer on 127.0.0.1:${Engine.port()} — see ${Engine.logPath()}`);
+    }
     return;
   }
   startWatchdog();

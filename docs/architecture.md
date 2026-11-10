@@ -89,9 +89,9 @@ UI 与引擎之间唯一的共享面：TS 类型 + 运行时校验 + `protocol.m
 }
 ```
 
-WebSocket 按 `hosts` 授权（`sockets` 只给 `net.connect` 的裸 TCP，且只接受精确 `host:port`）；`notifications` 不是合法能力键，通知在 M10 用 nsh 的 desktop 模块。
+WebSocket 按 `hosts` 授权（`sockets` 只给 `net.connect` 的裸 TCP，且只接受精确 `host:port`）。M12 起 `capabilities.notifications: true` 是合法能力键（nsh 0.4.0 的 `Notifications` 模块需要它；系统权限仍由系统询问一次）；headless 里通知先由窗口探测短路，不发也不报错。`zu/native` 的 `Instance` 不需要能力：它只碰 app 状态目录里的一个锁文件，不是通用 fs 面。
 
-**port 与 token 由 native module 提供**：`Engine.port()` / `Engine.token()`（§3.6），UI 不读文件、不猜端口。端口是固定常量 `47823`——第二个实例会撞端口，由「单实例」与明确错误文案兜底（§7）。
+**port 与 token 由 native module 提供**：`Engine.port()` / `Engine.token()`（§3.6），UI 不读文件、不猜端口。端口是固定常量 `47823`——第二个实例会撞端口，所以桌面启动在 `bootShell()` 之前先 `Instance.claim()`（§3.6、§4.6）；`Engine.portAvailable()` 让「端口被别人占着」与「sidecar 起了但没握手」显示成两句不同的话。
 
 **浏览器授权（Q32）**：`capabilities.webview.hosts: ["*"]`——地址栏意味着任意站点；UI 在地址栏旁标明「任意站点」，页面消息不进 wire、不进 agent 上下文（§8.12）。M10 只加了这一项：没有 `webview.input`（不给页面可信输入）、没有 `openUrl`（nsh 0.4.0 没有链接外开/新窗口回调），也没有 `fs`/`process.execute`；`.nsh/out/capabilities.json` 是这条声明的事实。
 
@@ -132,10 +132,14 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 | `zu/lsp` | 起语言服务器（argv、显式 cwd、无 shell）、`Content-Length` 帧、消息/ stderr / exit 回调；ID/超时/取消在 TS。一个进程 = 一个容器的语言族 | 容器 × 语言族 |
 | `zu/git` | shell out `git`（status/diff/log/branches/stage/unstage/commit/checkout/createBranch/init/setIdentity），根/路径策略与错误码在 Rust 侧 | 一次性调用 |
 | `zu/fs` | `list/stat/read/write/mkdir`：编辑器与文件树的读写面；每次调用显式传工作区根（active container cwd），Rust 侧 canonicalize 后拒绝 `..`、根外绝对路径与越界 symlink，并做 2 MiB/1000 项上限、原子写与 stale 检测 | 一次性调用 |
+| `zu/instance` | `claim/release/lockPath`：app 状态目录的单实例锁；独占创建 + pid 判活 + 死锁回收；`claim` 同进程幂等 | 进程级单例 |
 
 **为什么是 `zu/fs` 而不是给 UI 开 `capabilities.fs`**：编辑器与文件树需要真实的读写，而 UI 的能力面要保持最小；`zu/fs` 让文件访问与 agent 的工具权限分开，LSP 的 `didOpen/didChange` 也能复用同一份内容（避免编辑器与 LSP 各读一遍）。M8 的落点：`src/fs.rs` 的错误带 `code`（`ERR_FS_ESCAPE`/`ERR_FS_BINARY`/`ERR_FS_TOO_LARGE`/`ERR_FS_STALE`/…）；保存走同目录临时文件 + `rename`，保留 mode 与 UTF-8 BOM；`write` 的 `expected {mtimeMs,size}` 不匹配即 `ERR_FS_STALE`，编辑器据此转只读直到 reload。UI 侧只有 `fs.ts`（类型面）与 `editors.ts`（文档/保存/校验），不持 `capabilities.fs`。**四域失败隔离**：engine、pty、lsp、git、fs 各自失败不影响其余；一个域的崩溃不能让 UI 失去所有能力。
 
 **M9 落点**：`src/git.rs` 的 `zu/git` 是 module 而非 class（一次性调用，无跨调用状态）。每次调用先 canonicalize 工作区根并用 `git rev-parse --show-toplevel` 校验「根即仓库顶层」——容器 cwd 是仓库子目录时返回 `ERR_GIT_NOT_REPO`，因为 porcelain 会把根外路径写成 `../x`，显示一半状态比拒绝更糟；路径只接受根内相对路径，拒绝 `..`、绝对路径、pathspec magic（`:` 开头）与 `-` 开头。`git` 以 argv 数组、`current_dir(root)` 执行，永不经过 shell，并清掉 `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` 等会把命令重定向到别的仓库的变量；没有任何 fetch/pull/push/remote 子命令。status 用 `--porcelain=v2 --branch --untracked-files=all -z`（NUL 记录；rename 的旧路径是下一个字段）；diff 固定 `--no-color --no-ext-diff --no-textconv --unified=3`，untracked 文件用 `git diff --no-index /dev/null <path>`（仍是 git 自己的补丁），补丁超过 2 MiB 返回 `ERR_GIT_TOO_LARGE`；log 用控制字符分隔字段/记录；commit 先用 `git var GIT_AUTHOR_IDENT/GIT_COMMITTER_IDENT` 检查身份，缺失返回 `ERR_GIT_IDENTITY`，身份对话框只写该仓库的 `.git/config`（`--local`），全局配置不动。命令失败一律带 `exit` 与 `stderr`（`ERR_GIT_COMMAND`）。UI 侧 `git.ts` 是类型面与每容器投影，`git-ui.tsx` 是两个 sheet；工作区 diff 复用 M8 的 `DiffView` 的 `patch` 模式，没有第二个 diff 组件。
+
+**M12 落点（单实例）**：`src/instance.rs` 的 `Instance` 把锁放在 `~/.pi/zu/instance.lock`（`ZU_STATE_DIR` 同样生效）。创建不是 `create_new` + `write`：锁的字节先写进同目录临时文件，再用 `fs::hard_link` 原子地挂成锁名——`link` 在目标已存在时失败（不会覆盖），读者也永远看不到半截内容。锁内容两行：pid 与创建时间（毫秒）；pid 用 Unix 的 `kill(pid, 0)` 判活（`EPERM` 也算活着），死进程或截断文件在下一轮回收（回收前重读一次，避免误删别人刚替换的新锁）。同一进程的第二次 `claim` 返回 `acquired: true, already: true`，`startLifecycle` 因此可重入；`release` 只删 pid 还是自己的锁。非 Unix 没有可靠的 pid 探测，已有锁一律当活的（宁可不抢），Zu 只发 macOS。**headless 不 claim**：`startLifecycle` 先看 `nsh/desktop` 的 `isAvailable`。
+**失败隔离**：锁文件读写失败返回 `Err`，UI 视为“没有 claim”（不把用户锁在门外），启动继续；锁只影响启动顺序，不参与 engine/PTY/fs/git/LSP 的任何调用。
 
 **M11 落点**：`src/lsp.rs` 的 `Lsp` 是 class（一个实例 = 一个语言服务器进程）。`Lsp.start(options, onMessage, onStderr, onExit?)` 以 argv 数组、显式且 canonicalize 过的 `cwd` 启动，绝不经过 shell；子进程进入自己的进程组，`stop()`/`Drop` 杀掉整个组，读/写/stderr/等四线程 + `Callback::post` 把完整消息、stderr 片段与 exit 推给 TSX。stdout 的帧解析在 Rust（`Content-Length`、header/消息上限；JSON 由 TS 解析），读线程不会无界增长：header > 8 KiB 或 body > 8 MiB 即报错并放弃该流；stdin 队列 > 8 MiB 时 `send` 失败。命令名在 `PATH` 与常见安装目录（`/opt/homebrew/bin`、`/usr/local/bin`、`~/.cargo/bin`、`~/go/bin`…）中解析，但**不 canonicalize**：`~/.cargo/bin/rust-analyzer` 是 `rustup` 的 symlink，resolver 会把 `argv[0]` 变成 `rustup`，于是它打印 rustup 帮助而不是说 LSP（本轮实测踩到并修正，见 evidence）。`lsp.ts` 每容器/语言族一个客户端：`initialize`（rootUri/workspaceFolders、客户端能力）、`initialized`，然后 `didOpen/didChange/didSave/didClose`；**全文同步**（`didChange` 的 `contentChanges` 只有 `{ text }`，不是增量 range），输入停顿 180 ms 后发送；请求 id/超时/`$/cancelRequest`/陈旧应答丢弃都在 TS。只接受容器根内、且已打开文件的 `publishDiagnostics`；服务端请求（`workspace/configuration`、`registerCapability`、`workDoneProgress/create` 等）一律应答，避免 rust-analyzer 等待。诊断映射为 `EditorDiagnostic`（0-based line/character → `EditorRange`），hover 的 MarkupContent/MarkedString 转 Markdown 给 `TextView`，definition 只接受根内 `Location`/`LocationLink`，completion 映射 kind/detail/documentation/insertText/textEdit。**失败隔离**：LSP 进程死、协议错、stderr 洪水都只把该 server 标为 error；engine/PTY/git/fs 不受影响。
 
@@ -148,14 +152,14 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 - **sidecar 位置**：`Zu.app/Contents/Helpers/pi-engine`，直接执行、不释放到 dataDir（签名与公证覆盖最干净）。
 - **pi 版本自管**：`engine/package.json` 精确 pin + `bun.lock` 进 git；升级 = 改 pin 的 PR（引擎测试 + TUI 冒烟 + 兼容性台账）；sidecar 内禁 `pi update`。
 - **兼容性台账**：每个绕过 pi 缺口的适配登记「上游什么条件下可删」。
-- **自更新**：GitHub Releases（nsh/updater）；仓库公开。**更新包必须包含 `Contents/Helpers`**——`nsh/updater` 替换整个 `.app`，漏掉即引擎消失。
+- **自更新**：`nsh/updater`（GitHub Releases 或自托管 manifest）。**本仓库当前没有 `nsh.json` 的 `"updater"`**：没有真实 source、公钥和 release，按 M12 的约束不伪造。发布时二选一：GitHub Releases 写 `"updater": { "github": "dspo/nsh-pi" }`（公开仓库的 manifest 不签也行，但建议配 `publicKey`），或自托管写 `"updater": { "url": "https://…/latest.json", "publicKey": "<keygen 出来的公钥>" }`，私钥只留在发布机/CI。**更新包必须包含 `Contents/Helpers`**——`nsh/updater` 替换整个 `.app`，漏掉即引擎消失；`script/bundle-mac.sh` 在打包后断言三个文件都在，`NSH_UPDATE_ARCHIVE=1` 时打的 `tar.gz` 是整个 `.app`，因此天然包含。`nsh update-manifest` + `nsh package --target macos` 的发布步骤与“本机不可端到端验证安装”的事实写在 [evidence/m12-lifecycle.md](evidence/m12-lifecycle.md)。
 - **签名**：nsh 的 `nsh package --target macos` 只做 **ad-hoc** 签名、且不认识 `Contents/Helpers`；其余是我们的活（`script/bundle-mac.sh`）：拷 sidecar 与两个 WASM（**必须与 sidecar 同目录**，photon 用 `process.execPath` 兜底）→ 逐个 `codesign --options runtime`（sidecar 带 `com.apple.security.cs.allow-jit`）→ 签 app → `notarytool` → `stapler`。ad-hoc 打包从 M0 起每轮冒烟，别把未知量留到正式签名那天。
 - **遥测**：支持 pi-telemetry，但不在早期里程碑；默认不上报。
 
 ### 3.8 构建回路
 
 - `engine/package.json` 的 `build`：`check-version`（`src/version.ts` 必须等于 pin）→ `bun build --compile --target=bun-darwin-arm64` → `cp` 两个 WASM 到 `dist/`（pi 上游同路径：`isBunBinary` / `copy-binary-assets` 的资产布局）。
-- `script/bundle-mac.sh`：sidecar → `nsh package` → Helpers → 嵌套 ad-hoc 签名 → dmg。
+- `script/bundle-mac.sh`：sidecar → `nsh package` → Helpers（**断言** `pi-engine` 与两个 WASM 都在，缺一即失败）→ 嵌套 ad-hoc 签名 → dmg；`NSH_UPDATE_ARCHIVE=1` 追加整个 `.app` 的 `tar.gz`（更新包必须含 Helpers）。
 - 开发：engine `bun run src/server.ts`（热重启）+ UI `nsh run .`（热重载）两条循环并行；UI 侧热更新在 mixed 模板下不可用（`nsh hot: no module zu/native`），改 TSX 需重启。
 - **编译产物冒烟**：`dist/pi-engine` 起得来、握手成功、`session.list` 返回——每次改 engine 都跑（已由 `engine.test.ts` 的 freshEngine 覆盖）。
 
@@ -163,7 +167,7 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 
 ### 4.1 分工
 
-**轮廓与内嵌对象分离**：壳（项目侧栏、顶栏、页签条、状态条）零领域状态；画布是受控的 `nsh/base DockArea`。
+**轮廓与内嵌对象分离**：壳（项目侧栏、顶栏、页签条、状态条）零领域状态；画布是受控的 `nsh/base DockArea`。**常驻的外壳**归 `lifecycle.ts`（claim/启动决策/退出）与 `lifecycle-ui.tsx`（托盘、关窗、应用菜单）；`App.tsx` 只按 `primary`/**`duplicate`**/headless 三态选 `Workbench` 还是第二实例提示。
 
 ### 4.2 panel 与 sheet
 
@@ -203,9 +207,13 @@ v1 最小集：`⌘W` 关闭 sheet、`⌘1-9` 切 sheet、`⌘K` 命令面板（
 3. **project trust**：项目有受保护资源时，Zu 弹一次「信任此项目」并写 pi 的 trust 面；否则 Q23 的"全量加载"在项目级不成立。信任状态与 Q24 的"写独立"不冲突：trust 是 pi 的语义，Zu 只触发它。
 4. **验收**：用本机 `~/.pi/agent/extensions` 里的真实扩展跑一次（加载、`confirm` 弹窗、`notify` 到达），不需要模型。
 
-### 4.6 常驻与通知
+### 4.6 常驻、单实例与通知
 
-关窗即收起（无确认，后台 run 继续）、单实例强制、不做登录自启；turn settle / 子会话交付发系统通知（首版激进，后续按反馈做减法）；托盘菜单提供显示/退出。
+- **关窗即收起**（无确认）：`nsh.json` 的 `window.closeOnPress: false`，`LifecycleHost` 在 `closePress` 里 `hide()`。窗口关闭不触发 engine/PTY 的 teardown：turn、子代理、终端继续跑；托盘 Show、主键点击或 `⌘0`（Window 菜单）恢复同一个窗口。真正退出只有托盘/应用菜单的 Quit（`quitApp`）——先 `Instance.release()`，再 `Application.quit()`；系统级退出（Dock Quit、`osascript`）不经过这里，留一张死 pid 的锁，下次启动按 pid 判活回收。
+- **单实例强制**：桌面启动先 `Instance.claim()`；已有一个活进程时**不 boot 引擎**，窗口显示「Zu 已在运行」（owner pid + 锁路径 + Quit），并提示从 Dock/菜单栏回到第一个实例。nsh 没有跨进程“show 已有窗口”的原语，所以不提供假的 Show 按钮。锁按状态目录算：开发实例要用 `ZU_STATE_DIR`/`ZU_PORT` 与正式实例分开（否则会被当成第二实例——这正是 `47823` 固定端口的正确行为）。
+- **不做登录自启**（M12 的裁决）。
+- **通知**：只有主窗口**不在前台**（不可见或未聚焦）才发。turn settle（`agent.state` 的 running→idle 边沿，重连快照补记 running，断线清空）与子代理 settle（`subagent.settled`）各发一条；id 是 `zu:session:<sessionId>` / `zu:subagent:<runId>`，同 id 由系统替换，相同正文 5 s 内不重复；权限第一次需要时申请一次，被拒不再弹。按下通知：关闭该条、显示并聚焦主窗口，按 id 排队等 engine/registry 就绪后打开会话 sheet 或子代理名册（冷启动也成立，最多重试 20 次）。**headless/无能力时全是 no-op**：窗口探测为 null 即返回，权限/系统错误只记录状态，不抛给渲染。首版的范围是 turn 与子代理（不是每条消息、每个工具），后续按反馈做减法。
+- **更新**：Updates 对话框（托盘 Check for Updates… / 顶栏齿轮）先报本 run 的包装状态，再报 release：development / 未配置 updater / 可检查，三态分开说；`canInstall: false` 只显示 URL（没有 `openUrl` 能力）；安装成功会退出进程，所以 promise resolve 后 UI 保持「正在安装」，不声称装好。
 
 ## 5. 对象模型
 
@@ -343,6 +351,7 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 - **M9 完成**：`src/git.rs`（`zu/git`：`status/diff/log/branches/stage/unstage/commit/checkout/createBranch/init/setIdentity`；porcelain v2 `-z` 解析、根必须为仓库顶层、路径越界拒绝、2 MiB 补丁上限、无 shell/无网络/无全局 git 配置、命令失败带 `exit`/`stderr`、缺身份 `ERR_GIT_IDENTITY`）；`git.ts` 按容器持 status/log/branches 与动作状态；`git-ui.tsx` 的 Changes sheet（`changes:{containerId}`：staged/工作区/未跟踪/冲突分组、单文件与全部 stage/unstage、`DiffView` 的 `patch` 模式显示真实 `git diff`、提交行、身份对话框、未初始化仓库态）与 History sheet（`history:{containerId}`：真实 log、分支菜单 checkout、新建分支对话框）；顶栏 `open-changes`/`open-history`；checkout 后重读两表并 reload 该容器中没有未保存改动的编辑器。`git.test.ts`（7 条，测试自建真实临时仓库）与 `git.ui.test.tsx`（3 条，真实 `Workbench`）覆盖「改文件 → Changes 显示 → stage → 提交（`git log` 验证）→ 切分支」，M8 的「看一次 git diff」由此补齐。门禁 122/122。
 - **M10 实现完成，验收达成一半**：`browser.ts`（每 sheet 的 URL/标题/loading/canGoBack/canGoForward/error/页面消息日志；地址规范化；`webview:{containerId}:{n}` 的实例分配；`WebView.available()` 探测）与 `browser-ui.tsx`（一个 `WebView` + 地址栏 + 后退/前进/刷新/停止 + loading 轨道/文字 + 页签标题 + 错误码面板 + 默认页 + 仅 UI 的页面消息日志）；顶栏 `open-browser`、Launcher「浏览器」；`nsh.json` 只加 `webview.hosts: ["*"]`。真实 macOS 宿主加载 `example.com`/IANA 文档页/DuckDuckGo Lite 搜索并跑通后退/前进（标题 `Example Domain` → `Example Domains` → `native shell at DuckDuckGo`）；headless 没有 web view，默认测试只覆盖状态机。门禁 130/130（`ZU_PORT=47834`；+7 TS、+1 Rust）。**未达成**：`target=_blank`/`window.open` 在 nsh 0.4.0 无打开回调，未授予 `openUrl`，所以「外部打开」没有实现；页内链接点击与页内搜索框输入未自动化。证据见 [evidence/m10-browser.md](evidence/m10-browser.md)。
 - **M11 实现完成，验收达成（Rust 真实、TS/Go 未实跑）**：`src/lsp.rs`（`Lsp` class：argv/显式 cwd/无 shell、进程组、`Content-Length` 有界帧、reader/writer/stderr/waiter 四线程、`Callback::post`、`Drop`/`stop` 双保险、coded errors；命令解析保留 rustup symlink）与 `lsp.ts`（每容器/语言族一个客户端；`rust-analyzer`、`typescript-language-server --stdio`、`gopls`；全文同步；初始化/文档同步/诊断/hover/definition/completion；请求 id、超时、取消与陈旧丢弃；URI↔path、根内过滤；服务端请求应答；`$/progress`）。`files.tsx` 的 Editor 接 `diagnostics`、`onHover`/`onHoverEnd`（`Overlay` + `TextView` 卡片）、`onDefinitionRequest`（F12/Mod-click/悬停下划线，打开目标 sheet 并 `revealPosition`，导航后聚焦）、`onCompletionRequest`/`presentCompletions`（Ctrl+Space 也可触发）；`lsp-ui.tsx` 的 Problems sheet（`problems:{containerId}`）按严重度/文件/行列出打开文件的诊断、点击打开并 reveal、显示 server 状态/索引进度/错误与重启；顶栏 `open-problems`；归档容器 `stopLspContainer`。真实 `rust-analyzer 1.99.1`：initialize 42 ms、diagnostics 697 ms（`E0308 expected i32, found &'static str`）、hover（`pub fn add(left: i32, right: i32) -> i32`）、definition（`src/lib.rs`，selection `0:7–0:10`）、completion（`value: i32`、`add: fn(i32, i32) -> i32`）。headless UI（真实 `Workbench` + 真实 `zu/lsp` + 受控 fake server）验证诊断/Problems/reveal/F12/补全/重启。门禁 141/141（104 TS + 37 Rust，`ZU_PORT=47835`）。**未达成**：TS/Go 只用映射未用真实 server 验收；headless 无法驱动 Editor 内部 rows 的 hover 指针路径（UI 测试只渲染同一个 `HoverCard`）；诊断仅打开文件；无全工作区索引；重启/归档不恢复 server。
+- **M12 实现完成，桌面端到端未验证**：`src/instance.rs` 的 `Instance`（状态目录锁、`hard_link` 独占创建、pid 判活、死锁回收、同进程幂等；6 条 Rust 测试）、`instance.ts`、`lifecycle.ts`（桌面 claim 后决定 boot；`duplicate` 不 boot）、`lifecycle-ui.tsx`（`LifecycleHost`：close→hide、托盘 Show/Hide/Updates/Quit、应用菜单含 Edit roles 与 Window `⌘0`/Close；`AlreadyRunning` 提示）、`notifications.ts`（隐藏/失焦才通知、per-session id 替换、5 s 正文去重、权限只问一次、按开恢复窗口并按 id 打开）、`updates.ts`/`updates-ui.tsx`（dev/未配置/可检查三态，check→progress→ready→install，`canInstall:false` 只给 URL，resolved install 保持“installing”）、`Engine.portAvailable()` 与「端口被占用」文案、`nsh.json` 的 `notifications: true` 与 `closeOnPress:false`、`script/bundle-mac.sh` 的 Helpers 断言与可选更新归档。headless 真窗口模型验证关窗隐藏/`⌘0` 恢复/再次隐藏；`⌘Q` handler 释放 claim 有测试。**未验证**：托盘点击、真实通知投递、第二进程实拦、真实 updater 安装；见 roadmap M12 台账与 evidence。
 - **外部审计**：2026-11-10 的一轮事实审计与架构评审，成立的 P0/P1 已并入本文；其中「alt screen 污染 scrollback」一条被证伪并撤回（`push_scrollback` 有 `primary.is_some()` 守卫），教训记在 [evidence/terminal-emulator.md](evidence/terminal-emulator.md)。审计材料已随收敛删除。
 - **已知问题**：开发期热更新（`nsh run` 的 hot reload）在 TSX 变更后报 `nsh hot: no module zu/native`——native module 在 hot bundle 期间不可解析。重启 app 即可；不影响运行期。正式打包不受影响（无 hot reload）。另：headless 测试运行器没有帧循环，`requestAnimationFrame` 不跑，流式批 flush 因此用 `setTimeout(16)`。
 - **打包**：`script/bundle-mac.sh`——`nsh package` 出 `.app`，sidecar 拷进 `Contents/Helpers`，嵌套 ad-hoc 签名，`hdiutil` 出 dmg（133 MB app / 52 MB dmg）。打包后 app 优先用包内 sidecar（仓库的构建不能遮蔽它）。
@@ -356,12 +365,14 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 5. 签名/公证：嵌套签名 + JIT entitlement 的实际可行性（M0 的 ad-hoc 打包已冒烟，正式签名未验）。
 6. **协议面**：`contracts/` v1 已冻结（`protocol.ts` + `protocol.md`）；后续只允许加可选字段，破坏性改动递增 `v`。
 7. **引擎单点**：`generation`、心跳、退避重启、`state.snapshot` 已实现；崩溃时未完成回合的**内容**仍由 pi 会话文件兜底，但引擎内未落盘的 streaming 增量会丢，UI 标为中断。
-8. **单实例与固定端口**：端口是常量 `47823`，第二个实例会撞端口；nsh 没有单实例原语，需锁文件或 `NSRunningApplication`，并给「端口被占用」明确文案。
+8. **单实例与固定端口**：已由 `zu/instance` 的锁文件（状态目录、pid 判活、死锁回收）在桌面启动前处理；第二实例不 boot 引擎。端口仍是常量 `47823`，`Engine.portAvailable()` 给出明确文案。**未自动化**：真实两个进程同时启动（会与正在运行的用户 app 抢端口），只有 Rust 的并发/活 owner 测试与第二实例 UI fixture。
 9. **`~/.pi/zu/` 的清理**：归档容器、死 subagent 文件、旧 layout 会增长；启动时清理孤儿 layout（容器已不在注册表）。
 10. **视图全量挂载**：DockArea 会把所有 panel 放进树（只有当前 tab 显示）；20 个 sheet（含 WebView/Editor/Terminal）同时存活时要「非可见 sheet 降级」。M10 已落 webview：没有 pause prop，非可见时卸载 `WebView`、可见时按 store URL 重挂载（Q62）；editor 释放 rope 仍未做，terminal 按 Q55 保留。
 11. **nsh git pin 的 Menu 崩溃日志**：pin 到 `506b5392` 后，Menu popup 的 owner 被卸载时 `nsh-base/src/menu.rs` 会 panic（"signal read or written after its owner was disposed"）。`projects.ui` 测试在 app 关闭时打 3 条日志但测试仍通过；真实用户在菜单打开时切容器也可能命中。属上游运行时缺陷，待 nsh 修复或改为自绘 popover；不影响数据面。
 12. **WebView 信任边界**（浏览器里程碑）：页面 `postMessage` 只进 `browser.ts` 的 UI 日志（`onMessage` → `logBrowserMessage`），不进 wire、不进 agent 上下文；实现里完全不用 `injectJavaScript`。能力面只有 `webview.hosts: ["*"]`，没有 `webview.input`/`openUrl`。已知限制：nsh 0.4.0 的 WKWebView 不处理 `target=_blank`/`window.open`（点击无反应），且深色模式下依赖 `color-scheme` 的页面可能仍用黑字（example.com 的 evidence 截图），属 web view 上游行为。
 13. **LSP 的成本与边界**：每容器 × 语言族一个进程，rust-analyzer 在大仓库的索引内存/CPU 不在 Zu 的控制内；诊断只保留打开文件（Problems 不是全工作区索引），关闭 sheet 即 `didClose` 并清掉该文件的诊断；全文 `didChange` 在每次停顿发送整份文本（2 MiB 上限内），不是增量；`snippetSupport: false`，补全插入普通文本；headless 的 `app.hover` 只在 selector 自身派发 `MouseMove`，无法驱动 Editor 内部 rows 的 hover（真实 macOS 指针路径未自动化）；语言服务器启动依赖 PATH/常见目录，GUI 进程的 PATH 可能仍缺用户自定义安装位置（错误会显示在 Problems 的 server 状态）。
+14. **更新未端到端验证**：仓库无 `nsh.json` 的 `"updater"`、公钥和 release；`checkForUpdate` 在 dev 返回 null，真实下载/签名校验/替换 `.app` 没有跑过。UI 状态机用 fake service 覆盖，发布前的配置步骤在 evidence/m12-lifecycle.md。`canInstall:false` 没有 `openUrl` 能力，只显示 URL。
+15. **通知未真机投递**：headless 的 `Notifications` 不产生系统横幅；开发运行的 macOS app 不是 signed bundle，`permission()` 会是 `unavailable`。真实通知需要打包签署后的 app，且本轮没有重启用户正在使用的 app。策略/权限/按开的逻辑有 8 条单测，真实 banner/点击列在 evidence 的未验证项。
 
 ## 9. 文档
 

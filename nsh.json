@@ -21,7 +21,8 @@
         "x": 18,
         "y": 17
       }
-    }
+    },
+    "closeOnPress": false
   },
   "theme": "theme.json",
   "rust": ".",
@@ -42,6 +43,7 @@
         "*"
       ]
     },
+    "notifications": true,
     "statusBar": true
   }
 }

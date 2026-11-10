@@ -7,7 +7,8 @@
 //! location. This module resolves that path at run time and keeps the
 //! child alive for the app's lifetime. The PTY side is in [`pty`]: a real
 //! shell or agent TUI, its bytes pushed to TSX through a callback rather
-//! than the engine wire.
+//! than the engine wire. [`instance`] owns the single-instance lock: one
+//! live Zu per state directory, claimed before the sidecar starts.
 
 use std::{
     io::Write,
@@ -20,6 +21,7 @@ use nsh_core::prelude::*;
 
 mod fs;
 mod git;
+mod instance;
 mod lsp;
 mod pty;
 
@@ -27,6 +29,7 @@ pub use fs::{Fs, FsEntry, FsExpected, FsFile, FsStat, FsWriteResult};
 pub use git::{
     Git, GitBranch, GitBranches, GitChange, GitCommit, GitDiff, GitStatus,
 };
+pub use instance::{Instance, InstanceClaim};
 pub use lsp::{Lsp, LspExit, LspOptions};
 pub use pty::{Pty, PtyExit, PtyOptions};
 
@@ -173,6 +176,13 @@ impl Engine {
         engine_port()
     }
 
+    /// Whether the sidecar's loopback port is free. A bind that fails means
+    /// another process (another Zu, an orphaned sidecar) holds it, which the
+    /// shell shows as "the port is in use" instead of a bare timeout.
+    pub fn port_available() -> bool {
+        port_available_on(engine_port())
+    }
+
     /// The handshake token the sidecar expects; created on first use.
     /// Empty when the state directory cannot be written.
     pub fn token() -> String {
@@ -228,8 +238,14 @@ fn native(registry: &mut Registry) {
         .module::<Engine>()
         .module::<Fs>()
         .module::<Git>()
+        .module::<Instance>()
         .class::<Lsp>()
         .class::<Pty>();
+}
+
+/// Whether `port` can be bound on the sidecar's loopback address.
+fn port_available_on(port: u16) -> bool {
+    std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
 }
 
 /// Remembers an exit status for `exit_code`.
@@ -242,7 +258,7 @@ fn record_exit(status: std::io::Result<std::process::ExitStatus>) {
 }
 
 /// `~/.pi/zu`, created on first use.
-fn zu_dir() -> Result<PathBuf, String> {
+pub(crate) fn zu_dir() -> Result<PathBuf, String> {
     if let Some(dir) = STATE_DIR.lock().ok().and_then(|dir| dir.clone()) {
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         return Ok(dir);
@@ -304,10 +320,21 @@ fn random_token() -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::port_available_on;
+
     /// The browser is UI-only, so its capability must stay the Q32 minimum:
     /// any site in the web view, no trusted input, no external opener, and no
     /// file or process grants. This test reads the declaration itself, so a
     /// later capability edit that widens the UI's blast radius fails here.
+    #[test]
+    fn a_port_held_by_another_process_is_not_available() {
+        let listener =
+            std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind an ephemeral port");
+        let port = listener.local_addr().expect("local address").port();
+        assert!(!port_available_on(port), "a bound port is not free");
+        drop(listener);
+    }
+
     #[test]
     fn browser_capabilities_are_the_ui_only_minimum() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("nsh.json");
@@ -327,6 +354,11 @@ mod tests {
         assert!(
             capabilities.get("openUrl").is_none(),
             "M10 keeps links in the sheet; no external opener is granted"
+        );
+        assert_eq!(
+            capabilities.get("notifications"),
+            Some(&serde_json::json!(true)),
+            "M12 shows system notifications through nsh's Notifications"
         );
         assert!(capabilities.get("fs").is_none(), "files go through zu/fs");
         assert!(

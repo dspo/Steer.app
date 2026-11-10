@@ -1,9 +1,11 @@
-import { effect, mount } from "nsh";
+import { effect, mount, View } from "nsh";
 import { Window } from "nsh/desktop";
-import { bootShell, Workbench } from "./shell";
+import { Workbench } from "./shell";
+import { AlreadyRunning, LifecycleHost } from "./lifecycle-ui";
+import { lifecycleMode, startLifecycle } from "./lifecycle";
 import { applyScrollbarTheme } from "./ui";
 
-/** The app: boot the engine once, then render the workbench. */
+/** The app: claim the state directory, boot the engine once, then render the workbench. */
 let booted = false;
 
 /** Draw our own title bar so the shell, not the system chrome, owns the top band. */
@@ -20,10 +22,26 @@ function configureWindow(): void {
 function App() {
   if (!booted) {
     booted = true;
-    void bootShell();
+    // Claim the state directory (desktop only) and boot the engine unless
+    // another live Zu owns it; the second instance renders a notice instead.
+    startLifecycle();
   }
   effect(configureWindow);
-  return <Workbench />;
+  return (
+    <View class="flex-1 bg-background">
+      <If when={lifecycleMode() === "duplicate"}>
+        <AlreadyRunning />
+      </If>
+      <If when={lifecycleMode() !== "duplicate"}>
+        <Workbench />
+      </If>
+      {/* The tray and the notification listeners are a desktop app's; a
+          headless run (the test runner) renders neither. */}
+      <If when={lifecycleMode() === "primary"}>
+        <LifecycleHost />
+      </If>
+    </View>
+  );
 }
 
 applyScrollbarTheme();

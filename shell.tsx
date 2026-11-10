@@ -38,6 +38,8 @@ import { externalKindLabel } from "./terminals";
 import { saveActiveEditor } from "./editors";
 import { openChangesSheet, openHistorySheet } from "./git";
 import { openProblemsSheet } from "./lsp-ui";
+import { UpdatesDialog } from "./updates-ui";
+import { openUpdates } from "./updates";
 import { K, shellLocale, t, toggleShellLocale } from "./i18n";
 import { UIHost, statuses, unsupportedMethods } from "./ui-host";
 import { openSubagents } from "./subagents";
@@ -573,6 +575,17 @@ function EngineBar() {
       </If>
       <View
         role="button"
+        testID="updates"
+        accessibilityLabel={t(K.updates.title)}
+        tooltip={t(K.updates.title)}
+        class="h-7 w-7 items-center justify-center rounded-lg hover:bg-hover active:opacity-60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+        style={{ ...motionStyle("fast") }}
+        onPress={openUpdates}
+      >
+        <Glyph name="gear" size={15} tint={token("muted-foreground")} />
+      </View>
+      <View
+        role="button"
         testID="language"
         accessibilityLabel={t(K.status.language)}
         class="h-7 min-w-8 items-center justify-center rounded-lg hover:bg-hover active:opacity-60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
@@ -685,6 +698,7 @@ export function Workbench() {
       </View>
       <UIHost />
       <ProjectDialog />
+      <UpdatesDialog />
     </View>
   );
 }

@@ -246,6 +246,19 @@ view 上派发 `MouseMove`，而 `Editor` 在内部 rows 上监听，所以「�
 
 ## 15. M12 — 常驻、通知与自更新
 
+> **状态（2026-11-11，实现完成；桌面端到端验收未在真机跑过）**：单实例、托盘/关窗收起、通知策略与更新 UI 都已落地并有测试，但**没有**在真实 macOS 窗口/通知中心/Release 上做端到端验收：本机 Zu 正在运行且禁止重启，仓库也没有更新源、公钥与 Release。因此 M12 **不标「完全达成」**；下表验收项的真机部分只列为未验证，不冒充通过。
+>
+> **已实现并测试**
+> - **单实例**：`src/instance.rs` 的 `zu/native` `Instance`（`claim`/`release`/`lockPath`）。锁文件在 app 状态目录（`~/.pi/zu/instance.lock`，`ZU_STATE_DIR` 亦生效），先写同目录临时文件再 `hard_link` 成锁——读者永远看不到半写锁，竞争时只有一个 `link` 成功；锁里记 pid + 创建时间，pid 用 Unix null signal 判活，死进程的锁在下一轮回收；同进程重复 `claim` 是幂等（`already: true`）。**6 条 Rust 测试**：首 claim/幂等、活 owner 拒绝且不碰文件、死 pid 回收（`stale: true`）、截断锁回收、只释放自己的锁、并发两 claim 恰好一个成功。
+> - **启动顺序**：`lifecycle.ts` 的 `startLifecycle()` 在桌面（`nsh/desktop` `isAvailable`）先 claim，未拿到就进入 `duplicate` 模式，**不启动引擎**；headless 完全不 claim。第二个实例显示「Zu 已在运行」+ owner pid/锁路径 + 退出按钮，并提示从 Dock/菜单栏回到第一个实例（nsh 没有跨进程「显示已有窗口」，不伪造）。它把主窗口设回 `closeOnPress: true`，关掉就是退出。
+> - **托盘与关窗**：`nsh.json` 的 `window.closeOnPress: false` + `LifecycleHost`（`lifecycle-ui.tsx`）监听 `closePress` → `hide()`：关窗只是收起，engine/turn/PTY 继续跑；托盘菜单 Show/Hide、Check for Updates…、Quit；主键点击显示并聚焦窗口；应用菜单含 Edit roles、Window（Minimize/Zoom/Show `⌘0`/Close）与真正的 Quit（`quitApp` 先释放 claim 再 `Application.quit()`）。**headless 真窗口模型**验证：`pressClose()` 后 `state().visible === false` 且窗口仍 open，`⌘0` 可反复恢复，再次 close 仍隐藏。**未验证**：托盘图标/菜单点击、真实系统窗口的 Show、进程真正退出（headless 的 `Application.quit()` 是 no-op；`⌘Q` 的 handler 释放 claim 已测）。
+> - **端口占用文案**：`Engine.portAvailable()`（Rust 真 bind 探测）+ `engine.ts` 在连不上且端口不自由时显示「端口 %{port} 已被占用：另一个 Zu 或进程在用它」，不再是笼统协议/超时文案；1 条 Rust 测试。
+> - **通知**：`nsh.json` 加 `capabilities.notifications: true`；`notifications.ts` 的策略是**只有主窗口不在前台（不可见或未聚焦）才通知**（首版「激进」在桌面范围：turn settle + 子会话 settle 都发；聚焦时完全不发，避免自己看的时候刷屏）。id 按 session/run（`zu:session:<id>`、`zu:subagent:<runId>`），同 id 由系统替换；相同 body 5 s 内不重复；权限只在第一次需要时申请一次（被拒后记住、不再弹）；`agent.state` 只在 running→idle 边沿触发，重连快照补记 running，断线清空（中断的回合不算完成）；**通知被按时**关闭该通知、显示并聚焦主窗口，并带着 id 排队等 engine/registry 就绪后打开对应会话 sheet 或子代理名册（冷启动也能恢复，最多重试 20 次）。**8 条 TS 单测**覆盖前台/后台/隐藏、替换与去重、权限（default→denied / default→granted 只问一次）、子代理 id/正文、按开后的关闭、id 解析与外来 id、headless no-op。
+> - **更新**：`updates.ts` + `updates-ui.tsx` 的 Updates 对话框（托盘「Check for Updates…」与顶栏齿轮）。显示当前版本/开发构建，诚实区分 **development / 未配置 updater / 可检查**；check → available（版本/notes/`canInstall`）→ download（真实字节进度）→ ready → install & restart；`canInstall: false` 时只显示下载 URL（不授予 `openUrl`）。安装成功时应用会退出，所以 promise resolve 后保持「正在安装」，**不声称装好**；失败显示错误并保持原状。**8 条 store 测试 + 3 条 UI 测试**（fake service：dev 不检查、未配置、available、下载进度、ready、安装不冒充、check/download 失败、canInstall false、formatBytes；UI 走 dev 态、完整 check→progress→install 态、通知权限行）。**未验证 / 无源**：仓库没有 `nsh.json` 的 `"updater"`（没有真实 source、公钥与 Release，不伪造），所以 `checkForUpdate()` 在此仓库只会在 dev 返回 null；端到端「检查到新版本并安装」不可测，发布时的配置与归档要求写在 [evidence/m12-lifecycle.md](evidence/m12-lifecycle.md)。
+> - **打包**：`script/bundle-mac.sh` 在拷贝后**断言** `Contents/Helpers/{pi-engine,photon_rs_bg.wasm,quickjs.wasm}` 都在，缺一即失败；`NSH_UPDATE_ARCHIVE=1` 时额外打出包含整个 `.app`（因而包含 Helpers）的 `Zu-<version>-macos-<arch>.tar.gz`，并在输出里给出 `nsh update-manifest` 的 release 命令。
+>
+> **门禁**：`nsh check .` ✓、`nsh build .` ✓（1 个 asset：托盘 SVG）、`cargo check --all-targets` ✓、`cargo test --lib` 44/44 ✓、`nsh test .` **172/172** ✓（128 TS + 44 Rust，`ZU_PORT=47836`，隔离 `ZU_STATE_DIR`）、`script/bundle-mac.sh` ✓（Helpers 断言；产物在 `build/`）。证据见 [evidence/m12-lifecycle.md](evidence/m12-lifecycle.md)。
+
 | 项 | 内容 |
 |---|---|
 | 生命周期 | 托盘图标 + 菜单（显示/退出）；单实例（锁文件或 `NSRunningApplication`）；「端口被占用」的明确文案 |
@@ -253,6 +266,16 @@ view 上派发 `MouseMove`，而 `Editor` 在内部 rows 上监听，所以「�
 | 更新 | GitHub Releases；检查/下载进度/安装重启；**更新包必须含 `Contents/Helpers`** |
 
 **验收**：关窗后 agent 继续跑 → 完成时收到通知 → 托盘点开回到窗口；新版本能检查到并安装；第二个实例被拦并给出提示。
+
+**M12 验收台账**：
+
+| 验收项 | 状态 |
+|---|---|
+| 关窗后 agent 继续跑 | **已验证（打包 app，隔离状态/端口）**：真实 `Cmd+W` 后窗口 `is_on_screen:false` 但进程与引擎 `Helpers/pi-engine` 仍存活，`⌘0` 恢复窗口；真跑完一个模型回合未验证。 |
+| 完成时收到通知 | **逻辑验证，系统投递未验证**：8 条单测覆盖触发/权限/去重/按开；真实 macOS 通知需要 signed bundle 且未重启用户 app。 |
+| 托盘点开回到窗口 | **未验证**：nsh headless 没有托盘模型；真实 `⌘0` 恢复窗口已验证，托盘图标点击未测。 |
+| 新版本能检查到并安装 | **未验证（不可测）**：本仓库无 updater 源/公钥/Release；UI 状态机用 fake service 测过，真实安装未发生。 |
+| 第二个实例被拦并给出提示 | **部分验证**：Rust 并发/活 owner 测试 + 第二实例 UI fixture；没有启动第二个真实进程（会与用户正在运行的 app 抢固定端口）。 |
 
 ## 16. M13 — 签名与公证
 
