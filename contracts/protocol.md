@@ -98,6 +98,38 @@ dropped after the first was matched).
 arrives as events. `session.steer` and `session.followUp` are allowed only
 while a turn runs and map to pi's `streamingBehavior`.
 
+### container.*
+
+A container is M3's first relational object: a group of panels with a kind,
+a cwd and one or more pi sessions (the captain is `sessions[0]`). The engine
+owns the registry; the shell owns the layout stash and asks for it by id.
+
+| Command | Payload | Idempotent | Replay | Reply |
+|---|---|---|---|---|
+| `container.list` | — | yes | safe | `{ containers, activeContainerId }` |
+| `container.create` | `{ cwd? }` | no | duplicate | `{ container, session }`; also makes it active |
+| `container.show` | `{ containerId }` | yes | safe | `{ container }`; sets the active container |
+| `container.attachSession` | `{ containerId, path }` | yes (by path) | safe | `{ container, session }` |
+| `container.archive` | `{ containerId }` | yes | safe | `{ containers, activeContainerId }`; aborts and disposes its sessions |
+| `container.unarchive` | `{ containerId }` | yes | safe | `{ containers, activeContainerId }` |
+
+`container.archive` is the single teardown path. The record, its session files
+and its layout are never deleted (Q34); only the engine's in-memory sessions and
+live runs go away. Archiving the active container moves `activeContainerId` to
+the most recently updated live one (or `null`).
+
+### layout.*
+
+Layouts are the shell's data, stored by the engine under `~/.pi/zu/layouts/`
+so the UI keeps no filesystem access. Each record is
+`{ v, containerId, layout, zoom, updatedAt }`; `zoom` is the zoomed panel's id
+or `null` (DockArea keeps zoom outside its layout tree).
+
+| Command | Payload | Idempotent | Replay | Reply |
+|---|---|---|---|---|
+| `layout.get` | `{ containerId }` | yes | safe | `{ containerId, layout: null }` when none |
+| `layout.put` | `{ containerId, layout, zoom }` | yes | safe | the stored record; last write wins |
+
 ### state.*
 
 | Command | Idempotent | Replay | Reply |
@@ -121,8 +153,9 @@ gone and the engine has already resolved it with its timeout's default.
   pi: string,
   pid: number,
   startedAt: number,
-  containers: ContainerInfo[], // M3's object; empty until then
-  openSessions: [{ sessionId, path, cwd, name?, running }],
+  containers: ContainerRecord[], // archived ones included; the shell filters
+  activeContainerId: string | null,
+  openSessions: [{ sessionId, path, cwd, name?, containerId?, running }],
   activeRuns: string[],        // session ids with a running turn
   unread: Record<string, number>
 }

@@ -32,6 +32,14 @@ static LAST_EXIT: Mutex<Option<i32>> = Mutex::new(None);
 /// development builds use it; a packaged app leaves it empty).
 static EXTRA_EXTENSIONS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
+/// The state directory beside pi's state (`~/.pi/zu` unless a test points
+/// it elsewhere): registry, layouts, token, generation and log.
+static STATE_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+/// Whether the next sidecar skips extensions (tests that only exercise the
+/// container registry); a packaged app always loads them.
+static NO_EXTENSIONS: Mutex<bool> = Mutex::new(false);
+
 /// The engine sidecar: start, stop, and where to reach it.
 #[module]
 pub struct Engine;
@@ -60,6 +68,12 @@ impl Engine {
             .unwrap_or_default();
         if !extra.is_empty() {
             command.env("ZU_EXTENSION_PATHS", extra);
+        }
+        if let Some(dir) = STATE_DIR.lock().ok().and_then(|dir| dir.clone()) {
+            command.env("ZU_STATE_DIR", dir);
+        }
+        if NO_EXTENSIONS.lock().map(|skip| *skip).unwrap_or(false) {
+            command.env("ZU_NO_EXTENSIONS", "1");
         }
         let child = command
             .env("ZU_PORT", ENGINE_PORT.to_string())
@@ -155,6 +169,27 @@ impl Engine {
         }
     }
 
+    /// Points the engine's state (registry, layouts, token, log) at `path`
+    /// for the next start; an empty string restores `~/.pi/zu`. Tests use it
+    /// so a run never touches the user's containers.
+    pub fn set_state_dir(path: String) {
+        if let Ok(mut dir) = STATE_DIR.lock() {
+            *dir = if path.trim().is_empty() {
+                None
+            } else {
+                Some(PathBuf::from(path.trim()))
+            };
+        }
+    }
+
+    /// Skips extension discovery in the next start (tests of the container
+    /// registry, where loading every installed extension only adds time).
+    pub fn set_no_extensions(skip: bool) {
+        if let Ok(mut flag) = NO_EXTENSIONS.lock() {
+            *flag = skip;
+        }
+    }
+
     /// The sidecar's log file (`~/.pi/zu/engine.log`).
     pub fn log_path() -> String {
         zu_dir()
@@ -180,6 +215,10 @@ fn record_exit(status: std::io::Result<std::process::ExitStatus>) {
 
 /// `~/.pi/zu`, created on first use.
 fn zu_dir() -> Result<PathBuf, String> {
+    if let Some(dir) = STATE_DIR.lock().ok().and_then(|dir| dir.clone()) {
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        return Ok(dir);
+    }
     let home = std::env::var("HOME").map_err(|_| "HOME is not set".to_owned())?;
     let dir = PathBuf::from(home).join(".pi").join("zu");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;

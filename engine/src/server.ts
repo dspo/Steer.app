@@ -12,8 +12,7 @@
  * so a reconnecting shell can tell a restart from a dropped socket.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import {
@@ -37,6 +36,9 @@ import {
   makeWelcome,
   parseEnvelope,
   validateCommand,
+  type ContainerData,
+  type ContainerListData,
+  type ContainerRecord,
   type Envelope,
   type EventMessage,
   type EventType,
@@ -47,6 +49,7 @@ import {
   type UIMethod,
   type UIResponsePayload,
 } from "../../contracts/protocol";
+import { readLayout, readRegistry, stateDir, writeLayout, writeRegistry, type Registry } from "./store";
 import { PI_VERSION } from "./version";
 
 const PORT = Number(process.env.ZU_PORT ?? 47823);
@@ -66,8 +69,16 @@ interface Rec {
   /** The connection that opened it; UI requests go here while it is alive. */
   client?: any;
   name?: string;
+  containerId?: string;
+  /** The live run, if a turn is in flight (also in `registry.runs`). */
+  runId?: string;
+  /** LRU order: the least recently used idle session is disposed first. */
+  lastUsed: number;
   extensions: SessionExtensionsData;
 }
+
+/** How many pi sessions stay in memory; the rest rehydrate from their files. */
+const MAX_OPEN_SESSIONS = 8;
 
 /** Open sessions by pi session id. */
 const open = new Map<string, Rec>();
@@ -79,8 +90,12 @@ const trustStore = new ProjectTrustStore(AGENT_DIR);
 
 let uiSeq = 0;
 
+let registry: Registry = readRegistry();
+let runSeq = 0;
+
 const startedAt = Date.now();
 const generation = nextGeneration();
+reconcileRegistry();
 const extraExtensionPaths = (process.env.ZU_EXTENSION_PATHS ?? "")
   .split(",")
   .map((path) => path.trim())
@@ -138,6 +153,7 @@ function sessionData(rec: Rec) {
     path: rec.path,
     cwd: rec.cwd,
     name: rec.name,
+    containerId: rec.containerId,
     messages: (rec.session.state?.messages ?? []).map(plain),
     customTypes: customTypes(rec.manager),
   };
@@ -150,17 +166,110 @@ function snapshot(): StateSnapshot {
     pi: PI_VERSION,
     pid: process.pid,
     startedAt,
-    containers: [],
+    containers: registry.containers,
+    activeContainerId: registry.activeContainerId,
     openSessions: [...open.values()].map((rec) => ({
       sessionId: rec.id,
       path: rec.path,
       cwd: rec.cwd,
       name: rec.name,
+      containerId: rec.containerId,
       running: rec.session.isStreaming,
     })),
     activeRuns: [...open.values()].filter((rec) => rec.session.isStreaming).map((rec) => rec.id),
     unread: {},
   };
+}
+
+function saveRegistry(): void {
+  writeRegistry(registry);
+}
+
+function touch(rec: Rec): void {
+  rec.lastUsed = Date.now();
+}
+
+/** Disposes idle sessions beyond the LRU budget; a running turn is never evicted. */
+function evictSessions(keepId?: string): void {
+  if (open.size <= MAX_OPEN_SESSIONS) return;
+  const candidates = [...open.values()]
+    .filter((rec) => rec.session.isStreaming === false && rec.id !== keepId)
+    .sort((a, b) => a.lastUsed - b.lastUsed);
+  while (open.size > MAX_OPEN_SESSIONS && candidates.length > 0) {
+    const victim = candidates.shift()!;
+    try {
+      victim.session.dispose();
+    } catch {
+      // Already disposed.
+    }
+    open.delete(victim.id);
+  }
+}
+
+function findContainer(id: string): ContainerRecord | undefined {
+  return registry.containers.find((container) => container.id === id);
+}
+
+function containerForSession(sessionId: string): ContainerRecord | undefined {
+  return registry.containers.find((container) =>
+    container.sessions.some((session) => session.sessionId === sessionId),
+  );
+}
+
+function containerForPath(path: string): ContainerRecord | undefined {
+  return registry.containers.find((container) =>
+    container.sessions.some((session) => session.path === path),
+  );
+}
+
+/** A registry entry by session id, with the container that owns it. */
+function registrySession(sessionId: string): { container: ContainerRecord; path: string } | undefined {
+  for (const container of registry.containers) {
+    const session = container.sessions.find((entry) => entry.sessionId === sessionId);
+    if (session) return { container, path: session.path };
+  }
+  return undefined;
+}
+
+function containerForSessionPathOrId(sessionId: string, path: string): ContainerRecord | undefined {
+  return containerForSession(sessionId) ?? (path ? containerForPath(path) : undefined);
+}
+
+/** Records (or refreshes) a session in its container; keeps the file path current. */
+function noteContainerSession(rec: Rec): void {
+  const container = rec.containerId ? findContainer(rec.containerId) : containerForSessionPathOrId(rec.id, rec.path);
+  if (!container) return;
+  const existing = container.sessions.find((session) => session.sessionId === rec.id);
+  if (existing) {
+    if (rec.path && existing.path !== rec.path) existing.path = rec.path;
+    if (rec.name && existing.name !== rec.name) existing.name = rec.name;
+  } else {
+    container.sessions.push({ sessionId: rec.id, path: rec.path, name: rec.name });
+  }
+  rec.containerId = container.id;
+  container.updatedAt = Date.now();
+  saveRegistry();
+}
+
+/**
+ * Startup reconciliation: runs are volatile (the process that owned them is
+ * gone) and an active pointer at an archived container moves to a live one.
+ * A session file is allowed to be missing: a container that has not had its
+ * first message has a path but no file yet, so file existence is not a
+ * death test in M3.
+ */
+function reconcileRegistry(): void {
+  let changed = registry.runs.length > 0;
+  registry.runs = [];
+  if (registry.activeContainerId) {
+    const active = findContainer(registry.activeContainerId);
+    if (!active || active.archived) {
+      registry.activeContainerId =
+        registry.containers.find((container) => !container.archived)?.id ?? null;
+      changed = true;
+    }
+  }
+  if (changed) saveRegistry();
 }
 
 function uptimeMs(): number {
@@ -318,6 +427,7 @@ function subscribe(rec: Rec): void {
           // A read-only or already-closed session: the turn itself stands.
         }
         notePath(rec);
+        finishRun(rec);
         emit("agent.state", { state: "idle" }, sessionId);
         break;
       }
@@ -376,6 +486,7 @@ function subscribe(rec: Rec): void {
         break;
       case "session_info_changed":
         rec.name = event.name;
+        if (rec.containerId) noteContainerSession(rec);
         emit("session.info", { name: event.name }, sessionId);
         break;
       case "thinking_level_changed":
@@ -393,10 +504,10 @@ function subscribe(rec: Rec): void {
 /** A created session's file appears only after its first message. */
 function notePath(rec: Rec): void {
   const path = rec.manager.getSessionFile() ?? "";
-  if (path && path !== rec.path) {
-    rec.path = path;
-    emit("session.info", { path }, rec.id);
-  }
+  const changed = !!path && path !== rec.path;
+  if (changed) rec.path = path;
+  if (changed) noteContainerSession(rec);
+  if (changed) emit("session.info", { path }, rec.id);
 }
 
 /** The trust decision a session's project resources need, persisted by pi. */
@@ -433,6 +544,7 @@ async function services(cwd: string, ws: any) {
     agentDir: AGENT_DIR,
     settingsManager,
     additionalExtensionPaths: extraExtensionPaths,
+    noExtensions: process.env.ZU_NO_EXTENSIONS === "1",
   });
   await resourceLoader.reload(
     needsTrust && !projectTrusted
@@ -453,14 +565,19 @@ async function makeRecord(manager: SessionManager, ws: any, cwd: string): Promis
     resourceLoader,
     cwd,
   });
+  const storedPath = manager.getSessionFile() ?? "";
   const rec: Rec = {
     id,
-    path: manager.getSessionFile() ?? "",
+    // A newly created session has a path before pi has written the file; the
+    // registry and the view keep it empty until the first message, so a
+    // restart never tries to open a file that does not exist.
+    path: storedPath && existsSync(storedPath) ? storedPath : "",
     cwd,
     manager,
     session: created.session,
     client: ws,
     name: manager.getSessionName(),
+    lastUsed: Date.now(),
     extensions: {
       extensions: created.extensionsResult.extensions.map((extension) => ({
         path: extension.path,
@@ -472,6 +589,7 @@ async function makeRecord(manager: SessionManager, ws: any, cwd: string): Promis
       })),
     },
   };
+  rec.containerId = containerForSessionPathOrId(id, rec.path)?.id;
   open.set(id, rec);
   subscribe(rec);
   try {
@@ -488,6 +606,7 @@ async function makeRecord(manager: SessionManager, ws: any, cwd: string): Promis
   } catch (failure: any) {
     emit("error", { message: String(failure?.message ?? failure) }, id);
   }
+  evictSessions(id);
   return rec;
 }
 
@@ -495,6 +614,7 @@ async function openSession(path: string, ws: any) {
   for (const rec of open.values()) {
     if (rec.path === path) {
       rec.client = ws;
+      touch(rec);
       return rec;
     }
   }
@@ -505,6 +625,126 @@ async function openSession(path: string, ws: any) {
 async function createSession(cwd: string, ws: any) {
   const manager = SessionManager.create(cwd);
   return makeRecord(manager, ws, cwd);
+}
+
+/** The single entry that creates a container and its captain session. */
+async function createContainer(cwd: string, ws: any): Promise<ContainerData> {
+  const rec = await createSession(cwd, ws);
+  const now = Date.now();
+  const containerPath = rec.path;
+  const container: ContainerRecord = {
+    id: `pi:${rec.id}`,
+    kind: "Pi",
+    cwd,
+    archived: false,
+    createdAt: now,
+    updatedAt: now,
+    sessions: [{ sessionId: rec.id, path: rec.path, name: rec.name }],
+  };
+  registry.containers.push(container);
+  registry.activeContainerId = container.id;
+  rec.containerId = container.id;
+  saveRegistry();
+  return { container, session: sessionData(rec) };
+}
+
+function setActiveContainer(id: string | null): void {
+  registry.activeContainerId = id;
+  saveRegistry();
+}
+
+/** Makes a container active; the shell restores its layout from `layout.get`. */
+function showContainer(id: string): ContainerRecord | undefined {
+  const container = findContainer(id);
+  if (!container || container.archived) return undefined;
+  setActiveContainer(container.id);
+  return container;
+}
+
+/** Adds a pi session file to a container; a session lives in one container. */
+async function attachSession(containerId: string, path: string, ws: any): Promise<ContainerData> {
+  const container = findContainer(containerId);
+  if (!container || container.archived) throw new Error("container not found or archived");
+  const rec = await openSession(path, ws);
+  const previous = containerForSession(rec.id);
+  if (previous && previous.id !== container.id) {
+    if (previous.sessions[0]?.sessionId === rec.id) {
+      throw new Error("the captain of another container cannot be moved");
+    }
+    previous.sessions = previous.sessions.filter((session) => session.sessionId !== rec.id);
+    previous.updatedAt = Date.now();
+  }
+  if (!container.sessions.some((session) => session.sessionId === rec.id)) {
+    container.sessions.push({ sessionId: rec.id, path: rec.path, name: rec.name });
+  }
+  container.updatedAt = Date.now();
+  rec.containerId = container.id;
+  saveRegistry();
+  return { container, session: sessionData(rec) };
+}
+
+function nextActiveContainer(): string | null {
+  return (
+    registry.containers
+      .filter((container) => !container.archived)
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id ?? null
+  );
+}
+
+/**
+ * The one teardown path: archive flips `alive()` false, aborts and disposes
+ * every engine session of the container and drops its live runs. The record,
+ * its session files and its layout stay, so unarchive finds them again.
+ */
+async function setArchived(id: string, archived: boolean): Promise<ContainerListData> {
+  const container = findContainer(id);
+  if (!container) throw new Error("container not found");
+  container.archived = archived;
+  container.updatedAt = Date.now();
+  if (archived) {
+    for (const session of container.sessions) {
+      const rec = open.get(session.sessionId);
+      if (rec) {
+        if (rec.session.isStreaming) {
+          try {
+            await rec.session.abort();
+          } catch {
+            // A dead session is already gone.
+          }
+        }
+        try {
+          rec.session.dispose();
+        } catch {
+          // Already disposed.
+        }
+        open.delete(rec.id);
+      }
+      registry.runs = registry.runs.filter((run) => run.sessionId !== session.sessionId);
+    }
+    if (registry.activeContainerId === id) registry.activeContainerId = nextActiveContainer();
+  }
+  saveRegistry();
+  return { containers: registry.containers, activeContainerId: registry.activeContainerId };
+}
+
+function startRun(rec: Rec): void {
+  if (rec.runId) return;
+  const run = {
+    id: `run-${++runSeq}`,
+    containerId: rec.containerId ?? "",
+    sessionId: rec.id,
+    startedAt: Date.now(),
+  };
+  rec.runId = run.id;
+  registry.runs = [...registry.runs.filter((entry) => entry.sessionId !== rec.id), run];
+  saveRegistry();
+}
+
+function finishRun(rec: Rec): void {
+  if (!rec.runId) return;
+  rec.runId = undefined;
+  registry.runs = registry.runs.filter((run) => run.sessionId !== rec.id);
+  saveRegistry();
 }
 
 async function listSessions(): Promise<SessionMeta[]> {
@@ -522,14 +762,34 @@ async function listSessions(): Promise<SessionMeta[]> {
   }));
 }
 
-function requireSession(ws: any, message: Envelope, payload: Record<string, any>): Rec | undefined {
+/**
+ * The open record for a command. A container session evicted by the LRU is
+ * rehydrated from its file on demand, so a sheet the shell kept can prompt
+ * again without reopening it explicitly.
+ */
+async function requireSession(
+  ws: any,
+  message: Envelope,
+  payload: Record<string, any>,
+): Promise<Rec | undefined> {
   const id = String(payload.sessionId ?? "");
-  const rec = open.get(id);
+  let rec = open.get(id);
+  if (!rec) {
+    const stored = registrySession(id);
+    if (stored && !stored.container.archived && stored.path) {
+      try {
+        rec = await openSession(stored.path, ws);
+      } catch {
+        rec = undefined;
+      }
+    }
+  }
   if (!rec) {
     reply(ws, makeErrorReply(String(message.id), message.type, "session not open", "session_not_open"));
     return undefined;
   }
   rec.client = ws;
+  touch(rec);
   return rec;
 }
 
@@ -586,6 +846,71 @@ async function handle(ws: any, message: Envelope): Promise<void> {
       );
       return;
     }
+    case "container.list": {
+      const data: ContainerListData = {
+        containers: registry.containers,
+        activeContainerId: registry.activeContainerId,
+      };
+      reply(ws, makeReply(id, message.type, data));
+      return;
+    }
+    case "container.create": {
+      try {
+        const active = registry.activeContainerId ? findContainer(registry.activeContainerId) : undefined;
+        const cwd = String(payload.cwd ?? active?.cwd ?? process.cwd());
+        reply(ws, makeReply(id, message.type, await createContainer(cwd, ws)));
+      } catch (error: any) {
+        reply(ws, makeErrorReply(id, message.type, String(error?.message ?? error), "container_create_failed"));
+      }
+      return;
+    }
+    case "container.show": {
+      const container = showContainer(String(payload.containerId ?? ""));
+      if (!container) {
+        reply(ws, makeErrorReply(id, message.type, "container not found or archived", "container_not_found"));
+        return;
+      }
+      reply(ws, makeReply(id, message.type, { container }));
+      return;
+    }
+    case "container.attachSession": {
+      try {
+        const data = await attachSession(
+          String(payload.containerId ?? ""),
+          String(payload.path ?? ""),
+          ws,
+        );
+        reply(ws, makeReply(id, message.type, data));
+      } catch (error: any) {
+        reply(ws, makeErrorReply(id, message.type, String(error?.message ?? error), "container_attach_failed"));
+      }
+      return;
+    }
+    case "container.archive":
+    case "container.unarchive": {
+      try {
+        const data = await setArchived(String(payload.containerId ?? ""), message.type === "container.archive");
+        reply(ws, makeReply(id, message.type, data));
+      } catch (error: any) {
+        reply(ws, makeErrorReply(id, message.type, String(error?.message ?? error), "container_archive_failed"));
+      }
+      return;
+    }
+    case "layout.get": {
+      reply(ws, makeReply(id, message.type, readLayout(String(payload.containerId ?? ""))));
+      return;
+    }
+    case "layout.put": {
+      const containerId = String(payload.containerId ?? "");
+      const layout = payload.layout;
+      if (!layout || typeof layout !== "object" || Array.isArray(layout)) {
+        reply(ws, makeErrorReply(id, message.type, "layout must be an object", "bad_payload"));
+        return;
+      }
+      const zoom = payload.zoom === null || typeof payload.zoom === "string" ? payload.zoom : null;
+      reply(ws, makeReply(id, message.type, writeLayout(containerId, layout, zoom)));
+      return;
+    }
     case "state.snapshot": {
       reply(ws, makeReply(id, message.type, snapshot()));
       return;
@@ -622,7 +947,7 @@ async function handle(ws: any, message: Envelope): Promise<void> {
       return;
     }
     case "session.info": {
-      const rec = requireSession(ws, message, payload);
+      const rec = await requireSession(ws, message, payload);
       if (!rec) return;
       reply(
         ws,
@@ -637,17 +962,19 @@ async function handle(ws: any, message: Envelope): Promise<void> {
       return;
     }
     case "session.extensions": {
-      const rec = requireSession(ws, message, payload);
+      const rec = await requireSession(ws, message, payload);
       if (!rec) return;
       reply(ws, makeReply(id, message.type, rec.extensions));
       return;
     }
     case "session.prompt": {
-      const rec = requireSession(ws, message, payload);
+      const rec = await requireSession(ws, message, payload);
       if (!rec) return;
       reply(ws, makeReply(id, message.type, { accepted: true }));
+      startRun(rec);
       // Not awaited: events stream while the run continues.
       void rec.session.prompt(String(payload.text ?? "")).catch((error: any) => {
+        finishRun(rec);
         emit("error", { message: String(error?.message ?? error) }, rec.id);
         emit("agent.state", { state: "idle" }, rec.id);
       });
@@ -655,7 +982,7 @@ async function handle(ws: any, message: Envelope): Promise<void> {
     }
     case "session.steer":
     case "session.followUp": {
-      const rec = requireSession(ws, message, payload);
+      const rec = await requireSession(ws, message, payload);
       if (!rec) return;
       if (!rec.session.isStreaming) {
         reply(
@@ -666,15 +993,18 @@ async function handle(ws: any, message: Envelope): Promise<void> {
       }
       const behavior = message.type === "session.steer" ? "steer" : "followUp";
       reply(ws, makeReply(id, message.type, { accepted: true }));
+      startRun(rec);
       void rec.session.prompt(String(payload.text ?? ""), { streamingBehavior: behavior }).catch((error: any) => {
+        finishRun(rec);
         emit("error", { message: String(error?.message ?? error) }, rec.id);
       });
       return;
     }
     case "session.abort": {
-      const rec = requireSession(ws, message, payload);
+      const rec = await requireSession(ws, message, payload);
       if (!rec) return;
       await rec.session.abort();
+      finishRun(rec);
       // The aborted run may not settle; the shell's streaming state follows this.
       emit("agent.state", { state: "idle" }, rec.id);
       reply(ws, makeReply(id, message.type, {}));
@@ -685,6 +1015,7 @@ async function handle(ws: any, message: Envelope): Promise<void> {
       const rec = open.get(sid);
       if (rec) {
         if (rec.session.isStreaming) await rec.session.abort();
+        finishRun(rec);
         rec.session.dispose();
         open.delete(sid);
       }
@@ -759,7 +1090,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
  * the engine from starting.
  */
 function nextGeneration(): number {
-  const path = join(homedir(), ".pi", "zu", "engine.generation");
+  const path = join(stateDir(), "engine.generation");
   let previous = 0;
   try {
     const stored = Number.parseInt(readFileSync(path, "utf8").trim(), 10);

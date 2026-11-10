@@ -16,6 +16,12 @@ import {
   streaming,
 } from "./sessions";
 
+// A previous test file may have pointed the shared runner at an isolated
+// state directory and skipped extensions; M2's live cases want the real
+// user registry and the real extension set.
+Engine.setStateDir("");
+Engine.setNoExtensions(false);
+
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 // Live tests: they run the sidecar and real model calls. Set
@@ -56,7 +62,8 @@ test("the welcome and snapshot carry the protocol and generation", async () => {
   expect(snap.generation).toBe(info()?.generation);
   expect(snap.openSessions.some((row: any) => row.sessionId === id)).toBe(true);
   expect(snapshot()?.generation).toBe(snap.generation);
-  expect(snap.containers).toEqual([]);
+  expect(Array.isArray(snap.containers)).toBe(true);
+  expect(snap.activeContainerId === null || typeof snap.activeContainerId === "string").toBe(true);
 });
 
 test("a prompt streams into the transcript", async () => {

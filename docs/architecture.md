@@ -66,6 +66,8 @@ UI 与引擎之间唯一的共享面：TS 类型 + 运行时校验 + `protocol.m
 |---|---|---|---|
 | `engine.*` | `ping`、`info`、`health` | engine | 是 |
 | `session.*` | `list`、`create`、`open`、`info`、`extensions`、`prompt`、`steer`、`followUp`、`abort`、`close` | engine（pi） | `open` 按 path 幂等；`create`/`prompt`/`steer`/`followUp` 非幂等 |
+| `container.*` | `list`、`create`、`show`、`attachSession`、`archive`、`unarchive` | engine（Zu 状态） | `create` 非幂等；其余幂等 |
+| `layout.*` | `get`、`put` | engine（Zu 状态） | 是（last write wins） |
 | `state.*` | `snapshot`、`subscribe` | engine（Zu 状态） | 是 |
 | `ui.*` | 扩展 UI 的请求/应答（`ui.request` / `ui.response`） | UI（nsh 对话框） | 请求带超时，超时即 resolve 默认值 |
 
@@ -160,13 +162,13 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 - **panel** 是带页签条的容器，可任意多个，可拖手调宽、拖拽停靠重排、zoom。
 - **sheet** 是页签内容：Pi 会话（含 subagents/后台任务/轨迹/统计等派生视图）、终端、各 agent TUI（Claude/Codex/Copilot）、webview、编辑器、Diff。
 - sheet 可跨 panel 拖拽（移动语义），**状态不丢**（`renderPanel` 按 key 渲染一次）。
-- **单容器画布、单窗口**：侧栏一行 = 一个容器 = 一组面板的入口；切换行 = stash 当前布局 + restore 目标布局。多窗口不在设计中。
+- **单容器画布、单窗口**：侧栏一行 = 一个容器 = 一组面板的入口；切换行 = stash 当前布局 + restore 目标布局。多窗口不在设计中。M3 的过渡侧栏在容器行之下保留「全部会话」，M4 改为项目/分组聚合。
 
 ### 4.3 布局与状态
 
 - 布局是**纯数据**：app 持有 `DockAreaLayout`，`onLayoutChange` 回报整份新布局传回。
 - **sheet 身份 = 稳定 id**（`kind:instance`，如 `session:{containerId}`、`terminal:{containerId}:{n}`）；布局树只存 id，内容由 `sheets.tsx` 注册表解析。
-- **按容器 stash**：`layouts/{containerId}.json`；zoom **不在 `DockAreaLayout` 里**（它是内部 signal + `onZoomChange` 事件），要单独存，恢复后用 ref 的 `groupOf`/`toggleZoom` 灌回。`onLayoutChange` 高频，debounce 后保存。
+- **按容器 stash**：`layouts/{containerId}.json`；zoom **不在 `DockAreaLayout` 里**（它是内部 signal + `onZoomChange` 事件），要单独存，恢复后用 ref 的 `groupOf`/`toggleZoom` 灌回。`onLayoutChange` 高频，debounce 后保存；切容器前先 flush，恢复时先离开现有 zoom 再按 panel id 找 group 灌回。布局与 zoom 的读写经 `layout.get/put`，UI 仍不持文件系统。
 - **启动恢复上次活跃容器**；恢复时**静默移除**指向已死资源的 sheet。
 - **canvas 空态 = Launcher**（项目 chip + composer + agent 动作行）。
 
@@ -228,6 +230,16 @@ v1 最小集：`⌘W` 关闭 sheet、`⌘1-9` 切 sheet、`⌘K` 命令面板（
 // 成员：captain（0 号）/ subagents（1 级，仅 Pi 型）/ resources（pty、webview）
 ```
 
+M3 落地的注册表记录（`registry.json` 的 `containers[]`）：
+
+```ts
+{ id: `pi:${sessionId}`, kind: "Pi", cwd, archived: boolean,
+  createdAt, updatedAt,
+  sessions: [{ sessionId, path, name? }] }   // sessions[0] = captain
+```
+
+`runs[]` 记活跃 run（`{ id, containerId, sessionId, startedAt }`），进程启动时清空；`activeContainerId` 记上次活跃容器。
+
 - **类型由 0 号决定**：Pi 型 = captain AgentSession；external 型 = PTY 一号进程。
 - **GUI 映射**：侧栏一行 = 容器；主对话 sheet = captain 转录投影；subagents/统计等 = 成员投影（视图类）；容器内拉起的终端 = 资源；侧栏/Launcher 直接拉起的终端 = 独立 external 容器。
 - **只两级对话树**：captain + subagents；子会话只收 captain 的消息，GUI 不开人类直连入口。
@@ -236,7 +248,7 @@ v1 最小集：`⌘W` 关闭 sheet、`⌘1-9` 切 sheet、`⌘K` 命令面板（
 
 - **alive()**：Pi 型读注册表 archived 位；external 型读 PTY 存活。翻转 ⇒ teardown：回收资源 → 级联归档子会话 → 摘行 → 剪 membership（external）。
 - **settle ≠ 死**：容器只有 idle/running；settle 留册可续跑。
-- **stop** = 杀容器全部活跃 run；**archive** = 容器死亡（有活跃子代理/后台任务先确认）。
+- **stop** = 杀容器全部活跃 run；**archive** = 容器死亡（有活跃子代理/后台任务先确认）。M3 的 `container.archive` 是唯一 teardown：abort/dispose 容器内引擎会话、丢 runs、把 `activeContainerId` 移到最近的活容器；记录、会话文件与布局保留，unarchive 原样恢复。
 - **fork** = 新容器只复制 0 号前缀，不带成员与资源。
 - **外部容器即进程**：进程 exit 即死、即摘行；关闭容器 = kill。
 - **外部改动复活**：归档容器的 captain 文件被 pi CLI 继续后，下次启动对账复活并提示。
@@ -308,11 +320,12 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 ## 7. 实现状态（2026-11-10）
 
 - **M0 完成**：`engine/`（Bun + pi 1.5.0）+ mixed 模板（`Cargo.toml`、`src/lib.rs` 的 `zu/engine`）+ sidecar 编译（75 MB 单文件，WASM 资产同目录）+ WS 握手。
-- **M2 完成**：`contracts/protocol.ts` + `protocol.md`（信封、命令/事件表、幂等/重放、UI 矩阵）；`engine.ts` 的快照重连与监督（心跳、指数退避、`generation`）；`ui-host.tsx`（confirm 的 `AlertDialog`、select/input/editor 的 Dialog、toast/status/title）；`i18n.ts` + `locales/*.ts`（Q39）。门禁 22/22。
 - **M1 完成**：`engine.ts`（连接/请求/事件）、`sessions.ts`（会话 store，16 ms 批 flush）、`sheets.tsx` 的会话 sheet（`TextView` 流式 Markdown、工具卡、composer）、`App.tsx` 的会话侧栏与引擎状态条。turn 结束时 engine 写 `zu.turn` custom entry；流式中停止会广播 idle 并保留已生成文本；引擎重启后用 `session.info` 拿到的文件路径续聊。
+- **M2 完成**：`contracts/protocol.ts` + `protocol.md`（信封、命令/事件表、幂等/重放、UI 矩阵）；`engine.ts` 的快照重连与监督（心跳、指数退避、`generation`）；`ui-host.tsx`（confirm 的 `AlertDialog`、select/input/editor 的 Dialog、toast/status/title）；`i18n.ts` + `locales/*.ts`（Q39）。门禁 22/22。
+- **M3 完成**：`registry.json`/`layouts/`、容器生命周期与 archive 单点 teardown、按需 rehydrate 与 LRU、`containers.ts` 的按容器布局/zoom、`sessions.ts` 的多会话视图、可见性节流；侧栏容器 + 全部会话过渡形态。门禁 35/35。
 - **外部审计**：2026-11-10 的一轮事实审计与架构评审，成立的 P0/P1 已并入本文；其中「alt screen 污染 scrollback」一条被证伪并撤回（`push_scrollback` 有 `primary.is_some()` 守卫），教训记在 [evidence/terminal-emulator.md](evidence/terminal-emulator.md)。审计材料已随收敛删除。
 - **已知问题**：开发期热更新（`nsh run` 的 hot reload）在 TSX 变更后报 `nsh hot: no module zu/native`——native module 在 hot bundle 期间不可解析。重启 app 即可；不影响运行期。正式打包不受影响（无 hot reload）。另：headless 测试运行器没有帧循环，`requestAnimationFrame` 不跑，流式批 flush 因此用 `setTimeout(16)`。
-- **打包**：`script/bundle-mac.sh`——`nsh package` 出 `.app`，sidecar 拷进 `Contents/Helpers`，嵌套 ad-hoc 签名，`hdiutil` 出 dmg（127 MB app / 50 MB dmg）。打包后 app 优先用包内 sidecar（仓库的构建不能遮蔽它）。
+- **打包**：`script/bundle-mac.sh`——`nsh package` 出 `.app`，sidecar 拷进 `Contents/Helpers`，嵌套 ad-hoc 签名，`hdiutil` 出 dmg（127 MB app / 51 MB dmg）。打包后 app 优先用包内 sidecar（仓库的构建不能遮蔽它）。
 
 ## 8. 已知风险（非决策）
 

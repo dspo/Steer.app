@@ -88,7 +88,15 @@ export const K = {
   },
   sidebar: {
     title: "app.sidebar.title",
+    allSessions: "app.sidebar.allSessions",
     empty: "app.sidebar.empty",
+  },
+  container: {
+    title: "app.container.title",
+    create: "app.container.create",
+    empty: "app.container.empty",
+    archive: "app.container.archive",
+    sessions: "app.container.sessions",
   },
   canvas: {
     emptyTitle: "app.canvas.emptyTitle",
@@ -97,6 +105,7 @@ export const K = {
   status: {
     sheets: "app.status.sheets",
     sessions: "app.status.sessions",
+    containers: "app.status.containers",
     hint: "app.status.hint",
     unsupported: "app.status.unsupported",
     language: "app.status.language",
@@ -113,6 +122,7 @@ export const K = {
     send: "app.session.send",
     interrupted: "app.session.interrupted",
     degraded: "app.session.degraded",
+    hidden: "app.session.hidden",
   },
   dialog: {
     confirm: "app.dialog.confirm",

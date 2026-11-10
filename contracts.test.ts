@@ -30,6 +30,15 @@ test("every command has a domain, an idempotency and a replay meaning", () => {
   expect(replays.has("duplicate")).toBe(true);
 });
 
+test("container and layout commands carry their replay meanings", () => {
+  expect(COMMANDS["container.create"].idempotent).toBe(false);
+  expect(COMMANDS["container.create"].replay).toBe("duplicate");
+  expect(COMMANDS["container.archive"].idempotent).toBe(true);
+  expect(COMMANDS["layout.put"].idempotent).toBe(true);
+  expect(COMMANDS["layout.put"].group).toBe("layout");
+  expect(COMMANDS["container.attachSession"].group).toBe("container");
+});
+
 test("the event list aligns with pi's session events", () => {
   for (const name of [
     "message.delta",

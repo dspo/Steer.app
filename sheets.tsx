@@ -1,7 +1,8 @@
 import { Input, TextView } from "nsh/base";
 import { Scroll, signal, Text, token, View } from "nsh";
-import { messages, send, stop, streaming, interrupted } from "./sessions";
+import { send, sessionTitle, stop, viewFor } from "./sessions";
 import { phase } from "./engine";
+import { visiblePanels } from "./dock";
 import { K, t } from "./i18n";
 import { Dot, Glyph, type GlyphName } from "./ui";
 
@@ -68,8 +69,11 @@ export function sheetParts(id: string): { kind: SheetKind; instance: string } {
 /** A sheet's tab title, by id. */
 export function sheetTitle(id: string): string {
   const { kind, instance } = sheetParts(id);
+  if (kind === "session") {
+    return instance ? sessionTitle(instance) : t(K.sheet.sessionTitle);
+  }
   const spec = SPECS[kind];
-  return spec ? (instance && kind !== "session" ? `${t(spec.title)} · ${instance}` : t(spec.title)) : id;
+  return spec ? (instance ? `${t(spec.title)} · ${instance}` : t(spec.title)) : id;
 }
 
 /** A sheet's tab glyph, by id. */
@@ -98,9 +102,9 @@ export const TOOLBAR_KINDS: SheetKind[] = [
  */
 export function SheetBody(props: { id: string }) {
   const taps = signal(0);
-  const { kind } = sheetParts(props.id);
+  const { kind, instance } = sheetParts(props.id);
   const spec = SPECS[kind];
-  if (kind === "session") return <SessionBody />;
+  if (kind === "session") return <SessionBody id={instance || "pending"} sheetId={props.id} />;
   return (
     <View
       class="flex-1 items-center justify-center gap-3 bg-card"
@@ -124,7 +128,12 @@ export function SheetBody(props: { id: string }) {
 
 /** One transcript row: the user's messages right-aligned, the assistant's
  * plain prose, a tool step as a dim line. M1 renders text, not Markdown. */
-function MessageRow(props: { role: string; text: string; tool?: { name: string; state: string } }) {
+function MessageRow(props: {
+  role: string;
+  text: string;
+  tool?: { name: string; state: string };
+  streaming: boolean;
+}) {
   if (props.role === "tool") {
     const running = props.tool?.state === "running";
     const failed = props.tool?.state === "failed";
@@ -159,7 +168,7 @@ function MessageRow(props: { role: string; text: string; tool?: { name: string; 
     <View class="px-0.5">
       <TextView
         markdown={props.text}
-        options={{ streaming: streaming() }}
+        options={{ streaming: props.streaming }}
         selectable
         codeBlockScrollbar={false}
         styles={{
@@ -189,70 +198,97 @@ function Banner(props: { text: string; tone: "warn" | "destructive" }) {
 }
 
 /**
- * The conversation: the open session's transcript, the streaming indicator
- * and the composer. Return sends; Shift+Return breaks the line.
+ * The conversation: one session's transcript, the streaming indicator and
+ * the composer. Return sends; Shift+Return breaks the line. A sheet that is
+ * not the displayed tab of its group (or is behind a zoom) draws only a
+ * compact placeholder: its view keeps updating in the store, but the
+ * Markdown tree and the composer are not mounted until it is visible again.
  */
-export function SessionBody() {
+export function SessionBody(props: { id: string; sheetId: string }) {
   const draft = signal("");
-  const canSend = () => !!draft().trim() && phase() === "connected";
+  const view = () => viewFor(props.id);
+  const visible = () => visiblePanels().includes(props.sheetId);
+  const canSend = () => !!draft().trim() && phase() === "connected" && !!view();
   const submit = () => {
     if (!canSend()) return;
     const text = draft();
     draft.set("");
-    void send(text);
+    void send(text, props.id);
   };
   return (
     <View class="flex-1 bg-card">
-      <If when={phase() !== "connected"}>
-        <Banner text={t(K.session.degraded)} tone="destructive" />
+      <If when={!visible()}>
+        <View class="flex-1 items-center justify-center gap-2 bg-card">
+          <Glyph name="chat" size={20} tint={token("faint")} />
+          <Text class="text-[12px] font-medium text-muted-foreground">{sessionTitle(props.id)}</Text>
+          <Text class="text-[11px] text-faint">{t(K.session.hidden, { count: view()?.messages.length ?? 0 })}</Text>
+        </View>
       </If>
-      <If when={interrupted()}>
-        <Banner text={t(K.session.interrupted)} tone="warn" />
-      </If>
-      <Scroll style={{ flex: 1 }} contentStyle={{ paddingHorizontal: 16, paddingVertical: 12, gap: 10 }}>
-        <Each of={messages()} key="index">
-          {(message) => <MessageRow role={message().role} text={message().text} tool={message().tool} />}
-        </Each>
-        <If when={streaming()}>
-          <View class="flex-row items-center gap-2">
-            <Dot tint={token("info")} size={6} />
-            <Text class="text-[12px] text-muted-foreground">{t(K.session.running)}</Text>
-          </View>
+      <If when={visible()}>
+        <If when={phase() !== "connected"}>
+          <Banner text={t(K.session.degraded)} tone="destructive" />
         </If>
-      </Scroll>
-      <View class="border-t border-line px-3 py-2">
-        <View class="flex-row items-end gap-2 rounded-xl border border-border bg-background px-2 py-1.5">
-          <View style={{ flex: 1 }}>
-            <Input
-              value={draft()}
-              onChange={({ value }) => draft.set(value)}
-              multiline
-              placeholder={t(K.session.placeholder)}
-              onSubmit={submit}
-              style={{ fontSize: 13, lineHeight: 19, color: token("foreground"), placeholderColor: token("faint"), height: 38, paddingHorizontal: 6, paddingVertical: 6 }}
-            />
-          </View>
-          <View
-            role="button"
-            accessibilityLabel={streaming() ? t(K.session.stop) : t(K.session.send)}
-            class={
-              streaming()
-                ? "items-center justify-center rounded-full bg-destructive"
-                : canSend()
-                  ? "items-center justify-center rounded-full bg-primary"
-                  : "items-center justify-center rounded-full bg-muted"
-            }
-            style={{ width: 28, height: 28 }}
-            onPress={() => (streaming() ? void stop() : submit())}
-          >
-            <Glyph
-              name={streaming() ? "stop" : "send"}
-              size={13}
-              tint={streaming() ? token("destructive-foreground") : canSend() ? token("primary-foreground") : token("faint")}
-            />
+        <If when={view()?.interrupted ?? false}>
+          <Banner text={t(K.session.interrupted)} tone="warn" />
+        </If>
+        <Scroll style={{ flex: 1 }} contentStyle={{ paddingHorizontal: 16, paddingVertical: 12, gap: 10 }}>
+          <Each of={view()?.messages ?? []} key="index">
+            {(message) => (
+              <MessageRow
+                role={message().role}
+                text={message().text}
+                tool={message().tool}
+                streaming={view()?.streaming ?? false}
+              />
+            )}
+          </Each>
+          <If when={view()?.streaming ?? false}>
+            <View class="flex-row items-center gap-2">
+              <Dot tint={token("info")} size={6} />
+              <Text class="text-[12px] text-muted-foreground">{t(K.session.running)}</Text>
+            </View>
+          </If>
+        </Scroll>
+        <View class="border-t border-line px-3 py-2">
+          <View class="flex-row items-end gap-2 rounded-xl border border-border bg-background px-2 py-1.5">
+            <View style={{ flex: 1 }}>
+              <Input
+                value={draft()}
+                onChange={({ value }) => draft.set(value)}
+                multiline
+                placeholder={t(K.session.placeholder)}
+                onSubmit={submit}
+                style={{ fontSize: 13, lineHeight: 19, color: token("foreground"), placeholderColor: token("faint"), height: 38, paddingHorizontal: 6, paddingVertical: 6 }}
+              />
+            </View>
+            <View
+              role="button"
+              accessibilityLabel={view()?.streaming ? t(K.session.stop) : t(K.session.send)}
+              class={
+                view()?.streaming
+                  ? "items-center justify-center rounded-full bg-destructive"
+                  : canSend()
+                    ? "items-center justify-center rounded-full bg-primary"
+                    : "items-center justify-center rounded-full bg-muted"
+              }
+              style={{ width: 28, height: 28 }}
+              onPress={() => (view()?.streaming ? void stop(props.id) : submit())}
+            >
+              <Glyph
+                name={view()?.streaming ? "stop" : "send"}
+                size={13}
+                tint={
+                  view()?.streaming
+                    ? token("destructive-foreground")
+                    : canSend()
+                      ? token("primary-foreground")
+                      : token("faint")
+                }
+              />
+            </View>
           </View>
         </View>
-      </View>
+      </If>
     </View>
   );
 }

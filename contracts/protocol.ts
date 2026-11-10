@@ -22,7 +22,7 @@
 /** The protocol this build speaks. Bump it only for an incompatible change. */
 export const PROTOCOL_VERSION = 1;
 
-export type CommandGroup = "engine" | "session" | "state" | "ui";
+export type CommandGroup = "engine" | "session" | "state" | "container" | "layout" | "ui";
 
 /**
  * What replaying the same command envelope means:
@@ -120,6 +120,54 @@ export const COMMANDS = {
     idempotent: true,
     replay: "safe",
     note: "Drops the engine's in-memory session; the file stays.",
+  },
+  "container.list": {
+    group: "container",
+    idempotent: true,
+    replay: "safe",
+    note: "Every container in the registry, archived ones included, and the active container.",
+  },
+  "container.create": {
+    group: "container",
+    idempotent: false,
+    replay: "duplicate",
+    note: "Creates a pi container and its captain session in a cwd; a replay creates another one.",
+  },
+  "container.show": {
+    group: "container",
+    idempotent: true,
+    replay: "safe",
+    note: "Makes a container active; the shell then restores its layout and opens its sessions.",
+  },
+  "container.attachSession": {
+    group: "container",
+    idempotent: true,
+    replay: "safe",
+    note: "Adds a pi session file to a container; a session belongs to one container.",
+  },
+  "container.archive": {
+    group: "container",
+    idempotent: true,
+    replay: "safe",
+    note: "Marks a container archived and tears its engine sessions down; data stays.",
+  },
+  "container.unarchive": {
+    group: "container",
+    idempotent: true,
+    replay: "safe",
+    note: "Brings an archived container back to the list; its layout was never deleted.",
+  },
+  "layout.get": {
+    group: "layout",
+    idempotent: true,
+    replay: "safe",
+    note: "The view stash of a container: DockArea layout and zoomed panel.",
+  },
+  "layout.put": {
+    group: "layout",
+    idempotent: true,
+    replay: "safe",
+    note: "Replaces a container's view stash; last write wins.",
   },
   "state.snapshot": {
     group: "state",
@@ -295,6 +343,7 @@ export interface SessionData {
   path: string;
   cwd: string;
   name?: string;
+  containerId?: string;
   messages: PlainMessage[];
   customTypes?: string[];
 }
@@ -319,19 +368,33 @@ export interface OpenSessionInfo {
   path: string;
   cwd: string;
   name?: string;
+  containerId?: string;
   running: boolean;
 }
 
-/**
- * A container is M3's object; until then the engine reports none and the
- * shell treats an open session as the container.
- */
-export interface ContainerInfo {
+/** The kinds a container can be; M3 creates `Pi` ones only. */
+export type ContainerKind = "Pi" | "Terminal" | "Claude" | "Codex" | "Copilot";
+
+/** One pi session in a container; the captain is `sessions[0]`. */
+export interface ContainerSession {
+  sessionId: string;
+  path: string;
+  name?: string;
+}
+
+/** A container as the registry stores it (M3's first relational object). */
+export interface ContainerRecord {
   id: string;
-  kind: string;
+  kind: ContainerKind;
   cwd: string;
   archived: boolean;
+  createdAt: number;
+  updatedAt: number;
+  sessions: ContainerSession[];
 }
+
+/** Kept as the snapshot's name for a container. */
+export type ContainerInfo = ContainerRecord;
 
 export interface StateSnapshot {
   generation: number;
@@ -339,10 +402,48 @@ export interface StateSnapshot {
   pi: string;
   pid: number;
   startedAt: number;
-  containers: ContainerInfo[];
+  containers: ContainerRecord[];
+  activeContainerId: string | null;
   openSessions: OpenSessionInfo[];
   activeRuns: string[];
   unread: Record<string, number>;
+}
+
+export interface ContainerListData {
+  containers: ContainerRecord[];
+  activeContainerId: string | null;
+}
+
+export interface ContainerCreatePayload {
+  cwd?: string;
+}
+
+export interface ContainerIdPayload {
+  containerId: string;
+}
+
+export interface ContainerAttachPayload {
+  containerId: string;
+  path: string;
+}
+
+/** A container command's reply: the record, plus the session it opened. */
+export interface ContainerData {
+  container: ContainerRecord;
+  session?: SessionData;
+}
+
+export interface ContainerLayoutData {
+  containerId: string;
+  layout: unknown | null;
+  zoom: string | null;
+  updatedAt?: number;
+}
+
+export interface ContainerLayoutPutPayload {
+  containerId: string;
+  layout: unknown;
+  zoom: string | null;
 }
 
 export interface EngineInfoData extends StateSnapshot {
