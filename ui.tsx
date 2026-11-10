@@ -1,4 +1,5 @@
-import { Canvas, type CanvasRenderingContext2D, Text, token, View } from "nsh";
+import { Canvas, type CanvasRenderingContext2D, reduceMotion, Text, token, View } from "nsh";
+import { Scrollbar } from "nsh/base";
 
 /**
  * The outline's own line glyphs, stroked in a 20 × 20 box (the gallery's
@@ -43,6 +44,61 @@ const arc = (c: CanvasRenderingContext2D, x: number, y: number, r: number, from 
   c.arc(x, y, r, from, to);
   c.stroke();
 };
+
+/** The shell's motion tokens: short, eased color/opacity changes, never motion for its own sake. */
+export const motion = {
+  fast: {
+    transitionProperty: "background-color, opacity, color, border-color",
+    transitionDuration: 120,
+    transitionTimingFunction: "ease-out" as const,
+  },
+  medium: {
+    transitionProperty: "background-color, opacity, box-shadow",
+    transitionDuration: 180,
+    transitionTimingFunction: "ease-out" as const,
+  },
+};
+
+/** A motion token's style, empty when the user asked for less motion. */
+export function motionStyle(token: keyof typeof motion = "fast") {
+  return reduceMotion() ? {} : motion[token];
+}
+
+/** The very soft lift under a selected row or a quiet card. */
+export function shadowCard(): string {
+  return `0 1px 2px ${token("shadow")}`;
+}
+
+/** A surface that sits above the page: menus, launcher cards, toasts. */
+export function shadowRaised(): string {
+  return `0 1px 2px ${token("shadow")}, 0 8px 24px ${token("shadow")}`;
+}
+
+/** The topmost decision layer: dialogs. */
+export function shadowDialog(): string {
+  return `0 2px 6px ${token("shadow")}, 0 18px 44px ${token("shadow-strong")}`;
+}
+
+/**
+ * The shell's scroll bars, in the app's own tokens: a thin thumb at the
+ * scrolling region's trailing edge, shown while scrolling and faded by the
+ * same short durations as the rest of the casing. Called once by `App.tsx`.
+ */
+export function applyScrollbarTheme(): void {
+  Scrollbar.setTheme({
+    mode: "scrolling",
+    motion: { idle: 900, enter: 120, exit: 120, entrance: "fade" },
+    minThumbLength: 40,
+    vertical: {
+      class: "absolute inset-y-0 right-0 w-3 p-1",
+      thumbClass: "w-full rounded-full bg-scrollbar-thumb hover:bg-scrollbar-thumb-hover transition-colors duration-150",
+    },
+    horizontal: {
+      class: "absolute inset-x-0 bottom-0 h-3 p-1",
+      thumbClass: "h-full rounded-full bg-scrollbar-thumb hover:bg-scrollbar-thumb-hover transition-colors duration-150",
+    },
+  });
+}
 
 const glyphs: Record<GlyphName, Draw> = {
   // π: the top bar, then the two legs, the right one dipping below.
@@ -165,7 +221,7 @@ export function Glyph(props: { name: GlyphName; size?: number; tint?: string }) 
         c.scale(width / 20, width / 20);
         c.strokeStyle = props.tint ?? token("muted-foreground");
         c.fillStyle = c.strokeStyle;
-        c.lineWidth = 1.6;
+        c.lineWidth = 1.5;
         c.lineCap = "round";
         c.lineJoin = "round";
         glyphs[props.name](c);
@@ -189,7 +245,7 @@ export function Logo(props: { size?: number; ink?: string }) {
         const ink = props.ink ?? token("primary-foreground");
         c.strokeStyle = ink;
         c.fillStyle = ink;
-        c.lineWidth = 1.9;
+        c.lineWidth = 1.8;
         c.lineCap = "round";
         c.lineJoin = "round";
         c.beginPath();

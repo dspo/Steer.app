@@ -5,7 +5,23 @@
   "build": 1,
   "appearance": "system",
   "window": {
-    "title": "Zu"
+    "title": "Zu",
+    "defaultSize": {
+      "width": 1200,
+      "height": 800
+    },
+    "minSize": {
+      "width": 900,
+      "height": 600
+    },
+    "titleBar": {
+      "style": "hidden",
+      "height": 48,
+      "controlsOffset": {
+        "x": 18,
+        "y": 17
+      }
+    }
   },
   "theme": "theme.json",
   "rust": ".",

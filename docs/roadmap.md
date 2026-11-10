@@ -112,7 +112,13 @@
 
 **验收**：captain 派两个子代理改不同文件 → 名册显示 running → 交付 → 续跑一个 → pi CLI 打开 captain 能看到 `zu.*` custom entry；子会话无法再派发。
 
-## 9. M6 — 轮廓打磨（M-Casing）
+## 9. M6 — 轮廓打磨（M-Casing）· 已完成（记录差异）
+
+> **状态：已完成（2026-11-10），非像素级。** 232pt 侧栏、白色选中卡 + 软阴影、34pt 页签条与 primary 指示器、
+> 12 半径 composer/Launcher/对话框、统一菜单/toast 表面、120/180ms 颜色动效、token 化滚动条；设计系统与
+> 动效清单见 [DESIGN.md](DESIGN.md)。并排截图（`/tmp/zu-m6.png` 与 `/tmp/steer-m6.png`）暴露的结构性差异
+> 记录在 DESIGN §8：nsh 0.4.0 运行时不实现隐藏标题栏，Zu 仍显示系统标题条；Steer 的 composer 有模型/权限
+> chip，Zu 的功能边界尚未包含。验收的「肉眼不可辨」未达成，不冒充通过。
 
 > **命名**：Chrome 会与浏览器混淆，Shell 与命令行混淆，Frame 与动画帧混淆。**Casing**（机壳）指包在内容外面的那层壳，无歧义；中文称「轮廓」。
 

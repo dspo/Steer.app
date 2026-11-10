@@ -2,11 +2,11 @@
 
 **Zu**（祖冲之——纪念其对 π 的贡献）是 [`pi`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
 coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形态
-借鉴 [ThinkRail](https://github.com/JetBrains/ThinkRail) 与 iTerm2/Warp：壳（rail、项目侧栏、工具栏、
+借鉴 [ThinkRail](https://github.com/JetBrains/ThinkRail) 与 iTerm2/Warp：壳（项目侧栏、顶栏、页签条、
 状态条）包着一块 `DockArea` 画布，**panel** 持有可拖拽的 **sheet**（Pi 会话、终端、各 agent TUI、
 webview、会话的 aux 视图）。logo 为 Steer 的 `<->` 构型加载祖冲之密率（上 355、下 113）。
 
-**当前状态（as of `1f2d335`，2026-11-10）：M0–M5 完成。** 应用能连上随包分发的 pi 引擎（Bun sidecar，`zu/engine` 原生模块启动）；侧栏按 **Project → 容器** 组织，无归属容器落 Chats，全部 pi 会话用虚拟化列表保留；空画布/「＋」进入 **Launcher**（composer 先行、项目 chip、锁定目标），提交后才创建容器；容器 = 一组面板，各自恢复布局与 zoom，可持多个 pi 会话；归属显式（菜单或拖行），重启后由 `projects.json`/`registry.json` 恢复。M5 让 captain 在进程内派子代理：`dispatch`/`list_agents` 只在 captain 注册，名册显示 live/settled，子会话只读转录，archive 级联中断 live。门禁：`nsh check` ✓、`nsh test` 50/50 ✓、`cargo check` ✓、`script/bundle-mac.sh` → 127 MB app / 51 MB dmg。下一步是 [roadmap](docs/roadmap.md) 的 M6（轮廓打磨）。
+**当前状态（2026-11-10）：M0–M6 完成（M6 有记录的结构性差异，见 [DESIGN](docs/DESIGN.md) §8）。** 应用能连上随包分发的 pi 引擎（Bun sidecar，`zu/engine` 原生模块启动）；侧栏按 **Project → 容器** 组织，无归属容器落 Chats，全部 pi 会话用虚拟化列表保留；空画布/「＋」进入 **Launcher**（composer 先行、项目 chip、锁定目标），提交后才创建容器；容器 = 一组面板，各自恢复布局与 zoom，可持多个 pi 会话；归属显式（菜单或拖行），重启后由 `projects.json`/`registry.json` 恢复。M5 让 captain 在进程内派子代理：`dispatch`/`list_agents` 只在 captain 注册，名册显示 live/settled，子会话只读转录，archive 级联中断 live。M6 把外壳对齐 Steer.app：232pt 侧栏、48pt 顶栏、34pt 页签条（白 pill + 指示器）、12 半径的 composer/Launcher/对话框、统一菜单与 toast 表面、120/180ms 颜色过渡、token 化滚动条；动效清单与设计决策见 [docs/DESIGN.md](docs/DESIGN.md)。门禁：`nsh check` ✓、`nsh test` 50/50 ✓、`cargo check` ✓。下一步是 [roadmap](docs/roadmap.md) 的 M7（终端与 agent TUI）。
 
 ## 文档
 
@@ -17,6 +17,7 @@ webview、会话的 aux 视图）。logo 为 Steer 的 `<->` 构型加载祖冲�
 | [docs/architecture.md](docs/architecture.md) | 架构：约束与原则、后端 sidecar、前端轮廓/画布、对象模型、技术选型 |
 | [docs/decisions.md](docs/decisions.md) | 决策台账：Q1–Q31（问题 → 裁决 → 落点） |
 | [docs/roadmap.md](docs/roadmap.md) | 产品目标、里程碑纪律、M0–M13 与条件性里程碑（M2–M5 架构落地 → M6 轮廓 Casing → M7+ 细节） |
+| [docs/DESIGN.md](docs/DESIGN.md) | M6 设计系统：token、外壳几何、表面语言、交互状态、动效清单及与 Steer 的剩余差异 |
 
 **依据文档**（决策的过程与证据）
 
@@ -31,8 +32,8 @@ webview、会话的 aux 视图）。logo 为 Steer 的 `<->` 构型加载祖冲�
 
 | File | What it is |
 |---|---|
-| `App.tsx` | The bootstrap: boot the engine once, then render `Workbench` |
-| `shell.tsx` | The workbench: rail, container/session sidebar, engine bar, controlled `DockArea`, status line |
+| `App.tsx` | The bootstrap: install the scrollbar theme, boot the engine once, then render `Workbench` |
+| `shell.tsx` | The workbench: project/container sidebar, engine bar, controlled `DockArea`, status line |
 | `contracts/` | The frozen wire contract: `protocol.ts` (types, command/event tables, validation) and `protocol.md` |
 | `engine.ts` | The shell's connection, supervised reconnect, snapshot/Ui request plumbing |
 | `ui-host.tsx` | Extension UI host: dialogs, toast stack, status lines, window title |
@@ -44,7 +45,7 @@ webview、会话的 aux 视图）。logo 为 Steer 的 `<->` 构型加载祖冲�
 | `dock.ts` | Layout data and pure edits: stable session sheet ids, append/activate/prune, visible-panel set |
 | `sheets.tsx` | The sheet registry: 13 kinds, tab titles and glyphs, mock bodies |
 | `sessions.ts` | Per-session views: folds engine events by session id, rebuilds from a snapshot, reopens by file |
-| `ui.tsx` | Canvas glyphs, `Logo`（`<->` + 355/113）, `Dot`, `Chip`, `SectionTitle` |
+| `ui.tsx` | Canvas glyphs、`Logo`、`Dot`/`Chip`/`SectionTitle`、motion/阴影 token、`applyScrollbarTheme` |
 | `theme.json` | Design tokens (shadcn-style, light + dark) via `nsh.json` `"theme"` |
 | Tests | `App.test.tsx`、`containers.test.ts`、`containers.ui.test.tsx`、`dock.test.ts`、`dock-move.test.tsx`、`contracts.test.ts`、`i18n.test.ts`、`many-sessions.test.tsx`、`projects.test.ts`、`projects.ui.test.tsx`、`subagents.test.ts`、`subagents.ui.test.tsx`、`ui-host.test.tsx`、`engine.test.ts`（live，50 条） |
 

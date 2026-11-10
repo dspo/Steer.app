@@ -1,5 +1,6 @@
 import { List, PanResponder, signal, Text, token, View } from "nsh";
 import { DockArea, Menu, MenuItem, type DockAreaLayout } from "nsh/base";
+import { Window } from "nsh/desktop";
 import { connect, disconnect, info, lastError, phase, recovered, retry, type EnginePhase } from "./engine";
 import {
   activeContainerId,
@@ -8,6 +9,7 @@ import {
   containerCount,
   containerError,
   containerTitle,
+  containers,
   layout,
   liveContainers,
   loadContainers,
@@ -18,6 +20,7 @@ import {
   switchContainer,
 } from "./containers";
 import {
+  containerProject,
   containersIn,
   launcherOpen,
   loadProjects,
@@ -33,7 +36,7 @@ import { SheetBody, sheetGlyph, sheetTitle } from "./sheets";
 import { K, shellLocale, t, toggleShellLocale } from "./i18n";
 import { UIHost, statuses, unsupportedMethods } from "./ui-host";
 import { openSubagents } from "./subagents";
-import { Chip, Dot, Glyph, Logo } from "./ui";
+import { Chip, Dot, Glyph, motionStyle, shadowCard, shadowRaised } from "./ui";
 
 /**
  * Zu's shell: the engine's state, the container list, the session list, and
@@ -91,36 +94,6 @@ const PHASE_TINT: Record<EnginePhase, string> = {
   error: "destructive",
 };
 
-/** The edge rail: the app mark and the global panes (static in M3). */
-function Rail() {
-  const panes = [
-    { id: "projects", glyph: "folder" as const, label: K.rail.projects },
-    { id: "chats", glyph: "chat" as const, label: K.rail.chats },
-    { id: "specs", glyph: "tree" as const, label: K.rail.specs },
-    { id: "changes", glyph: "diff" as const, label: K.rail.changes },
-    { id: "terminal", glyph: "terminal" as const, label: K.rail.terminal },
-  ];
-  return (
-    <View class="bg-sidebar border-r border-line" style={{ width: 48, alignItems: "center", paddingTop: 12, paddingBottom: 12, gap: 4 }}>
-      <View class="items-center justify-center rounded-[10px] bg-primary" style={{ width: 36, height: 36, marginBottom: 8 }}>
-        <Logo size={34} />
-      </View>
-      <Each of={panes} key="index">
-        {(pane, index) => (
-          <View
-            role="button"
-            accessibilityLabel={t(pane().label)}
-            class={index() === 1 ? "bg-accent" : ""}
-            style={{ width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" }}
-          >
-            <Glyph name={pane().glyph} size={17} tint={index() === 1 ? token("foreground") : token("faint")} />
-          </View>
-        )}
-      </Each>
-    </View>
-  );
-}
-
 const projectAnchors = new Map<string, any>();
 const projectTops = new Map<string, number>();
 const dragContainer = signal<string | null>(null);
@@ -142,6 +115,15 @@ function projectAt(pageY: number): string | null | undefined {
     if (pageY >= top - 8) found = id === "__chats" ? null : id;
   }
   return found;
+}
+
+/** A small count in the brand tint, as Steer shows project membership. */
+function CountBadge(props: { value: string }) {
+  return (
+    <View class="items-center justify-center rounded-full bg-brand-tint" style={{ minWidth: 18, height: 18, paddingHorizontal: 5 }}>
+      <Text style={{ fontSize: 10, fontWeight: "600", color: token("brand") }}>{props.value}</Text>
+    </View>
+  );
 }
 
 /** One container row, under its project; membership moves by menu or drag. */
@@ -172,18 +154,31 @@ function ContainerRow(props: { container: any }) {
   });
   return (
     <View
-      class={active() ? "bg-accent" : ""}
-      style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 2, gap: 2 }}
+      class={active() ? "group bg-card" : "group hover:bg-hover"}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 2,
+        marginHorizontal: 8,
+        marginVertical: 1,
+        paddingVertical: 7,
+        paddingLeft: 9,
+        paddingRight: 6,
+        borderRadius: 10,
+        backgroundColor: active() ? token("card") : "transparent",
+        boxShadow: active() ? shadowCard() : "none",
+        ...motionStyle("medium"),
+      }}
     >
       <View
         role="button"
         accessibilityLabel={`Open container ${containerTitle(container())}`}
-        class={dragContainer() === container().id ? "flex-1 rounded-md opacity-50" : "flex-1 rounded-md hover:bg-hover"}
-        style={{ paddingVertical: 4, gap: 2 }}
+        class={dragContainer() === container().id ? "flex-1 rounded-lg opacity-50" : "flex-1 rounded-lg focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1 active:bg-accent/60"}
+        style={{ paddingVertical: 1, gap: 2 }}
         onPress={() => void switchContainer(container().id)}
         {...pan.panHandlers}
       >
-        <Text style={{ fontSize: 12.5, fontWeight: active() ? "600" : "400", color: token("foreground"), numberOfLines: 1 }}>
+        <Text style={{ fontSize: 13, fontWeight: active() ? "600" : "400", color: token("foreground"), numberOfLines: 1 }}>
           {containerTitle(container())}
         </Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -193,41 +188,44 @@ function ContainerRow(props: { container: any }) {
           </Text>
         </View>
       </View>
-      <Menu
-        trigger={
-          <View
-            role="button"
-            testID={`container-menu-${container().id}`}
-            accessibilityLabel={t(K.project.move)}
-            class="h-6 w-5 items-center justify-center rounded-md hover:bg-hover active:opacity-70"
-          >
-            <Glyph name="caret-down" size={11} tint={token("faint")} />
-          </View>
-        }
-        popupClass="rounded-lg border border-line bg-card p-1"
-      >
-        <MenuItem class="rounded-md px-2 py-1.5 hover:bg-hover" onSelect={() => void moveContainer(container().id, null)}>
-          <Text class="text-[12px] text-foreground">{t(K.project.chats)}</Text>
-        </MenuItem>
-        <Each of={projects()} key={(project) => project.id}>
-          {(project) => (
-            <MenuItem
-              class="rounded-md px-2 py-1.5 hover:bg-hover"
-              onSelect={() => void moveContainer(container().id, project().id)}
+      <View class="opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex-row items-center" style={{ ...motionStyle("fast") }}>
+        <Menu
+          trigger={
+            <View
+              role="button"
+              testID={`container-menu-${container().id}`}
+              accessibilityLabel={t(K.project.move)}
+              class="h-6 w-5 items-center justify-center rounded-lg hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
             >
-              <Text class="text-[12px] text-foreground">{project().name}</Text>
-            </MenuItem>
-          )}
-        </Each>
-      </Menu>
-      <View
-        role="button"
-        testID={`archive-${container().id}`}
-        accessibilityLabel={`${t(K.container.archive)} ${containerTitle(container())}`}
-        class="h-6 w-5 items-center justify-center rounded-md hover:bg-hover active:opacity-70"
-        onPress={() => void archiveContainer(container().id)}
-      >
-        <Glyph name="archive" size={11} tint={token("faint")} />
+              <Glyph name="caret-down" size={11} tint={token("faint")} />
+            </View>
+          }
+          popupClass="rounded-xl border border-border bg-popover p-1"
+          popupStyle={{ boxShadow: shadowRaised() }}
+        >
+          <MenuItem class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => void moveContainer(container().id, null)}>
+            <Text class="text-[12px] text-foreground">{t(K.project.chats)}</Text>
+          </MenuItem>
+          <Each of={projects()} key={(project) => project.id}>
+            {(project) => (
+              <MenuItem
+                class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+                onSelect={() => void moveContainer(container().id, project().id)}
+              >
+                <Text class="text-[12px] text-foreground">{project().name}</Text>
+              </MenuItem>
+            )}
+          </Each>
+        </Menu>
+        <View
+          role="button"
+          testID={`archive-${container().id}`}
+          accessibilityLabel={`${t(K.container.archive)} ${containerTitle(container())}`}
+          class="h-6 w-5 items-center justify-center rounded-lg hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+          onPress={() => void archiveContainer(container().id)}
+        >
+          <Glyph name="archive" size={11} tint={token("faint")} />
+        </View>
       </View>
     </View>
   );
@@ -238,28 +236,26 @@ function ProjectGroup(props: { projectId: string | null; name: string; roots?: n
   const rows = () => containersIn(props.projectId);
   const key = props.projectId ?? "__chats";
   return (
-    <View style={{ gap: 2, paddingBottom: 4 }}>
+    <View style={{ gap: 1, paddingBottom: 2 }}>
       <View
         ref={(ref) => projectAnchors.set(key, ref)}
         class={dragOver() === (props.projectId ?? null) && dragContainer() ? "bg-brand-tint" : ""}
-        style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 2 }}
+        style={{ flexDirection: "row", alignItems: "center", gap: 6, marginHorizontal: 8, paddingHorizontal: 4, height: 30, borderRadius: 8, ...motionStyle("fast") }}
       >
-        <Glyph name={props.projectId === null ? "chat" : "folder"} size={13} tint={token("muted-foreground")} />
-        <Text class="flex-1 text-[12px] font-semibold text-foreground" style={{ numberOfLines: 1 }}>
+        <Glyph name={props.projectId === null ? "chat" : "folder"} size={14} tint={token("muted-foreground")} />
+        <Text class="flex-1 text-[13px] font-semibold text-foreground" style={{ numberOfLines: 1 }}>
           {props.name}
         </Text>
-        {props.roots !== undefined ? (
-          <Text class="text-[10px] text-faint">{t(K.project.rootsCount, { count: props.roots })}</Text>
-        ) : null}
+        {props.roots !== undefined ? <CountBadge value={String(rows().length)} /> : null}
         <If when={!!props.onCreate}>
           <View
             role="button"
             testID={`new-container-${props.projectId ?? "chats"}`}
             accessibilityLabel={t(K.container.create)}
-            class="h-5 w-5 items-center justify-center rounded-md hover:bg-hover active:opacity-70"
+            class="h-6 w-6 items-center justify-center rounded-lg opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
             onPress={props.onCreate}
           >
-            <Glyph name="plus" size={10} tint={token("faint")} />
+            <Glyph name="plus" size={11} tint={token("faint")} />
           </View>
         </If>
       </View>
@@ -280,27 +276,38 @@ function ProjectGroup(props: { projectId: string | null; name: string; roots?: n
 /** Project groups over a virtualized all-sessions list. */
 function Sidebar() {
   const moved = () => projectError();
+  const titleBar = () => {
+    try {
+      return Window.get("main")?.titleBar() ?? { height: 0, left: 0, right: 0 };
+    } catch {
+      return { height: 0, left: 0, right: 0 };
+    }
+  };
   return (
-    <View class="bg-sidebar border-r border-line" style={{ width: 244 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 4 }}>
-        <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: token("foreground") }}>{t(K.project.title)}</Text>
-        <View
-          role="button"
-          testID="new-project"
-          accessibilityLabel={t(K.project.create)}
-          class="h-6 w-6 items-center justify-center rounded-md border border-line hover:bg-hover active:opacity-70"
-          onPress={openProjectDialog}
-        >
-          <Glyph name="plus" size={11} tint={token("foreground")} />
-        </View>
+    <View class="bg-sidebar border-r border-line" style={{ width: 232 }}>
+      <View desktop={{ windowDrag: true }} style={{ height: Math.max(titleBar().height + 8, 8) }} />
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingTop: 2, paddingBottom: 8, height: 40 }}>
+        <Text style={{ flex: 1, fontSize: 15, fontWeight: "600", color: token("foreground") }}>{t(K.sidebar.title)}</Text>
         <View
           role="button"
           testID="new-container"
           accessibilityLabel={t(K.container.create)}
-          class="h-6 w-6 items-center justify-center rounded-md border border-line hover:bg-hover active:opacity-70"
+          class="h-7 flex-row items-center gap-1 rounded-lg border border-line bg-card px-2 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+          style={{ ...motionStyle("fast") }}
           onPress={() => openLauncher(null)}
         >
-          <Glyph name="chat" size={11} tint={token("foreground")} />
+          <Glyph name="plus" size={11} tint={token("foreground")} />
+          <Text class="text-[11px] font-medium text-foreground">{t(K.sidebar.new)}</Text>
+        </View>
+        <View
+          role="button"
+          testID="new-project"
+          accessibilityLabel={t(K.project.create)}
+          class="h-7 w-7 items-center justify-center rounded-lg hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+          style={{ ...motionStyle("fast") }}
+          onPress={openProjectDialog}
+        >
+          <Glyph name="folder" size={14} tint={token("muted-foreground")} />
         </View>
       </View>
 
@@ -332,14 +339,14 @@ function Sidebar() {
         keyExtractor={(row) => row.path}
         style={{ flex: 1 }}
         header={
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4, borderTopWidth: 1, borderColor: token("border") }}>
-            <Glyph name="chat" size={13} tint={token("muted-foreground")} />
-            <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: token("foreground") }}>{t(K.sidebar.allSessions)}</Text>
-            <Chip label={String(sessions().length)} />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, borderTopWidth: 1, borderColor: token("line") }}>
+            <Text style={{ flex: 1, fontSize: 11, fontWeight: "600", letterSpacing: 0.4, color: token("faint") }}>{t(K.sidebar.allSessions)}</Text>
+            <Text style={{ fontSize: 10.5, color: token("faint") }}>{String(sessions().length)}</Text>
             <View
               role="button"
               accessibilityLabel={t(K.engine.refresh)}
-              class="h-6 w-6 items-center justify-center rounded-md hover:bg-hover active:opacity-70"
+              class="h-6 w-6 items-center justify-center rounded-lg hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+              style={{ ...motionStyle("fast") }}
               onPress={() => void refreshSessions()}
             >
               <Glyph name="pulse" size={11} tint={token("faint")} />
@@ -347,7 +354,7 @@ function Sidebar() {
           </View>
         }
         empty={
-          <View style={{ paddingHorizontal: 12, paddingVertical: 12 }}>
+          <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
             <Text style={{ fontSize: 11.5, color: token("muted-foreground") }}>{t(K.sidebar.empty)}</Text>
           </View>
         }
@@ -359,11 +366,20 @@ function Sidebar() {
             <View
               role="button"
               accessibilityLabel={`Open ${meta.name || meta.preview || meta.id}`}
-              class={active ? "bg-accent" : "hover:bg-hover"}
-              style={{ paddingHorizontal: 12, paddingVertical: 6, gap: 2 }}
+              class={active ? "bg-card active:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1" : "hover:bg-hover active:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"}
+              style={{
+                marginHorizontal: 8,
+                marginVertical: 1,
+                paddingHorizontal: 7,
+                paddingVertical: 6,
+                borderRadius: 10,
+                gap: 2,
+                boxShadow: active ? shadowCard() : "none",
+                ...motionStyle("medium"),
+              }}
               onPress={() => void openPath(meta.path)}
             >
-              <Text style={{ fontSize: 12, fontWeight: active ? "600" : "400", color: token("foreground"), numberOfLines: 1 }}>
+              <Text style={{ fontSize: 12.5, fontWeight: active ? "600" : "400", color: token("foreground"), numberOfLines: 1 }}>
                 {meta.name || meta.preview || meta.id}
               </Text>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -380,26 +396,44 @@ function Sidebar() {
   );
 }
 
-/** The engine's state as a chip, the extensions' status, and the actions that change it. */
+/** The top bar: the active workspace on the left, quiet engine controls on the right. */
 function EngineBar() {
+  const activeContainer = () => liveContainers().find((row) => row.id === activeContainerId());
+  const activeProject = () => {
+    const container = activeContainer();
+    if (!container) return null;
+    const project = containerProject(container);
+    return project ? projects().find((row) => row.id === project) ?? null : null;
+  };
+  const title = () => (activeContainer() ? containerTitle(activeContainer()!) : "Zu");
+  const subtitle = () => {
+    const project = activeProject();
+    const container = activeContainer();
+    if (project && container) return `${project.name} · ${shortPath(container.cwd)}`;
+    return container ? shortPath(container.cwd) : t(K.engine.start);
+  };
   return (
-    <View class="flex-row items-center gap-2 border-b border-line bg-background px-3" style={{ height: 40 }}>
-      <Dot tint={token(PHASE_TINT[phase()] as any)} size={7} />
-      <Text class="text-[12px] font-medium text-foreground">{t(PHASE_KEY[phase()])}</Text>
-      <If when={!!info()}>
-        <Text class="text-[11px] text-faint">{`pi ${info()?.pi} · protocol ${info()?.protocol} · gen ${info()?.generation}`}</Text>
-      </If>
+    <View
+      class="flex-row items-center gap-2 border-b border-line bg-background pl-4 pr-3"
+      style={{ height: 48 }}
+      desktop={{ windowDrag: true }}
+    >
+      <View class="min-w-0" style={{ flex: 1, gap: 1 }}>
+        <Text style={{ fontSize: 13.5, fontWeight: "600", color: token("foreground"), numberOfLines: 1 }}>{title()}</Text>
+        <Text style={{ fontSize: 10.5, color: token("faint"), numberOfLines: 1 }}>{subtitle()}</Text>
+      </View>
       <If when={!!recovered()}>
         <Chip label={t(K.engine.recovered, { generation: recovered()?.to ?? 0 })} tint={token("up")} />
       </If>
       <Each of={Object.entries(statuses())} key={(entry) => entry[0]}>
-        {(entry) => <Chip label={`${entry()[0]}: ${entry()[1]}`} />}
+        {(entry) => <Text style={{ fontSize: 10.5, color: token("faint") }}>{`${entry()[0]}: ${entry()[1]}`}</Text>}
       </Each>
-      <If when={phase() === "error" || phase() === "stopped" || phase() === "recovering" || phase() === "incompatible"}>
+      <If when={phase() !== "connected"}>
         <View
           role="button"
           accessibilityLabel={phase() === "recovering" ? t(K.engine.reconnect) : t(K.engine.retry)}
-          class="h-6 items-center justify-center rounded-md border border-line px-2 hover:bg-hover active:opacity-70"
+          class="h-7 items-center justify-center rounded-lg border border-line px-2 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+          style={{ ...motionStyle("fast") }}
           onPress={() => void (phase() === "stopped" ? bootShell() : retry())}
         >
           <Text class="text-[11px] font-medium text-foreground">
@@ -407,116 +441,135 @@ function EngineBar() {
           </Text>
         </View>
       </If>
-      <View style={{ flex: 1 }} />
-      <If when={!!lastError()}>
-        <Text class="text-[11px] text-destructive" style={{ numberOfLines: 1 }}>
-          {lastError() ?? ""}
-        </Text>
-      </If>
-      <View
-        role="button"
-        testID="language"
-        accessibilityLabel={t(K.status.language)}
-        class="h-6 min-w-8 items-center justify-center rounded-md border border-line px-2 hover:bg-hover active:opacity-70"
-        onPress={toggleShellLocale}
-      >
-        <Text class="text-[11px] font-medium text-muted-foreground">{shellLocale() === "zh-CN" ? "EN" : "中"}</Text>
-      </View>
       <View
         role="button"
         testID="open-subagents"
         accessibilityLabel={t(K.subagents.title)}
-        class="h-6 flex-row items-center gap-1 rounded-md border border-line px-2 hover:bg-hover active:opacity-70"
+        tooltip={t(K.subagents.title)}
+        class="h-7 w-7 items-center justify-center rounded-lg hover:bg-hover active:opacity-60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+        style={{ ...motionStyle("fast") }}
         onPress={openSubagents}
       >
-        <Glyph name="branch" size={11} tint={token("muted-foreground")} />
-        <Text class="text-[11px] font-medium text-muted-foreground">{t(K.subagents.title)}</Text>
+        <Glyph name="branch" size={15} tint={token("muted-foreground")} />
+      </View>
+      <View
+        role="button"
+        testID="engine-refresh"
+        accessibilityLabel={t(K.engine.refresh)}
+        tooltip={t(K.engine.refresh)}
+        class="h-7 w-7 items-center justify-center rounded-lg hover:bg-hover active:opacity-60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+        style={{ ...motionStyle("fast") }}
+        onPress={() => void refreshSessions()}
+      >
+        <Glyph name="pulse" size={15} tint={token("muted-foreground")} />
       </View>
       <If when={phase() === "connected" || phase() === "starting" || phase() === "recovering"}>
         <View
           role="button"
           testID="engine-stop"
           accessibilityLabel={t(K.engine.stop)}
-          class="h-6 items-center justify-center rounded-md border border-line px-2 hover:bg-hover active:opacity-70"
+          tooltip={t(K.engine.stop)}
+          class="h-7 w-7 items-center justify-center rounded-lg hover:bg-hover active:opacity-60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+          style={{ ...motionStyle("fast") }}
           onPress={() => void disconnect()}
         >
-          <Text class="text-[11px] font-medium text-muted-foreground">{t(K.engine.stop)}</Text>
+          <Glyph name="stop" size={13} tint={token("muted-foreground")} />
         </View>
       </If>
       <View
         role="button"
-        accessibilityLabel={t(K.engine.refresh)}
-        class="h-6 items-center justify-center rounded-md border border-line px-2 hover:bg-hover active:opacity-70"
-        onPress={() => void refreshSessions()}
+        testID="language"
+        accessibilityLabel={t(K.status.language)}
+        class="h-7 min-w-8 items-center justify-center rounded-lg hover:bg-hover active:opacity-60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+        style={{ ...motionStyle("fast") }}
+        onPress={toggleShellLocale}
       >
-        <Text class="text-[11px] font-medium text-muted-foreground">{t(K.engine.refresh)}</Text>
+        <Text class="text-[11px] font-medium text-muted-foreground">{shellLocale() === "zh-CN" ? "EN" : "中"}</Text>
+      </View>
+      <View class="flex-row items-center gap-1.5 rounded-full border border-line px-2" style={{ height: 24 }}>
+        <Dot tint={token(PHASE_TINT[phase()] as any)} size={6} />
+        <Text class="text-[10.5px] font-medium text-muted-foreground">{t(PHASE_KEY[phase()])}</Text>
       </View>
     </View>
   );
 }
 
-/** The workbench: rail · containers/sessions · canvas (no boot side effects). */
+/** The workbench: containers/sessions sidebar · canvas (no boot side effects). */
 export function Workbench() {
+  const empty = () => launcherOpen() || activeContainerId() === null;
   return (
     <View class="flex-1 bg-background" style={{ flexDirection: "row" }}>
-      <Rail />
       <Sidebar />
-      <View class="flex-1 bg-inset" style={{ flexDirection: "column" }}>
+      <View class="flex-1 bg-background" style={{ flexDirection: "column" }}>
         <EngineBar />
-        <If when={launcherOpen() || activeContainerId() === null}>
+        <If when={empty()}>
           <Launcher />
         </If>
-        <If when={!(launcherOpen() || activeContainerId() === null)}>
-        <DockArea
-          ref={(ref) => bindDock(ref)}
-          class="flex-1"
-          layout={layout()}
-          onLayoutChange={({ layout: next }) => setLayout(next)}
-          onZoomChange={({ panel }) => setZoom(panel)}
-          onPanelActiveChange={({ panel, active }) => onPanelActive(panel, active)}
-          groupClass="flex-1 border border-line bg-card"
-          tabBarClass="flex-row gap-0.5 border-b border-line px-1 pt-1"
-          tabClass="group"
-          contentClass="flex-1"
-          handleClass="basis-px bg-line"
-          dropIndicatorClass="rounded-lg border-2 border-brand bg-brand-tint"
-          renderTab={(tab) => (
-            <View class="relative h-9 flex-row items-center gap-1.5 px-3">
-              <Glyph name={sheetGlyph(tab.panel)} size={12} tint={tab.active ? token("foreground") : token("faint")} />
-              <Text
-                class={`max-w-44 text-[13px] font-medium ${tab.active ? "text-foreground" : "text-muted-foreground"}`}
-                style={{ numberOfLines: 1 }}
+        <If when={!empty()}>
+          <DockArea
+            ref={(ref) => bindDock(ref)}
+            class="flex-1"
+            layout={layout()}
+            onLayoutChange={({ layout: next }) => setLayout(next)}
+            onZoomChange={({ panel }) => setZoom(panel)}
+            onPanelActiveChange={({ panel, active }) => onPanelActive(panel, active)}
+            groupClass="flex-1 bg-background"
+            tabBarClass="flex-row items-end gap-0.5 border-b border-line bg-inset px-2"
+            tabBarStyle={{ height: 34 }}
+            tabClass="group focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-1px] active:opacity-80"
+            contentClass="flex-1 bg-background"
+            handleClass="basis-px bg-line"
+            dropIndicatorClass="rounded-lg border-2 border-brand bg-brand-tint"
+            renderTab={(tab) => (
+              <View
+                class={`relative h-8 flex-row items-center gap-1.5 rounded-lg px-2.5 ${tab.active ? "bg-card" : "hover:bg-hover"}`}
+                style={{
+                  borderRadius: 8,
+                  backgroundColor: tab.active ? token("card") : "transparent",
+                  boxShadow: tab.active ? shadowCard() : "none",
+                  ...motionStyle("medium"),
+                }}
               >
-                {sheetTitle(tab.panel)}
-              </Text>
-              {tab.active ? (
-                <View class="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-primary" style={{ pointerEvents: "none" }} />
-              ) : null}
-            </View>
-          )}
-          renderPanel={(panel) => <SheetBody id={panel.id} />}
-          renderEmpty={() => (
-            <View class="flex-1 items-center justify-center gap-1 bg-card">
-              <Text class="text-sm font-semibold text-foreground">{t(K.canvas.emptyTitle)}</Text>
-              <Text class="text-xs text-muted-foreground">{t(K.canvas.emptyNote)}</Text>
-            </View>
-          )}
-        />
+                <Glyph name={sheetGlyph(tab.panel)} size={11.5} tint={tab.active ? token("foreground") : token("faint")} />
+                <Text
+                  class={`max-w-44 text-[12.5px] font-medium ${tab.active ? "text-foreground" : "text-muted-foreground"}`}
+                  style={{ numberOfLines: 1 }}
+                >
+                  {sheetTitle(tab.panel)}
+                </Text>
+                {tab.active ? (
+                  <View class="absolute bottom-[-1px] left-2.5 right-2.5 h-0.5 rounded-full bg-primary" style={{ pointerEvents: "none" }} />
+                ) : null}
+              </View>
+            )}
+            renderPanel={(panel) => <SheetBody id={panel.id} />}
+            renderEmpty={() => (
+              <View class="flex-1 items-center justify-center gap-1 bg-background">
+                <Text class="text-sm font-semibold text-foreground">{t(K.canvas.emptyTitle)}</Text>
+                <Text class="text-xs text-muted-foreground">{t(K.canvas.emptyNote)}</Text>
+              </View>
+            )}
+          />
         </If>
-        <View class="flex-row items-center gap-4 border-t border-line bg-background px-3" style={{ height: 26 }}>
-          <Text class="text-[11px] tabular-nums text-faint">{t(K.status.sheets, { count: sheetCount(layout()) })}</Text>
-          <Text class="text-[11px] text-faint">{t(K.status.containers, { count: containerCount() })}</Text>
-          <Text class="text-[11px] text-faint">{t(K.status.sessions, { count: sessions().length })}</Text>
+        <View class="flex-row items-center gap-4 border-t border-line bg-background pl-4 pr-3" style={{ height: 24 }}>
+          <Text class="text-[10.5px] tabular-nums text-faint">{t(K.status.sheets, { count: sheetCount(layout()) })}</Text>
+          <Text class="text-[10.5px] text-faint">{t(K.status.containers, { count: containerCount() })}</Text>
+          <Text class="text-[10.5px] text-faint">{t(K.status.sessions, { count: sessions().length })}</Text>
           <If when={unsupportedMethods().length > 0}>
-            <Text class="text-[11px] text-warn">{t(K.status.unsupported, { count: unsupportedMethods().length })}</Text>
+            <Text class="text-[10.5px] text-warn">{t(K.status.unsupported, { count: unsupportedMethods().length })}</Text>
           </If>
           <View style={{ flex: 1 }} />
-          <If when={!!(sessionError() ?? containerError() ?? projectError())}>
-            <Text class="text-[11px] text-destructive" style={{ numberOfLines: 1 }}>
-              {sessionError() ?? containerError() ?? projectError() ?? ""}
-            </Text>
+          <If when={!!(sessionError() ?? containerError() ?? projectError() ?? lastError())}>
+            <View class="min-w-0" style={{ flexShrink: 1 }}>
+              <Text class="text-[10.5px] text-destructive" style={{ numberOfLines: 1 }}>
+                {sessionError() ?? containerError() ?? projectError() ?? lastError() ?? ""}
+              </Text>
+            </View>
           </If>
-          <Text class="text-[11px] text-faint">{t(K.status.hint)}</Text>
+          <If when={!!info()}>
+            <Text class="text-[10.5px] text-faint">{`pi ${info()?.pi} · gen ${info()?.generation}`}</Text>
+          </If>
+          <Text class="text-[10.5px] text-faint" style={{ flexShrink: 0, numberOfLines: 1 }}>{t(K.status.hint)}</Text>
         </View>
       </View>
       <UIHost />

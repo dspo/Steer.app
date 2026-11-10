@@ -79,15 +79,9 @@ export const K = {
     reconnect: "app.engine.reconnect",
     recovered: "app.engine.recovered",
   },
-  rail: {
-    projects: "app.rail.projects",
-    chats: "app.rail.chats",
-    specs: "app.rail.specs",
-    changes: "app.rail.changes",
-    terminal: "app.rail.terminal",
-  },
   sidebar: {
     title: "app.sidebar.title",
+    new: "app.sidebar.new",
     allSessions: "app.sidebar.allSessions",
     empty: "app.sidebar.empty",
   },
@@ -151,6 +145,7 @@ export const K = {
   session: {
     running: "app.session.running",
     placeholder: "app.session.placeholder",
+    composerHint: "app.session.composerHint",
     stop: "app.session.stop",
     send: "app.session.send",
     interrupted: "app.session.interrupted",

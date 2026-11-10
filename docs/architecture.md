@@ -157,7 +157,7 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 
 ### 4.1 分工
 
-**轮廓与内嵌对象分离**：壳（rail、项目侧栏、工具栏、状态条）零领域状态；画布是受控的 `nsh/base DockArea`。
+**轮廓与内嵌对象分离**：壳（项目侧栏、顶栏、页签条、状态条）零领域状态；画布是受控的 `nsh/base DockArea`。
 
 ### 4.2 panel 与 sheet
 
@@ -328,6 +328,7 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 - **M2 完成**：`contracts/protocol.ts` + `protocol.md`（信封、命令/事件表、幂等/重放、UI 矩阵）；`engine.ts` 的快照重连与监督（心跳、指数退避、`generation`）；`ui-host.tsx`（confirm 的 `AlertDialog`、select/input/editor 的 Dialog、toast/status/title）；`i18n.ts` + `locales/*.ts`（Q39）。门禁 22/22。
 - **M3 完成**：`registry.json`/`layouts/`、容器生命周期与 archive 单点 teardown、按需 rehydrate 与 LRU、`containers.ts` 的按容器布局/zoom、`sessions.ts` 的多会话视图、可见性节流；侧栏容器 + 全部会话过渡形态。门禁 35/35。
 - **M4 完成**：`projects.json` + `project.*` 命令、Launcher（composer 先行、项目 chip、锁定目标）、项目/拖拽归属、虚拟化全部会话 `List`、会话索引按 mtime 水位缓存。门禁 45/45。
+- **M6 完成（有记录差异）**：Steer 对齐的 token/几何/表面/动效，`docs/DESIGN.md`；50/50。
 - **M5 完成**：进程内 `SubagentManager`、仅 captain 注册的 `dispatch`/`list_agents`、`zu/subagents` 存储与 `parentSession`、live/settled 名册、只读转录、captain note、archive 级联。门禁 50/50。
 - **外部审计**：2026-11-10 的一轮事实审计与架构评审，成立的 P0/P1 已并入本文；其中「alt screen 污染 scrollback」一条被证伪并撤回（`push_scrollback` 有 `primary.is_some()` 守卫），教训记在 [evidence/terminal-emulator.md](evidence/terminal-emulator.md)。审计材料已随收敛删除。
 - **已知问题**：开发期热更新（`nsh run` 的 hot reload）在 TSX 变更后报 `nsh hot: no module zu/native`——native module 在 hot bundle 期间不可解析。重启 app 即可；不影响运行期。正式打包不受影响（无 hot reload）。另：headless 测试运行器没有帧循环，`requestAnimationFrame` 不跑，流式批 flush 因此用 `setTimeout(16)`。

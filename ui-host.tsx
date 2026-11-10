@@ -7,7 +7,7 @@ import { K, t } from "./i18n";
 import { effect, Scroll, signal, Text, token, View } from "nsh";
 import { AlertDialog, Dialog, Input } from "nsh/base";
 import { Window } from "nsh/desktop";
-import { Dot } from "./ui";
+import { Dot, motionStyle, shadowDialog, shadowRaised } from "./ui";
 
 /**
  * The shell's half of the extension host: extension UI requests become
@@ -198,9 +198,10 @@ function DialogAction(props: { label: string; primary?: boolean; onPress: () => 
       accessibilityLabel={props.label}
       class={
         props.primary
-          ? "h-8 items-center justify-center rounded-md bg-primary px-3 active:opacity-80"
-          : "h-8 items-center justify-center rounded-md border border-line px-3 hover:bg-hover active:opacity-80"
+          ? "h-8 items-center justify-center rounded-lg bg-primary px-3 hover:bg-primary/90 active:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+          : "h-8 items-center justify-center rounded-lg border border-line px-3 hover:bg-hover active:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
       }
+      style={{ ...motionStyle("fast") }}
       onPress={props.onPress}
     >
       <Text
@@ -225,11 +226,12 @@ function RequestDialog() {
       testID="ui-dialog"
       open={!!pendingUI()}
       animation="fade"
-      class="w-[440px] gap-3 rounded-2xl border border-line bg-card p-4"
-      backdropClass="bg-black/20"
+      class="m-auto w-[440px] gap-4 rounded-xl border border-border bg-card p-5"
+      style={{ boxShadow: shadowDialog() }}
+      backdropClass="bg-scrim"
       onCancel={() => finish(undefined)}
     >
-      <Text class="text-[14px] font-semibold text-foreground">{title()}</Text>
+      <Text class="text-[15px] font-semibold text-foreground">{title()}</Text>
       <If when={!!pendingUI()?.message}>
         <Text class="text-[12px] leading-5 text-muted-foreground">{pendingUI()?.message ?? ""}</Text>
       </If>
@@ -278,10 +280,10 @@ function RequestDialog() {
                   role="button"
                   testID={`ui-option-${index()}`}
                   accessibilityLabel={option()}
-                  class="rounded-md px-2 py-2 hover:bg-hover active:bg-accent"
+                  class="rounded-lg px-2.5 py-2 hover:bg-hover focus:bg-hover active:bg-accent focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-1px]"
                   onPress={() => choose(option())}
                 >
-                  <Text class="text-[12.5px] text-foreground">{option()}</Text>
+                  <Text class="text-[12px] text-foreground">{option()}</Text>
                 </View>
               )}
             </Each>
@@ -320,8 +322,8 @@ export function UIHost() {
                 testID="toast"
                 role="alert"
                 accessibilityLabel={value.message}
-                class="flex-row items-center gap-2 rounded-lg border border-line bg-card px-3 py-2"
-                style={{ maxWidth: 360 }}
+                class="flex-row items-center gap-2 rounded-xl border border-border bg-toast px-3 py-2 hover:bg-muted active:opacity-90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+                style={{ minWidth: 240, maxWidth: 360, boxShadow: shadowRaised(), ...motionStyle("fast") }}
                 onPress={() => dismissToast(value.id)}
               >
                 <Dot tint={toastTint(value.kind)} size={6} />

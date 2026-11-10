@@ -12,7 +12,7 @@ import {
   projects,
   startFromLauncher,
 } from "./projects";
-import { Chip, Glyph } from "./ui";
+import { Chip, Glyph, motionStyle, shadowDialog, shadowRaised } from "./ui";
 
 /**
  * The Launcher: composer first, container second. It shows on an empty
@@ -37,10 +37,13 @@ export function Launcher() {
   };
   return (
     <View class="flex-1 items-center justify-center bg-inset" style={{ padding: 32 }}>
-      <View class="gap-4 rounded-2xl border border-line bg-card" style={{ width: 560, padding: 20 }}>
+      <View
+        class="gap-4 rounded-xl border border-border bg-card"
+        style={{ width: 560, padding: 20, boxShadow: shadowRaised() }}
+      >
         <View style={{ gap: 2 }}>
           <Text class="text-[15px] font-semibold text-foreground">{t(K.launcher.title)}</Text>
-          <Text class="text-[11.5px] text-muted-foreground">{t(K.launcher.subtitle)}</Text>
+          <Text class="text-[12px] text-muted-foreground">{t(K.launcher.subtitle)}</Text>
         </View>
 
         <View class="flex-row items-center gap-2">
@@ -54,20 +57,21 @@ export function Launcher() {
                     role="button"
                     testID="launcher-project"
                     accessibilityLabel={t(K.launcher.project)}
-                    class="rounded-md border border-line px-2 py-1 hover:bg-hover active:opacity-70"
+                    class="rounded-lg border border-line px-2 py-1 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
                   >
                     <Chip label={selectedName()} tint={token("foreground")} />
                   </View>
                 }
-                popupClass="rounded-lg border border-line bg-card p-1"
+                popupClass="rounded-xl border border-border bg-popover p-1"
+                popupStyle={{ boxShadow: shadowRaised() }}
               >
-                <MenuItem class="rounded-md px-2 py-1.5 hover:bg-hover" onSelect={() => launcherProjectId.set(null)}>
+                <MenuItem class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => launcherProjectId.set(null)}>
                   <Text class="text-[12px] text-foreground">{t(K.project.chats)}</Text>
                 </MenuItem>
                 <Each of={projects()} key={(project) => project.id}>
                   {(project) => (
                     <MenuItem
-                      class="rounded-md px-2 py-1.5 hover:bg-hover"
+                      class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
                       onSelect={() => launcherProjectId.set(project().id)}
                     >
                       <Text class="text-[12px] text-foreground">{project().name}</Text>
@@ -105,6 +109,7 @@ export function Launcher() {
             borderColor: token("border"),
             borderRadius: 10,
             backgroundColor: token("background"),
+            caretColor: token("primary"),
           }}
         />
 
@@ -124,9 +129,10 @@ export function Launcher() {
             accessibilityLabel={launcherStarting() ? t(K.launcher.starting) : t(K.launcher.start)}
             class={
               canStart()
-                ? "h-8 flex-row items-center gap-1.5 rounded-md bg-primary px-3 active:opacity-80"
-                : "h-8 flex-row items-center gap-1.5 rounded-md bg-muted px-3"
+                ? "h-8 flex-row items-center gap-1.5 rounded-lg bg-primary px-3 hover:bg-primary/90 active:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+                : "h-8 flex-row items-center gap-1.5 rounded-lg bg-muted px-3"
             }
+            style={{ ...motionStyle("fast") }}
             onPress={submit}
           >
             <Text class={canStart() ? "text-[12px] font-medium text-primary-foreground" : "text-[12px] font-medium text-faint"}>
@@ -192,29 +198,30 @@ export function ProjectDialog() {
       testID="project-dialog"
       open={isOpen()}
       animation="fade"
-      class="w-[480px] gap-3 rounded-2xl border border-line bg-card p-4"
-      backdropClass="bg-black/20"
+      class="m-auto w-[480px] gap-4 rounded-xl border border-border bg-card p-5"
+      style={{ boxShadow: shadowDialog() }}
+      backdropClass="bg-scrim"
       onCancel={() => projectDialogOpen.set(false)}
     >
-      <Text class="text-[14px] font-semibold text-foreground">{t(K.project.dialogTitle)}</Text>
-      <Text class="text-[11px] text-muted-foreground">{t(K.project.name)}</Text>
+      <Text class="text-[15px] font-semibold text-foreground">{t(K.project.dialogTitle)}</Text>
+      <Text class="text-[12px] text-muted-foreground">{t(K.project.name)}</Text>
       <Input
         testID="project-name"
         value={projectNameDraft()}
         onChange={({ value }) => projectNameDraft.set(value)}
         placeholder={t(K.project.namePlaceholder)}
-        style={{ height: 34, paddingHorizontal: 10, fontSize: 13, color: token("foreground"), placeholderColor: token("faint"), borderWidth: 1, borderColor: token("border"), borderRadius: 8, backgroundColor: token("background") }}
+        style={{ height: 36, paddingHorizontal: 10, fontSize: 13, color: token("foreground"), placeholderColor: token("faint"), caretColor: token("primary"), borderWidth: 1, borderColor: token("border"), borderRadius: 8, backgroundColor: token("background") }}
       />
-      <Text class="text-[11px] text-muted-foreground">{t(K.project.roots)}</Text>
+      <Text class="text-[12px] text-muted-foreground">{t(K.project.roots)}</Text>
       <Input
         testID="project-roots"
         value={projectRootsDraft()}
         onChange={({ value }) => projectRootsDraft.set(value)}
         multiline
         placeholder={t(K.project.rootsPlaceholder)}
-        style={{ minHeight: 96, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12, lineHeight: 18, color: token("foreground"), placeholderColor: token("faint"), borderWidth: 1, borderColor: token("border"), borderRadius: 8, backgroundColor: token("background") }}
+        style={{ minHeight: 96, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12, lineHeight: 18, color: token("foreground"), placeholderColor: token("faint"), caretColor: token("primary"), borderWidth: 1, borderColor: token("border"), borderRadius: 8, backgroundColor: token("background") }}
       />
-      <Text class="text-[10.5px] text-faint">{t(K.project.rootsHint)}</Text>
+      <Text class="text-[11.5px] text-faint">{t(K.project.rootsHint)}</Text>
       <If when={!!projectDialogError()}>
         <Text class="text-[11px] text-destructive">{projectDialogError() ?? ""}</Text>
       </If>
@@ -223,7 +230,8 @@ export function ProjectDialog() {
           role="button"
           testID="project-cancel"
           accessibilityLabel={t(K.dialog.cancel)}
-          class="h-8 items-center justify-center rounded-md border border-line px-3 hover:bg-hover"
+          class="h-8 items-center justify-center rounded-lg border border-line px-3 hover:bg-hover active:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+          style={{ ...motionStyle("fast") }}
           onPress={() => projectDialogOpen.set(false)}
         >
           <Text class="text-[12px] font-medium text-foreground">{t(K.dialog.cancel)}</Text>
@@ -232,7 +240,8 @@ export function ProjectDialog() {
           role="button"
           testID="project-create"
           accessibilityLabel={t(K.project.create)}
-          class="h-8 items-center justify-center rounded-md bg-primary px-3 active:opacity-80"
+          class="h-8 items-center justify-center rounded-lg bg-primary px-3 hover:bg-primary/90 active:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+          style={{ ...motionStyle("fast") }}
           onPress={create}
         >
           <Text class="text-[12px] font-medium text-primary-foreground">{t(K.project.create)}</Text>

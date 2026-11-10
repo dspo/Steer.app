@@ -5,7 +5,7 @@ import { abortRun, loadSubagents, runs, selectedRunId, selectRun, transcript, su
 import { phase } from "./engine";
 import { visiblePanels } from "./dock";
 import { K, t } from "./i18n";
-import { Chip, Dot, Glyph, type GlyphName } from "./ui";
+import { Chip, Dot, Glyph, motionStyle, shadowCard, type GlyphName } from "./ui";
 
 /** The color tokens the registry tints glyphs with. */
 type TintToken = "brand" | "warn" | "up" | "info" | "muted-foreground" | "primary-foreground" | "faint";
@@ -169,8 +169,8 @@ function MessageRow(props: {
   if (props.role === "user") {
     return (
       <View class="items-end">
-        <View class="max-w-[82%] rounded-2xl bg-raised px-3 py-2" style={{ borderWidth: 1, borderColor: token("border") }}>
-          <Text class="text-[13px] leading-5 text-foreground">{props.text}</Text>
+        <View class="max-w-[82%] rounded-xl bg-raised px-3 py-2" style={{ borderWidth: 1, borderColor: token("border") }}>
+          <Text class="text-[14.5px] leading-[22px] text-foreground">{props.text}</Text>
         </View>
       </View>
     );
@@ -183,10 +183,10 @@ function MessageRow(props: {
         selectable
         codeBlockScrollbar={false}
         styles={{
-          root: { gap: 8, fontSize: 13, lineHeight: 20, color: token("foreground") },
-          heading1: { fontSize: 17, lineHeight: 23 },
-          heading2: { fontSize: 15, lineHeight: 21 },
-          heading3: { fontSize: 13, lineHeight: 20 },
+          root: { gap: 8, fontSize: 14.5, lineHeight: 22, color: token("foreground") },
+          heading1: { fontSize: 18, lineHeight: 26 },
+          heading2: { fontSize: 16, lineHeight: 24 },
+          heading3: { fontSize: 14.5, lineHeight: 22 },
           code: { color: token("code") },
           codeBlockCode: { color: token("code") },
           link: { color: token("brand") },
@@ -201,7 +201,7 @@ function Banner(props: { text: string; tone: "warn" | "destructive" }) {
   return (
     <View class="flex-row items-center gap-2 border-b border-line bg-inset px-3 py-2">
       <Glyph name="alert" size={12} tint={token(props.tone)} />
-      <Text class="text-[11px] text-muted-foreground" style={{ flex: 1 }}>
+      <Text class="text-[12px] text-muted-foreground" style={{ flex: 1 }}>
         {props.text}
       </Text>
     </View>
@@ -371,42 +371,58 @@ export function SessionBody(props: { id: string; sheetId: string }) {
             </View>
           </If>
         </Scroll>
-        <View class="border-t border-line px-3 py-2">
-          <View class="flex-row items-end gap-2 rounded-xl border border-border bg-background px-2 py-1.5">
-            <View style={{ flex: 1 }}>
-              <Input
-                value={draft()}
-                onChange={({ value }) => draft.set(value)}
-                multiline
-                placeholder={t(K.session.placeholder)}
-                onSubmit={submit}
-                style={{ fontSize: 13, lineHeight: 19, color: token("foreground"), placeholderColor: token("faint"), height: 38, paddingHorizontal: 6, paddingVertical: 6 }}
-              />
-            </View>
-            <View
-              role="button"
-              accessibilityLabel={view()?.streaming ? t(K.session.stop) : t(K.session.send)}
-              class={
-                view()?.streaming
-                  ? "items-center justify-center rounded-full bg-destructive"
-                  : canSend()
-                    ? "items-center justify-center rounded-full bg-primary"
-                    : "items-center justify-center rounded-full bg-muted"
-              }
-              style={{ width: 28, height: 28 }}
-              onPress={() => (view()?.streaming ? void stop(props.id) : submit())}
-            >
-              <Glyph
-                name={view()?.streaming ? "stop" : "send"}
-                size={13}
-                tint={
+        <View class="border-t border-line bg-background px-3 pb-2.5 pt-2">
+          <View
+            class="rounded-xl border border-border bg-card"
+            style={{ paddingHorizontal: 10, paddingTop: 8, paddingBottom: 6, gap: 4, boxShadow: shadowCard() }}
+          >
+            <Input
+              value={draft()}
+              onChange={({ value }) => draft.set(value)}
+              multiline
+              placeholder={t(K.session.placeholder)}
+              onSubmit={submit}
+              style={{
+                minHeight: 52,
+                paddingHorizontal: 4,
+                paddingVertical: 2,
+                fontSize: 14,
+                lineHeight: 21,
+                color: token("foreground"),
+                placeholderColor: token("faint"),
+                caretColor: token("primary"),
+              }}
+            />
+            <View class="flex-row items-center gap-2">
+              <Text class="text-[10.5px] text-faint" style={{ flex: 1, numberOfLines: 1 }}>
+                {t(K.session.composerHint)}
+              </Text>
+              <View
+                role="button"
+                testID="session-send"
+                accessibilityLabel={view()?.streaming ? t(K.session.stop) : t(K.session.send)}
+                class={
                   view()?.streaming
-                    ? token("destructive-foreground")
+                    ? "items-center justify-center rounded-full bg-destructive hover:opacity-90 active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
                     : canSend()
-                      ? token("primary-foreground")
-                      : token("faint")
+                      ? "items-center justify-center rounded-full bg-primary hover:opacity-90 active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+                      : "items-center justify-center rounded-full bg-muted"
                 }
-              />
+                style={{ width: 30, height: 30, ...motionStyle("fast") }}
+                onPress={() => (view()?.streaming ? void stop(props.id) : submit())}
+              >
+                <Glyph
+                  name={view()?.streaming ? "stop" : "send"}
+                  size={13}
+                  tint={
+                    view()?.streaming
+                      ? token("destructive-foreground")
+                      : canSend()
+                        ? token("primary-foreground")
+                        : token("faint")
+                  }
+                />
+              </View>
             </View>
           </View>
         </View>
