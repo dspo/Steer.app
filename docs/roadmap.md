@@ -134,7 +134,14 @@
 
 **验收**：并排截图评审通过（间距、字号、颜色、圆角、过渡在肉眼不可辨的范围内）；交互反馈（hover/active/拖拽/页签滑动）与 Steer 一致；`nsh test` 与打包冒烟仍绿。
 
-## 10. M7 — 终端与 agent TUI（细节开始）
+## 10. M7 — 终端与 agent TUI（细节开始）· 实现完成，验收未全过
+
+> **状态：实现完成，2 项验收未达成（2026-11-11）。**
+> 已实现并实测：`zu/pty`（`portable-pty` + 引擎线程回调）、external 容器（`Terminal`/`Claude`/`Codex`/`Copilot`，无 pi session）、真实 Terminal sheet、Launcher 动作行、归档杀 PTY、按容器布局 stash。门禁 `nsh check`/`nsh build`/`cargo check`/`nsh test` 全绿。
+> **已验证**：shell 跑 `ls`/`vim`/`htop`；Terminal 视图的 `TerminalRef.text()` 读回 `printf` 输出；resize 后 PTY 与 `stty size` 一致；关闭 handle/归档杀进程；Claude Code v2.1.278 的 TUI 在本机渲染出 banner/composer，Ctrl+C 回到 shell。
+> **未达成 1**：Claude Code 的**真实对话**没有完成——本机一次真实 turn 返回 `API error · Retrying`（无模型回复），所以只验证了「TUI 启动 + Ctrl+C 中断」，没有验证「完成一次对话」。
+> **未达成 2**：`VtEmulator` 缩小终端时**不重排**，只截断每行。实测 300 字符行在 165 列时占 165+135，缩到 95 列后只剩 95+95（丢 110 字符）。缺陷清单见 [evidence/terminal-emulator.md](evidence/terminal-emulator.md) §8，验收命令与截取见 [evidence/m7-terminal-captures.md](evidence/m7-terminal-captures.md)。
+> 因此 M7 **不标「已完成」**；「resize 重排」修 nsh 还是并入 M-tty，待评审决定。
 
 **目的**：在 Zu 里开真终端，跑 Claude Code / Codex / Copilot。
 

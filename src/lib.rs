@@ -1,10 +1,13 @@
-//! Zu's native module: it owns the engine sidecar's process.
+//! Zu's native module: it owns the engine sidecar's process and the external
+//! containers' pseudo-terminals.
 //!
 //! The UI cannot start the sidecar itself — `capabilities.process.execute`
 //! takes exact command names or absolute paths and never expands host
 //! placeholders, while the sidecar's path follows the app's install
 //! location. This module resolves that path at run time and keeps the
-//! child alive for the app's lifetime.
+//! child alive for the app's lifetime. The PTY side is in [`pty`]: a real
+//! shell or agent TUI, its bytes pushed to TSX through a callback rather
+//! than the engine wire.
 
 use std::{
     io::Write,
@@ -14,6 +17,10 @@ use std::{
 };
 
 use nsh_core::prelude::*;
+
+mod pty;
+
+pub use pty::{Pty, PtyExit, PtyOptions};
 
 /// The sidecar's default loopback port; `ZU_PORT` overrides it for a second
 /// development instance and for tests that must not touch a running app.
@@ -209,7 +216,7 @@ impl Engine {
 /// The crate's UI set (`nsh.json` `"rust"`): what TSX imports as `zu/native`.
 #[native_module("zu/native")]
 fn native(registry: &mut Registry) {
-    registry.module::<Engine>();
+    registry.module::<Engine>().class::<Pty>();
 }
 
 /// Remembers an exit status for `exit_code`.

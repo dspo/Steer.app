@@ -30,9 +30,10 @@ import {
   projectError,
 } from "./projects";
 import { Launcher, openProjectDialog, ProjectDialog } from "./launcher";
-import { sheetCount } from "./dock";
+import { panelIds, sheetCount } from "./dock";
 import { error as sessionError, refreshSessions, sessions, activeId } from "./sessions";
 import { SheetBody, sheetGlyph, sheetTitle } from "./sheets";
+import { externalKindLabel } from "./terminals";
 import { K, shellLocale, t, toggleShellLocale } from "./i18n";
 import { UIHost, statuses, unsupportedMethods } from "./ui-host";
 import { openSubagents } from "./subagents";
@@ -184,7 +185,9 @@ function ContainerRow(props: { container: any }) {
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           <Text style={{ fontSize: 10.5, color: token("faint"), numberOfLines: 1 }}>{shortPath(container().cwd)}</Text>
           <Text style={{ fontSize: 10.5, color: token("faint") }}>
-            {t(K.container.sessions, { count: container().sessions.length })}
+            {container().kind === "Pi"
+              ? t(K.container.sessions, { count: container().sessions.length })
+              : externalKindLabel(container().kind)}
           </Text>
         </View>
       </View>
@@ -494,6 +497,17 @@ function EngineBar() {
   );
 }
 
+/**
+ * An external container is its terminal: closing that sheet would leave a
+ * container with no way back, so its tab is not closable. Archive the
+ * container instead (which kills the PTY).
+ */
+function terminalPanels(): Array<{ id: string; closable: boolean }> {
+  return panelIds(layout())
+    .filter((id) => id.startsWith("terminal:"))
+    .map((id) => ({ id, closable: false }));
+}
+
 /** The workbench: containers/sessions sidebar · canvas (no boot side effects). */
 export function Workbench() {
   const empty = () => launcherOpen() || activeContainerId() === null;
@@ -510,6 +524,7 @@ export function Workbench() {
             ref={(ref) => bindDock(ref)}
             class="flex-1"
             layout={layout()}
+            panels={terminalPanels()}
             onLayoutChange={({ layout: next }) => setLayout(next)}
             onZoomChange={({ panel }) => setZoom(panel)}
             onPanelActiveChange={({ panel, active }) => onPanelActive(panel, active)}

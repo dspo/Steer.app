@@ -122,13 +122,16 @@ for Chats.
 ### container.*
 
 A container is M3's first relational object: a group of panels with a kind,
-a cwd and one or more pi sessions (the captain is `sessions[0]`). The engine
-owns the registry; the shell owns the layout stash and asks for it by id.
+a cwd and, for `Pi`, one or more pi sessions (the captain is `sessions[0]`).
+External containers (`Terminal`, `Claude`, `Codex`, `Copilot`) hold no pi
+session: their one member is a PTY owned by the native module, and their id is
+`external:{kindLower}:{uuid}`. The engine owns the registry; the shell owns the
+layout stash and asks for it by id.
 
 | Command | Payload | Idempotent | Replay | Reply |
 |---|---|---|---|---|
 | `container.list` | — | yes | safe | `{ containers, activeContainerId }` |
-| `container.create` | `{ cwd?, projectId? }` | no | duplicate | `{ container, session }`; also makes it active. With `projectId`, cwd is the project's primary snapshot |
+| `container.create` | `{ kind?, cwd?, projectId? }` | no | duplicate | `{ container, session? }`; also makes it active. `kind` defaults to `Pi`; an external kind returns no `session`. With `projectId`, cwd is the project's primary snapshot |
 | `container.show` | `{ containerId }` | yes | safe | `{ container }`; sets the active container |
 | `container.attachSession` | `{ containerId, path }` | yes (by path) | safe | `{ container, session }` |
 | `container.archive` | `{ containerId }` | yes | safe | `{ containers, activeContainerId }`; aborts and disposes its sessions |
@@ -137,7 +140,12 @@ owns the registry; the shell owns the layout stash and asks for it by id.
 `container.archive` is the single teardown path. The record, its session files
 and its layout are never deleted (Q34); only the engine's in-memory sessions and
 live runs go away. Archiving the active container moves `activeContainerId` to
-the most recently updated live one (or `null`).
+the most recently updated live one (or `null`). A `Pi` container is alive while
+its registry entry is not archived; an external container's process (and so its
+`alive()`) is the PTY in the native module: the shell closes that PTY when the
+container is archived, and the app's next start opens a fresh shell because PTYs
+are deliberately volatile (architecture §5.5). `container.attachSession` refuses
+an external container.
 
 ### layout.*
 

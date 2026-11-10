@@ -2,6 +2,7 @@ import { signal, untracked } from "nsh";
 import type { DockAreaRef } from "nsh/base";
 import { request } from "./engine";
 import type {
+  ContainerKind,
   ContainerListData,
   ContainerRecord,
   SessionData,
@@ -27,6 +28,15 @@ import {
   sessionTitle,
   viewFor,
 } from "./sessions";
+import {
+  closeTerminal,
+  containerOfTerminalSheet,
+  externalKindLabel,
+  focusTerminal,
+  reconcileTerminals,
+  terminalSheetId,
+  terminalTitle,
+} from "./terminals";
 
 /**
  * The container store: the sidebar's rows, the active container and its
@@ -48,6 +58,9 @@ export const layout = signal<DockAreaLayout>(defaultLayoutForSessions([]));
 export const zoomedPanel = signal<string | null>(null);
 /** The last container/layout failure, shown in the status line. */
 export const containerError = signal<string | null>(null);
+/** The registry's first load is done: creating/opening a container can begin.
+ * Before it, a create could race the load's empty-state reset. */
+export const containersLoaded = signal(false);
 
 type ContainerTransport = (type: string, payload?: Record<string, unknown>, timeoutMs?: number) => Promise<any>;
 
@@ -69,11 +82,32 @@ export function liveContainers(): ContainerRecord[] {
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-/** A container's label: its captain's session title, else its cwd. */
+/** A container's label: its captain's session title, an external TUI's
+ * terminal title, else the kind and cwd. */
 export function containerTitle(container: ContainerRecord): string {
   const captain = container.sessions[0];
   if (captain) return sessionTitle(captain.sessionId);
+  if (container.kind !== "Pi") {
+    const title = terminalTitle(container.id);
+    if (title) return title;
+    return externalKindLabel(container.kind);
+  }
   return container.cwd.split("/").filter(Boolean).slice(-2).join("/") || container.id;
+}
+
+/** The canvas of a new or not-yet-stashed container: a terminal for an
+ * external one, one sheet per session otherwise. */
+export function defaultLayoutForContainer(container: ContainerRecord): DockAreaLayout {
+  if (container.kind !== "Pi") {
+    return { center: { type: "tabs", panels: [terminalSheetId(container.id)], activeIndex: 0 } };
+  }
+  return defaultLayoutForSessions(container.sessions.map((session) => session.sessionId));
+}
+
+/** Whether the active container can hold a pi session. */
+function isPiContainer(id: string | null): boolean {
+  if (!id) return false;
+  return containers().find((container) => container.id === id)?.kind === "Pi";
 }
 
 /** Gives the store the DockArea it restores zoom through. */
@@ -85,6 +119,7 @@ export function bindDock(ref: DockAreaRef | undefined): void {
 
 /** Loads the registry and shows its active container (startup). */
 export async function loadContainers(): Promise<void> {
+  containersLoaded.set(false);
   try {
     const data = (await transport("container.list", {}, 10000)) as ContainerListData;
     containers.set(data.containers ?? []);
@@ -101,6 +136,8 @@ export async function loadContainers(): Promise<void> {
     }
   } catch (failure) {
     containerError.set(String(failure));
+  } finally {
+    containersLoaded.set(true);
   }
 }
 
@@ -122,7 +159,7 @@ export async function switchContainer(id: string, force = false): Promise<void> 
     const sessionIds = container.sessions.map((session) => session.sessionId);
     const restored = isLayout(stashed?.layout)
       ? pruneLayout(stashed.layout as DockAreaLayout, sessionIds)
-      : defaultLayoutForSessions(sessionIds);
+      : defaultLayoutForContainer(container);
     layout.set(restored);
     zoomedPanel.set(typeof stashed?.zoom === "string" ? stashed.zoom : null);
     syncVisible();
@@ -166,10 +203,48 @@ export async function createContainer(cwd?: string, projectId?: string | null): 
   }
 }
 
+/**
+ * Creates an external container (`Terminal`/`Claude`/`Codex`/`Copilot`) and
+ * shows its terminal sheet. No pi session, no composer: the container is the
+ * PTY, which `TerminalBody` opens when it mounts.
+ */
+export async function createExternalContainer(
+  kind: Exclude<ContainerKind, "Pi">,
+  projectId: string | null = null,
+): Promise<string | null> {
+  await flushLayout();
+  try {
+    const payload: Record<string, unknown> = { kind, projectId };
+    // Chats: start where the active container works (an external one has a
+    // cwd too), else the last pi session's directory.
+    const current = containers().find((row) => row.id === activeContainerId());
+    const target = projectId === null ? current?.cwd ?? activeCwd() ?? undefined : undefined;
+    if (target) payload.cwd = target;
+    const data = await transport("container.create", payload, 30000);
+    const container = data?.container as ContainerRecord | undefined;
+    if (!container) throw new Error("container create returned nothing");
+    containers.set([...containers(), container]);
+    activeContainerId.set(container.id);
+    savedFor = container.id;
+    layout.set(defaultLayoutForContainer(container));
+    zoomedPanel.set(null);
+    syncVisible();
+    await flushLayout();
+    containerError.set(null);
+    return container.id;
+  } catch (failure) {
+    containerError.set(String(failure));
+    return null;
+  }
+}
+
 /** Archives a container: it leaves the sidebar and its sessions are torn down. */
 export async function archiveContainer(id: string): Promise<void> {
   try {
     const data = (await transport("container.archive", { containerId: id }, 30000)) as ContainerListData;
+    // An external container is its process: archiving kills the PTY before
+    // the canvas switches away (the handle is not tied to the sheet).
+    closeTerminal(id);
     containers.set(data.containers ?? []);
     if (activeContainerId() === id) {
       savedFor = null;
@@ -223,11 +298,12 @@ export async function openPath(path: string): Promise<void> {
     return;
   }
   let target = activeContainerId();
-  if (!target) {
+  if (!isPiContainer(target)) {
+    // A pi session cannot live in an external (terminal/TUI) container.
     const meta = sessions().find((row) => row.path === path);
     await createContainer(meta?.cwd || activeCwd() || undefined);
     target = activeContainerId();
-    if (!target) return;
+    if (!isPiContainer(target)) return;
   }
   try {
     const data = await transport("container.attachSession", { containerId: target, path }, 120000);
@@ -251,6 +327,9 @@ export async function openPath(path: string): Promise<void> {
 export function setLayout(next: DockAreaLayout): void {
   layout.set(next);
   syncVisible();
+  // Closing a terminal tab closes its PTY; switching containers does not go
+  // through here, so a hidden container's shell keeps running.
+  reconcileTerminals(next);
   scheduleSave();
 }
 
@@ -258,7 +337,7 @@ export function setLayout(next: DockAreaLayout): void {
 /** Opens an auxiliary sheet (`subagents:{containerId}`, ...) in the canvas. */
 export function openAuxSheet(kind: "subagents" | "stats" | "tasks" | "traces"): void {
   const container = activeContainerId();
-  if (!container) return;
+  if (!isPiContainer(container)) return;
   const id = `${kind}:${container}`;
   layout.set(appendSheet(layout(), id));
   syncVisible();
@@ -274,6 +353,11 @@ export function setZoom(panel: string | null): void {
 /** A panel became the displayed tab: focus and hydrate its session. */
 export function onPanelActive(panel: string, active: boolean): void {
   if (!active) return;
+  const terminalId = containerOfTerminalSheet(panel);
+  if (terminalId) {
+    focusTerminal(terminalId);
+    return;
+  }
   const sessionId = sessionIdOfSheet(panel);
   if (!sessionId) return;
   focusSession(sessionId);

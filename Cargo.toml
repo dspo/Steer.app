@@ -7,8 +7,14 @@ publish = false
 [workspace]
 
 [dependencies]
-nsh-core = "0.4.0"
-nsh-base = "0.4.0"
+# nsh 0.4.0 pinned to the commit that has `nsh/base`'s `Terminal` (its `term`
+# feature); the crates.io 0.4.0 release predates it and has no terminal. The
+# nsh CLI sees the git source, builds the generated hosts from the same
+# checkout, and patches the registry so the app and the runner share one core.
+nsh-core = { git = "https://github.com/longbridge/nsh.git", rev = "506b539284e070f506cd8ac5f554326b58f99483" }
+nsh-base = { git = "https://github.com/longbridge/nsh.git", rev = "506b539284e070f506cd8ac5f554326b58f99483" }
+portable-pty = "0.9.0"
+tokio = { version = "1", default-features = false, features = ["sync"] }
 
 [profile.dev.package.nsh-core]
 opt-level = 2

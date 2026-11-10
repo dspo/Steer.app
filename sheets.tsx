@@ -1,9 +1,21 @@
-import { Input, TextView } from "nsh/base";
-import { Scroll, signal, Text, token, View } from "nsh";
+import { Input, Terminal, TextView, type TerminalRef } from "nsh/base";
+import { cleanup, Scroll, signal, Text, token, View } from "nsh";
 import { send, sessionTitle, stop, viewFor } from "./sessions";
 import { abortRun, loadSubagents, runs, selectedRunId, selectRun, transcript, subagentError } from "./subagents";
 import { phase } from "./engine";
 import { visiblePanels } from "./dock";
+import { containers } from "./containers";
+import {
+  attachTerminal,
+  bindTerminalRef,
+  detachTerminal,
+  ensureTerminal,
+  externalKindLabel,
+  restartTerminal,
+  setTerminalTitle,
+  terminalInfo,
+  terminalTitle,
+} from "./terminals";
 import { K, t } from "./i18n";
 import { Chip, Dot, Glyph, motionStyle, shadowCard, type GlyphName } from "./ui";
 
@@ -74,6 +86,13 @@ export function sheetTitle(id: string): string {
     return instance ? sessionTitle(instance) : t(K.sheet.sessionTitle);
   }
   if (kind === "subagents") return t(K.subagents.title);
+  if (kind === "terminal") {
+    if (!instance) return t(K.sheet.terminalTitle);
+    const live = terminalTitle(instance);
+    if (live) return live;
+    const container = containers().find((row) => row.id === instance);
+    return container ? externalKindLabel(container.kind) : t(K.sheet.terminalTitle);
+  }
   const spec = SPECS[kind];
   return spec ? (instance ? `${t(spec.title)} · ${instance}` : t(spec.title)) : id;
 }
@@ -108,6 +127,7 @@ export function SheetBody(props: { id: string }) {
   const spec = SPECS[kind];
   if (kind === "session") return <SessionBody id={instance || "pending"} sheetId={props.id} />;
   if (kind === "subagents") return <SubagentsBody containerId={instance} />;
+  if (kind === "terminal") return <TerminalBody containerId={instance} />;
   return (
     <View
       class="flex-1 items-center justify-center gap-3 bg-card"
@@ -204,6 +224,149 @@ function Banner(props: { text: string; tone: "warn" | "destructive" }) {
       <Text class="text-[12px] text-muted-foreground" style={{ flex: 1 }}>
         {props.text}
       </Text>
+    </View>
+  );
+}
+
+/**
+ * A real terminal: the external container's PTY, drawn by `nsh/base`'s
+ * `Terminal` (its `VtEmulator`). Bytes go straight from `zu/native` to the
+ * emulator; the sheet never sees the engine wire.
+ *
+ * The `Terminal` stays mounted while its tab is hidden: the emulator must
+ * keep the alternate screen and scrollback a TUI set, and the base
+ * component's virtual list only paints the displayed tab. Switching
+ * containers unmounts the sheet; the PTY survives in `terminals.ts`, and the
+ * replay buffer rebuilds the screen when the sheet mounts again. There is no
+ * supported "keep the emulator, skip its paint" hook to add beyond that, so
+ * the emulator is never paused; hiding a tab costs no PTY work.
+ */
+export function TerminalBody(props: { containerId: string }) {
+  const container = () => containers().find((row) => row.id === props.containerId);
+  const info = () => terminalInfo()[props.containerId];
+  const sheetId = () => `terminal:${props.containerId}`;
+  const visible = () => visiblePanels().includes(sheetId());
+  const handle = container() ? ensureTerminal(container()!) : undefined;
+  let term: TerminalRef | undefined;
+
+  // The sheet going away (a closed tab, a project switch that drops the
+  // container) detaches the Terminal without killing the shell: the store
+  // decides, through archive and metadata reconciliation, when it dies.
+  cleanup(() => detachTerminal(props.containerId));
+
+  const bind = (ref: TerminalRef | undefined) => {
+    term = ref;
+    bindTerminalRef(props.containerId, ref);
+    if (!ref) return;
+    const replay = attachTerminal(props.containerId, (data) => {
+      try {
+        ref.write(data);
+      } catch {
+        // The emulator is gone while the callback still holds a stale ref.
+      }
+    });
+    if (replay.reset) ref.reset();
+    if (replay.buffer) ref.write(replay.buffer);
+    if (visible()) ref.focus();
+  };
+
+  const restart = () => {
+    const row = container();
+    if (!row) return;
+    restartTerminal(row);
+    if (!term) return;
+    // Reattach the existing emulator to the new PTY: reset first, then the
+    // store's live sink replaces the old one.
+    term.reset();
+    const replay = attachTerminal(row.id, (data) => {
+      try {
+        term?.write(data);
+      } catch {
+        // Stale ref: the next mount replays the buffer.
+      }
+    });
+    if (replay.reset) term.reset();
+    if (replay.buffer) term.write(replay.buffer);
+  };
+
+  if (!container()) {
+    return (
+      <View class="flex-1 items-center justify-center gap-1 bg-card">
+        <Text class="text-[12px] text-muted-foreground">{t(K.external.terminal)}</Text>
+        <Text class="text-[11px] font-mono text-faint">{props.containerId}</Text>
+      </View>
+    );
+  }
+
+  const failure = info()?.error;
+  if (failure) {
+    return (
+      <View class="flex-1 items-center justify-center gap-3 bg-card" accessibilityLabel={t(K.terminal.failed, { error: failure })}>
+        <Glyph name="alert" size={20} tint={token("destructive")} />
+        <Text class="max-w-[420px] text-center text-[12px] text-muted-foreground">
+          {t(K.terminal.failed, { error: failure })}
+        </Text>
+        <View
+          role="button"
+          testID="terminal-restart"
+          accessibilityLabel={t(K.terminal.restart)}
+          class="rounded-lg border border-line px-2.5 py-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+          onPress={restart}
+        >
+          <Text class="text-[12px] font-medium text-foreground">{t(K.terminal.restart)}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  const running = () => info()?.running ?? true;
+  return (
+    <View class="flex-1 bg-background">
+      <Terminal
+        ref={bind}
+        testID="terminal-view"
+        scrollback={5000}
+        fontSize={13}
+        lineHeight={18}
+        accessibilityLabel={externalKindLabel(container()!.kind)}
+        cursorClass="bg-foreground/50"
+        class="flex-1 bg-background px-2 py-1.5"
+        onData={({ data }) => {
+          try {
+            handle?.pty?.write(data);
+          } catch {
+            // A closed PTY rejects input; the status line says why.
+          }
+        }}
+        onResize={({ cols, rows }) => {
+          if (!visible() || cols < 1 || rows < 1) return;
+          try {
+            handle?.pty?.resize(cols, rows);
+          } catch {
+            // The program ended between the layout and the resize.
+          }
+        }}
+        onTitleChange={({ title }) => setTerminalTitle(props.containerId, title)}
+      />
+      <If when={!running()}>
+        <View class="flex-row items-center gap-2 border-t border-line bg-inset px-3 py-1.5">
+          <Dot tint={token("faint")} size={6} />
+          <Text class="flex-1 text-[11px] text-muted-foreground" style={{ numberOfLines: 1 }}>
+            {t(K.terminal.exited, {
+              code: info()?.exitCode ?? info()?.exitSignal ?? "—",
+            })}
+          </Text>
+          <View
+            role="button"
+            testID="terminal-restart"
+            accessibilityLabel={t(K.terminal.restart)}
+            class="rounded-md border border-line px-2 py-1 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+            onPress={restart}
+          >
+            <Text class="text-[11px] font-medium text-foreground">{t(K.terminal.restart)}</Text>
+          </View>
+        </View>
+      </If>
     </View>
   );
 }

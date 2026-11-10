@@ -2,16 +2,20 @@ import { signal, Text, token, View, Scroll } from "nsh";
 import { Dialog, Input, Menu, MenuItem } from "nsh/base";
 import { K, t } from "./i18n";
 import {
+  closeLauncher,
   createProject,
   launcherLocked,
   launcherOpen,
   launcherProjectId,
   launcherStarting,
+  loadProjects,
   openLauncher,
   projectError,
   projects,
   startFromLauncher,
 } from "./projects";
+import { containers, containersLoaded, createExternalContainer } from "./containers";
+import type { ContainerKind } from "./contracts/protocol";
 import { Chip, Glyph, motionStyle, shadowDialog, shadowRaised } from "./ui";
 
 /**
@@ -20,14 +24,39 @@ import { Chip, Glyph, motionStyle, shadowDialog, shadowRaised } from "./ui";
  * it. The project chip changes the target unless locked.
  */
 
+const EXTERNAL_ACTIONS: Array<{ kind: Exclude<ContainerKind, "Pi">; key: keyof typeof K.external }> = [
+  { kind: "Terminal", key: "terminal" },
+  { kind: "Claude", key: "claude" },
+  { kind: "Codex", key: "codex" },
+  { kind: "Copilot", key: "copilot" },
+];
+
 export function Launcher() {
   const draft = signal("");
-  const canStart = () => draft().trim().length > 0 && !launcherStarting();
+  const externalStarting = signal<string | null>(null);
+  // A registry whose first load is still in flight must not be raced by a
+  // create (the load's empty-state reset would win). A store that already
+  // holds rows is past that point; fixtures seed it directly.
+  const readyToCreate = () => containersLoaded() || containers().length > 0;
+  const canStart = () => draft().trim().length > 0 && !launcherStarting() && readyToCreate();
   const submit = () => {
     if (!canStart()) return;
     const text = draft();
     draft.set("");
     void startFromLauncher(text);
+  };
+  const startExternal = async (kind: Exclude<ContainerKind, "Pi">) => {
+    if (externalStarting() || !readyToCreate()) return;
+    externalStarting.set(kind);
+    try {
+      const id = await createExternalContainer(kind, launcherProjectId());
+      if (id) {
+        await loadProjects();
+        closeLauncher();
+      }
+    } finally {
+      externalStarting.set(null);
+    }
   };
   const selected = () => launcherProjectId();
   const selectedName = () => {
@@ -112,6 +141,36 @@ export function Launcher() {
             caretColor: token("primary"),
           }}
         />
+
+        <View class="flex-row items-center gap-1.5">
+          <Text class="text-[10.5px] font-medium text-faint">{t(K.launcher.terminals)}</Text>
+          <Each of={EXTERNAL_ACTIONS} key={(action) => action.kind}>
+            {(action) => {
+              const value = action();
+              const busy = () => externalStarting() === value.kind;
+              const label = t(K.external[value.key]);
+              return (
+                <View
+                  role="button"
+                  testID={`external-${value.kind.toLowerCase()}`}
+                  accessibilityLabel={t(K.external.open, { kind: label })}
+                  class={
+                    externalStarting() || !readyToCreate()
+                      ? "h-7 flex-row items-center gap-1.5 rounded-lg border border-line bg-background px-2.5 opacity-50"
+                      : "h-7 flex-row items-center gap-1.5 rounded-lg border border-line bg-background px-2.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+                  }
+                  style={{ ...motionStyle("fast") }}
+                  disabled={externalStarting() !== null || !readyToCreate()}
+                  onPress={() => void startExternal(value.kind)}
+                >
+                  <Glyph name="terminal" size={11} tint={token("muted-foreground")} />
+                  <Text class="text-[11px] font-medium text-foreground">{busy() ? "…" : label}</Text>
+                </View>
+              );
+            }}
+          </Each>
+        </View>
+        <Text class="text-[10px] text-faint" style={{ numberOfLines: 2 }}>{t(K.external.hint)}</Text>
 
         <View class="flex-row items-center gap-2">
           <View class="rounded-full border border-line px-2 py-0.5">

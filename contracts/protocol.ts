@@ -185,7 +185,7 @@ export const COMMANDS = {
     group: "container",
     idempotent: false,
     replay: "duplicate",
-    note: "Creates a pi container and its captain session in a cwd; a replay creates another one.",
+    note: "Creates a pi container and its captain session, or an external kind (Terminal/Claude/Codex/Copilot) with no session; a replay creates another one.",
   },
   "container.show": {
     group: "container",
@@ -471,7 +471,7 @@ export interface OpenSessionInfo {
   running: boolean;
 }
 
-/** The kinds a container can be; M3 creates `Pi` ones only. */
+/** The kinds a container can be: `Pi` (one captain session) or an external terminal/TUI. */
 export type ContainerKind = "Pi" | "Terminal" | "Claude" | "Codex" | "Copilot";
 
 /** One pi session in a container; the captain is `sessions[0]`. */
@@ -559,6 +559,8 @@ export interface ContainerListData {
 }
 
 export interface ContainerCreatePayload {
+  /** `Pi` when left out; an external kind creates no pi session. */
+  kind?: ContainerKind;
   cwd?: string;
   projectId?: string | null;
 }

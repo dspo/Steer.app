@@ -128,12 +128,14 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 | 模块 | 职责 | 生命周期 |
 |---|---|---|
 | `zu/engine` | 定位并 spawn `Contents/Helpers/pi-engine`，回收 | 进程级单例 |
-| `zu/pty` | `portable-pty` 创建/读写/缩放/kill；输出经 `Callback::post` 推给 TSX | 容器 |
+| `zu/pty` | `portable-pty` 创建/读写/缩放/kill；读线程 → channel → 引擎线程任务 → `Callback::post` 推给 TSX（字节不过 wire）；TSX 侧按 external 容器持 handle | 容器 |
 | `zu/lsp` | 起语言服务器、stdio JSON-RPC、诊断/hover/补全 | workspace |
 | `zu/git` | shell out `git`（status/diff/log/branch/stage/commit） | 一次性调用 |
 | `zu/fs` | `read/write/stat/list`：编辑器与文件树的读写面；路径策略在 Rust 侧（工作区根 + 显式 grant） | 一次性调用 |
 
 **为什么是 `zu/fs` 而不是给 UI 开 `capabilities.fs`**：编辑器与文件树需要真实的读写，而 UI 的能力面要保持最小；`zu/fs` 让文件访问与 agent 的工具权限分开，LSP 的 `didOpen/didChange` 也能复用同一份内容（避免编辑器与 LSP 各读一遍）。**四域失败隔离**：engine、pty、lsp、git、fs 各自失败不影响其余；一个域的崩溃不能让 UI 失去所有能力。
+
+**PTY 的归属与清理**：PTY 是 native module 的资源，不是 sheet 的。`terminals.ts` 按 external 容器 id 持一个 `Pty` handle；sheet 只 `attachTerminal` 一个 sink，切容器/隐藏标签不杀 shell。归档容器时 shell 先 `closeTerminal` 再切走；JS handle 被 GC/`dispose()` 时 Rust `Drop` 再兜底 kill。应用重启不恢复 PTY（§5.5），external 容器按布局重新开一个新 shell/TUI。`Terminal` 组件始终挂载（即使标签隐藏），因为 alt screen 与 scrollback 必须留在 emulator 里；容器切换才卸载 sheet，此时靠 store 的 replay buffer 重建屏幕。
 
 **为什么必须有它**：nsh 的 `capabilities.process.execute` 只接受裸命令名或绝对路径、且精确字符串比对（不支持 `${dataDir}` 等变量），bundle 路径随安装位置变化，TSX 无法直接执行 sidecar。
 
@@ -169,7 +171,7 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 ### 4.3 布局与状态
 
 - 布局是**纯数据**：app 持有 `DockAreaLayout`，`onLayoutChange` 回报整份新布局传回。
-- **sheet 身份 = 稳定 id**（`kind:instance`，如 `session:{containerId}`、`terminal:{containerId}:{n}`）；布局树只存 id，内容由 `sheets.tsx` 注册表解析。
+- **sheet 身份 = 稳定 id**（`kind:instance`，如 `session:{sessionId}`、`terminal:{containerId}`）；布局树只存 id，内容由 `sheets.tsx` 注册表解析。
 - **按容器 stash**：`layouts/{containerId}.json`；zoom **不在 `DockAreaLayout` 里**（它是内部 signal + `onZoomChange` 事件），要单独存，恢复后用 ref 的 `groupOf`/`toggleZoom` 灌回。`onLayoutChange` 高频，debounce 后保存；切容器前先 flush，恢复时先离开现有 zoom 再按 panel id 找 group 灌回。布局与 zoom 的读写经 `layout.get/put`，UI 仍不持文件系统。
 - **启动恢复上次活跃容器**；恢复时**静默移除**指向已死资源的 sheet。
 - **canvas 空态 = Launcher**（项目 chip + composer + agent 动作行）。
@@ -226,7 +228,7 @@ v1 最小集：`⌘W` 关闭 sheet、`⌘1-9` 切 sheet、`⌘K` 命令面板（
 ### 5.3 SessionContainer
 
 ```ts
-{ id: `pi:{sessionId}` | `external:{agent}:{uuid}`,
+{ id: `pi:{sessionId}` | `external:{kindLower}:{uuid}`,
   kind: "Pi" | "Terminal" | "Claude" | "Codex" | "Copilot",
   cwd, projectId }
 // 成员：captain（0 号）/ subagents（1 级，仅 Pi 型）/ resources（pty、webview）
@@ -252,7 +254,7 @@ M3 落地的注册表记录（`registry.json` 的 `containers[]`）：
 - **settle ≠ 死**：容器只有 idle/running；settle 留册可续跑。
 - **stop** = 杀容器全部活跃 run；**archive** = 容器死亡（有活跃子代理/后台任务先确认）。M3 的 `container.archive` 是唯一 teardown：abort/dispose 容器内引擎会话、丢 runs、把 `activeContainerId` 移到最近的活容器；记录、会话文件与布局保留，unarchive 原样恢复。
 - **fork** = 新容器只复制 0 号前缀，不带成员与资源。
-- **外部容器即进程**：进程 exit 即死、即摘行；关闭容器 = kill。
+- **外部容器即进程**：进程 exit 即死、即摘行；关闭容器 = kill。v1 由 shell 在 `container.archive` 成功后显式 `closeTerminal`（PTY 不持久，重启后按布局新开），engine 只存 `archived` 位；PTY 的存活不由 engine 轮询。
 - **外部改动复活**：归档容器的 captain 文件被 pi CLI 继续后，下次启动对账复活并提示。
 
 ### 5.5 状态生命周期分级
@@ -319,7 +321,7 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 | Diff | nsh `DiffView`（split/unified、hunk 操作） | 无需自研 |
 | Git | shell out `git`（不引入 libgit2） | 零依赖、与 pi 工具行为一致 |
 | 语言 | zh-CN 第一 + en fallback，类型化键表（`i18n.ts` + `locales/*.ts`） | nsh 0.4.0 运行时尚未导出 `nsh/i18n` 与 `localeSettings`，键表契约改为纯 TS（Q39），parity 由 `nsh test` 覆盖 |
-| nsh | `Cargo.toml` 的 `nsh-core`/`nsh-base = "0.4.0"` + `Cargo.lock`；CLI 用与它同版本的构建 | nsh 比 pi 更不稳定（0.4.0、trait `#[non_exhaustive]`），升级需跑 `nsh check`/`nsh test` + 终端与 DockArea 冒烟 |
+| nsh | `Cargo.toml` 的 `nsh-core`/`nsh-base` **git pin `506b5392`（版本 0.4.0）** + `Cargo.lock`；CLI 用 checkout 构建 | 发布版 0.4.0 没有 `nsh/base Terminal`（`term` 在发布后进 checkout），M7 必须用 checkout；nsh 比 pi 更不稳定，升级需跑 `nsh check`/`nsh test` + 终端与 DockArea 冒烟 |
 
 ## 7. 实现状态（2026-11-10）
 
@@ -330,9 +332,10 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 - **M4 完成**：`projects.json` + `project.*` 命令、Launcher（composer 先行、项目 chip、锁定目标）、项目/拖拽归属、虚拟化全部会话 `List`、会话索引按 mtime 水位缓存。门禁 45/45。
 - **M6 完成（有记录差异）**：Steer 对齐的 token/几何/表面/动效，`docs/DESIGN.md`；50/50。
 - **M5 完成**：进程内 `SubagentManager`、仅 captain 注册的 `dispatch`/`list_agents`、`zu/subagents` 存储与 `parentSession`、live/settled 名册、只读转录、captain note、archive 级联。门禁 50/50。
+- **M7 实现完成，验收未全过**：`src/pty.rs`（`portable-pty`，reader/writer/waiter 三线程，`Callback::post`，`Drop`/`close` 双保险）导出 `zu/native` 的 `Pty`；engine 的 `container.create` 接受 `kind` 与 cwd，external id 为 `external:{kindLower}:{uuid}`、`sessions: []`，注册表/布局/成员关系沿用；`terminals.ts` 按外部容器持 PTY 与 replay buffer；`TerminalBody` 接 `onData`/`onResize`/`onTitleChange`；Launcher 动作行创建四类容器；归档走 `closeTerminal`。门禁 67/67。**未达成**：Claude Code 真实对话（本机 API error，只验证 TUI + Ctrl+C）、`VtEmulator` 缩小不重排（实测缺陷，见 evidence §8）；因此 M7 不标完成。
 - **外部审计**：2026-11-10 的一轮事实审计与架构评审，成立的 P0/P1 已并入本文；其中「alt screen 污染 scrollback」一条被证伪并撤回（`push_scrollback` 有 `primary.is_some()` 守卫），教训记在 [evidence/terminal-emulator.md](evidence/terminal-emulator.md)。审计材料已随收敛删除。
 - **已知问题**：开发期热更新（`nsh run` 的 hot reload）在 TSX 变更后报 `nsh hot: no module zu/native`——native module 在 hot bundle 期间不可解析。重启 app 即可；不影响运行期。正式打包不受影响（无 hot reload）。另：headless 测试运行器没有帧循环，`requestAnimationFrame` 不跑，流式批 flush 因此用 `setTimeout(16)`。
-- **打包**：`script/bundle-mac.sh`——`nsh package` 出 `.app`，sidecar 拷进 `Contents/Helpers`，嵌套 ad-hoc 签名，`hdiutil` 出 dmg（127 MB app / 51 MB dmg）。打包后 app 优先用包内 sidecar（仓库的构建不能遮蔽它）。
+- **打包**：`script/bundle-mac.sh`——`nsh package` 出 `.app`，sidecar 拷进 `Contents/Helpers`，嵌套 ad-hoc 签名，`hdiutil` 出 dmg（132 MB app / 52 MB dmg）。打包后 app 优先用包内 sidecar（仓库的构建不能遮蔽它）。
 
 ## 8. 已知风险（非决策）
 

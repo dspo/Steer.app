@@ -124,3 +124,31 @@ let rows = virtual_list(count, move |at| { ... line(at) ... });
 3. 大量输出（`cargo build`、`yes | head -n 100000`）时的滚动帧率与 CPU。
 4. 中文/emoji 宽度与图表对齐（`unicode_width` 对 emoji ZWJ 序列的处理）。
 5. 鼠标在 TUI 里的缺失是否被用户感知（Claude Code 是否依赖鼠标）。
+
+## 8. M7 实测记录（2026-11-11）
+
+> 这一节只写实际跑过、实际看到的东西。跑法：`nsh test terminal.ui.test.tsx`（vim/htop）、`nsh test terminal.claude.test.tsx`（Claude Code），fixture 用 `nsh/base` 的 `Terminal` + 真 PTY，读回 `TerminalRef.text()` 而不是复制输出。
+
+### 环境
+
+- nsh：发布版 0.4.0 **没有** `nsh/base Terminal`（`term` 模块在发布后才进 checkout）。app 的 `Cargo.toml` 改为 pin checkout `506b5392`（版本仍是 0.4.0），CLI 因此把生成的 hosts 也指到同一 checkout。
+- 程序：`/bin/zsh`（默认 `$SHELL`）、vim（`/usr/bin/vim`）、htop（`/opt/homebrew/bin/htop`）、Claude Code v2.1.278。
+- 尺寸：1200×800 窗口下终端为 165×34；经 `Terminal.onResize` 缩到 1000×650 后为 137×25，PTY 的 `stty size` 回读 `25 137`，`Pty.size` 同步。
+
+### 结论
+
+| 场景 | 观察 | 判定 |
+|---|---|---|
+| shell | `printf` 输出在 `TerminalRef.text()` 中出现；OSC 0/2 标题进入 store，侧栏/页签跟着变 | 通过 |
+| resize | 视图缩小后 PTY 的 window size 跟着变（`stty size` 回读一致） | 通过 |
+| vim | `vim -u NONE` 的 `~` 列、状态行、`[New File]` 正常绘制；`:q!` 后恢复主屏，**alt screen 没有污染 scrollback**（`push_scrollback` 的 guard 成立，Q29 的撤回仍然正确） | 通过 |
+| htop | 全屏 TUI 绘制（含 function bar 与 CPU/Mem 区），`q` 退出后 shell 恢复 | 通过 |
+| Claude Code | v2.1.278 的 banner、模型行、composer、effort 状态都正常绘制；Ctrl+C 回到 shell；一次真实 turn 返回 `API error · Retrying in 1s · attempt 1/10`，**没有模型回复** | TUI 通过；对话未完成 |
+| 关闭 | `Pty.close()` / `dispose()` 后进程退出（`exitSignal` 或 `alive()` 翻转）；归档路径调用同一 `closeTerminal` | 通过 |
+
+### 缺陷清单（只列实测到的）
+
+1. **缩小终端不重排，直接截断文本**（`crates/nsh-base/src/term/vt.rs` 的 `State::resize`：每行 `row.resize(cols)`，没有 reflow）。实测：输出 300 个 `A`（165 列时两行 165+135），窗口缩到 95 列后 `text()` 只剩两行 95+95，110 个字符丢失；放大也不会接回。影响：shell/log 的历史长行在缩小后不可读。全屏 TUI 不受影响（收到 SIGWINCH 后自己重画）。这是 M7 唯一观察到的渲染缺陷。
+2. 不是缺陷、但属于已知 trait 上限：鼠标上报、光标形状、OSC 8 超链接、OSC 52 剪贴板都不在 `TerminalEmulator` trait 里（见 §1），M7 没有把它们算作缺陷；要这些能力需 M-tty 同时扩 trait 与组件。
+
+**没有观察到**：宽字符错位、颜色错乱、alt screen 残留、光标位置漂移、resize 后 TUI 错行。这些场景没有被本次的 vim/htop/Claude 冒烟触发，不能据此宣称「无缺陷」。

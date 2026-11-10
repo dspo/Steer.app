@@ -117,6 +117,7 @@ export const K = {
     start: "app.launcher.start",
     project: "app.launcher.project",
     starting: "app.launcher.starting",
+    terminals: "app.launcher.terminals",
   },
   container: {
     title: "app.container.title",
@@ -124,6 +125,20 @@ export const K = {
     empty: "app.container.empty",
     archive: "app.container.archive",
     sessions: "app.container.sessions",
+  },
+  external: {
+    terminal: "app.external.terminal",
+    claude: "app.external.claude",
+    codex: "app.external.codex",
+    copilot: "app.external.copilot",
+    open: "app.external.open",
+    hint: "app.external.hint",
+  },
+  terminal: {
+    exited: "app.terminal.exited",
+    failed: "app.terminal.failed",
+    restart: "app.terminal.restart",
+    hidden: "app.terminal.hidden",
   },
   canvas: {
     emptyTitle: "app.canvas.emptyTitle",

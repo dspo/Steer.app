@@ -12,6 +12,7 @@
  * so a reconnecting shell can tell a restart from a dropped socket.
  */
 
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join } from "node:path";
 
@@ -37,6 +38,7 @@ import {
   parseEnvelope,
   validateCommand,
   type ContainerData,
+  type ContainerKind,
   type ContainerListData,
   type ContainerRecord,
   type ProjectData,
@@ -765,14 +767,54 @@ async function createSession(cwd: string, ws: any) {
   return makeRecord(manager, ws, cwd);
 }
 
-/** The single entry that creates a container and its captain session. */
-async function createContainer(cwd: string, ws: any, projectId: string | null = null): Promise<ContainerData> {
+/** The kinds a container may be; only `Pi` gets a captain session. */
+const CONTAINER_KINDS: ContainerKind[] = ["Pi", "Terminal", "Claude", "Codex", "Copilot"];
+
+function isExternalKind(kind: ContainerKind): boolean {
+  return kind !== "Pi";
+}
+
+/**
+ * The single entry that creates a container. A `Pi` container gets its
+ * captain session; an external one (a terminal or an agent TUI) is a
+ * persisted registry record only — its PTY lives in the native module and
+ * is deliberately volatile (restarting the app restarts the shell).
+ */
+async function createContainer(
+  cwd: string,
+  ws: any,
+  projectId: string | null = null,
+  kind: ContainerKind = "Pi",
+): Promise<ContainerData> {
   const project = projectId ? findProject(projectId) : undefined;
   if (projectId && !project) throw new Error("project not found");
   const targetCwd = project ? primaryRoot(project).path : cwd;
-  const rec = await createSession(targetCwd, ws);
   const now = Date.now();
-  const containerPath = rec.path;
+  if (isExternalKind(kind)) {
+    // External containers have no pi session and no session file: the PTY
+    // is their only member, and it is owned by the native module. The cwd is
+    // where that process starts, so it must exist now.
+    if (!existsSync(targetCwd) || !statSync(targetCwd).isDirectory()) {
+      throw new Error(`cwd is not a directory: ${targetCwd}`);
+    }
+    const container: ContainerRecord = {
+      id: `external:${kind.toLowerCase()}:${randomUUID()}`,
+      kind,
+      cwd: targetCwd,
+      archived: false,
+      createdAt: now,
+      updatedAt: now,
+      sessions: [],
+    };
+    registry.containers.push(container);
+    registry.activeContainerId = container.id;
+    saveRegistry();
+    if (projectId) projectsFile.membership[container.id] = projectId;
+    else delete projectsFile.membership[container.id];
+    saveProjects();
+    return { container: containerView(container) };
+  }
+  const rec = await createSession(targetCwd, ws);
   const container: ContainerRecord = {
     id: `pi:${rec.id}`,
     kind: "Pi",
@@ -809,6 +851,7 @@ function showContainer(id: string): ContainerRecord | undefined {
 async function attachSession(containerId: string, path: string, ws: any): Promise<ContainerData> {
   const container = findContainer(containerId);
   if (!container || container.archived) throw new Error("container not found or archived");
+  if (container.kind !== "Pi") throw new Error("an external container holds no pi sessions");
   const rec = await openSession(path, ws);
   const previous = containerForSession(rec.id);
   if (previous && previous.id !== container.id) {
@@ -1090,6 +1133,11 @@ async function handle(ws: any, message: Envelope): Promise<void> {
     }
     case "container.create": {
       try {
+        const requested = payload.kind === undefined ? "Pi" : String(payload.kind);
+        if (!CONTAINER_KINDS.includes(requested as ContainerKind)) {
+          throw new Error(`unknown container kind: ${requested}`);
+        }
+        const kind = requested as ContainerKind;
         const projectId = payload.projectId === null ? null : payload.projectId ? String(payload.projectId) : null;
         const project = projectId ? findProject(projectId) : undefined;
         if (projectId && !project) throw new Error("project not found");
@@ -1097,7 +1145,7 @@ async function handle(ws: any, message: Envelope): Promise<void> {
         const cwd = project
           ? primaryRoot(project).path
           : String(payload.cwd ?? active?.cwd ?? process.cwd());
-        reply(ws, makeReply(id, message.type, await createContainer(cwd, ws, projectId)));
+        reply(ws, makeReply(id, message.type, await createContainer(cwd, ws, projectId, kind)));
       } catch (error: any) {
         reply(ws, makeErrorReply(id, message.type, String(error?.message ?? error), "container_create_failed"));
       }

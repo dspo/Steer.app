@@ -36,6 +36,7 @@
         "ZU_PORT",
         "ZU_STATE_DIR"
       ]
-    }
+    },
+    "statusBar": true
   }
 }
