@@ -228,6 +228,6 @@ nsh update-manifest build/Zu-<ver>-macos-aarch64.tar.gz --notes CHANGES.md --key
 - 第一实例：窗口 normal，`Helpers/pi-engine` 子进程启动。
 - 第二实例（同 state dir）：窗口标题「Zu 已在运行」，显示 owner pid `53537` 与锁路径 `/tmp/zu-m12-visual/instance.lock`，没有第二个 engine；点「退出」可关。
 - 第一实例 `Cmd+W`：Cua 报告的窗口 `is_on_screen:false`，进程仍在，`Helpers/pi-engine` 仍存活；`⌘0` 后窗口重新 `is_on_screen:true`。
-- `NSH_UPDATE_ARCHIVE=1` 的 `build/Zu-0.1.0-macos-aarch64.tar.gz`（46 MB）含 `Zu.app/Contents/Helpers/{pi-engine,photon_rs_bg.wasm,quickjs.wasm}`。
+- `NSH_UPDATE_ARCHIVE=1` 的 `build/Zu-0.1.0-macos-aarch64.tar.gz`（48 MB）含 `Zu.app/Contents/Helpers/{pi-engine,photon_rs_bg.wasm,quickjs.wasm}`。
 
 仍未验证：托盘图标/菜单点击、真实系统通知投递与按压、真实 updater 安装（无 source/key/release）。

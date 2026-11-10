@@ -354,7 +354,7 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 - **M12 实现完成，桌面端到端未验证**：`src/instance.rs` 的 `Instance`（状态目录锁、`hard_link` 独占创建、pid 判活、死锁回收、同进程幂等；6 条 Rust 测试）、`instance.ts`、`lifecycle.ts`（桌面 claim 后决定 boot；`duplicate` 不 boot）、`lifecycle-ui.tsx`（`LifecycleHost`：close→hide、托盘 Show/Hide/Updates/Quit、应用菜单含 Edit roles 与 Window `⌘0`/Close；`AlreadyRunning` 提示）、`notifications.ts`（隐藏/失焦才通知、per-session id 替换、5 s 正文去重、权限只问一次、按开恢复窗口并按 id 打开）、`updates.ts`/`updates-ui.tsx`（dev/未配置/可检查三态，check→progress→ready→install，`canInstall:false` 只给 URL，resolved install 保持“installing”）、`Engine.portAvailable()` 与「端口被占用」文案、`nsh.json` 的 `notifications: true` 与 `closeOnPress:false`、`script/bundle-mac.sh` 的 Helpers 断言与可选更新归档。headless 真窗口模型验证关窗隐藏/`⌘0` 恢复/再次隐藏；`⌘Q` handler 释放 claim 有测试。**未验证**：托盘点击、真实通知投递、第二进程实拦、真实 updater 安装；见 roadmap M12 台账与 evidence。
 - **外部审计**：2026-11-10 的一轮事实审计与架构评审，成立的 P0/P1 已并入本文；其中「alt screen 污染 scrollback」一条被证伪并撤回（`push_scrollback` 有 `primary.is_some()` 守卫），教训记在 [evidence/terminal-emulator.md](evidence/terminal-emulator.md)。审计材料已随收敛删除。
 - **已知问题**：开发期热更新（`nsh run` 的 hot reload）在 TSX 变更后报 `nsh hot: no module zu/native`——native module 在 hot bundle 期间不可解析。重启 app 即可；不影响运行期。正式打包不受影响（无 hot reload）。另：headless 测试运行器没有帧循环，`requestAnimationFrame` 不跑，流式批 flush 因此用 `setTimeout(16)`。
-- **打包**：`script/bundle-mac.sh`——`nsh package` 出 `.app`，sidecar 拷进 `Contents/Helpers`，嵌套 ad-hoc 签名，`hdiutil` 出 dmg（133 MB app / 52 MB dmg）。打包后 app 优先用包内 sidecar（仓库的构建不能遮蔽它）。
+- **打包**：`script/bundle-mac.sh`——`nsh package` 出 `.app`，sidecar 拷进 `Contents/Helpers`，嵌套 ad-hoc 签名，`hdiutil` 出 dmg（134 MB app / 53 MB dmg）。打包后 app 优先用包内 sidecar（仓库的构建不能遮蔽它）。
 
 ## 8. 已知风险（非决策）
 
