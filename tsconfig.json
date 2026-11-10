@@ -1,5 +1,5 @@
 {
   "extends": "./.nsh/tsconfig.json",
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules", "engine", "target"]
+  "exclude": ["node_modules", "engine", "target", "fixtures/extensions", ".agents", ".claude", "agent"]
 }

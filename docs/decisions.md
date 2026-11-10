@@ -26,7 +26,7 @@
 | Q2 | 跨容器画布 | **单容器画布 + 单窗口**视图切换；多窗口不在设计中 | arch §4.2 |
 | Q4 | 布局 stash 三语义点 | 恢复上次容器；死资源 sheet 静默移除；空态 = Launcher | arch §4.3 |
 | Q5 | 键盘范围 | v1 最小集：`⌘W` / `⌘1-9` / `⌘K` | arch §4.4 |
-| Q9 | 界面语言 | zh-CN 第一 + en fallback，键表第一天立住 | arch §6 |
+| Q9 | 界面语言 | zh-CN 第一 + en fallback，键表第一天立住 | arch §6；实现见 Q39 |
 | Q12/Q16 | 托盘与通知 | 托盘常驻 + 通知；关窗收起不确认、单实例、不自启、通知首版激进 | arch §4.6 |
 | Q20 | 多窗口打开面 | **澄清**：多窗口不在设计中（侧栏 item 即容器入口） | arch §4.2 |
 | Q21 | Zoom 持久性 | **持久**（写进容器布局 stash） | arch §4.3 |
@@ -55,9 +55,14 @@
 | Q32 | 浏览器的域名授权 | **任意站点**（`capabilities.webview.hosts: ["*"]`），地址栏可输入任意 URL；风险在 UI 上标明 | arch §3.4；M10 |
 | Q33 | 扩展的 `ctx.mode` | **`"rpc"`**，不自创 `"gui"`——pi 已有语义，ThinkRail 同样用 `bindExtensions({ mode: "rpc", uiContext })`，逐方法实现或降级 | arch §4.5 |
 | Q34 | 归档容器的可恢复性 | **永不删除**；v1 无 UI 入口，后续在设置页「归档管理」找回 | arch §5.4；M-arch |
+| Q35 | wire 契约的冻结方式 | **`contracts/` v1 单一共享面**：TS 类型 + 运行时校验 + `protocol.md`；命令表带域/幂等/重放语义；破坏性改动递增 `v`，握手不匹配即拒连 | `contracts/`；arch §3.3 |
+| Q36 | 引擎监督的归属 | **UI 侧监督 + native 侧进程事实**：引擎每 5 s 心跳并持久化 `generation`；UI 15 s 判死、指数退避重启；Rust 只提供 `start/stop/kill/status/pid/exit_code`，不解释协议 | `engine.ts`、`src/lib.rs`；arch §3.3 |
+| Q37 | 扩展宿主未实现的方法 | **显式 no-op + 日志 + `ui.unsupported` 事件**，不静默；dialogs 走 `ui.request`，notify/status/title 走事件；project trust 复用 `select` 并写 pi 的 trust store | `engine/src/server.ts`、`ui-host.tsx`；arch §4.5 |
+| Q38 | 扩展 UI 的对话框形态 | `confirm` 用平台 `AlertDialog`（强决策）；`select/input/editor` 用应用内 `Dialog` + `Input`（长选项/多行）；超时按 pi 默认值 resolve | `ui-host.tsx`；arch §4.5 |
+| Q39 | i18n 运行时 | nsh 0.4.0 发布运行时未导出 `nsh/i18n`/`localeSettings`（checkout 有、发布版没有），**键表落为纯 TS**（`i18n.ts` + `locales/*.ts`，`%{name}` 插值），zh-CN 为源语言、en 为 fallback；`nsh test` 的 parity 用例保证两表与 `K` 集合同构 | `i18n.ts`、`locales/`、`i18n.test.ts` |
 
 ## 决策编号说明
 
-- Q1–Q34 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（§3.6 的 `zu/fs`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）。
+- Q1–Q39 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（§3.6 的 `zu/fs`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）。
 - 原 engine/ui/domain 三份文档里的 E/U 编号已废弃，统一并入本表。
 - 条件性里程碑（M-tty / M-arch / M-web）的触发条件见 [roadmap.md](roadmap.md) §17。

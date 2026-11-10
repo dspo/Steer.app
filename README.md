@@ -6,7 +6,7 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 状态条）包着一块 `DockArea` 画布，**panel** 持有可拖拽的 **sheet**（Pi 会话、终端、各 agent TUI、
 webview、会话的 aux 视图）。logo 为 Steer 的 `<->` 构型加载祖冲之密率（上 355、下 113）。
 
-**当前状态（as of `ef5c6b0`，2026-11-10）：M0/M1 完成。** 应用能连上随包分发的 pi 引擎（Bun sidecar，`zu/engine` 原生模块启动），侧栏列出 `~/.pi` 里的全部会话，打开即显示历史，输入后回复流式进入转录，工具调用显示为卡片，流式中可停止，引擎重启后续聊。最近一次门禁：`nsh check` ✓、`nsh test` 8/8 ✓、`cargo check` ✓、`script/bundle-mac.sh` → 127 MB app / 50 MB dmg。下一步是 [roadmap](docs/roadmap.md) 的 M2（契约与监督）。
+**当前状态（2026-11-10）：M0/M1/M2 完成。** 应用能连上随包分发的 pi 引擎（Bun sidecar，`zu/engine` 原生模块启动），侧栏列出 `~/.pi` 里的全部会话，打开即显示历史，输入后回复流式进入转录，工具调用显示为卡片，流式中可停止，引擎重启后续聊；M2 把 wire 冻成 `contracts/` v1、让引擎可自愈（心跳、退避重启、`generation`、快照重连）、把扩展宿主接到 nsh 对话框/Toast/状态条，并立起 zh-CN/en 键表。门禁：`nsh check` ✓、`nsh test` 22/22 ✓、`cargo check` ✓、`script/bundle-mac.sh` → 127 MB app / 50 MB dmg。下一步是 [roadmap](docs/roadmap.md) 的 M3（容器与 Panel/Sheet）。
 
 ## 文档
 
@@ -32,11 +32,16 @@ webview、会话的 aux 视图）。logo 为 Steer 的 `<->` 构型加载祖冲�
 | File | What it is |
 |---|---|
 | `App.tsx` | The shell + the controlled `DockArea` wiring (rail, projects pane, toolbar, status line) |
+| `contracts/` | The frozen wire contract: `protocol.ts` (types, command/event tables, validation) and `protocol.md` |
+| `engine.ts` | The shell's connection, supervised reconnect, snapshot/Ui request plumbing |
+| `ui-host.tsx` | Extension UI host: dialogs, toast stack, status lines, window title |
+| `i18n.ts`, `locales/` | zh-CN/en key tables and the parity test's key list |
 | `dock.ts` | Layout data and its pure edits (`initialLayout`, `appendSheet`, `activateSheet`) |
 | `sheets.tsx` | The sheet registry: 13 kinds, tab titles and glyphs, mock bodies |
+| `sessions.ts` | The session store: folds engine events into signals, rebuilds from a snapshot, reopens by file |
 | `ui.tsx` | Canvas glyphs, `Logo`（`<->` + 355/113）, `Dot`, `Chip`, `SectionTitle` |
 | `theme.json` | Design tokens (shadcn-style, light + dark) via `nsh.json` `"theme"` |
-| `App.test.tsx` | Headless `nsh test`: outline, add-sheet, counter-survives-move |
+| Tests | `App.test.tsx`（壳与 i18n）、`contracts.test.ts`、`i18n.test.ts`、`ui-host.test.tsx`、`engine.test.ts`（live，22 条） |
 
 交互全部来自 `nsh/base DockArea`：拖 sheet 到另一 panel（移动且状态不丢）、拖到组边缘分栏、拖手缩放、`×` 关闭、Zoom、<600pt compact。
 
@@ -47,9 +52,12 @@ With `nsh` on your `PATH` ([install](https://nsh.dev/docs/installation)), or a c
 ```sh
 nsh run . --target macos   # the AppKit host
 nsh run . --target web     # the browser
-nsh check .                # typecheck the TSX
-nsh test .                 # the headless tests
+nsh check .                # cargo check + typecheck the TSX
+nsh test .                 # Rust + headless TS tests (live pi cases; ZU_SKIP_LIVE=1 skips)
 ```
+
+The engine is a working copy of the sidecar: `cd engine && bun run build` before
+`nsh run` or `script/bundle-mac.sh` if `engine/src` changed.
 
 ## 文档治理
 

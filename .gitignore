@@ -2,3 +2,12 @@
 target/
 engine/node_modules/
 engine/dist/
+
+# Tooling installed into the workspace by `npx skills add` (agent skills, not app code)
+.agents/
+.claude/
+agent/
+skills-lock.json
+
+# Packaged artifacts from script/bundle-mac.sh
+build/

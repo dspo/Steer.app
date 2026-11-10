@@ -54,28 +54,28 @@ UI 与引擎之间唯一的共享面：TS 类型 + 运行时校验 + `protocol.m
 
 ```ts
 { v: 1, id: string, sessionId?: string, type: string, payload: unknown }
-// 回复：{ v, id, type: "reply", command, ok, data? , error? }
+// 回复：{ v, id, type: "reply", payload: { command, ok, data?, error?, code? } }
 // 事件：{ v, type: <event>, sessionId?, data }
-// 引擎→UI 的请求（扩展 UI）：{ v, id, type: "ui.request", method, params, timeoutMs }
-// UI 的应答：{ v, id, type: "ui.response", ok, result?, error? }
+// 引擎→UI 的请求（扩展 UI）：{ v, id, type: "ui.request", sessionId?, data: { method, params, timeoutMs } }
+// UI 的应答：{ v, id, type: "ui.response", payload: { ok, result?, error? } }
 ```
 
 **命令按域分组，归属明确**：
 
 | 域 | 命令 | 执行者 | 幂等 |
 |---|---|---|---|
-| `engine.*` | `info`、`health` | engine | 是 |
-| `session.*` | `list`、`create`、`open`、`info`、`prompt`、`steer`、`followUp`、`abort`、`close` | engine（pi） | `open` 按 path 幂等；`create` 非幂等 |
+| `engine.*` | `ping`、`info`、`health` | engine | 是 |
+| `session.*` | `list`、`create`、`open`、`info`、`extensions`、`prompt`、`steer`、`followUp`、`abort`、`close` | engine（pi） | `open` 按 path 幂等；`create`/`prompt`/`steer`/`followUp` 非幂等 |
 | `state.*` | `snapshot`、`subscribe` | engine（Zu 状态） | 是 |
 | `ui.*` | 扩展 UI 的请求/应答（`ui.request` / `ui.response`） | UI（nsh 对话框） | 请求带超时，超时即 resolve 默认值 |
 
 **PTY 不经 wire**：字节流不过 JSON/WS，`zu/pty` 的 `Callback::post` 直接推给 TSX 的 Terminal（§3.6）。
 
-**事件**（全部带 `sessionId`，除 `engine.*`）：`session.info`（模型/thinking/名称变更）、`message.delta`、`message.complete`、`agent.state`（thinking/executing/awaiting/idle）、`tool.start`、`tool.end`、`tool.update`、`queue.update`（steering/followUp 排队）、`compaction.start/end`、`retry.start/end`、`ui.request`、`error`。
+**事件**（全部带 `sessionId`，除 `engine.*`）：`engine.heartbeat`（每 5 s）、`session.info`（名称/thinking/文件路径变更）、`message.delta`、`message.complete`、`agent.state`（M2 只发 `running`/`idle`；更细的 thinking/executing/awaiting 留给后续）、`tool.start`、`tool.end`、`tool.update`、`queue.update`（steering/followUp 排队）、`compaction.start/end`、`retry.start/end`、`ui.request`、`ui.notify`、`ui.status`、`ui.title`、`ui.unsupported`、`error`。完整表见 `contracts/protocol.md`。
 
 **回合终点**：`agent_settled`（`agent_end` 只是一次低层 run 结束）。**完成态权威**：`message_end` 与 pi 会话文件是唯一真相；UI 的渲染 = 文件投影 + 事件增量加速，所以切容器、重连、崩溃恢复是同一套重建逻辑。
 
-**重连**：UI 连上后先 `state.snapshot`（容器、打开会话、活跃 run、未读、engine `generation`），再订阅增量。协议版本 `v` 与 pi 版本在握手返回；`v` 不匹配即拒连并提示升级。
+**重连**：UI 连上后先 `state.subscribe`（它既登记订阅、又返回 `state.snapshot`：容器、打开会话、活跃 run、未读、engine `generation`），此后收增量。协议版本 `v` 与 pi 版本在握手返回；`v` 不匹配即拒连并提示升级，不猜语义。`generation` 每次引擎进程启动递增并持久化在 `~/.pi/zu/engine.generation`；UI 据此区分「重启」与「socket 抖动」，决定是否显示「已恢复」。
 
 ### 3.4 能力面（`nsh.json`）
 
@@ -302,12 +302,13 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 | 编辑器 | nsh `Editor` + 自研 LSP 客户端（Rust） | 组件齐备，LSP 是唯一缺口 |
 | Diff | nsh `DiffView`（split/unified、hunk 操作） | 无需自研 |
 | Git | shell out `git`（不引入 libgit2） | 零依赖、与 pi 工具行为一致 |
-| 语言 | zh-CN 第一 + en fallback，Fluent 键表 | 与 Steer 一致 |
+| 语言 | zh-CN 第一 + en fallback，类型化键表（`i18n.ts` + `locales/*.ts`） | nsh 0.4.0 运行时尚未导出 `nsh/i18n` 与 `localeSettings`，键表契约改为纯 TS（Q39），parity 由 `nsh test` 覆盖 |
 | nsh | `Cargo.toml` 的 `nsh-core`/`nsh-base = "0.4.0"` + `Cargo.lock`；CLI 用与它同版本的构建 | nsh 比 pi 更不稳定（0.4.0、trait `#[non_exhaustive]`），升级需跑 `nsh check`/`nsh test` + 终端与 DockArea 冒烟 |
 
 ## 7. 实现状态（2026-11-10）
 
 - **M0 完成**：`engine/`（Bun + pi 1.5.0）+ mixed 模板（`Cargo.toml`、`src/lib.rs` 的 `zu/engine`）+ sidecar 编译（75 MB 单文件，WASM 资产同目录）+ WS 握手。
+- **M2 完成**：`contracts/protocol.ts` + `protocol.md`（信封、命令/事件表、幂等/重放、UI 矩阵）；`engine.ts` 的快照重连与监督（心跳、指数退避、`generation`）；`ui-host.tsx`（confirm 的 `AlertDialog`、select/input/editor 的 Dialog、toast/status/title）；`i18n.ts` + `locales/*.ts`（Q39）。门禁 22/22。
 - **M1 完成**：`engine.ts`（连接/请求/事件）、`sessions.ts`（会话 store，16 ms 批 flush）、`sheets.tsx` 的会话 sheet（`TextView` 流式 Markdown、工具卡、composer）、`App.tsx` 的会话侧栏与引擎状态条。turn 结束时 engine 写 `zu.turn` custom entry；流式中停止会广播 idle 并保留已生成文本；引擎重启后用 `session.info` 拿到的文件路径续聊。
 - **外部审计**：2026-11-10 的一轮事实审计与架构评审，成立的 P0/P1 已并入本文；其中「alt screen 污染 scrollback」一条被证伪并撤回（`push_scrollback` 有 `primary.is_some()` 守卫），教训记在 [evidence/terminal-emulator.md](evidence/terminal-emulator.md)。审计材料已随收敛删除。
 - **已知问题**：开发期热更新（`nsh run` 的 hot reload）在 TSX 变更后报 `nsh hot: no module zu/native`——native module 在 hot bundle 期间不可解析。重启 app 即可；不影响运行期。正式打包不受影响（无 hot reload）。另：headless 测试运行器没有帧循环，`requestAnimationFrame` 不跑，流式批 flush 因此用 `setTimeout(16)`。
@@ -320,8 +321,8 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 3. pi 升级对 `~/.pi/agent/sessions` 布局的影响（台账登记）。
 4. **并发写**：pi 的会话写入是裸 `appendFileSync`，没有锁；两个写者会各自推进 leaf。按不变量 10 处理（检测 + 转只读）。
 5. 签名/公证：嵌套签名 + JIT entitlement 的实际可行性（M0 的 ad-hoc 打包已冒烟，正式签名未验）。
-6. **协议面**：`contracts/` 的 v1 尚未落成代码与 `protocol.md`；实现目前的 wire 是临时定义的（M1 用的 `session.*` 不在旧表里）。
-7. **引擎单点**：`generation`、心跳、退避重启、`state.snapshot` 未实现；引擎崩溃时在跑的回合会丢。
+6. **协议面**：`contracts/` v1 已冻结（`protocol.ts` + `protocol.md`）；后续只允许加可选字段，破坏性改动递增 `v`。
+7. **引擎单点**：`generation`、心跳、退避重启、`state.snapshot` 已实现；崩溃时未完成回合的**内容**仍由 pi 会话文件兜底，但引擎内未落盘的 streaming 增量会丢，UI 标为中断。
 8. **单实例与固定端口**：端口是常量 `47823`，第二个实例会撞端口；nsh 没有单实例原语，需锁文件或 `NSRunningApplication`，并给「端口被占用」明确文案。
 9. **`~/.pi/zu/` 的清理**：归档容器、死 subagent 文件、旧 layout 会增长；启动时清理孤儿 layout（容器已不在注册表）。
 10. **视图全量挂载**：DockArea 会把所有 panel 放进树（只有当前 tab 显示）；20 个 sheet（含 WebView/Editor/Terminal）同时存活时要「非可见 sheet 降级」（webview 暂停、editor 释放 rope、terminal 保留）。

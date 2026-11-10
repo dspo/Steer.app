@@ -51,7 +51,9 @@
 
 **验收**（全部有测试）：侧栏列出 pi 的会话；点开显示历史；流式 + 工具卡 + `agent_settled`；流式中停止保留转录；引擎重启续聊；pi 的加载器读到 `zu.turn`。
 
-## 5. M2 — 契约与监督（横切面）
+## 5. M2 — 契约与监督（横切面）· 已完成
+
+> **状态：已完成（2026-11-10）。** `contracts/` v1 冻结（TS 类型 + 命令/事件表 + 运行时校验 + `protocol.md`）；`state.subscribe` 快照重连、`generation` 持久化、5 s 心跳 / 15 s 判死 / 指数退避重启；`bindExtensions({ mode: "rpc" })` 的 UI 矩阵（confirm 走 `AlertDialog`，select/input/editor 走应用内 Dialog，notify/status/title 走壳，其余 no-op + `ui.unsupported`）；project trust 走同一 select 并写 pi trust store；zh-CN/en 键表 + parity。**22 条测试**覆盖契约、快照/重连、杀进程自愈（中断标记）、协议版本拒连、真实扩展 confirm/notify 与对话框矩阵。
 
 **目的**：把 M1 临时定义的协议冻成契约，把引擎从"能重启"升级到"能自愈"，把扩展宿主打通。**这一档不加用户可见的大功能，但后面每一条都踩在它上面。**
 
@@ -61,7 +63,7 @@
 | 重连 | `state.snapshot`（容器、打开会话、活跃 run、未读、`generation`）+ `state.subscribe`；UI 重连带快照；协议版本不匹配即拒连并提示 |
 | 引擎监督 | 心跳与退出码采集、指数退避重启、`generation` 递增；引擎死亡时 UI 的降级（已落盘转录只读可看） |
 | 扩展宿主 | `bindExtensions({ uiContext, mode: "rpc" })`（Q33）；UI 方法矩阵（confirm/select/input/editor 走对话框，notify/setStatus/setTitle 走壳，其余 no-op + 日志）；`ui.request`/`ui.response` 与超时；project trust 触发 |
-| i18n | Fluent 键表立起（zh-CN 第一 + en fallback），壳的文案全部进表；parity 测试 |
+| i18n | 键表立起（zh-CN 第一 + en fallback），壳的文案全部进表；parity 测试。nsh 0.4.0 发布运行时不导出 `nsh/i18n`，键表落为纯 TS（Q39） |
 
 **验收**：杀掉 engine 进程 → 自动重启 → UI 重连拿到快照并显示"已恢复"，进行中的回合被标为中断；本机的两个真实扩展加载后 `confirm` 弹出 nsh 对话框、`notify` 到达；`nsh test` 覆盖快照与重连。
 

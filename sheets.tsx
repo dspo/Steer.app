@@ -1,6 +1,8 @@
 import { Input, TextView } from "nsh/base";
 import { Scroll, signal, Text, token, View } from "nsh";
-import { messages, send, stop, streaming } from "./sessions";
+import { messages, send, stop, streaming, interrupted } from "./sessions";
+import { phase } from "./engine";
+import { K, t } from "./i18n";
 import { Dot, Glyph, type GlyphName } from "./ui";
 
 /** The color tokens the registry tints glyphs with. */
@@ -31,31 +33,29 @@ export type SheetKind =
   | "stats";
 
 interface SheetSpec {
-  /** The tab's title. */
+  /** The tab title's copy key. */
   title: string;
   glyph: GlyphName;
   /** The glyph's tint token. */
   tint: TintToken;
-  /** The body's big line (the placeholder text). */
-  label: string;
-  /** The dim line under it. */
+  /** The dim line under the body's big line. */
   note: string;
 }
 
 const SPECS: Record<SheetKind, SheetSpec> = {
-  session: { title: "Pi Session", glyph: "chat", tint: "brand", label: "Pi Session", note: "对话渲染（mock）" },
-  terminal: { title: "终端", glyph: "terminal", tint: "muted-foreground", label: "终端", note: "PTY 模拟终端（mock）" },
-  claude: { title: "Claude Code TUI", glyph: "terminal", tint: "warn", label: "Claude Code TUI", note: "外部 agent TUI（mock）" },
-  codex: { title: "Codex TUI", glyph: "terminal", tint: "up", label: "Codex TUI", note: "外部 agent TUI（mock）" },
-  copilot: { title: "Copilot TUI", glyph: "terminal", tint: "info", label: "GitHub Copilot TUI", note: "外部 agent TUI（mock）" },
-  webview: { title: "Webview", glyph: "globe", tint: "info", label: "Webview", note: "内置浏览器（mock）" },
-  editor: { title: "编辑器", glyph: "file", tint: "muted-foreground", label: "编辑器", note: "代码编辑器（mock）" },
-  diff: { title: "Diff", glyph: "diff", tint: "muted-foreground", label: "Diff", note: "变更对比（mock）" },
-  files: { title: "文件", glyph: "folder", tint: "muted-foreground", label: "文件浏览器", note: "工作区文件树（mock）" },
-  subagents: { title: "Subagents", glyph: "branch", tint: "muted-foreground", label: "Subagents", note: "子代理会话（mock）" },
-  tasks: { title: "后台任务", glyph: "archive", tint: "muted-foreground", label: "后台任务", note: "会话后台命令（mock）" },
-  traces: { title: "轨迹", glyph: "tree", tint: "muted-foreground", label: "轨迹", note: "agent 运行轨迹（mock）" },
-  stats: { title: "统计", glyph: "pulse", tint: "muted-foreground", label: "统计", note: "token 与费用读数（mock）" },
+  session: { title: K.sheet.sessionTitle, glyph: "chat", tint: "brand", note: K.sheet.sessionNote },
+  terminal: { title: K.sheet.terminalTitle, glyph: "terminal", tint: "muted-foreground", note: K.sheet.terminalNote },
+  claude: { title: K.sheet.claudeTitle, glyph: "terminal", tint: "warn", note: K.sheet.claudeNote },
+  codex: { title: K.sheet.codexTitle, glyph: "terminal", tint: "up", note: K.sheet.codexNote },
+  copilot: { title: K.sheet.copilotTitle, glyph: "terminal", tint: "info", note: K.sheet.copilotNote },
+  webview: { title: K.sheet.webviewTitle, glyph: "globe", tint: "info", note: K.sheet.webviewNote },
+  editor: { title: K.sheet.editorTitle, glyph: "file", tint: "muted-foreground", note: K.sheet.editorNote },
+  diff: { title: K.sheet.diffTitle, glyph: "diff", tint: "muted-foreground", note: K.sheet.diffNote },
+  files: { title: K.sheet.filesTitle, glyph: "folder", tint: "muted-foreground", note: K.sheet.filesNote },
+  subagents: { title: K.sheet.subagentsTitle, glyph: "branch", tint: "muted-foreground", note: K.sheet.subagentsNote },
+  tasks: { title: K.sheet.tasksTitle, glyph: "archive", tint: "muted-foreground", note: K.sheet.tasksNote },
+  traces: { title: K.sheet.tracesTitle, glyph: "tree", tint: "muted-foreground", note: K.sheet.tracesNote },
+  stats: { title: K.sheet.statsTitle, glyph: "pulse", tint: "muted-foreground", note: K.sheet.statsNote },
 };
 
 /** Splits a sheet id (`kind:instance`) into its kind and instance. */
@@ -69,7 +69,7 @@ export function sheetParts(id: string): { kind: SheetKind; instance: string } {
 export function sheetTitle(id: string): string {
   const { kind, instance } = sheetParts(id);
   const spec = SPECS[kind];
-  return spec ? (instance && kind !== "session" ? `${spec.title} · ${instance}` : spec.title) : id;
+  return spec ? (instance && kind !== "session" ? `${t(spec.title)} · ${instance}` : t(spec.title)) : id;
 }
 
 /** A sheet's tab glyph, by id. */
@@ -114,14 +114,13 @@ export function SheetBody(props: { id: string }) {
       >
         <Glyph name={spec.glyph} size={24} tint={token(spec.tint)} />
       </View>
-      <Text class="text-base font-semibold text-foreground">{spec.label}</Text>
-      <Text class="text-xs text-muted-foreground">{spec.note}</Text>
+      <Text class="text-base font-semibold text-foreground">{t(spec.title)}</Text>
+      <Text class="text-xs text-muted-foreground">{t(spec.note)}</Text>
       <Text class="text-[11px] font-mono text-faint">{props.id}</Text>
-      <Text class="text-[11px] tabular-nums text-faint">{`taps ${taps()} · 拖我到另一个 panel，计数不丢`}</Text>
+      <Text class="text-[11px] tabular-nums text-faint">{t(K.sheet.taps, { count: taps() })}</Text>
     </View>
   );
 }
-
 
 /** One transcript row: the user's messages right-aligned, the assistant's
  * plain prose, a tool step as a dim line. M1 renders text, not Markdown. */
@@ -129,17 +128,21 @@ function MessageRow(props: { role: string; text: string; tool?: { name: string; 
   if (props.role === "tool") {
     const running = props.tool?.state === "running";
     const failed = props.tool?.state === "failed";
+    const stateLabel =
+      props.tool?.state === "running"
+        ? t(K.tool.running)
+        : props.tool?.state === "failed"
+          ? t(K.tool.failed)
+          : t(K.tool.done);
     return (
-      <View
-        class="flex-row items-center gap-2 self-start rounded-lg border border-line bg-inset px-2.5 py-1.5"
-      >
+      <View class="flex-row items-center gap-2 self-start rounded-lg border border-line bg-inset px-2.5 py-1.5">
         {running ? (
           <Dot tint={token("info")} size={6} />
         ) : (
           <Glyph name={failed ? "alert" : "check"} size={11} tint={failed ? token("destructive") : token("up")} />
         )}
         <Text class="text-[11px] font-medium text-foreground">{props.tool?.name ?? props.text}</Text>
-        <Text class="text-[10px] text-muted-foreground">{props.tool?.state ?? ""}</Text>
+        <Text class="text-[10px] text-muted-foreground">{stateLabel}</Text>
       </View>
     );
   }
@@ -173,13 +176,25 @@ function MessageRow(props: { role: string; text: string; tool?: { name: string; 
   );
 }
 
+/** A one-line state banner above the composer (interrupted turn, dead engine). */
+function Banner(props: { text: string; tone: "warn" | "destructive" }) {
+  return (
+    <View class="flex-row items-center gap-2 border-b border-line bg-inset px-3 py-2">
+      <Glyph name="alert" size={12} tint={token(props.tone)} />
+      <Text class="text-[11px] text-muted-foreground" style={{ flex: 1 }}>
+        {props.text}
+      </Text>
+    </View>
+  );
+}
+
 /**
  * The conversation: the open session's transcript, the streaming indicator
  * and the composer. Return sends; Shift+Return breaks the line.
  */
 export function SessionBody() {
   const draft = signal("");
-  const canSend = () => !!draft().trim();
+  const canSend = () => !!draft().trim() && phase() === "connected";
   const submit = () => {
     if (!canSend()) return;
     const text = draft();
@@ -188,6 +203,12 @@ export function SessionBody() {
   };
   return (
     <View class="flex-1 bg-card">
+      <If when={phase() !== "connected"}>
+        <Banner text={t(K.session.degraded)} tone="destructive" />
+      </If>
+      <If when={interrupted()}>
+        <Banner text={t(K.session.interrupted)} tone="warn" />
+      </If>
       <Scroll style={{ flex: 1 }} contentStyle={{ paddingHorizontal: 16, paddingVertical: 12, gap: 10 }}>
         <Each of={messages()} key="index">
           {(message) => <MessageRow role={message().role} text={message().text} tool={message().tool} />}
@@ -195,7 +216,7 @@ export function SessionBody() {
         <If when={streaming()}>
           <View class="flex-row items-center gap-2">
             <Dot tint={token("info")} size={6} />
-            <Text class="text-[12px] text-muted-foreground">running…</Text>
+            <Text class="text-[12px] text-muted-foreground">{t(K.session.running)}</Text>
           </View>
         </If>
       </Scroll>
@@ -206,19 +227,29 @@ export function SessionBody() {
               value={draft()}
               onChange={({ value }) => draft.set(value)}
               multiline
-              placeholder="Message pi — Return sends, Shift+Return breaks"
+              placeholder={t(K.session.placeholder)}
               onSubmit={submit}
               style={{ fontSize: 13, lineHeight: 19, color: token("foreground"), placeholderColor: token("faint"), height: 38, paddingHorizontal: 6, paddingVertical: 6 }}
             />
           </View>
           <View
             role="button"
-            accessibilityLabel={streaming() ? "Stop" : "Send"}
-            class={streaming() ? "items-center justify-center rounded-full bg-destructive" : canSend() ? "items-center justify-center rounded-full bg-primary" : "items-center justify-center rounded-full bg-muted"}
+            accessibilityLabel={streaming() ? t(K.session.stop) : t(K.session.send)}
+            class={
+              streaming()
+                ? "items-center justify-center rounded-full bg-destructive"
+                : canSend()
+                  ? "items-center justify-center rounded-full bg-primary"
+                  : "items-center justify-center rounded-full bg-muted"
+            }
             style={{ width: 28, height: 28 }}
             onPress={() => (streaming() ? void stop() : submit())}
           >
-            <Glyph name={streaming() ? "stop" : "send"} size={13} tint={streaming() ? token("destructive-foreground") : canSend() ? token("primary-foreground") : token("faint")} />
+            <Glyph
+              name={streaming() ? "stop" : "send"}
+              size={13}
+              tint={streaming() ? token("destructive-foreground") : canSend() ? token("primary-foreground") : token("faint")}
+            />
           </View>
         </View>
       </View>

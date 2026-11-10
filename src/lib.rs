@@ -25,6 +25,13 @@ struct EngineState {
 /// The running sidecar; `None` before the first start and after a failure.
 static ENGINE: Mutex<Option<EngineState>> = Mutex::new(None);
 
+/// The last exit status the host saw, for the supervision status line.
+static LAST_EXIT: Mutex<Option<i32>> = Mutex::new(None);
+
+/// Extension paths the host adds to the standard pi locations (tests and
+/// development builds use it; a packaged app leaves it empty).
+static EXTRA_EXTENSIONS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
 /// The engine sidecar: start, stop, and where to reach it.
 #[module]
 pub struct Engine;
@@ -46,7 +53,15 @@ impl Engine {
         let dir = zu_dir()?;
         let log = std::fs::File::create(dir.join("engine.log")).map_err(|e| e.to_string())?;
         let stderr = log.try_clone().map_err(|e| e.to_string())?;
-        let child = Command::new(&path)
+        let mut command = Command::new(&path);
+        let extra = EXTRA_EXTENSIONS
+            .lock()
+            .map(|paths| paths.join(","))
+            .unwrap_or_default();
+        if !extra.is_empty() {
+            command.env("ZU_EXTENSION_PATHS", extra);
+        }
+        let child = command
             .env("ZU_PORT", ENGINE_PORT.to_string())
             .env("ZU_TOKEN", &token)
             .stdin(Stdio::null())
@@ -63,9 +78,38 @@ impl Engine {
         let mut guard = ENGINE.lock().map_err(|_| "engine lock poisoned".to_owned())?;
         if let Some(mut state) = guard.take() {
             let _ = state.child.kill();
-            let _ = state.child.wait();
+            record_exit(state.child.wait());
         }
         Ok(())
+    }
+
+    /// Kills the sidecar without a graceful close, as a crash would.
+    pub async fn kill() -> Result<(), String> {
+        let mut guard = ENGINE.lock().map_err(|_| "engine lock poisoned".to_owned())?;
+        if let Some(mut state) = guard.take() {
+            let _ = state.child.kill();
+            record_exit(state.child.wait());
+        }
+        Ok(())
+    }
+
+    /// The last exit status the host collected, if any.
+    pub fn exit_code() -> Option<i32> {
+        LAST_EXIT.lock().ok().and_then(|code| *code)
+    }
+
+    /// The sidecar's process id, 0 when it is not running.
+    pub fn pid() -> u32 {
+        let Ok(mut guard) = ENGINE.lock() else {
+            return 0;
+        };
+        let Some(state) = guard.as_mut() else {
+            return 0;
+        };
+        match state.child.try_wait() {
+            Ok(None) => state.child.id(),
+            _ => 0,
+        }
     }
 
     /// `"running"` while the sidecar process is alive.
@@ -78,10 +122,12 @@ impl Engine {
         };
         match state.child.try_wait() {
             Ok(None) => "running".to_owned(),
-            _ => {
+            Ok(Some(status)) => {
+                record_exit(Ok(status));
                 *guard = None;
                 "stopped".to_owned()
             }
+            Err(_) => "stopped".to_owned(),
         }
     }
 
@@ -96,6 +142,19 @@ impl Engine {
         ensure_token().unwrap_or_default()
     }
 
+    /// Adds extension paths to the standard pi locations for the next start
+    /// (comma-separated absolute paths; the packaged app leaves it empty).
+    pub fn set_extension_paths(paths: String) {
+        if let Ok(mut extra) = EXTRA_EXTENSIONS.lock() {
+            *extra = paths
+                .split(',')
+                .map(str::trim)
+                .filter(|path| !path.is_empty())
+                .map(str::to_owned)
+                .collect();
+        }
+    }
+
     /// The sidecar's log file (`~/.pi/zu/engine.log`).
     pub fn log_path() -> String {
         zu_dir()
@@ -108,6 +167,15 @@ impl Engine {
 #[native_module("zu/native")]
 fn native(registry: &mut Registry) {
     registry.module::<Engine>();
+}
+
+/// Remembers an exit status for `exit_code`.
+fn record_exit(status: std::io::Result<std::process::ExitStatus>) {
+    if let Ok(status) = status {
+        if let Ok(mut code) = LAST_EXIT.lock() {
+            *code = status.code();
+        }
+    }
 }
 
 /// `~/.pi/zu`, created on first use.
