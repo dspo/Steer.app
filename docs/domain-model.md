@@ -21,7 +21,7 @@
 | Project（roots/primary/name/position） | 组织 | **UI 侧**（内容权威；写面经 engine wire） | `~/.pi/zu/`（E11） | `projects.rs` |
 | membership（container→project） | 组织 | UI 侧，**活读** | 同上 | `[project_membership]` |
 | SessionContainer 注册表 | 组织/生命周期 | **engine sidecar** | `~/.pi/zu/registry.json`（JSON 快照，§9） | `container.rs`（宿主侧对象，runtime 零污染） |
-| Pi Session 转录 | 会话 | **pi** | pi 原生会话存储（`~/.pi` 默认布局，完全兼容，Q7/Q10） | manox journal 位 |
+| Pi Session 转录 | 会话 | **pi** | captain：pi 原生存储（可见）；subagents：`zu/subagents/`（pi 视而不见）——§4.4 | manox journal 位 |
 | 资源（PTY、webview） | 资源 | engine | **不持久**（本次 engine 进程） | 资源类（D6） |
 | 视图（panel/sheet 布局） | 视图 | UI | `~/.pi/zu/`（按容器 stash，经 engine wire） | dock_stash 按容器 id（A2） |
 | unread/attention | 会话的投影 | engine 事件 | 无 UI 本地镜像 | unread 是协议状态 |
@@ -76,7 +76,8 @@ SessionContainer {
 - **stop** = 杀容器全部活跃 run（用户显式动作）。
 - **archive** = 容器死亡（有活跃子代理/后台任务先弹确认）。
 - **fork** = 新容器只复制 0 号前缀，不带成员与资源（Steer D5；pi SDK `AgentSessionRuntime.fork` 天然满足）。
-- **boot rehydrate**：engine 重启后 Pi 会话按需从文件重建；PTY 资源全灭——布局恢复时死资源 sheet 显示占位（见 ui-architecture Q4-②）。
+- **boot rehydrate**：engine 重启后 Pi 会话按需从文件重建；PTY 资源全灭——布局恢复时死资源 sheet 静默移除（ui-architecture U8）。
+- **外部改动优先复活**（Q18.2）：归档容器的 captain 文件被 pi CLI 打开并继续后，Zu 下次启动对账发现文件更新 ⇒ 复活该容器（文件是事实，归档只是 Zu 的视图态度）并提示。
 - **外部容器即进程**（Steer D8）：0 号进程 exit 即死、即摘行、即剪 membership；关闭容器 = kill，无 archive 手势。
 
 ### 4.3 调度面（pi 扩展机制的用途一）
@@ -91,16 +92,30 @@ SessionContainer {
 | `abort`（addr=run id） | 停止 | Steer Abort |
 | `list_agents`（只读） | 子会话清单 + 健康 verdict（live + settled 常驻） | Steer ListAgents / U2 名册面 |
 
-### 4.4 子会话的存储与身份（Q1 + Q7/Q10 联合裁决）
+### 4.4 会话的存储与身份（Q1 路径即关系 · 兼容方向不对称）
 
-**与原生 pi 完全兼容优先（Q7）**：全部会话文件（captain 与子会话）住 **pi 原生会话存储（`~/.pi` 默认布局）**——Zu 不隔离、不另设目录；Zu 打开时自然加载全部 sessions（不问出处），pi CLI 同样看得到（Q10 双向互通）。
+**兼容方向不对称，这是设计的核心**：
 
-关系边（parent→child）的承载，按「不言自明」要求分两层：
+| 方向 | 要求 | 理由 |
+|---|---|---|
+| **Pi → Zu** | **硬约束：Zu 总能列出、显示、打开、加载、预览、继续 pi 原生产生的任何会话** | Q7/Q18；Zu 是 pi 的 desktop 端，不能把用户已有的会话挡在门外 |
+| **Zu → Pi** | captain 住在 pi 原生存储，pi 可见；**subagents 与 Zu 增强状态 pi 视而不见** | 用户裁决：「允许 Pi 看不到我们增强的部分，允许它对我们增强的部分视而不见」 |
 
-1. **注册表为权威**：dispatch 创建时在 `~/.pi/zu/registry.json` 记 `parent→child` 边（名册面的数据源）——pi 视而不见的命名空间（spike ③ 验证容忍度）。
-2. **pi 可见的归属线索**：子会话的 pi 会话名（`--name` / SessionManager name）采用约定词汇 **`zu:{captainShortId}:{runId}`**——pi CLI 的会话列表里自带归属前缀；若 spike ③ 证实 pi 会话文件支持自定义条目且原生 pi 忽略未知条目，再向子会话文件追加 `zu` 元数据条目，让关系自证据到文件内。
+**文件布局（路径即关系）**：
 
-原「目录隔离 + 路径即关系」方案随 Q7 **撤销**——它与「完全兼容、双向互通」结构性冲突；「不言自明」的载体从路径改为「命名约定 + 注册表（+ 文件内元数据，待证）」。人类接触子会话的唯一入口仍是名册 UI（不变量 7），但 pi CLI 直开子会话文件是允许的（它自己报兼容错，Q10 原话）。
+```
+~/.pi/…                                    # pi 原生会话存储（spike ③③ 确认实际路径）
+  {captainId}.jsonl                         # captain：可见、可 resume、可继续
+~/.pi/zu/                                   # Zu 的命名空间：pi 不认识、不扫描
+  registry.json                             # 容器注册表（JSON 快照，§9）
+  subagents/{captainId}/{runId}.jsonl       # 1 级子会话：路径三要素自证
+```
+
+- **路径即关系**：`subagents/{captainId}/{runId}.jsonl` 一条路径读出全部关系——目录 `subagents`（层级：1 级子会话）、`{captainId}`（父容器）、`{runId}`（成员地址）。pi CLI 扫描其原生存储时**看不见**这些文件，这正是意图。
+- **captain 在原生位置**：pi CLI 能看到、能 `--session` 打开、能继续。Zu 与 pi 对同一 captain 的写入由 pi 自己的文件锁语义兜底（Q10 待议的写入竞争面）。
+- **注册表仍是名册权威**：路径自证关系，但「live + settled + verdict + archived 位」这些运行时状态只有注册表有。dispatch 创建时同时写路径与注册表边——两者不一致时**路径优先**（文件是事实）。
+- **人类接触子会话的唯一入口是名册 UI**（不变量 7）；pi CLI 若强行打开子会话文件，由它自己报错（Q10 原话）。
+- 待验证（spike ③）：pi 对 `~/.pi/zu/` 下未知目录的容忍度（若报错则 subagents 目录改名或移出）；pi 原生会话存储的实际布局与命名。
 
 ## 5. pi 扩展机制的裁决（你的第 2 点后半）
 
@@ -119,6 +134,7 @@ SessionContainer {
 
 ## 7. 不变量清单（验收即不变量）
 
+0. **Pi → Zu 兼容（最高优先）**：pi 原生产生的任何会话，Zu 都能列出、显示、打开、加载、预览、继续；解析失败不得阻塞启动（跳过 + 记日志）。
 1. 容器的 cwd == 创建时 GUI 确认的目标（首个 `pwd` 可观测）。
 2. 归属猜测为零——membership 永远显式。
 3. 容器死亡 ⇒ 资源全回收 ⇒ 子会话级联归档 ⇒ 摘行；unarchive 整树复活。
@@ -127,23 +143,28 @@ SessionContainer {
 6. fork 不携带成员与资源。
 7. 子会话只收 captain 的消息，GUI 不开人类直连入口（协议层不拦截，Steer D4 同语义）。
 
-## 8. 已裁决（2026-11-10 两轮）
+## 8. 已裁决（2026-11-10 三 轮）
 
 **第一轮（Q1–Q3）**
-- **Q1 子会话转录归属**：注册表为权威 + 关系不言自明（§4.4；载体经 Q7 修订为命名约定 + 注册表）。
+- **Q1 子会话转录归属 → 最终形态**：**路径即关系**（§4.4）——captain 住 pi 原生存储（pi 可见），subagents 住 `~/.pi/zu/subagents/{captainId}/{runId}.jsonl`（pi 视而不见）。第二轮曾误判「目录隔离与完全兼容冲突」而撤销，第三轮修正：**兼容方向不对称**，pi→Zu 必须全能，Zu→pi 允许增强部分不可见。
 - **Q2 跨容器画布**：**永久不做**；跨容器需求走多窗口，每窗一个容器（ui-architecture U10）。
 - **Q3 注册表格式**：JSON 快照 + 原子 rename + 启动对账；配套 §9 状态生命周期分级。
 
 **第二轮（Q7–Q15）**
-- **Q7 持久化根**：**全部用户状态落 `~/.pi`，与原生 pi 完全双向兼容**——pi 的持久化逻辑我们完全兼容；我们的增强要么 pi 不看、要么我们对 pi 视而不见（→ engine E11；§4.4 随之改写）。**凭据天然共享**，无需导入。
-- **Q8 品牌名**：**Zu**（祖冲之，纪念其对 π 的贡献）；logo 开发期暂用 `<Z>`（Steer `<->` 同款构型）→ engine E10，已落码。
-- **Q9 界面语言**：对齐 Steer——zh-CN 第一 + en fallback，键表第一天立住（→ ui U11）。
-- **Q10 双向互通**：目标即「pi 的 desktop 端」——Zu 自然加载全部 sessions、不问出处；pi CLI 同样。若 Zu 的增强（自定义工具、沙箱访问 vs 完全访问）导致个别会话不兼容，**由打开方自行报错**（pi 原话语义）。**兼容包络细则留下一轮讨论**（open-questions Q10）。
-- **Q11 归档可见性**：**v1 暂不考虑**；未来候选为设置页「归档管理」子页（列入明确不做）。
-- **Q12 托盘与通知**：**C——托盘 + 系统通知**（→ engine E12、ui U12）；生命周期语义细则留下一轮（open-questions Q16）。
-- **Q13 子代理定义体系**：**下一轮继续**（open-questions Q13，已附 ThinkRail 调研：markdown + frontmatter 定义文件，builtin/personal/project 三源，字段含 tools/model/thinking/maxTurns/skills）。
+- **Q7 持久化根**：全部用户状态落 `~/.pi`——pi 的持久化逻辑我们完全兼容；我们的增强要么 pi 不看、要么我们对 pi 视而不见（→ engine E11）；**凭据天然共享**，无需导入。
+- **Q8 品牌名**：**Zu**（祖冲之，纪念其对 π 的贡献）；logo = Steer 的 `<->` 构型 + 密率 **355/113**（横线上方 355、下方 113）→ engine E10、ui U13，已落码。
+- **Q9 界面语言**：zh-CN 第一 + en fallback，键表第一天立住（→ ui U11）。
+- **Q11 归档可见性**：v1 暂不考虑；未来候选为设置页「归档管理」子页（§10）。
+- **Q12 托盘与通知**：C——托盘 + 系统通知（→ engine E12、ui U12 + Q16 细则）。
 - **Q14 自更新**：GitHub Releases，与 Steer 同款（→ engine E13）。
-- **Q15 外部容器种类**：**只做四类**（Terminal / Claude / Codex / Copilot TUI）；VS Code / ChatGPT 等 GUI 直发不做。
+- **Q15 外部容器种类**：只做四类（Terminal / Claude / Codex / Copilot TUI）。
+
+**第三轮（Q13 / Q16 / Q17 / Q18 + Q1 修正）**
+- **Q1 修正**：恢复路径即关系，captain 可见（§4.4）；兼容方向不对称成为新的核心原则。
+- **Q13 子代理定义体系 → 定案**：采纳 **markdown + YAML frontmatter**（ThinkRail 同款：`name/description/tools/model/thinking/maxTurns/skills/…`，正文即 system prompt）；三来源 builtin / personal / project；**persona 认 `skills` 字段**（引用 pi skill 文件）；定义变更**热生效**（engine 文件监听，不等重启）。
+- **Q16 托盘生命周期 → 定案**：关窗即收起（无确认，后台 run 继续）；**单实例**强制；不做登录自启；通知**首次做得激进**（宁可多报，后续按反馈做减法）。
+- **Q17 访问机制 → 不引入**：v1 不做沙箱访问 vs 完全访问的轴，直接使用 pi 原生能力（无授权审批面、无 sandbox profile）。
+- **Q18 无主会话呈现 → A**：启动对账**自动纳入**（扫描 pi 会话存储，未注册者读文件属性建容器记录，解析失败跳过并记日志）；运行时 **file-watch 自动发现**；外部改动**优先复活**归档容器（§4.2）。
 
 ## 9. 状态生命周期分级（Q3 配套裁决）
 
@@ -153,7 +174,8 @@ SessionContainer {
 |---|---|---|---|
 | 持久 | Project / membership | `~/.pi/zu/`（经 engine wire，E11） | ✓ |
 | 持久 | 容器注册表（Pi 型容器、archived 位、成员边） | `~/.pi/zu/registry.json` | ✓ |
-| 持久 | pi 会话转录（captain + 子会话） | pi 原生会话存储（`~/.pi`，完全兼容） | ✓ |
+| 持久 | pi 会话转录——captain | pi 原生会话存储（`~/.pi` 默认布局，pi 可见） | ✓ |
+| 持久 | pi 会话转录——subagents | `~/.pi/zu/subagents/{captainId}/{runId}.jsonl`（pi 视而不见） | ✓ |
 | 持久 | 视图布局 stash（按容器）+ 上次活跃容器指针 | `~/.pi/zu/`（经 engine wire） | ✓ |
 | 易失 | **PTY 终端 / webview 页面** | engine 进程 | ✗（**应用重启不恢复终端**——2026-11-10 拍板） |
 | 易失 | 进行中的 run / 排队中的消息 / 未读计数 | engine 进程 | ✗（转录已落盘部分保留；未读启动归零） |
@@ -164,5 +186,6 @@ SessionContainer {
 
 - 跨容器画布（Q2，永久）。
 - 归档容器的可见性/恢复入口（Q11：v1 不做；未来候选 = 设置页「归档管理」子页）。
+- **沙箱访问 vs 完全访问的授权轴**（Q17：直接使用 pi 原生能力，不引审批面与 sandbox profile）。
 - 会话中根集的 live 刷新、项目名进提示词（Steer INITIAL-CWD 同款边界）。
 - 子会话的 GUI 人类直连入口（不变量 7 保留语义）。

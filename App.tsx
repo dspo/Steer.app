@@ -2,7 +2,7 @@ import { mount, platform, Scroll, signal, Text, token, View } from "nsh";
 import { DockArea, type DockAreaLayout, type DockAreaRef } from "nsh/base";
 import { activateSheet, appendSheet, hasSheet, initialLayout, nextSheetId, sheetCount } from "./dock";
 import { sheetGlyph, sheetTitle, SheetBody, TOOLBAR_KINDS, type SheetKind } from "./sheets";
-import { Chip, Dot, Glyph, SectionTitle } from "./ui";
+import { Chip, Dot, Glyph, Logo, SectionTitle } from "./ui";
 
 /**
  * Pi Desktop — the workbench shell around a DockArea canvas.
@@ -70,8 +70,8 @@ function Rail() {
   ];
   return (
     <View class="bg-sidebar border-r border-line" style={{ width: 48, alignItems: "center", paddingTop: 12, paddingBottom: 12, gap: 4 }}>
-      <View class="items-center justify-center rounded-[10px] bg-primary" style={{ width: 32, height: 32, marginBottom: 8 }}>
-        <Text class="font-mono text-[12px] font-bold" style={{ color: token("primary-foreground") }}>{"<Z>"}</Text>
+      <View class="items-center justify-center rounded-[10px] bg-primary" style={{ width: 36, height: 36, marginBottom: 8 }}>
+        <Logo size={34} />
       </View>
       {panes.map((p, i) => (
         <View

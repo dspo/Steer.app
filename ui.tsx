@@ -155,6 +155,45 @@ export function Glyph(props: { name: GlyphName; size?: number; tint?: string }) 
   );
 }
 
+/**
+ * The app mark: `<-→` (Steer's bidirectional arrow) with Zu Chongzhi's
+ * milü — 355 above the shaft, 113 below — in the 32-unit box the glyphs
+ * use. The stroke and the digits take `ink`.
+ */
+export function Logo(props: { size?: number; ink?: string }) {
+  const size = props.size ?? 34;
+  return (
+    <Canvas
+      style={{ pointerEvents: "none", width: size, height: size }}
+      draw={(c, { width }) => {
+        c.scale(width / 32, width / 32);
+        const ink = props.ink ?? token("primary-foreground");
+        c.strokeStyle = ink;
+        c.fillStyle = ink;
+        c.lineWidth = 1.9;
+        c.lineCap = "round";
+        c.lineJoin = "round";
+        c.beginPath();
+        // The shaft, then the two arrowheads.
+        c.moveTo(4, 16);
+        c.lineTo(28, 16);
+        c.moveTo(8.5, 12.5);
+        c.lineTo(4, 16);
+        c.lineTo(8.5, 19.5);
+        c.moveTo(23.5, 12.5);
+        c.lineTo(28, 16);
+        c.lineTo(23.5, 19.5);
+        c.stroke();
+        // 355/113 ≈ π, above and below the shaft.
+        c.font = "600 6.5px system-ui";
+        c.textAlign = "center";
+        c.fillText("355", 16, 9);
+        c.fillText("113", 16, 29.5);
+      }}
+    />
+  );
+}
+
 /** A filled status dot. */
 export function Dot(props: { tint: string; size?: number }) {
   const size = props.size ?? 7;

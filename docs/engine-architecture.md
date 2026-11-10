@@ -26,9 +26,11 @@
 | E8 | **pi 扩展机制用于调度面**：sidecar 内置扩展注册 captain 的 dispatch/abort/引导工具（实现闭包持有 SessionManager），**不用扩展承载所有权注册表**（扩展随单会话生灭，容器跨会话长寿） | 详见 domain-model.md §5 |
 | E9 | **唯一引擎路径**：不保留「系统 pi」直连通道（每会话一进程的形态随之永不再现）；调试用源码形态 `bun run engine/src/server.ts`；web 目标挂账 v5，contracts 约束为「UI 不用 web 不可用能力」（当前已满足，实时成本为零） | 原 Q6，2026-11-10 拍板 |
 | E10 | **品牌名 Zu**（祖冲之——纪念其对 π 的贡献）；bundle id `dev.dspo.zu`；logo 开发期暂用 `<Z>` 文本（Steer `<->` 同款构型），命名集中在 nsh.json 与常量 | 原 Q8，2026-11-10 拍板 |
-| E11 | **用户状态根 = `~/.pi`，与原生 pi 完全双向兼容**：pi 会话用 pi 原生存储（默认布局，不隔离不镜像）；Zu 的全部增强状态（容器注册表、Project/membership、布局 stash）落 `~/.pi/zu/` 命名空间（pi 对未知文件视而不见——spike ③ 验证），**经 engine wire 的 state 面**（UI 的 nsh Storage 裁撤，UI 不持 fs 能力）；与 Steer「共享状态根 ~/.manox」同构。**凭据天然共享**：用户的 `~/.pi` 登录态对 Zu 直接生效，无需导入 | 原 Q7 + Q10 方向，2026-11-10 拍板；互通兼容包络见 open-questions Q10 |
-| E12 | **v1 即托盘 + 系统通知**（原 Q12C）：托盘常驻（关窗不退出，后台 run 继续）、turn settle / 子会话交付发系统通知——引入「应用生命周期 ≠ 窗口生命周期」语义（退出菜单、单实例；生命周期细则见 open-questions Q16） | 2026-11-10 拍板 |
-| E13 | **自更新走 GitHub Releases**（nsh/updater 原生支持该源），与 Steer 同款：tag 触发构建、dmg 发布 | 原 Q14，2026-11-10 拍板 |
+| E11 | **用户状态根 = `~/.pi`，兼容方向不对称**：① **pi → Zu 是硬约束**（E14）：pi 原生的任何会话，Zu 总能列出/显示/打开/加载/预览/继续；② **Zu → pi 允许增强部分不可见**——captain 会话住 pi 原生存储（pi CLI 可见、可 resume），subagents 与 Zu 增强状态住 `~/.pi/zu/` 命名空间（pi 视而不见，spike ③ 验证容忍度）；Zu 状态经 engine wire 的 state 面（UI 的 nsh Storage 裁撤，UI 不持 fs 能力）。**凭据天然共享**，无需导入 | Q7 + Q1/Q10 方向，2026-11-10 三 轮定 |
+| E12 | **v1 即托盘 + 系统通知**（Q12C）：托盘常驻（关窗即收起、无确认，后台 run 继续）、turn settle / 子会话交付发通知——引入「应用生命周期 ≠ 窗口生命周期」语义。细则（Q16 定案）：关窗即收起不确认、**单实例强制**、不做登录自启、通知首次**激进**（后续按反馈做减法） | 2026-11-10 二/三轮 |
+| E13 | **自更新走 GitHub Releases**（nsh/updater 原生支持该源），与 Steer 同款：tag 触发构建、dmg 发布 | 原 Q14 |
+| E14 | **Pi → Zu 兼容是最高优先级不变量**：pi 原生产生的会话，Zu 必须能列出、显示、打开、加载、预览、继续；解析失败跳过不阻塞启动。这条约束优先于任何 Zu 侧模型洁癖（如容器必须已注册） | Q7 补充，2026-11-10 三轮 |
+| E15 | **不引入访问模式轴**：v1 无「沙箱访问 vs 完全访问」、无审批面、无 sandbox profile，直接用 pi 原生能力 | 原 Q17 |
 
 ## 3. 拓扑
 
@@ -105,7 +107,7 @@ UI **不持 fs、不持 storage 能力**（E11：全部用户状态经 engine wi
 
 1. **`bun build --compile` 打 pi**：pi 依赖含 `photon-node`（WASM 图像）与 `quickjs-wasi`——确认 compile 产物带资源跑通一次真实会话。（整个方案的地基）
 2. **`createAgentSession` 程序化面**：会话创建/steer/abort/事件类型在 Bun 下的实际形态；`SessionManager` 能否注入自定义目录（子会话分层的生死，见 domain-model.md Q1）。ThinkRail `packages/server` 是参考实现。
-3. **`~/.pi` 兼容性验证**（原「隔离机制」，随 Q7/E11 转向）：① pi 对其状态根内未知文件/目录（如 `zu/`）的容忍度；② pi 会话文件格式是否支持自定义条目类型且原生 pi 忽略之（session-format.md）——决定子会话关系能否自证据到文件内（domain-model §4.4）；③ pi 原生会话存储的实际布局与 `SessionManager` 默认行为（Zu 直接用默认，不用自定义目录）。
+3. **`~/.pi` 兼容性验证**：① pi 对其状态根内未知目录（如 `zu/`）的容忍度；② pi 原生会话存储的实际布局与命名（spike ① 的地基）——captain 要住这里、Zu 要扫描这里；③ `SessionManager` 能否把子会话定向到 `zu/subagents/{captainId}/`（Q1 路径方案的实现可行性）。**注**：原「会话文件自定义条目」项已降级——路径即关系（domain §4.4）不再依赖文件内元数据。
 4. **nsh sockets 能力的端口授予形态**（固定端口段探测 vs host 级授权）。
 5. **asset 释放-执行**在 nsh TSX 里的顺滑度（决定是否需要 Rust nativeModule 退出舱）。
 
