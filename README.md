@@ -6,7 +6,7 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 状态条）包着一块 `DockArea` 画布，**panel** 持有可拖拽的 **sheet**（Pi 会话、终端、各 agent TUI、
 webview、会话的 aux 视图）。logo 为 Steer 的 `<->` 构型加载祖冲之密率（上 355、下 113）。
 
-**当前状态（2026-11-10）：M0/M1/M2/M3 完成。** 应用能连上随包分发的 pi 引擎（Bun sidecar，`zu/engine` 原生模块启动）；侧栏以**容器**为行，容器 = 一组面板，切容器各自恢复 `DockArea` 布局与 zoom；容器可放多个 pi 会话页签，会话转录取自 pi 文件并按需重载；全部会话仍在侧栏可打开/归入容器；扩展宿主、自愈引擎和 zh-CN/en 键表从 M2 延续。门禁：`nsh check` ✓、`nsh test` 35/35 ✓、`cargo check` ✓、`script/bundle-mac.sh` → 127 MB app / 51 MB dmg。下一步是 [roadmap](docs/roadmap.md) 的 M4（Project 与 Launcher）。
+**当前状态（as of `b4ceea3`，2026-11-10）：M0/M1/M2/M3 完成。** 应用能连上随包分发的 pi 引擎（Bun sidecar，`zu/engine` 原生模块启动）；侧栏以**容器**为行，容器 = 一组面板，切容器各自恢复 `DockArea` 布局与 zoom；容器可放多个 pi 会话页签，会话转录取自 pi 文件并按需重载；全部会话仍在侧栏可打开/归入容器；扩展宿主、自愈引擎和 zh-CN/en 键表从 M2 延续。门禁：`nsh check` ✓、`nsh test` 35/35 ✓、`cargo check` ✓、`script/bundle-mac.sh` → 127 MB app / 51 MB dmg。下一步是 [roadmap](docs/roadmap.md) 的 M4（Project 与 Launcher）。
 
 ## 文档
 

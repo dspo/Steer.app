@@ -69,7 +69,7 @@
 
 ## 6. M3 — SessionContainer 与 Panel/Sheet 关系 · 已完成
 
-> **状态：已完成（2026-11-10）。** `registry.json`（v1：containers/runs/activeContainerId）+ `layouts/{containerId}.json` 落盘、原子 rename；`container.create/show/attachSession/archive/unarchive` 与 `layout.get/put`；单点 archive teardown（abort/dispose/丢 runs）；引擎在 `requireSession` 里按 registry 按需 rehydrate，超过 8 个空闲会话按 LRU dispose；UI 的 `containers.ts` 按容器 flush/restore 布局与 zoom，会话 store 改为按 session id 的多视图，非可见 sheet 走占位节流；侧栏容器行 + 全部会话两段。**35 条测试**覆盖注册表/重启恢复/archive、两容器布局独立、zoom 恢复、sheet 跨 panel 移动状态不丢、可见性/剪枝。
+> **状态：已完成（2026-11-10，`b4ceea3`）。** `registry.json`（v1：containers/runs/activeContainerId）+ `layouts/{containerId}.json` 落盘、原子 rename；`container.create/show/attachSession/archive/unarchive` 与 `layout.get/put`；单点 archive teardown（abort/dispose/丢 runs）；引擎在 `requireSession` 里按 registry 按需 rehydrate，超过 8 个空闲会话按 LRU dispose；UI 的 `containers.ts` 按容器 flush/restore 布局与 zoom，会话 store 改为按 session id 的多视图，非可见 sheet 走占位节流；侧栏容器行 + 全部会话两段。**35 条测试**覆盖注册表/重启恢复/archive、两容器布局独立、zoom 恢复、sheet 跨 panel 移动状态不丢、可见性/剪枝。
 
 **目的**：把"一次一个对话"变成"一个容器 = 一组面板"。这是关系对象模型的第一块，也是工作台形态的骨架。
 
