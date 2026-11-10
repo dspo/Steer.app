@@ -101,21 +101,24 @@ SessionContainer {
 | **Pi → Zu** | **硬约束：Zu 总能列出、显示、打开、加载、预览、继续 pi 原生产生的任何会话** | Q7/Q18；Zu 是 pi 的 desktop 端，不能把用户已有的会话挡在门外 |
 | **Zu → Pi** | captain 住在 pi 原生存储，pi 可见；**subagents 与 Zu 增强状态 pi 视而不见** | 用户裁决：「允许 Pi 看不到我们增强的部分，允许它对我们增强的部分视而不见」 |
 
-**文件布局（路径即关系）**：
+**文件布局（路径即关系，实测见 spike-report.md §3）**：
 
 ```
-~/.pi/…                                    # pi 原生会话存储（spike ③③ 确认实际路径）
-  {captainId}.jsonl                         # captain：可见、可 resume、可继续
+~/.pi/agent/sessions/--{encodedCwd}--/{timestamp}_{sessionId}.jsonl
+    # captain：pi 原生位置（pi CLI 可见、可 --session 打开、可 resume）
 ~/.pi/zu/                                   # Zu 的命名空间：pi 不认识、不扫描
   registry.json                             # 容器注册表（JSON 快照，§9）
-  subagents/{captainId}/{runId}.jsonl       # 1 级子会话：路径三要素自证
+  projects.json                             # Project + membership
+  layouts/{containerId}.json                # 视图 stash（含 zoom，U14）
+  agents/{builtin,personal,project}/        # 子代理定义（Q13/Q19）
+  subagents/{captainId}/{timestamp}_{runId}.jsonl   # 1 级子会话
 ```
 
-- **路径即关系**：`subagents/{captainId}/{runId}.jsonl` 一条路径读出全部关系——目录 `subagents`（层级：1 级子会话）、`{captainId}`（父容器）、`{runId}`（成员地址）。pi CLI 扫描其原生存储时**看不见**这些文件，这正是意图。
-- **captain 在原生位置**：pi CLI 能看到、能 `--session` 打开、能继续。Zu 与 pi 对同一 captain 的写入由 pi 自己的文件锁语义兜底（Q10 待议的写入竞争面）。
+- **三重自证**（实测）：路径 `subagents/{captainId}/`（父容器）＋ 文件名 `{timestamp}_{runId}.jsonl`（成员）＋ header `{id: runId, parentSession: <captain 文件路径>}`（pi 原生父引用）。
+- **captain 在原生位置**：pi CLI 能看到、能 `--session` 打开、能继续。Zu 与 pi 对同一 captain 的写入由 pi 自己的文件锁语义兜底（spike 报告 §4 记并发冒烟项）。
 - **注册表仍是名册权威**：路径自证关系，但「live + settled + verdict + archived 位」这些运行时状态只有注册表有。dispatch 创建时同时写路径与注册表边——两者不一致时**路径优先**（文件是事实）。
-- **人类接触子会话的唯一入口是名册 UI**（不变量 7）；pi CLI 若强行打开子会话文件，由它自己报错（Q10 原话）。
-- 待验证（spike ③）：pi 对 `~/.pi/zu/` 下未知目录的容忍度（若报错则 subagents 目录改名或移出）；pi 原生会话存储的实际布局与命名。
+- **调度事件写 custom entry**（Q10 定案 C）：`appendCustomEntry("zu.dispatch", {...})`——不进模型上下文、pi 加载器容忍、用户可选装 Zu 的 pi 扩展在 CLI 渲染。`CustomMessageEntry` 因参与上下文而弃用。
+- **人类接触子会话的唯一入口是名册 UI**（不变量 7）；pi CLI 默认扫不到 `zu/subagents/`，若强行 `--session` 打开，header 的 `parentSession` 让它自洽显示来源。
 
 ## 5. pi 扩展机制的裁决（你的第 2 点后半）
 
@@ -147,7 +150,7 @@ SessionContainer {
 
 **第一轮（Q1–Q3）**
 - **Q1 子会话转录归属 → 最终形态**：**路径即关系**（§4.4）——captain 住 pi 原生存储（pi 可见），subagents 住 `~/.pi/zu/subagents/{captainId}/{runId}.jsonl`（pi 视而不见）。第二轮曾误判「目录隔离与完全兼容冲突」而撤销，第三轮修正：**兼容方向不对称**，pi→Zu 必须全能，Zu→pi 允许增强部分不可见。
-- **Q2 跨容器画布**：**永久不做**；跨容器需求走多窗口，每窗一个容器（ui-architecture U10）。
+- **Q2 跨容器画布 → 澄清为「单容器画布 + 单窗口视图切换」**：侧栏一行即容器入口，切换行 = 切换容器 = 切换该容器的 panels/sheets 组（同一窗口内 stash + restore）。**多窗口方案从未在产品设计中**（Q20 澄清，第三轮）。
 - **Q3 注册表格式**：JSON 快照 + 原子 rename + 启动对账；配套 §9 状态生命周期分级。
 
 **第二轮（Q7–Q15）**
@@ -165,6 +168,11 @@ SessionContainer {
 - **Q16 托盘生命周期 → 定案**：关窗即收起（无确认，后台 run 继续）；**单实例**强制；不做登录自启；通知**首次做得激进**（宁可多报，后续按反馈做减法）。
 - **Q17 访问机制 → 不引入**：v1 不做沙箱访问 vs 完全访问的轴，直接使用 pi 原生能力（无授权审批面、无 sandbox profile）。
 - **Q18 无主会话呈现 → A**：启动对账**自动纳入**（扫描 pi 会话存储，未注册者读文件属性建容器记录，解析失败跳过并记日志）；运行时 **file-watch 自动发现**；外部改动**优先复活**归档容器（§4.2）。
+- **Q19 子代理定义的项目来源目录 → A**：`.pi/agents/`（仓库根）——「Zu 是 pi 的 desktop 端」定位下资源放 pi 的约定位置。
+- **Q20 = 澄清而非新决**：多窗口不在设计中；侧栏 item 即容器入口，切换 item 即同窗口内切 panels 视图（ui U10）。
+- **Q21 Zoom 持久 → B**：zoom 写进容器布局 stash，切走切回保持（ui U14）。
+- **Q22 turn 进行中的语义 → 按「实现简单 > UX > 性能」排序**：切容器时丢弃非当前容器的流式增量、restore 时从转录重建；退出时有活跃 run 弹确认（早期版本可直接退出，后续补确认）。
+- **Q10 增强写入面 → C（CustomEntry），spike 证真后定案**：调度事件（dispatch/inject/delivered）用 `appendCustomEntry` 写入 captain 会话——不参与模型上下文、pi 加载器容忍、用户可选装 Zu 的 pi 扩展在 CLI 渲染（§4.4）。
 
 ## 9. 状态生命周期分级（Q3 配套裁决）
 

@@ -103,13 +103,21 @@ UI **不持 fs、不持 storage 能力**（E11：全部用户状态经 engine wi
 - **engine 集成测试**：bun test 打真 pi（env 门控），验 wire 词汇的真实覆盖。
 - **wire 一致性**：contracts 是唯一共享类型面，两侧编译期对齐。
 
-## 10. Spike 清单（v1 前必须证真，每条都可能改设计）
+## 10. Spike 结果（2026-11-10 已跑，详见 spike-report.md）
 
-1. **`bun build --compile` 打 pi**：pi 依赖含 `photon-node`（WASM 图像）与 `quickjs-wasi`——确认 compile 产物带资源跑通一次真实会话。（整个方案的地基）
-2. **`createAgentSession` 程序化面**：会话创建/steer/abort/事件类型在 Bun 下的实际形态；`SessionManager` 能否注入自定义目录（子会话分层的生死，见 domain-model.md Q1）。ThinkRail `packages/server` 是参考实现。
-3. **`~/.pi` 兼容性验证**：① pi 对其状态根内未知目录（如 `zu/`）的容忍度；② pi 原生会话存储的实际布局与命名（spike ① 的地基）——captain 要住这里、Zu 要扫描这里；③ `SessionManager` 能否把子会话定向到 `zu/subagents/{captainId}/`（Q1 路径方案的实现可行性）。**注**：原「会话文件自定义条目」项已降级——路径即关系（domain §4.4）不再依赖文件内元数据。
-4. **nsh sockets 能力的端口授予形态**（固定端口段探测 vs host 级授权）。
-5. **asset 释放-执行**在 nsh TSX 里的顺滑度（决定是否需要 Rust nativeModule 退出舱）。
+| # | 项 | 结果 |
+|---|---|---|
+| ① | `bun build --compile` 打 pi SDK | **成立**：2075 模块、69 MB 单文件、运行正常 |
+| ② | `createAgentSession` 真实运行 | 未验证（需凭据/费用），v1 首个会话时验 |
+| ③① | pi 对 `~/.pi/zu/` 容忍 | **零干扰**（`pi --version`/`pi list` 无警告） |
+| ③② | custom entry 容忍 | **成立**：pi CLI 解析含 `type:"custom"` 的会话无错，一路走到模型解析 |
+| ③③ | SessionManager 定向目录 | **成立**：`create(cwd, sessionDir)` → 非默认目录 |
+| ③④ | 原生存储布局 | 确认：`~/.pi/agent/sessions/--{encodedCwd}--/{ts}_{id}.jsonl` |
+| ③⑤ | 子会话 id 与父边 | **成立**：`{ id, parentSession }` → 文件名/header 双自证 |
+
+**由此定案 Q10 = C（CustomEntry）**：调度事件用 `appendCustomEntry` 写（不进上下文、pi 容忍）；`CustomMessageEntry` 因污染上下文而弃用。
+
+剩余风险（v1 验）：真实会话运行（WASM 运行期加载）、`parentSession` 的 fork 观感、pi 升级对存储布局的影响、与 pi CLI 的并发写。
 
 ## 11. 开放问题 → 裁决记录
 
