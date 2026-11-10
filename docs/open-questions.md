@@ -1,6 +1,6 @@
 # 产品 / 架构 / 技术问题清单
 
-> 状态：**Q1–Q28 已裁决；Q29–Q31 待回答**（可行性分析衍生的技术选型）。裁决细节落在三份架构文档的决策记录表；spike 实测见 [spike-report.md](spike-report.md)。
+> 状态：**Q1–Q28、Q30、Q31 已裁决；Q29 调研完成待复判**。路线图见 [roadmap.md](roadmap.md)。裁决细节落在三份架构文档的决策记录表；spike 实测见 [spike-report.md](spike-report.md)。
 
 ## 裁决总表
 
@@ -146,7 +146,15 @@
 
 > 背景见 [feasibility.md](feasibility.md)。三项都影响 Q28 落地后的第一个里程碑。
 
-### Q29：Ghostty 仿真核什么时候替换 nsh 的 VtEmulator？
+### Q29（调研完成，待你复判）：trait 上限锁死了换核的收益
+
+**调研结论**（详见 [q29-terminal-emulator.md](q29-terminal-emulator.md)）：nsh 的 `TerminalEmulator` trait 只有 `line/line_count/cursor/TakeEvents/modes`，且 `TerminalModes` 仅 2 个字段、`TerminalCursor` 无形状、事件只有 Title/Bell/Reply。**只换仿真核拿到的是解析正确性（含一个真实的 alt screen 污染 scrollback 缺陷），拿不到鼠标/超链接/光标形状**——后者需要同时扩 trait 与 Terminal 组件。
+
+**建议**：M2 先用 nsh 内置跑 TUI 冒烟 + 修 alt 缺陷；把「Ghostty + 扩 trait/组件」打包成条件性子里程碑 M-tty，一次换到位，避免换两遍。路线图已按此编排（M0–M11 + M-tty）。
+
+**需要你复判**：接受「M2 先用内置、M-tty 一次性换到完整终端」这个编排，还是仍要求 M2 就上 Ghostty（仅换实现、不扩 trait）？
+
+### Q29 原问题（留档）：Ghostty 仿真核什么时候替换 nsh 的 VtEmulator？
 
 **背景**：nsh 的 `Terminal` 自带 `VtEmulator`（`vte` crate，alacritty 的解析器，684 行 Rust 实现），TUI 基本够用；`TerminalEmulator` trait 与 `TerminalEmulatorFactory` 允许换 libghostty-vt（注释点名许可）。替换的技术路径已明确（feasibility §1），但它是**额外工作量**：vt cell → `TerminalLine`/`TerminalRun` 映射、事件语义对齐、与 `steer-ghostty` 的 static link 合并。
 
@@ -158,7 +166,11 @@
 
 **需要你回答**：A / B？
 
-### Q30：LSP 客户端放 Rust native module 还是 engine？
+### Q30（已定）：A — Rust native module
+
+与 PTY 共享「长生命周期子进程 + 异步流」基础设施；engine 保持只跑 pi。落点 route M9。
+
+### Q30 原问题（留档）：LSP 客户端放 Rust native module 还是 engine？
 
 **背景**：「完整 IDE」的唯一大件。nsh 的 Editor 本身齐备（高亮/折叠/多光标/find-replace/诊断/装饰），但**没有 LSP 客户端**——gallery 的「语言服务器」是正则模拟。真 LSP 需要起子进程 + stdio JSON-RPC + 增量同步（didChange）+ 多服务器管理。
 
@@ -171,7 +183,11 @@
 
 **需要你回答**：A / B / C？
 
-### Q31：Rust native module 的职责边界
+### Q31（已定）：2+3 — 按域拆注册面 + 生命周期表
+
+`zu/engine`、`zu/pty`、`zu/lsp`、`zu/git` 各一个注册面，共用一个 `zu-native` crate；生命周期：engine = 进程级单例、PTY = 容器、LSP = workspace、git = 一次性调用。落点 route M0/M3/M7/M9。
+
+### Q31 原问题（留档）：Rust native module 的职责边界
 
 **背景**：Q28=B 之后，这个模块要同时管：engine sidecar 的 spawn/回收、PTY 的创建与生命周期、可选的 Ghostty 仿真核、LSP 子进程、Git 调用。它是一个「桌面能力的总入口」，如果边界不清，会变成第二个上帝对象。
 

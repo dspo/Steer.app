@@ -14,7 +14,9 @@ webview、会话的 aux 视图）。logo 暂用 `<Z>`（Steer 的 `<->` 同款�
 | [docs/ui-architecture.md](docs/ui-architecture.md) | 前端 UI 架构：轮廓分离、panel/sheet 画布、sheet 注册表、布局 store、待建清单 | 定稿；Q4/Q5 已裁决（U7–U10） |
 | [docs/domain-model.md](docs/domain-model.md) | 关系对象模型：Project/membership、SessionContainer、资源三类、生命周期、状态分级表、pi 扩展裁决 | 定稿；Q1–Q3 已裁决（§4.4/§8/§9） |
 | [docs/spike-report.md](docs/spike-report.md) | Spike 实测报告：bun compile、pi 会话格式与 custom entry、存储布局、子会话自证 | **已完成** |
-| [docs/feasibility.md](docs/feasibility.md) | 重型集成可行性：Ghostty 终端、浏览器、PTY/TUI、编辑器/IDE、Git UI | **已完成** |
+| [docs/roadmap.md](docs/roadmap.md) | **路线图**：产品目标、里程碑纪律、M0–M11 与条件性子里程碑 | **当前** |
+| [docs/feasibility.md](docs/feasibility.md) | 重型集成可行性：Ghostty 终端、浏览器、PTY/TUI、编辑器/IDE、Git UI | 已完成 |
+| [docs/q29-terminal-emulator.md](docs/q29-terminal-emulator.md) | Q29 调研：nsh 内置 VtEmulator 与 Ghostty 的逐项对比、trait 上限约束 | 待复判 |
 | [docs/open-questions.md](docs/open-questions.md) | 问题清单：Q1–Q28 裁决、Q29–Q31 待回答、v1 待验证风险 | **Q29–Q31 待回答** |
 
 开放问题回答后，结论并入对应文档的决策记录表，条目随之删除。
