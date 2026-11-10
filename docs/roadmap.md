@@ -188,7 +188,7 @@
 
 ## 13. M10 — 浏览器 · 实现完成，验收达成一半
 
-> **状态（2026-11-11）**：实现完成；真实 macOS 宿主上加载了真实网页并跑通前进/后退，
+> **状态（2026-11-11，`bbfb5ac`）**：实现完成；真实 macOS 宿主上加载了真实网页并跑通前进/后退，
 > 但「链接在 sheet 内或外部打开」只达成 sheet 内一半（原因见下）。
 > **已实现并实测**：`browser.ts` 按 sheet id `webview:{containerId}:{n}` 持 URL/标题/loading/
 > canGoBack/canGoForward/error/页面消息日志（UI state only）；`browser-ui.tsx` 的 Browser sheet
