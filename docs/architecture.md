@@ -250,7 +250,7 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 - **M0 完成**：`engine/`（Bun + pi 1.5.0）+ mixed 模板（`Cargo.toml`、`src/lib.rs` 的 `zu/engine`）+ sidecar 编译（75 MB 单文件，WASM 资产同目录）+ WS 握手。
 - **M1 完成**：`engine.ts`（连接/请求/事件）、`sessions.ts`（会话 store）、`sheets.tsx` 的会话 sheet（历史 + 流式 + composer）、`App.tsx` 的会话侧栏与引擎状态条。
 - **已知问题**：开发期热更新（`nsh run` 的 hot reload）在 TSX 变更后报 `nsh hot: no module zu/native`——native module 在 hot bundle 期间不可解析。重启 app 即可；不影响运行期。正式打包不受影响（无 hot reload）。
-- **未做**：ad-hoc dmg 打包（`nsh package` + sidecar 拷贝 + `codesign -s -`）。
+- **打包**：`script/bundle-mac.sh`——`nsh package` 出 `.app`，sidecar 拷进 `Contents/Helpers`，嵌套 ad-hoc 签名，`hdiutil` 出 dmg（127 MB app / 50 MB dmg）。打包后 app 优先用包内 sidecar（仓库的构建不能遮蔽它）。
 
 ## 8. 已知风险（非决策）
 

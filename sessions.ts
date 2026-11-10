@@ -33,6 +33,8 @@ export const streaming = signal(false);
 export const error = signal<string | null>(null);
 /** The open session's directory (its container stands in for M1). */
 export const activeCwd = signal<string>("");
+/** The open session's file: the same path reopens it after a restart. */
+export const activePath = signal<string>("");
 
 const assistant = (): Msg | undefined => {
   const list = messages();
@@ -135,6 +137,7 @@ export async function openSession(path: string): Promise<void> {
     const data = await request("session.open", { path });
     batch(() => {
       activeId.set(String(data?.id ?? ""));
+      activePath.set(path);
       const meta = sessions().find((row) => row.path === path);
       activeCwd.set(meta?.cwd ?? "");
       messages.set(
@@ -155,6 +158,7 @@ export async function createSession(cwd: string): Promise<string> {
   batch(() => {
     activeId.set(id);
     activeCwd.set(cwd);
+    activePath.set(String(data?.path ?? ""));
     messages.set([]);
     streaming.set(false);
     error.set(null);

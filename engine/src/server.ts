@@ -107,26 +107,26 @@ function subscribe(id: string, session: AgentSession): void {
   });
 }
 
-async function openSession(path: string): Promise<{ id: string; messages: any[] }> {
+async function openSession(path: string): Promise<{ id: string; path: string; messages: any[] }> {
   const manager = SessionManager.open(path);
   const id = manager.getSessionId();
   const existing = open.get(id);
   if (existing) {
-    return { id, messages: (existing.state?.messages ?? []).map(plain) };
+    return { id, path, messages: (existing.state?.messages ?? []).map(plain) };
   }
   const { session } = await createAgentSession({ sessionManager: manager });
   open.set(id, session);
   subscribe(id, session);
-  return { id, messages: (session.state?.messages ?? []).map(plain) };
+  return { id, path, messages: (session.state?.messages ?? []).map(plain) };
 }
 
-async function newSession(cwd: string): Promise<{ id: string; messages: any[] }> {
+async function newSession(cwd: string): Promise<{ id: string; path?: string; messages: any[] }> {
   const manager = SessionManager.create(cwd);
   const { session } = await createAgentSession({ sessionManager: manager });
   const id = manager.getSessionId();
   open.set(id, session);
   subscribe(id, session);
-  return { id, messages: [] };
+  return { id, path: manager.getSessionFile(), messages: [] };
 }
 
 async function listSessions(): Promise<any[]> {

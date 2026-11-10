@@ -118,16 +118,21 @@ fn zu_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-/// The sidecar binary: the repository's build while developing, the app's
-/// `Contents/Helpers` once packaged.
+/// The sidecar binary. A packaged app's `Contents/Helpers` comes first: the
+/// checkout that built it may still be on the machine, and the shipped
+/// engine must not be shadowed by it. Development falls back to the
+/// repository's build.
 fn engine_path() -> Option<PathBuf> {
-    let dev = Path::new(env!("CARGO_MANIFEST_DIR")).join("engine/dist/pi-engine");
-    if dev.is_file() {
-        return Some(dev);
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            let packaged = parent.join("../Helpers/pi-engine");
+            if packaged.is_file() {
+                return Some(packaged);
+            }
+        }
     }
-    let exe = std::env::current_exe().ok()?;
-    let packaged = exe.parent()?.join("../Helpers/pi-engine");
-    packaged.is_file().then_some(packaged)
+    let dev = Path::new(env!("CARGO_MANIFEST_DIR")).join("engine/dist/pi-engine");
+    dev.is_file().then_some(dev)
 }
 
 /// The handshake token, generated once and kept for later launches.
