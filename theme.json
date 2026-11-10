@@ -8,6 +8,7 @@
     },
     "light": {
       "background": "#ffffff",
+      "web-page": "#ffffff",
       "foreground": "#1d1d1f",
       "card": "#ffffff",
       "card-foreground": "var(--foreground)",
@@ -50,6 +51,7 @@
     },
     "dark": {
       "background": "#131316",
+      "web-page": "#ffffff",
       "foreground": "#e8e8ea",
       "card": "#1b1b1f",
       "card-foreground": "var(--foreground)",

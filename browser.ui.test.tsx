@@ -1,0 +1,130 @@
+import { expect, open, test } from "nsh/test";
+import { K, t } from "./i18n";
+
+// The browser sheet in the real Workbench, headless. The headless host
+// draws no web view (`WebView.available()` is still true, but no page loads
+// and no navigation event arrives), so a real page is covered only by
+// `browser.live.test.tsx` on `--target macos`. Here the WebView's own events
+// are fed through the fixture's seed buttons, which call the same reducers.
+
+function pageDebug(app: { texts: () => string[] }): string {
+  return app.texts().find((text) => text.includes("webview:") && text.includes("|")) ?? "";
+}
+
+async function address(app: { type: (selector: string, text: string) => Promise<void>; submit: (selector: string) => Promise<void> }, value: string) {
+  await app.type("id:browser-address", value);
+  await app.submit("id:browser-address");
+}
+
+test("the top bar opens browser sheets, and the address bar normalizes a domain", async () => {
+  const app = await open("./fixtures/browser.tsx", { width: 1200, height: 800 });
+  await app.waitFor("id:open-launcher");
+  // The Launcher's Browser action is an entry too: it opens the sheet in the
+  // active container and closes the Launcher.
+  await app.press("id:open-launcher");
+  await app.waitFor("id:launcher-browser");
+  await app.press("id:launcher-browser");
+  await app.waitFor("id:browser-address");
+  expect(app.shows("id:launcher-browser")).toBe(false);
+
+  // The default page says what may load and where page messages go.
+  expect(app.count("id:browser-empty")).toBe(1);
+  expect(app.texts()).toContain(t(K.browser.emptyTitle));
+  expect(app.texts()).toContain(t(K.browser.emptyLine));
+  // The address bar's policy marker sits beside it.
+  expect(app.count("id:browser-any-site")).toBe(1);
+  expect(app.texts()).toContain(t(K.browser.anySite));
+
+  // A new tab has no history: those controls are disabled, not hidden.
+  expect(app.enabled("id:browser-back")).toBe(false);
+  expect(app.enabled("id:browser-forward")).toBe(false);
+  expect(app.enabled("id:browser-stop")).toBe(false);
+  expect(app.enabled("id:browser-reload")).toBe(false);
+
+  // A bare domain becomes https; the store and the address bar agree, and
+  // the one web view for the sheet is mounted while the platform has one.
+  await address(app, "example.com");
+  await app.waitUntil(() => app.value("id:browser-address") === "https://example.com");
+  expect(app.value("id:browser-address")).toBe("https://example.com");
+  expect(pageDebug(app)).toContain("webview:pi:browser-fixture:1|https://example.com");
+  expect(app.count("id:browser-page")).toBe(1);
+  expect(app.enabled("id:browser-stop")).toBe(true);
+
+  // The sheet's address bar has one web view; opening a second browser sheet
+  // gives it the next instance number.
+  await app.press("id:open-browser");
+  await app.waitUntil(() => pageDebug(app).includes("webview:pi:browser-fixture:2"));
+  expect(app.count("id:browser-address")).toBe(1);
+  expect(pageDebug(app)).toContain("webview:pi:browser-fixture:2");
+});
+
+test("the tab follows the page title, and a hidden sheet keeps its address", async () => {
+  const app = await open("./fixtures/browser.tsx", { width: 1200, height: 800 });
+  await app.waitFor("id:open-browser");
+  await app.press("id:open-browser");
+  await app.waitFor("id:browser-address");
+  await address(app, "example.com");
+  await app.waitUntil(() => app.value("id:browser-address") === "https://example.com");
+
+  // The web view reports a page (the same reducer `onNavigationStateChange`
+  // calls): its title reaches the tab and the history buttons wake up.
+  await app.press("id:seed-nav");
+  await app.waitUntil(() => app.texts().includes("Example Domain"));
+  expect(app.texts()).toContain("Example Domain");
+  expect(app.enabled("id:browser-back")).toBe(true);
+  expect(app.enabled("id:browser-forward")).toBe(false);
+  expect(pageDebug(app)).toContain("Example Domain");
+
+  // Another browser sheet hides this one. The web view unmounts (no pause
+  // prop exists) while the store keeps the address; showing it again puts
+  // the address back in the bar.
+  await app.press("id:open-browser");
+  await app.waitUntil(() => pageDebug(app).includes("webview:pi:browser-fixture:2"));
+  expect(app.value("id:browser-address")).toBe("");
+  await app.press("Example Domain");
+  await app.waitUntil(() => app.value("id:browser-address") === "https://example.com/");
+  expect(app.value("id:browser-address")).toBe("https://example.com/");
+
+  // A refusal is shown with its code; the platform-unavailable case uses the
+  // same panel (the browser store's `failure`).
+  await app.press("id:seed-error");
+  await app.waitFor("id:browser-error");
+  expect(app.texts()).toContain("ERR_ACCESS_DENIED");
+  expect(app.count("id:browser-retry")).toBe(1);
+
+  // Page messages are a visible log in the sheet and nothing else: feeding
+  // one does not touch the engine transport.
+  const callsBefore = app.texts().find((text) => text.startsWith("calls:")) ?? "";
+  await app.press("id:seed-message");
+  await app.press("id:browser-log-toggle");
+  await app.waitFor("id:browser-message-log");
+  expect(app.texts().some((text) => text.includes("hello from the page"))).toBe(true);
+  expect(app.texts()).toContain(t(K.browser.messagesHint));
+  await app.wait(50);
+  expect(app.texts().find((text) => text.startsWith("calls:")) ?? "").toBe(callsBefore);
+
+  // Clear empties the log (the count goes back to zero).
+  await app.press("id:browser-clear-messages");
+  await app.waitUntil(() => app.texts().includes(t(K.browser.messagesEmpty)));
+  expect(app.texts()).toContain(t(K.browser.messagesEmpty));
+});
+
+test("a container switch keeps the browser address and title", async () => {
+  const app = await open("./fixtures/browser.tsx", { width: 1200, height: 800 });
+  await app.waitFor("id:open-browser");
+  await app.press("id:open-browser");
+  await app.waitFor("id:browser-address");
+  await address(app, "example.com");
+  await app.press("id:seed-nav");
+  await app.waitUntil(() => app.texts().includes("Example Domain"));
+
+  // The other container has no browser sheet; switching back restores the
+  // first container's layout and the UI store's page state.
+  await app.press("Open container tmp/zu-browser-2");
+  await app.waitUntil(() => !app.shows("id:browser-address"));
+  await app.press("Open container tmp/zu-browser");
+  await app.waitFor("id:browser-address");
+  expect(app.value("id:browser-address")).toBe("https://example.com/");
+  expect(app.texts()).toContain("Example Domain");
+  expect(pageDebug(app)).toContain("webview:pi:browser-fixture:1");
+});

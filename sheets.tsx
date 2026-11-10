@@ -19,6 +19,8 @@ import {
 import { K, t } from "./i18n";
 import { Chip, Dot, Glyph, motionStyle, shadowCard, type GlyphName } from "./ui";
 import { DiffBody, EditorBody, FilesBody } from "./files";
+import { browserTabTitle } from "./browser";
+import { BrowserBody } from "./browser-ui";
 import { ChangesBody, HistoryBody } from "./git-ui";
 import { diffSheetPaths, editorSheetPath } from "./editors";
 import { baseName } from "./fs";
@@ -101,6 +103,7 @@ export function sheetTitle(id: string): string {
     const container = containers().find((row) => row.id === instance);
     return container ? externalKindLabel(container.kind) : t(K.sheet.terminalTitle);
   }
+  if (kind === "webview") return browserTabTitle(id);
   if (kind === "editor") {
     const target = editorSheetPath(id);
     return target ? baseName(target.path) : id;
@@ -155,6 +158,7 @@ export function SheetBody(props: { id: string }) {
   if (kind === "session") return <SessionBody id={instance || "pending"} sheetId={props.id} />;
   if (kind === "subagents") return <SubagentsBody containerId={instance} />;
   if (kind === "terminal") return <TerminalBody containerId={instance} />;
+  if (kind === "webview") return <BrowserBody id={props.id} />;
   if (kind === "files") return <FilesBody containerId={instance} />;
   if (kind === "changes") return <ChangesBody containerId={instance} />;
   if (kind === "history") return <HistoryBody containerId={instance} />;

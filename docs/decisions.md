@@ -97,8 +97,16 @@
 | Q59 | Changes 与 History 的形态、DiffView 复用 | **两个稳定 sheet，不合并**：`changes:{containerId}` 是「现在」——staged/工作区/未跟踪/冲突分组、单文件与全部 stage/unstage、选中文件的真实 `git diff`、提交行；`history:{containerId}` 是「过去」——真实 log、分支菜单 checkout、新建分支。工作区 diff **复用 M8 的 `DiffView` 的 `patch` 模式**（统一 diff 直接喂给同一组件），不新增 diff 组件、不把两文件对比当 git diff。顶栏 `open-changes`/`open-history` 是入口；checkout 后重读两表并 reload 该容器中**没有未保存改动**的编辑器（脏文档保持原文，保存时走既有的 stale 冲突路径） | `git-ui.tsx`、`git.ts`、`shell.tsx`、`sheets.tsx`；arch §3.6/§4.3 |
 | Q60 | 未初始化仓库与缺失身份 | Changes 的 `ERR_GIT_NOT_REPO` 空态提供 **初始化仓库**（`Git.init` → `git init --quiet`，只在该根建仓）；commit 前用 `git var GIT_AUTHOR_IDENT/GIT_COMMITTER_IDENT` 检查身份，缺失时弹一次身份对话框，`Git.setIdentity` **只写该仓库的 `.git/config`**，随后重试同一次提交。测试自建仓库也走这两条路，因此不依赖机器的全局 git 身份 | `src/git.rs`、`git-ui.tsx`、`git.test.ts`；arch §3.6 |
 
+## 浏览器（M10）
+
+| # | 问题 | 裁决 | 落点 |
+|---|---|---|---|
+| Q61 | 浏览器的能力面与链接策略 | **只加 `capabilities.webview.hosts: ["*"]`**（Q32 的任意站点），地址栏旁显示「任意站点」；**不授予 `webview.input`**（不给页面可信输入）、**不授予 `openUrl`**（nsh 0.4.0 没有链接外开/新窗口回调，普通链接在 sheet 内导航，`target=_blank`/`window.open` 不会被打开）。页面 `onMessage` 只写 UI 日志，**不用 `injectJavaScript`**，页面内容永不过 wire、不进 agent 上下文。若未来 nsh 提供外开回调，再按需加 `openUrl.schemes: ["http","https"]` 并只在该回调里调用 | `nsh.json`、`browser.ts`、`browser-ui.tsx`；arch §3.4/§8.12；M10 证据 §5/§6 |
+| Q62 | 浏览器 sheet 的状态与非可见降级 | 每个 sheet 的 URL/标题/loading/canGoBack/canGoForward/error/页面消息日志存在 UI store（`browser.ts`），key 为 `webview:{containerId}:{n}`（n 递增，可多开）；nsh 的 `WebView` **没有 pause API**，所以非可见 sheet **卸载 `WebView`、显示时按 store 的 URL 重挂载**：URL/标题保留，页面运行时状态（滚动、表单、SPA 内存、页内 history）丢失；应用重启只恢复页签 id，store 为空，因此是新标签页。不声称存在暂停能力 | `browser.ts`、`browser-ui.tsx`、`dock.ts`；arch §4.3/§5.5 |
+| Q63 | 地址栏接受什么 | **只开 http/https**：裸域名/裸 `host:port` 补 `https://`，`HTTP://` 规范为小写 scheme；`javascript:`/`data:`/`file:`/`about:` 与不是主机的文本（含空格、无点的裸词）拒绝并显示原因，**不**转成搜索引擎查询。搜索通过搜索结果 URL 或页面自己的搜索框完成；M10 不引入默认搜索引擎 | `browser.ts` 的 `normalizeAddress`；`browser.test.ts`；M10 证据 §4 |
+
 ## 决策编号说明
 
-- Q1–Q60 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（Q56/§3.6 的 `zu/fs`）、git 执行与根/路径边界（Q58/§3.6 的 `zu/git`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）。
+- Q1–Q63 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（Q56/§3.6 的 `zu/fs`）、git 执行与根/路径边界（Q58/§3.6 的 `zu/git`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）、浏览器的能力/链接策略与非可见降级（Q61/Q62/§4.3）。
 - 原 engine/ui/domain 三份文档里的 E/U 编号已废弃，统一并入本表。
 - 条件性里程碑（M-tty / M-arch / M-web）的触发条件见 [roadmap.md](roadmap.md) §17。

@@ -93,7 +93,7 @@ WebSocket 按 `hosts` 授权（`sockets` 只给 `net.connect` 的裸 TCP，且�
 
 **port 与 token 由 native module 提供**：`Engine.port()` / `Engine.token()`（§3.6），UI 不读文件、不猜端口。端口是固定常量 `47823`——第二个实例会撞端口，由「单实例」与明确错误文案兜底（§7）。
 
-**浏览器授权（Q32）**：`capabilities.webview.hosts: ["*"]`——地址栏意味着任意站点；UI 在地址栏旁标明，页面消息不进 wire、不进 agent 上下文（§8.11）。`webview` 授权在 M10 前一次性写进 `nsh.json`。
+**浏览器授权（Q32）**：`capabilities.webview.hosts: ["*"]`——地址栏意味着任意站点；UI 在地址栏旁标明「任意站点」，页面消息不进 wire、不进 agent 上下文（§8.12）。M10 只加了这一项：没有 `webview.input`（不给页面可信输入）、没有 `openUrl`（nsh 0.4.0 没有链接外开/新窗口回调），也没有 `fs`/`process.execute`；`.nsh/out/capabilities.json` 是这条声明的事实。
 
 **威胁模型（写清楚边界）**：能力面保护的是 **UI/TSX 代码**被攻破时的爆炸半径；**agent 的动作不受它约束**——pi 的 bash 与工具仍以用户权限运行，由 pi 自己的权限模型负责。不要把「最小能力面」读成「agent 沙箱」。
 
@@ -173,10 +173,11 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 ### 4.3 布局与状态
 
 - 布局是**纯数据**：app 持有 `DockAreaLayout`，`onLayoutChange` 回报整份新布局传回。
-- **sheet 身份 = 稳定 id**（`kind:instance`，如 `session:{sessionId}`、`terminal:{containerId}`、`files:{containerId}`、`editor:{containerId}:{base64url path}`、`diff:{containerId}:{base64url old~new}`）；布局树只存 id，内容由 `sheets.tsx` 注册表解析。编辑器的未保存文本存在 `editors.ts` 的 store 里（不随 sheet 卸载丢失），M8 起布局 stash/restore 与容器切换都能恢复同一个文件。
+- **sheet 身份 = 稳定 id**（`kind:instance`，如 `session:{sessionId}`、`terminal:{containerId}`、`files:{containerId}`、`editor:{containerId}:{base64url path}`、`diff:{containerId}:{base64url old~new}`、`webview:{containerId}:{n}`）；布局树只存 id，内容由 `sheets.tsx` 注册表解析。编辑器的未保存文本存在 `editors.ts` 的 store 里（不随 sheet 卸载丢失），M8 起布局 stash/restore 与容器切换都能恢复同一个文件。浏览器页的 URL/标题/loading/error/消息日志存在 `browser.ts` 的 store（内存态）：切容器或隐藏页签后保留，重挂载时按 URL 重新加载；页面运行时状态（滚动、表单、SPA 内存）会丢。应用重启只恢复 `webview:*` 页签 id，store 为空，因此是新标签页（§5.5）。
 - **按容器 stash**：`layouts/{containerId}.json`；zoom **不在 `DockAreaLayout` 里**（它是内部 signal + `onZoomChange` 事件），要单独存，恢复后用 ref 的 `groupOf`/`toggleZoom` 灌回。`onLayoutChange` 高频，debounce 后保存；切容器前先 flush，恢复时先离开现有 zoom 再按 panel id 找 group 灌回。布局与 zoom 的读写经 `layout.get/put`，UI 仍不持文件系统。
 - **启动恢复上次活跃容器**；恢复时**静默移除**指向已死资源的 sheet。
-- **canvas 空态 = Launcher**（项目 chip + composer + agent 动作行）。
+- **canvas 空态 = Launcher**（项目 chip + composer + agent 动作行）。Launcher 的「浏览器」与顶栏 `open-browser` 都在当前容器打开一个 browser sheet；每容器的实例号递增（`n`），可同时开多个。
+- **浏览器降级**：nsh 的 `WebView` 没有 pause prop，因此非可见 browser sheet 不用「暂停」：`BrowserBody` 读 `visiblePanels()`，不可见时卸载 `WebView`（显示占位文案），再次可见时按 store 的 URL 重挂载。这是唯一诚实的实现，不声称存在 pause API。
 
 ### 4.4 键盘与焦点
 
@@ -214,7 +215,7 @@ v1 最小集：`⌘W` 关闭 sheet、`⌘1-9` 切 sheet、`⌘K` 命令面板（
 | membership（container → project） | UI，活读 | 同上 |
 | 容器注册表 | engine sidecar | `~/.pi/zu/registry.json` |
 | Pi 会话转录（captain + subagents） | pi | §3.5 |
-| 资源（PTY、webview） | engine / native module，**不持久** | — |
+| 资源（PTY、webview） | PTY 归 engine/native module；webview 是 nsh UI 的原生视图（URL/标题在 UI store），**不持久** | — |
 | 视图（panel/sheet 布局） | UI | `layouts/{containerId}.json` |
 | 未读 | 协议态，UI 不镜像 | — |
 
@@ -337,9 +338,10 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 - **M7 实现完成，验收未全过**：`src/pty.rs`（`portable-pty`，reader/writer/waiter 三线程，`Callback::post`，`Drop`/`close` 双保险）导出 `zu/native` 的 `Pty`；engine 的 `container.create` 接受 `kind` 与 cwd，external id 为 `external:{kindLower}:{uuid}`、`sessions: []`，注册表/布局/成员关系沿用；`terminals.ts` 按外部容器持 PTY 与 replay buffer；`TerminalBody` 接 `onData`/`onResize`/`onTitleChange`；Launcher 动作行创建四类容器；归档走 `closeTerminal`。门禁 67/67。**未达成**：Claude Code 真实对话（本机 API error，只验证 TUI + Ctrl+C）、`VtEmulator` 缩小不重排（实测缺陷，见 evidence §8）；因此 M7 不标完成。
 - **M8 实现完成，验收一半（其 git diff 一项由 M9 补齐）**：`src/fs.rs` 导出 `zu/native` 的 `Fs`（`list/stat/read/write/mkdir`；显式根、`..`/绝对越界/symlink 逃逸拒绝、2 MiB 与 1000 项上限、临时文件 + rename 原子写、保留 mode/BOM、`ERR_FS_STALE` 带当前版本、二进制/非 UTF-8 拒绝）；`fs.ts` 是类型面，`editors.ts` 按稳定 sheet id 持文档并做 `stat → write(expected) → read-back`；`files.tsx` 提供文件树 sheet（`files:{containerId}`，懒加载、目录优先、空/加载/错误态）、真 `Editor` sheet（语言高亮、折叠、查找/替换、脏标记、Save/Mod+S、冲突只读、reload/close）与两文件 `DiffView` sheet（split/unified、真实 hunk 统计）。`files.ui.test.tsx` 打开真实 `/tmp` 文件 → 编辑 → Mod+S → 用 `zu/fs` 读回磁盘一致；外部改写后保存被拒并转只读，reload 恢复；两真实文件的 `DiffView` 统计 `+2 −1 · 1`。门禁 99/99。**未达成**：M8 验收里的 git diff——无 `zu/git`，不做伪造 worktree diff；M9 补（Q57）。
 - **M9 完成**：`src/git.rs`（`zu/git`：`status/diff/log/branches/stage/unstage/commit/checkout/createBranch/init/setIdentity`；porcelain v2 `-z` 解析、根必须为仓库顶层、路径越界拒绝、2 MiB 补丁上限、无 shell/无网络/无全局 git 配置、命令失败带 `exit`/`stderr`、缺身份 `ERR_GIT_IDENTITY`）；`git.ts` 按容器持 status/log/branches 与动作状态；`git-ui.tsx` 的 Changes sheet（`changes:{containerId}`：staged/工作区/未跟踪/冲突分组、单文件与全部 stage/unstage、`DiffView` 的 `patch` 模式显示真实 `git diff`、提交行、身份对话框、未初始化仓库态）与 History sheet（`history:{containerId}`：真实 log、分支菜单 checkout、新建分支对话框）；顶栏 `open-changes`/`open-history`；checkout 后重读两表并 reload 该容器中没有未保存改动的编辑器。`git.test.ts`（7 条，测试自建真实临时仓库）与 `git.ui.test.tsx`（3 条，真实 `Workbench`）覆盖「改文件 → Changes 显示 → stage → 提交（`git log` 验证）→ 切分支」，M8 的「看一次 git diff」由此补齐。门禁 122/122。
+- **M10 实现完成，验收达成一半**：`browser.ts`（每 sheet 的 URL/标题/loading/canGoBack/canGoForward/error/页面消息日志；地址规范化；`webview:{containerId}:{n}` 的实例分配；`WebView.available()` 探测）与 `browser-ui.tsx`（一个 `WebView` + 地址栏 + 后退/前进/刷新/停止 + loading 轨道/文字 + 页签标题 + 错误码面板 + 默认页 + 仅 UI 的页面消息日志）；顶栏 `open-browser`、Launcher「浏览器」；`nsh.json` 只加 `webview.hosts: ["*"]`。真实 macOS 宿主加载 `example.com`/IANA 文档页/DuckDuckGo Lite 搜索并跑通后退/前进（标题 `Example Domain` → `Example Domains` → `native shell at DuckDuckGo`）；headless 没有 web view，默认测试只覆盖状态机。门禁 130/130（`ZU_PORT=47834`；+7 TS、+1 Rust）。**未达成**：`target=_blank`/`window.open` 在 nsh 0.4.0 无打开回调，未授予 `openUrl`，所以「外部打开」没有实现；页内链接点击与页内搜索框输入未自动化。证据见 [evidence/m10-browser.md](evidence/m10-browser.md)。
 - **外部审计**：2026-11-10 的一轮事实审计与架构评审，成立的 P0/P1 已并入本文；其中「alt screen 污染 scrollback」一条被证伪并撤回（`push_scrollback` 有 `primary.is_some()` 守卫），教训记在 [evidence/terminal-emulator.md](evidence/terminal-emulator.md)。审计材料已随收敛删除。
 - **已知问题**：开发期热更新（`nsh run` 的 hot reload）在 TSX 变更后报 `nsh hot: no module zu/native`——native module 在 hot bundle 期间不可解析。重启 app 即可；不影响运行期。正式打包不受影响（无 hot reload）。另：headless 测试运行器没有帧循环，`requestAnimationFrame` 不跑，流式批 flush 因此用 `setTimeout(16)`。
-- **打包**：`script/bundle-mac.sh`——`nsh package` 出 `.app`，sidecar 拷进 `Contents/Helpers`，嵌套 ad-hoc 签名，`hdiutil` 出 dmg（133 MB app / 52 MB dmg）。打包后 app 优先用包内 sidecar（仓库的构建不能遮蔽它）。
+- **打包**：`script/bundle-mac.sh`——`nsh package` 出 `.app`，sidecar 拷进 `Contents/Helpers`，嵌套 ad-hoc 签名，`hdiutil` 出 dmg（133 MB app / 53 MB dmg）。打包后 app 优先用包内 sidecar（仓库的构建不能遮蔽它）。
 
 ## 8. 已知风险（非决策）
 
@@ -352,9 +354,9 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 7. **引擎单点**：`generation`、心跳、退避重启、`state.snapshot` 已实现；崩溃时未完成回合的**内容**仍由 pi 会话文件兜底，但引擎内未落盘的 streaming 增量会丢，UI 标为中断。
 8. **单实例与固定端口**：端口是常量 `47823`，第二个实例会撞端口；nsh 没有单实例原语，需锁文件或 `NSRunningApplication`，并给「端口被占用」明确文案。
 9. **`~/.pi/zu/` 的清理**：归档容器、死 subagent 文件、旧 layout 会增长；启动时清理孤儿 layout（容器已不在注册表）。
-10. **视图全量挂载**：DockArea 会把所有 panel 放进树（只有当前 tab 显示）；20 个 sheet（含 WebView/Editor/Terminal）同时存活时要「非可见 sheet 降级」（webview 暂停、editor 释放 rope、terminal 保留）。
+10. **视图全量挂载**：DockArea 会把所有 panel 放进树（只有当前 tab 显示）；20 个 sheet（含 WebView/Editor/Terminal）同时存活时要「非可见 sheet 降级」。M10 已落 webview：没有 pause prop，非可见时卸载 `WebView`、可见时按 store URL 重挂载（Q62）；editor 释放 rope 仍未做，terminal 按 Q55 保留。
 11. **nsh git pin 的 Menu 崩溃日志**：pin 到 `506b5392` 后，Menu popup 的 owner 被卸载时 `nsh-base/src/menu.rs` 会 panic（"signal read or written after its owner was disposed"）。`projects.ui` 测试在 app 关闭时打 3 条日志但测试仍通过；真实用户在菜单打开时切容器也可能命中。属上游运行时缺陷，待 nsh 修复或改为自绘 popover；不影响数据面。
-12. **WebView 信任边界**（浏览器里程碑）：页面 `postMessage` 进 UI 代码；定为「页面消息不进 wire、不进 agent 上下文」，`injectJavaScript` 只做日志回传。
+12. **WebView 信任边界**（浏览器里程碑）：页面 `postMessage` 只进 `browser.ts` 的 UI 日志（`onMessage` → `logBrowserMessage`），不进 wire、不进 agent 上下文；实现里完全不用 `injectJavaScript`。能力面只有 `webview.hosts: ["*"]`，没有 `webview.input`/`openUrl`。已知限制：nsh 0.4.0 的 WKWebView 不处理 `target=_blank`/`window.open`（点击无反应），且深色模式下依赖 `color-scheme` 的页面可能仍用黑字（example.com 的 evidence 截图），属 web view 上游行为。
 
 ## 9. 文档
 

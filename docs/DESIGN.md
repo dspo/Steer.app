@@ -267,3 +267,62 @@ Changes 的文件行 28pt，History 的提交行约 44pt（两行）。
 `could not load module 'zu/native'`（与 M8 相同的 nsh 开发宿主限制），因此 Finishing checklist 的像素项
 （半径、字体、对齐、hover/pressed 视觉）只按 M6/M8 基线核对代码，不声称已逐项截图通过。运行中的用户 app
 没有重启，本里程碑没有真实宿主截图。
+
+## 11. M10 浏览器（表面与动效）
+
+M10 不新增半径、阴影或控件尺寸：Browser sheet 复用 M6 的顶栏/页签条/`card`/`inset`/
+`line`/`hover`/`accent`/`primary` 与 `SheetIconButton`/`Chip`/`Glyph`。唯一新 token 是
+`web-page`（light/dark 都为 `#ffffff`）：nsh 的 WKWebView 默认透明，页面没有自己的背景时
+必须落在 web 画布（白色）上，而不是 app 的深色壳。
+
+| 表面 | 几何 | 状态 |
+|---|---|---|
+| 浏览器工具栏 | 高 36，左右 8，下边框 `line`；四个 24pt 方形图标（后退/前进/刷新/停止）+ 26pt 地址输入 + 「任意站点」Chip | 后退/前进/刷新/停止按真实 nav state disabled（40% 透明、无 hover/pressed）；地址输入 focus 用 2pt `outline-ring`；Chip 非交互，tooltip 说明任意站点与页面消息边界 |
+| loading 轨道 | 高 2，通栏；loading 时 `primary`，静止时 `line` | 颜色 `motionStyle("fast")`；工具栏同时出现「加载中…」文字，状态不只靠颜色 |
+| 默认页 | 居中：globe 28pt `faint`、14/600 标题、12 正文、10.5 等宽 `webview.hosts` 行 | 无 URL 时显示；空态不是 WebView，不加载 `about:blank` |
+| 错误面板 | 居中：alert 24pt `destructive`、13.5/600 标题、11 等宽错误码、11.5 正文、28pt outline 重试 | `ERR_ACCESS_DENIED`/`ERR_FEATURE_UNAVAILABLE_ON_PLATFORM` 都有码；平台不可用时隐藏重试 |
+| 页面消息脚注 | 高 24，上边框 `line`；chat 11pt + 「页面消息 N」+ 10pt 边界说明 | 计数随日志；日志展开时按钮 pressed 态；说明始终可见 |
+| 页面消息日志 | 高 112，`bg-inset`，上边框 `line`；头部 22pt + 「清空」，正文 10.5 等宽 `muted-foreground`，最多 50 条 | 无消息显示空态；清空在 0 条时 disabled；日志只在本 sheet，不发送 |
+| 页签 | 沿用 M6 的 34pt 页签条；标题 = 页面标题，否则地址，否则「新标签页」 | 选中白 pill + primary 下划线；标题变化即时（页面自己的事件） |
+| 非可见页 | 居中 globe 20pt + 11pt 说明「已隐藏：web view 被卸载，显示时按地址重新加载」 | 实际不可见（DockArea 只画活动页签）；用于说明降级语义 |
+
+**M10 动效清单**（写屏前列，交付后逐条核对；没有 `motion.*` 之外的时长）：
+
+| 变化 | 工具 / token | 减少动态效果 | 验证 |
+|---|---|---|---|
+| 工具栏图标 hover | `motionStyle("fast")`（120ms 颜色） | 立即 | 真实 macOS 截图（rest/disabled）；hover 未截帧 |
+| 工具栏图标 pressed | `active:opacity-60`，`fast` | 立即 | 代码路径 |
+| 后退/前进/刷新/停止 enabled ↔ disabled | 透明度 + 颜色 `fast`；无布局移动 | 立即 | 真实页面测试断言 enabled；截图可见 disabled |
+| 地址输入 focus | 2pt `outline-ring`（无过渡） | — | 代码路径；未截焦点帧 |
+| loading 出现/结束 | 轨道 `line` → `primary`，`fast`；「加载中…」文字即时出现/消失 | 立即 | 真实加载截图（静止）；加载中文字在 headless 断言 |
+| 页面标题进页签 | 文字即时替换（WebView 事件驱动） | — | 真实页面：Example Domain/Example Domains/DuckDuckGo |
+| 页面加载/重挂载 | 原生 WebView 绘制，无应用动画 | — | 真实页面截图 |
+| 错误面板出现 | 无入场动画；状态文本即时（同 M6 toast 的理由） | — | 真实 target 截图（fixture 喂同一 reducer） |
+| 页面消息日志展开/收起 | 行即时插入/移除（无高度动画），脚注计数即时 | — | 真实 target 截图 + headless 状态断言 |
+| 页面消息到达 | 计数与日志文字即时更新；不弹 toast、不闪烁 | — | headless：transport 调用不变 |
+| 页签新增浏览器 | 沿用 M6 页签 `medium`（180ms 背景/阴影） | 运行时 | 真实 target 截图（选中态） |
+| 深色切换 | 应用 token 随 `setColorScheme` 切换；页面内容由站点/WebKit 决定 | — | 真实 dark 截图；页面自身 `color-scheme` 行为见下 |
+
+**Finishing checklist（M10，按真实截图核对）**：
+
+- **半径**：只复用 8（控件/输入）、10（按钮/行）、12（表面）；无一次性半径；输入与按钮同心。
+- **排版**：页签 12.5、标题 14、正文 12、元数据 10.5/10、错误码 11 等宽；最大 14、两级字重；
+  次要信息用 `muted-foreground`/`faint`，没有低于 10 的可读正文。
+- **间距与对齐**：工具栏 8 横距、36 高；输入与 24pt 图标按钮垂直居中；默认页/错误页居中对齐；
+  页脚 24 高、左右 12；日志 112 高、头 22。
+- **颜色**：全部来自 token（新增 `web-page`）；loading 同时有文字，错误码是文字，禁用态是
+  透明度 + disabled 语义，不只靠颜色。
+- **Hover / pressed**：工具栏图标、日志开关、清空、重试都有 hover 与 pressed；disabled 无
+  hover/pressed；输入 focus 用 2pt `outline-ring`。
+- **状态**：默认页 / loading / 页面 / 失败 / 平台不可用 / 隐藏 / 页面消息空态与有内容态都画了；
+  后退/前进/刷新/停止的 enabled 跟随真实 nav state。
+- **动效**：全部来自 `motion.*`（120/180ms 颜色/透明度）；无自造时长；`motionStyle()` 处理
+  reduce motion；没有常驻动画。
+- **深色**：chrome（工具栏/页签/页脚/日志/错误面）通过；`example.com` 页面自身的深色
+  `color-scheme` 文字对比问题见下，不计为通过。
+
+**验证边界（诚实）**：M10 有真实 macOS 宿主截图（`nsh test browser.live.test.tsx --target macos`，
+浅色/深色/搜索/错误/消息日志，见 [evidence/m10-browser.md](evidence/m10-browser.md)）。Finishing
+checklist 的半径/字号/间距/对齐/颜色/hover/pressed/状态/motion 组按截图与代码核对；hover 与按下
+中间帧未单独截。深色下 `example.com` 自己画 `#222` 背景但 nsh 0.4.0 的 WKWebView 仍用黑字，
+对比度差——这是站点 + web view 上游行为，sheet chrome 正常；不把它算作设计通过。

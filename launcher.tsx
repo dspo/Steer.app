@@ -14,7 +14,8 @@ import {
   projects,
   startFromLauncher,
 } from "./projects";
-import { containers, containersLoaded, createExternalContainer } from "./containers";
+import { activeContainerId, containers, containersLoaded, createExternalContainer } from "./containers";
+import { openBrowserSheet } from "./browser";
 import type { ContainerKind } from "./contracts/protocol";
 import { Chip, Glyph, motionStyle, shadowDialog, shadowRaised } from "./ui";
 
@@ -171,6 +172,29 @@ export function Launcher() {
           </Each>
         </View>
         <Text class="text-[10px] text-faint" style={{ numberOfLines: 2 }}>{t(K.external.hint)}</Text>
+
+        <View class="flex-row items-center gap-1.5">
+          <Text class="text-[10.5px] font-medium text-faint">{t(K.browser.view)}</Text>
+          <View
+            role="button"
+            testID="launcher-browser"
+            accessibilityLabel={t(K.browser.open)}
+            class={
+              activeContainerId() === null
+                ? "h-7 flex-row items-center gap-1.5 rounded-lg border border-line bg-background px-2.5 opacity-50"
+                : "h-7 flex-row items-center gap-1.5 rounded-lg border border-line bg-background px-2.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+            }
+            style={{ ...motionStyle("fast") }}
+            disabled={activeContainerId() === null}
+            onPress={() => {
+              if (!activeContainerId()) return;
+              if (openBrowserSheet()) closeLauncher();
+            }}
+          >
+            <Glyph name="globe" size={11} tint={token("muted-foreground")} />
+            <Text class="text-[11px] font-medium text-foreground">{t(K.browser.open)}</Text>
+          </View>
+        </View>
 
         <View class="flex-row items-center gap-2">
           <View class="rounded-full border border-line px-2 py-0.5">

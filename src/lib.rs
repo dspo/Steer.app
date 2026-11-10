@@ -298,3 +298,37 @@ fn random_token() -> String {
     }
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
+
+#[cfg(test)]
+mod tests {
+    /// The browser is UI-only, so its capability must stay the Q32 minimum:
+    /// any site in the web view, no trusted input, no external opener, and no
+    /// file or process grants. This test reads the declaration itself, so a
+    /// later capability edit that widens the UI's blast radius fails here.
+    #[test]
+    fn browser_capabilities_are_the_ui_only_minimum() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("nsh.json");
+        let manifest = std::fs::read_to_string(path).expect("read nsh.json");
+        let json: serde_json::Value = serde_json::from_str(&manifest).expect("nsh.json is JSON");
+        let capabilities = json.get("capabilities").expect("capabilities");
+
+        assert_eq!(
+            capabilities.pointer("/webview/hosts"),
+            Some(&serde_json::json!(["*"])),
+            "the address bar may open any site (Q32)"
+        );
+        assert!(
+            capabilities.pointer("/webview/input").is_none(),
+            "trusted web input is never granted unless a feature needs it"
+        );
+        assert!(
+            capabilities.get("openUrl").is_none(),
+            "M10 keeps links in the sheet; no external opener is granted"
+        );
+        assert!(capabilities.get("fs").is_none(), "files go through zu/fs");
+        assert!(
+            capabilities.pointer("/process/execute").is_none(),
+            "processes go through the native module"
+        );
+    }
+}

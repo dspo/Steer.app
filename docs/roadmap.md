@@ -186,15 +186,37 @@
 
 > M8 已交付两文件 `DiffView`（`zu/fs` + 稳定 sheet id）。M9 补 git 数据面（`zu/git`）与 Changes/History 面板；工作区 diff 从 M9 起用 `git diff` 驱动 `DiffView` 的 `patch` 模式，不再走“两文件对比”作为替代。
 
-## 13. M10 — 浏览器
+## 13. M10 — 浏览器 · 实现完成，验收达成一半
+
+> **状态（2026-11-11）**：实现完成；真实 macOS 宿主上加载了真实网页并跑通前进/后退，
+> 但「链接在 sheet 内或外部打开」只达成 sheet 内一半（原因见下）。
+> **已实现并实测**：`browser.ts` 按 sheet id `webview:{containerId}:{n}` 持 URL/标题/loading/
+> canGoBack/canGoForward/error/页面消息日志（UI state only）；`browser-ui.tsx` 的 Browser sheet
+> 一个 `WebView` + 地址栏（裸域名补 `https://`、只开 http/https）+ 后退/前进/刷新/停止
+> （enabled 跟随真实 nav state）+ 2pt loading 轨道与「加载中…」文字 + 页面标题进页签 +
+> 错误面板（码 + 文案 + 重试）+ 默认页（任意站点可加载、页面消息不进 agent）+ 可展开的
+> 页面消息日志（仅 UI，`onMessage` 不触达 engine/wire）。顶栏 `open-browser` 与 Launcher
+> 「浏览器」是入口；每容器可开多个（n 递增）。
+> **已验证**：`--target macos` 的真实 WKWebView 加载 `example.com`（`Example Domain`）、
+> IANA 文档页（`Example Domains`）、DuckDuckGo Lite 搜索结果（`native shell at DuckDuckGo`）；
+> 后退回 `Example Domains`、前进回 `DuckDuckGo`，按钮 enabled 状态由测试断言；浅色/深色/
+> 搜索/错误/消息日志截图见 [evidence/m10-browser.md](evidence/m10-browser.md)。门禁
+> `nsh check`/`nsh build`/`cargo check --all-targets`/`cargo test --lib`（29）/
+> `nsh test .`（130/130，`ZU_PORT=47834`）全绿。
+> **未达成 / 限制**：headless 宿主没有 web view（`WebView.available()` 为 true 但页面不加载），
+> 因此默认测试只覆盖 UI 状态机，真实页面只在 `--target macos` 验证；`target=_blank`/`window.open`
+> 在 nsh 0.4.0 没有打开回调，M10 不授予 `openUrl`，所以「外部打开」未实现（普通链接在
+> sheet 内导航是平台行为，未做页内点击自动化）；搜索通过搜索结果 URL 完成，没有验证页内
+> 搜索框输入（未授予 `webview.input`）；未在 iOS/Android/Windows/Linux 上验证真实 web view。
 
 | 项 | 内容 |
 |---|---|
-| UI | Browser sheet（`WebView` + 地址栏 + 前进/后退/刷新）；每 sheet 一个 web view |
+| UI | Browser sheet（`WebView` + 地址栏 + 前进/后退/刷新/停止 + 错误态 + 页面消息日志）；每 sheet 一个 web view；每容器多个 |
 | 授权 | `webview.hosts: ["*"]`（Q32：任意站点，地址栏旁标明）；页面消息不进 wire、不进 agent 上下文 |
-| 边界 | 页面消息不进 wire、不进 agent 上下文；`injectJavaScript` 只做日志回传；非可见 sheet 暂停 |
+| 边界 | 页面消息只进 UI 日志；不使用 `injectJavaScript`；非可见 sheet 卸载/重挂载（nsh 无 pause API），URL/标题在 store 保留、页面运行时状态丢失 |
 
-**验收**：打开文档页、搜索、前进后退；链接在 sheet 内或外部打开。
+**验收**：打开文档页 ✓、搜索 ✓（搜索 URL）、前进后退 ✓；链接在 sheet 内 ✓ / 外部打开 ✗（nsh
+0.4.0 无新窗口回调，未授予 `openUrl`）。
 
 ## 14. M11 — LSP
 

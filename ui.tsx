@@ -23,6 +23,7 @@ export type GlyphName =
   | "caret-down"
   | "chevron-left"
   | "chevron-right"
+  | "reload"
   | "close"
   | "globe"
   | "pulse"
@@ -189,6 +190,10 @@ const glyphs: Record<GlyphName, Draw> = {
   "caret-down": (c) => line(c, [6, 8, 10, 12.5, 14, 8]),
   "chevron-left": (c) => line(c, [12.5, 6, 8, 10, 12.5, 14]),
   "chevron-right": (c) => line(c, [7.5, 6, 12, 10, 7.5, 14]),
+  reload: (c) => {
+    arc(c, 10, 10, 6, -0.6, 4.2);
+    line(c, [15.2, 4.6, 15.9, 7.9, 12.5, 8.4]);
+  },
   close: (c) => {
     line(c, [6.5, 6.5, 13.5, 13.5]);
     line(c, [13.5, 6.5, 6.5, 13.5]);

@@ -40,6 +40,7 @@ import { openChangesSheet, openHistorySheet } from "./git";
 import { K, shellLocale, t, toggleShellLocale } from "./i18n";
 import { UIHost, statuses, unsupportedMethods } from "./ui-host";
 import { openSubagents } from "./subagents";
+import { dropBrowserPages, openBrowserSheet } from "./browser";
 import { Chip, Dot, Glyph, motionStyle, shadowCard, shadowRaised } from "./ui";
 
 /**
@@ -228,7 +229,14 @@ function ContainerRow(props: { container: any }) {
           testID={`archive-${container().id}`}
           accessibilityLabel={`${t(K.container.archive)} ${containerTitle(container())}`}
           class="h-6 w-5 items-center justify-center rounded-lg hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-          onPress={() => void archiveContainer(container().id)}
+          onPress={() =>
+            void archiveContainer(container().id).then(() => {
+              // The container's browser state is UI only; it goes with it.
+              if (!containers().some((row) => row.id === container().id)) {
+                dropBrowserPages(container().id);
+              }
+            })
+          }
         >
           <Glyph name="archive" size={11} tint={token("faint")} />
         </View>
@@ -462,6 +470,22 @@ function EngineBar() {
         onPress={() => openFilesSheet()}
       >
         <Glyph name="folder" size={15} tint={token("muted-foreground")} />
+      </View>
+      <View
+        role="button"
+        testID="open-browser"
+        accessibilityLabel={t(K.browser.open)}
+        tooltip={t(K.browser.open)}
+        disabled={activeContainerId() === null}
+        class={
+          activeContainerId() === null
+            ? "h-7 w-7 items-center justify-center rounded-lg opacity-40"
+            : "h-7 w-7 items-center justify-center rounded-lg hover:bg-hover active:opacity-60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+        }
+        style={{ ...motionStyle("fast") }}
+        onPress={() => openBrowserSheet()}
+      >
+        <Glyph name="globe" size={15} tint={token("muted-foreground")} />
       </View>
       <View
         role="button"
