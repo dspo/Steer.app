@@ -17,7 +17,7 @@
 | Q27 | 遥测 | 支持 pi-telemetry，**不在早期里程碑**；默认不上报 | arch §3.7 |
 | Q28 | sidecar 怎么被启动 | **B — Rust native module**（`zu/engine` spawn） | arch §3.6 |
 | Q30 | LSP 客户端放哪 | **Rust native module**（与 PTY 共享子进程基础设施） | arch §3.6 |
-| Q31 | native module 职责边界 | **按域拆注册面**（engine/pty/lsp/git，共用一个 crate）+ 生命周期表 | arch §3.6 |
+| Q31 | native module 职责边界 | **按域拆注册面**（engine/pty/lsp/git/fs，共用一个 crate）+ 生命周期表 | arch §3.6 |
 
 ## 前端与 UI
 
@@ -82,8 +82,15 @@
 | Q54 | M7 的 nsh 版本 | 发布版 0.4.0 **没有** `nsh/base Terminal`；`nsh-core`/`nsh-base` 改为 git pin `506b5392`（仍是 0.4.0），CLI 把生成的 hosts 也指到同一 checkout。不 fork、不 vendor | `Cargo.toml`、`Cargo.lock`；arch §6 |
 | Q55 | 非可见终端 sheet 的降级 | `Terminal` 始终挂载：alt screen 与 scrollback 必须留在 emulator 里；DockArea 只画当前 tab，隐藏标签不产生额外绘制。切容器才卸载 sheet，PTY 留在 store，用 replay buffer 重建（>512 KiB 丢头部并 reset）。**没有**「保留 emulator、跳过绘制」的受支持钩子，因此不另做暂停 | `sheets.tsx`、`terminals.ts`；arch §4.3/§5.4 |
 
+## 文件与编辑器（M8）
+
+| # | 问题 | 裁决 | 落点 |
+|---|---|---|---|
+| Q56 | 编辑器的文件访问与保存语义 | **`zu/fs` 是唯一文件面，UI 不开 `capabilities.fs`**。每次调用显式传工作区根（active container cwd），Rust 侧 canonicalize 后拒绝 `..`、根外绝对路径与越界 symlink；读上限 2 MiB、目录上限 1000 项；保存写同目录临时文件再 `rename`，保留 mode 与 UTF-8 BOM；`write` 接收 `expected {mtimeMs,size}`，不符即 `ERR_FS_STALE`（附当前版本），编辑器转只读直到 reload；保存后 `read` 回读校验；所有错误带 `code`；`mkdir` 只允许根内一级创建 | `src/fs.rs`、`fs.ts`、`editors.ts`；arch §3.6 |
+| Q57 | M8 的 Diff 做到哪一步 | **M8 只做两文件 `DiffView`**（文件树行/对话框选两个真实路径，稳定 sheet id `diff:{containerId}:{old~new}`），**不做工作区 git diff**；M9 的 `zu/git` 提供 `status`/`diff` 后，Changes 面板用 `git diff` 驱动。文件树保留为通用入口，不把「两文件对比」伪装成 git diff | `files.tsx`、`editors.ts`、roadmap M8/M9；arch §3.6 |
+
 ## 决策编号说明
 
-- Q1–Q55 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（§3.6 的 `zu/fs`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）。
+- Q1–Q57 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（Q56/§3.6 的 `zu/fs`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）。
 - 原 engine/ui/domain 三份文档里的 E/U 编号已废弃，统一并入本表。
 - 条件性里程碑（M-tty / M-arch / M-web）的触发条件见 [roadmap.md](roadmap.md) §17。

@@ -177,3 +177,32 @@ export function nextSheetId(kind: string): string {
   instances.set(kind, n);
   return `${kind}:${n + 1}`;
 }
+
+/**
+ * Removes a sheet from the layout: its tab goes, an emptied group goes with
+ * it, and an emptied center stays as an empty tabs node (the canvas then
+ * draws its empty state). `zoom` is the caller's separate signal.
+ */
+export function removeSheet(layout: DockAreaLayout, id: string): DockAreaLayout {
+  const remove = (node: DockNode): DockNode | null => {
+    if (node.type === "tabs") {
+      const panels = node.panels.filter((panel) => panel !== id);
+      if (panels.length === 0) return null;
+      return { ...node, panels, activeIndex: Math.min(node.activeIndex ?? 0, panels.length - 1) };
+    }
+    const children = node.children.map(remove).filter((child): child is DockNode => !!child);
+    if (children.length === 0) return null;
+    return { ...node, children };
+  };
+  const next: DockAreaLayout = {
+    ...layout,
+    center: remove(layout.center) ?? { type: "tabs", panels: [], activeIndex: 0 },
+  };
+  for (const side of ["left", "right", "bottom"] as const) {
+    const dock = layout[side];
+    if (!dock) continue;
+    const pruned = remove(dock.layout);
+    next[side] = pruned ? { ...dock, layout: pruned } : null;
+  }
+  return next;
+}

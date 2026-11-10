@@ -21,6 +21,9 @@ export type GlyphName =
   | "check"
   | "caret-right"
   | "caret-down"
+  | "chevron-left"
+  | "chevron-right"
+  | "close"
   | "globe"
   | "pulse"
   | "stop"
@@ -182,6 +185,12 @@ const glyphs: Record<GlyphName, Draw> = {
   check: (c) => line(c, [5, 10.5, 8.5, 14, 15, 6.5]),
   "caret-right": (c) => line(c, [8, 6, 12.5, 10, 8, 14]),
   "caret-down": (c) => line(c, [6, 8, 10, 12.5, 14, 8]),
+  "chevron-left": (c) => line(c, [12.5, 6, 8, 10, 12.5, 14]),
+  "chevron-right": (c) => line(c, [7.5, 6, 12, 10, 7.5, 14]),
+  close: (c) => {
+    line(c, [6.5, 6.5, 13.5, 13.5]);
+    line(c, [13.5, 6.5, 6.5, 13.5]);
+  },
   globe: (c) => {
     arc(c, 10, 10, 6.5);
     line(c, [3.5, 10, 16.5, 10]);

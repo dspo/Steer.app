@@ -156,13 +156,18 @@
 
 ## 11. M8 — 编辑器与 Diff
 
+> **状态（2026-11-11，M8）**：实现完成，验收达成一半。
+> **已实现并实测**：`zu/fs`（`list`/`stat`/`read`/`write`/`mkdir`；每次调用显式传工作区根，Rust 侧 canonicalize 并拒绝 `..`、根外绝对路径与越界 symlink；2 MiB 读上限、1000 项目录上限；临时文件 + rename 原子写并保留 mode/BOM；`ERR_FS_STALE` 带当前 mtime/size）、文件树 sheet（`files:{containerId}`，目录优先、懒加载子目录、空/加载/错误态、按文件对比）、真 `Editor` sheet（`editor:{containerId}:{base64url path}`，按扩展名或文件名决定语法高亮、折叠、查找/替换、脏标记、Save + Mod+S、冲突/错误只读、reload/close）、两文件 `DiffView` sheet（`diff:{containerId}:{old~new}`，split/unified、真实 hunk 统计）；Pi 与 external 容器都用其 cwd。
+> **已验证**：headless 打开真实 `/tmp` 文件 → 编辑 → Mod+S → 用 `zu/fs` 读回磁盘一致；外部改写后保存被 `ERR_FS_STALE` 拒绝、编辑器转只读、reload 后恢复；两真实文件的 `DiffView` 统计 `+2 −1 · 1`（hunk 正确）。门禁 `nsh check`/`nsh build`/`cargo check --all-targets`/`cargo test --lib`/`nsh test .` 全绿（99 条）。证据见 [evidence/m8-editor-diff.md](evidence/m8-editor-diff.md)。
+> **未达成**：「看一次 git diff」不在 M8——没有 git 模块，不做伪造的 worktree diff；两文件对比已实现，工作区 diff 留给 M9（Q57）。
+
 | 项 | 内容 |
 |---|---|
-| native module | `zu/fs`（read/write/stat/list，路径策略在 Rust 侧）；LSP 复用同一份内容 |
-| UI | Editor sheet（真文件读写、语法高亮、折叠、find/replace）；DiffView sheet（工作区 diff 或两文件对比）；文件树 dock |
-| 边界 | 大文件/二进制/编码策略；外部修改冲突（转只读提示） |
+| native module | `zu/fs`（read/write/stat/list/mkdir，路径策略在 Rust 侧）；LSP 复用同一份内容 |
+| UI | Editor sheet（真文件读写、语法高亮、折叠、find/replace）；DiffView sheet（两文件对比已实现；工作区 diff 待 M9）；文件树 sheet（`files:{containerId}`，不是独立 dock） |
+| 边界 | 2 MiB/1000 项上限；二进制/非 UTF-8 拒绝并显示状态；BOM 往返；外部修改冲突（转只读，reload 后恢复） |
 
-**验收**：打开文件 → 编辑 → 保存 → 磁盘一致；看一次 git diff，hunk 正确。
+**验收**：打开文件 → 编辑 → 保存 → 磁盘一致（✓，`files.ui.test.tsx`）；看一次 git diff，hunk 正确（✗ M8；两文件 DiffView 的 hunk 已正确，git worktree diff 在 M9）。
 
 ## 12. M9 — Git
 
@@ -172,6 +177,8 @@
 | UI | Changes 面板（DiffView + 文件列表 + stage）；History；分支切换 |
 
 **验收**：改文件 → Changes 显示 → stage → 提交（`git log` 验证）→ 切分支。
+
+> M8 已交付两文件 `DiffView`（`zu/fs` + 稳定 sheet id）。M9 只补 git 数据面（`zu/git`）与 Changes/History 面板；工作区 diff 从 M9 起用 `git diff` 驱动，不再走“两文件对比”作为替代。
 
 ## 13. M10 — 浏览器
 

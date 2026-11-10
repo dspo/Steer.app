@@ -18,6 +18,9 @@ import {
 } from "./terminals";
 import { K, t } from "./i18n";
 import { Chip, Dot, Glyph, motionStyle, shadowCard, type GlyphName } from "./ui";
+import { DiffBody, EditorBody, FilesBody } from "./files";
+import { diffSheetPaths, editorSheetPath } from "./editors";
+import { baseName } from "./fs";
 
 /** The color tokens the registry tints glyphs with. */
 type TintToken = "brand" | "warn" | "up" | "info" | "muted-foreground" | "primary-foreground" | "faint";
@@ -93,6 +96,19 @@ export function sheetTitle(id: string): string {
     const container = containers().find((row) => row.id === instance);
     return container ? externalKindLabel(container.kind) : t(K.sheet.terminalTitle);
   }
+  if (kind === "editor") {
+    const target = editorSheetPath(id);
+    return target ? baseName(target.path) : id;
+  }
+  if (kind === "diff") {
+    const pair = diffSheetPaths(id);
+    return pair ? `${baseName(pair.oldPath)} ↔ ${baseName(pair.newPath)}` : id;
+  }
+  if (kind === "files") {
+    const container = containers().find((row) => row.id === instance);
+    const folder = container ? baseName(container.cwd) : "";
+    return folder ? `${t(K.sheet.filesTitle)} · ${folder}` : t(K.sheet.filesTitle);
+  }
   const spec = SPECS[kind];
   return spec ? (instance ? `${t(spec.title)} · ${instance}` : t(spec.title)) : id;
 }
@@ -128,6 +144,9 @@ export function SheetBody(props: { id: string }) {
   if (kind === "session") return <SessionBody id={instance || "pending"} sheetId={props.id} />;
   if (kind === "subagents") return <SubagentsBody containerId={instance} />;
   if (kind === "terminal") return <TerminalBody containerId={instance} />;
+  if (kind === "files") return <FilesBody containerId={instance} />;
+  if (kind === "editor") return <EditorBody sheetId={props.id} />;
+  if (kind === "diff") return <DiffBody sheetId={props.id} />;
   return (
     <View
       class="flex-1 items-center justify-center gap-3 bg-card"

@@ -97,7 +97,7 @@ WebSocket 按 `hosts` 授权（`sockets` 只给 `net.connect` 的裸 TCP，且�
 
 **威胁模型（写清楚边界）**：能力面保护的是 **UI/TSX 代码**被攻破时的爆炸半径；**agent 的动作不受它约束**——pi 的 bash 与工具仍以用户权限运行，由 pi 自己的权限模型负责。不要把「最小能力面」读成「agent 沙箱」。
 
-UI **不持 fs、不持 process**：全部用户状态经 wire 落 `~/.pi/zu/`，进程操作由 Rust native module 代劳（见 §3.6）。这是**自选策略**而非平台限制（nsh 的 `Storage` 不需要能力，`fs`/`process` 也可授予）——换来单一写入点，代价是 engine 不在时无法落盘。
+UI **不持 fs、不持 process**：全部用户状态经 wire 落 `~/.pi/zu/`，进程操作由 Rust native module 代劳（见 §3.6）。这是**自选策略**而非平台限制（nsh 的 `Storage` 不需要能力，`fs`/`process` 也可授予）——换来单一写入点，代价是 engine 不在时无法落盘。M8 的编辑器和文件树沿用同一条：读写只经 `zu/fs`，`capabilities` 仍不出现 `fs`（Q56）。
 
 ### 3.5 存储布局（路径即关系）
 
@@ -131,9 +131,9 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 | `zu/pty` | `portable-pty` 创建/读写/缩放/kill；读线程 → channel → 引擎线程任务 → `Callback::post` 推给 TSX（字节不过 wire）；TSX 侧按 external 容器持 handle | 容器 |
 | `zu/lsp` | 起语言服务器、stdio JSON-RPC、诊断/hover/补全 | workspace |
 | `zu/git` | shell out `git`（status/diff/log/branch/stage/commit） | 一次性调用 |
-| `zu/fs` | `read/write/stat/list`：编辑器与文件树的读写面；路径策略在 Rust 侧（工作区根 + 显式 grant） | 一次性调用 |
+| `zu/fs` | `list/stat/read/write/mkdir`：编辑器与文件树的读写面；每次调用显式传工作区根（active container cwd），Rust 侧 canonicalize 后拒绝 `..`、根外绝对路径与越界 symlink，并做 2 MiB/1000 项上限、原子写与 stale 检测 | 一次性调用 |
 
-**为什么是 `zu/fs` 而不是给 UI 开 `capabilities.fs`**：编辑器与文件树需要真实的读写，而 UI 的能力面要保持最小；`zu/fs` 让文件访问与 agent 的工具权限分开，LSP 的 `didOpen/didChange` 也能复用同一份内容（避免编辑器与 LSP 各读一遍）。**四域失败隔离**：engine、pty、lsp、git、fs 各自失败不影响其余；一个域的崩溃不能让 UI 失去所有能力。
+**为什么是 `zu/fs` 而不是给 UI 开 `capabilities.fs`**：编辑器与文件树需要真实的读写，而 UI 的能力面要保持最小；`zu/fs` 让文件访问与 agent 的工具权限分开，LSP 的 `didOpen/didChange` 也能复用同一份内容（避免编辑器与 LSP 各读一遍）。M8 的落点：`src/fs.rs` 的错误带 `code`（`ERR_FS_ESCAPE`/`ERR_FS_BINARY`/`ERR_FS_TOO_LARGE`/`ERR_FS_STALE`/…）；保存走同目录临时文件 + `rename`，保留 mode 与 UTF-8 BOM；`write` 的 `expected {mtimeMs,size}` 不匹配即 `ERR_FS_STALE`，编辑器据此转只读直到 reload。UI 侧只有 `fs.ts`（类型面）与 `editors.ts`（文档/保存/校验），不持 `capabilities.fs`。**四域失败隔离**：engine、pty、lsp、git、fs 各自失败不影响其余；一个域的崩溃不能让 UI 失去所有能力。
 
 **PTY 的归属与清理**：PTY 是 native module 的资源，不是 sheet 的。`terminals.ts` 按 external 容器 id 持一个 `Pty` handle；sheet 只 `attachTerminal` 一个 sink，切容器/隐藏标签不杀 shell。归档容器时 shell 先 `closeTerminal` 再切走；JS handle 被 GC/`dispose()` 时 Rust `Drop` 再兜底 kill。应用重启不恢复 PTY（§5.5），external 容器按布局重新开一个新 shell/TUI。`Terminal` 组件始终挂载（即使标签隐藏），因为 alt screen 与 scrollback 必须留在 emulator 里；容器切换才卸载 sheet，此时靠 store 的 replay buffer 重建屏幕。
 
@@ -171,7 +171,7 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 ### 4.3 布局与状态
 
 - 布局是**纯数据**：app 持有 `DockAreaLayout`，`onLayoutChange` 回报整份新布局传回。
-- **sheet 身份 = 稳定 id**（`kind:instance`，如 `session:{sessionId}`、`terminal:{containerId}`）；布局树只存 id，内容由 `sheets.tsx` 注册表解析。
+- **sheet 身份 = 稳定 id**（`kind:instance`，如 `session:{sessionId}`、`terminal:{containerId}`、`files:{containerId}`、`editor:{containerId}:{base64url path}`、`diff:{containerId}:{base64url old~new}`）；布局树只存 id，内容由 `sheets.tsx` 注册表解析。编辑器的未保存文本存在 `editors.ts` 的 store 里（不随 sheet 卸载丢失），M8 起布局 stash/restore 与容器切换都能恢复同一个文件。
 - **按容器 stash**：`layouts/{containerId}.json`；zoom **不在 `DockAreaLayout` 里**（它是内部 signal + `onZoomChange` 事件），要单独存，恢复后用 ref 的 `groupOf`/`toggleZoom` 灌回。`onLayoutChange` 高频，debounce 后保存；切容器前先 flush，恢复时先离开现有 zoom 再按 panel id 找 group 灌回。布局与 zoom 的读写经 `layout.get/put`，UI 仍不持文件系统。
 - **启动恢复上次活跃容器**；恢复时**静默移除**指向已死资源的 sheet。
 - **canvas 空态 = Launcher**（项目 chip + composer + agent 动作行）。
@@ -323,7 +323,7 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 | 语言 | zh-CN 第一 + en fallback，类型化键表（`i18n.ts` + `locales/*.ts`） | nsh 0.4.0 运行时尚未导出 `nsh/i18n` 与 `localeSettings`，键表契约改为纯 TS（Q39），parity 由 `nsh test` 覆盖 |
 | nsh | `Cargo.toml` 的 `nsh-core`/`nsh-base` **git pin `506b5392`（版本 0.4.0）** + `Cargo.lock`；CLI 用 checkout 构建 | 发布版 0.4.0 没有 `nsh/base Terminal`（`term` 在发布后进 checkout），M7 必须用 checkout；nsh 比 pi 更不稳定，升级需跑 `nsh check`/`nsh test` + 终端与 DockArea 冒烟 |
 
-## 7. 实现状态（2026-11-10）
+## 7. 实现状态（2026-11-11）
 
 - **M0 完成**：`engine/`（Bun + pi 1.5.0）+ mixed 模板（`Cargo.toml`、`src/lib.rs` 的 `zu/engine`）+ sidecar 编译（75 MB 单文件，WASM 资产同目录）+ WS 握手。
 - **M1 完成**：`engine.ts`（连接/请求/事件）、`sessions.ts`（会话 store，16 ms 批 flush）、`sheets.tsx` 的会话 sheet（`TextView` 流式 Markdown、工具卡、composer）、`App.tsx` 的会话侧栏与引擎状态条。turn 结束时 engine 写 `zu.turn` custom entry；流式中停止会广播 idle 并保留已生成文本；引擎重启后用 `session.info` 拿到的文件路径续聊。
@@ -333,6 +333,7 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 - **M6 完成（有记录差异）**：Steer 对齐的 token/几何/表面/动效，`docs/DESIGN.md`；50/50。
 - **M5 完成**：进程内 `SubagentManager`、仅 captain 注册的 `dispatch`/`list_agents`、`zu/subagents` 存储与 `parentSession`、live/settled 名册、只读转录、captain note、archive 级联。门禁 50/50。
 - **M7 实现完成，验收未全过**：`src/pty.rs`（`portable-pty`，reader/writer/waiter 三线程，`Callback::post`，`Drop`/`close` 双保险）导出 `zu/native` 的 `Pty`；engine 的 `container.create` 接受 `kind` 与 cwd，external id 为 `external:{kindLower}:{uuid}`、`sessions: []`，注册表/布局/成员关系沿用；`terminals.ts` 按外部容器持 PTY 与 replay buffer；`TerminalBody` 接 `onData`/`onResize`/`onTitleChange`；Launcher 动作行创建四类容器；归档走 `closeTerminal`。门禁 67/67。**未达成**：Claude Code 真实对话（本机 API error，只验证 TUI + Ctrl+C）、`VtEmulator` 缩小不重排（实测缺陷，见 evidence §8）；因此 M7 不标完成。
+- **M8 实现完成，验收一半**：`src/fs.rs` 导出 `zu/native` 的 `Fs`（`list/stat/read/write/mkdir`；显式根、`..`/绝对越界/symlink 逃逸拒绝、2 MiB 与 1000 项上限、临时文件 + rename 原子写、保留 mode/BOM、`ERR_FS_STALE` 带当前版本、二进制/非 UTF-8 拒绝）；`fs.ts` 是类型面，`editors.ts` 按稳定 sheet id 持文档并做 `stat → write(expected) → read-back`；`files.tsx` 提供文件树 sheet（`files:{containerId}`，懒加载、目录优先、空/加载/错误态）、真 `Editor` sheet（语言高亮、折叠、查找/替换、脏标记、Save/Mod+S、冲突只读、reload/close）与两文件 `DiffView` sheet（split/unified、真实 hunk 统计）。`files.ui.test.tsx` 打开真实 `/tmp` 文件 → 编辑 → Mod+S → 用 `zu/fs` 读回磁盘一致；外部改写后保存被拒并转只读，reload 恢复；两真实文件的 `DiffView` 统计 `+2 −1 · 1`。门禁 99/99。**未达成**：M8 验收里的 git diff——无 `zu/git`，不做伪造 worktree diff；M9 补（Q57）。
 - **外部审计**：2026-11-10 的一轮事实审计与架构评审，成立的 P0/P1 已并入本文；其中「alt screen 污染 scrollback」一条被证伪并撤回（`push_scrollback` 有 `primary.is_some()` 守卫），教训记在 [evidence/terminal-emulator.md](evidence/terminal-emulator.md)。审计材料已随收敛删除。
 - **已知问题**：开发期热更新（`nsh run` 的 hot reload）在 TSX 变更后报 `nsh hot: no module zu/native`——native module 在 hot bundle 期间不可解析。重启 app 即可；不影响运行期。正式打包不受影响（无 hot reload）。另：headless 测试运行器没有帧循环，`requestAnimationFrame` 不跑，流式批 flush 因此用 `setTimeout(16)`。
 - **打包**：`script/bundle-mac.sh`——`nsh package` 出 `.app`，sidecar 拷进 `Contents/Helpers`，嵌套 ad-hoc 签名，`hdiutil` 出 dmg（132 MB app / 52 MB dmg）。打包后 app 优先用包内 sidecar（仓库的构建不能遮蔽它）。
@@ -349,10 +350,11 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 8. **单实例与固定端口**：端口是常量 `47823`，第二个实例会撞端口；nsh 没有单实例原语，需锁文件或 `NSRunningApplication`，并给「端口被占用」明确文案。
 9. **`~/.pi/zu/` 的清理**：归档容器、死 subagent 文件、旧 layout 会增长；启动时清理孤儿 layout（容器已不在注册表）。
 10. **视图全量挂载**：DockArea 会把所有 panel 放进树（只有当前 tab 显示）；20 个 sheet（含 WebView/Editor/Terminal）同时存活时要「非可见 sheet 降级」（webview 暂停、editor 释放 rope、terminal 保留）。
-11. **WebView 信任边界**（浏览器里程碑）：页面 `postMessage` 进 UI 代码；定为「页面消息不进 wire、不进 agent 上下文」，`injectJavaScript` 只做日志回传。
+11. **nsh git pin 的 Menu 崩溃日志**：pin 到 `506b5392` 后，Menu popup 的 owner 被卸载时 `nsh-base/src/menu.rs` 会 panic（"signal read or written after its owner was disposed"）。`projects.ui` 测试在 app 关闭时打 3 条日志但测试仍通过；真实用户在菜单打开时切容器也可能命中。属上游运行时缺陷，待 nsh 修复或改为自绘 popover；不影响数据面。
+12. **WebView 信任边界**（浏览器里程碑）：页面 `postMessage` 进 UI 代码；定为「页面消息不进 wire、不进 agent 上下文」，`injectJavaScript` 只做日志回传。
 
 ## 9. 文档
 
-- [decisions.md](decisions.md)：Q1–Q31 决策台账（问题 → 裁决 → 落点 → 理由）。
+- [decisions.md](decisions.md)：Q1–Q57 决策台账（问题 → 裁决 → 落点 → 理由）。
 - [roadmap.md](roadmap.md)：产品目标与里程碑。
 - [evidence/](evidence/)：spike 实测、可行性分析、终端仿真核对比、决策过程记录。

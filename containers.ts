@@ -12,7 +12,9 @@ import {
   appendSheet,
   defaultLayoutForSessions,
   layoutSessions,
+  panelIds,
   pruneLayout,
+  removeSheet,
   sessionIdOfSheet,
   sessionSheetId,
   visiblePanels,
@@ -339,6 +341,23 @@ export function openAuxSheet(kind: "subagents" | "stats" | "tasks" | "traces"): 
   const container = activeContainerId();
   if (!isPiContainer(container)) return;
   const id = `${kind}:${container}`;
+  layout.set(appendSheet(layout(), id));
+  syncVisible();
+  scheduleSave();
+}
+
+/** Closes one sheet: its panel leaves the layout (a sheet's own state decides
+ * what else to drop). */
+export function closeSheet(id: string): void {
+  if (!panelIds(layout()).includes(id)) return;
+  if (zoomedPanel() === id) zoomedPanel.set(null);
+  setLayout(removeSheet(layout(), id));
+}
+
+/** Opens (or shows) a container's file tree sheet; any container with a cwd. */
+export function openFilesSheet(containerId: string | null = activeContainerId()): void {
+  if (!containerId) return;
+  const id = `files:${containerId}`;
   layout.set(appendSheet(layout(), id));
   syncVisible();
   scheduleSave();

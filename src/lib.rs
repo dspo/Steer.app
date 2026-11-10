@@ -18,8 +18,10 @@ use std::{
 
 use nsh_core::prelude::*;
 
+mod fs;
 mod pty;
 
+pub use fs::{Fs, FsEntry, FsExpected, FsFile, FsStat, FsWriteResult};
 pub use pty::{Pty, PtyExit, PtyOptions};
 
 /// The sidecar's default loopback port; `ZU_PORT` overrides it for a second
@@ -216,7 +218,10 @@ impl Engine {
 /// The crate's UI set (`nsh.json` `"rust"`): what TSX imports as `zu/native`.
 #[native_module("zu/native")]
 fn native(registry: &mut Registry) {
-    registry.module::<Engine>().class::<Pty>();
+    registry
+        .module::<Engine>()
+        .module::<Fs>()
+        .class::<Pty>();
 }
 
 /// Remembers an exit status for `exit_code`.

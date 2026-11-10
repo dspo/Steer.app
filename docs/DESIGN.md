@@ -184,3 +184,43 @@ selected/dark/900 断点；过渡中间帧与 streaming/menu/dialog 动画需在
   约束），菜单/对话框沿用 NSH 运行时的进出。
 - **窗口材质**：Steer 的侧栏/卡片在高光下有更细的边界；Zu 用纯色 + hairline，未引入
   material/glass。
+
+
+## 9. M8 文件、编辑器与 Diff（表面与动效）
+
+M8 不新增 token、半径或阴影：文件树、编辑器与 Diff 都复用 M6 的 `card`/`inset`/`line`/`hover`/`accent`/
+`primary` 与 `shadowCard()`/`shadowDialog()`。表面语言沿用同一套：页签条 34pt（DockArea 提供）、面板内容
+`bg-card`、hairline 用 `line`、按钮 28pt 高、行 26pt 高。
+
+| 表面 | 几何 | 状态 |
+|---|---|---|
+| Files 头部 | 左 12 / 右 12，py 8；标题 12/600，路径 10 等宽 `faint`；右侧条目计数 + 刷新 24pt | 计数随目录变化；刷新 hover/pressed |
+| 文件树行 | 26pt 高，缩进 14pt/层，左 8；目录箭头 9pt、图标 11.5pt；文件大小 10pt `tabular-nums` | rest 透明；hover `bg-hover`；pressed 0.7；选中 `bg-accent`；展开/收起即时（列表本身无动画） |
+| 文件树行尾对比 | 24pt 方形 ghost，图标 12pt `faint` | hover `bg-hover`；pressed 0.6 |
+| 树底部条 | 高 26；左 8 / 右 8；选中文档路径 11pt；右侧「对比」28pt outline | 未选时显示「在文件树里选一个文件」 |
+| Diff 对话框 | 480 宽、20 内边距、半径 12、`border`、`shadowDialog()`、backdrop `scrim` | 打开/关闭走 `Dialog` 的 `fade`；Escape/backdrop 关闭 |
+| Editor 头部 | 高 34；文件名 12/600 + 脏点 6pt `primary`；路径 10 等宽 `faint`；右侧 Find/Save/Reload/Close | Save 主操作（`primary`），无脏/只读/保存中为 40% 透明；冲突 banner 用 `warn` 图标 + 右侧 Reload |
+| Editor 查找/替换条 | 高 34，inset 底；两个 28pt 输入（170 宽）+ 匹配数 10.5 `tabular-nums` + 上/下/替换/全部替换 | 查询变化即时高亮；无匹配显示「没有匹配」而非空 |
+| Editor | `Editor` 自带主题外观（等宽、muted 行号、faint active line）；只读时仍可选中/复制 | 加载中显示「正在读取文件…」；二进制/过大/冲突共用错误 banner，只读徽标 `warn` |
+| Diff 视图 | `DiffView` 自带主题外观；头部两行路径 11.5 + 统计 10.5 `tabular-nums` + split/unified 切换 | 加载/错误居中；相同文件显示「两个文件完全相同」 |
+
+**M8 动效清单**（写屏前列，交付后逐条核对；没有 `motion.*` 之外的时长）：
+
+| 变化 | 工具 / token | 减少动态效果 | 验证 |
+|---|---|---|---|
+| 文件行 hover | `motionStyle("fast")`（120ms 颜色） | 立即 | headless 未能截帧；代码路径 |
+| 文件行 pressed | `active:opacity-70`，`fast` | 立即 | 代码路径 |
+| 文件行选中 | `bg-accent` + `fast` | 立即 | headless 状态断言；未截帧 |
+| 目录展开/收起 | 无动画（行集合即时变化，`List` 原生滚动） | — | 行为测试（懒加载行） |
+| Editor 脏点出现 | 无动画（6pt 圆点即时出现） | — | headless：`editor-dirty-dot` 计数 0→1 |
+| Save 可用/不可用 | 背景/透明度 `fast` | 立即 | headless 状态；未截帧 |
+| 冲突 banner 出现 | 无入场动画（状态文本即时） | — | headless：`editor-conflict` 出现 |
+| 查找条展开 | 无动画（行即时插入） | — | 代码路径 |
+| Diff split ↔ unified | `DiffView` 自身重排（无应用动画） | 运行时 | headless 切换后仍显示 |
+| Diff 对话框 | `Dialog animation="fade"` | 运行时 | 行为测试（对话框可交互） |
+| 页签新增编辑器/Diff | 沿用 M6 的页签 `medium`（180ms 背景/阴影） | 运行时 | 未截帧 |
+
+**验证边界（诚实）**：M8 的可见验证只有 headless 行为测试；`nsh test --target macos` 的开发宿主报
+`could not load module 'zu/native'`，截图没有产出。未做 light/dark 双主题截图，因此「Finishing checklist」
+的像素项（半径、字体、对齐、hover/pressed 视觉）只核对代码与既有 M6 基线，不声称已逐项截图通过。
+运行中的用户 app 未被重启，故本里程碑没有新的真实宿主截图。

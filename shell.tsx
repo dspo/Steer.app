@@ -1,4 +1,4 @@
-import { List, PanResponder, signal, Text, token, View } from "nsh";
+import { keymap, List, PanResponder, signal, Text, token, View } from "nsh";
 import { DockArea, Menu, MenuItem, type DockAreaLayout } from "nsh/base";
 import { Window } from "nsh/desktop";
 import { connect, disconnect, info, lastError, phase, recovered, retry, type EnginePhase } from "./engine";
@@ -14,6 +14,7 @@ import {
   liveContainers,
   loadContainers,
   onPanelActive,
+  openFilesSheet,
   openPath,
   setLayout,
   setZoom,
@@ -34,6 +35,7 @@ import { panelIds, sheetCount } from "./dock";
 import { error as sessionError, refreshSessions, sessions, activeId } from "./sessions";
 import { SheetBody, sheetGlyph, sheetTitle } from "./sheets";
 import { externalKindLabel } from "./terminals";
+import { saveActiveEditor } from "./editors";
 import { K, shellLocale, t, toggleShellLocale } from "./i18n";
 import { UIHost, statuses, unsupportedMethods } from "./ui-host";
 import { openSubagents } from "./subagents";
@@ -446,6 +448,22 @@ function EngineBar() {
       </If>
       <View
         role="button"
+        testID="open-files"
+        accessibilityLabel={t(K.files.title)}
+        tooltip={t(K.files.title)}
+        disabled={activeContainerId() === null}
+        class={
+          activeContainerId() === null
+            ? "h-7 w-7 items-center justify-center rounded-lg opacity-40"
+            : "h-7 w-7 items-center justify-center rounded-lg hover:bg-hover active:opacity-60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+        }
+        style={{ ...motionStyle("fast") }}
+        onPress={() => openFilesSheet()}
+      >
+        <Glyph name="folder" size={15} tint={token("muted-foreground")} />
+      </View>
+      <View
+        role="button"
         testID="open-subagents"
         accessibilityLabel={t(K.subagents.title)}
         tooltip={t(K.subagents.title)}
@@ -510,6 +528,10 @@ function terminalPanels(): Array<{ id: string; closable: boolean }> {
 
 /** The workbench: containers/sessions sidebar · canvas (no boot side effects). */
 export function Workbench() {
+  // The app's Mod+S saves the editor sheet on screen; a binding made while a
+  // component renders goes with the component, and the workbench lives as
+  // long as the app.
+  keymap.bind("mod+s", () => saveActiveEditor());
   const empty = () => launcherOpen() || activeContainerId() === null;
   return (
     <View class="flex-1 bg-background" style={{ flexDirection: "row" }}>
