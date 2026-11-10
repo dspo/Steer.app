@@ -244,6 +244,16 @@ const server = Bun.serve({
 
 console.log(`zu-engine listening on 127.0.0.1:${server.port} (pi ${PI_VERSION})`);
 
+// The host owns this process. If it goes away without stopping us (a crash,
+// a force quit), exit: an orphan would hold the port and the session files.
+const parent = process.ppid;
+setInterval(() => {
+  if (process.ppid !== parent) {
+    for (const session of open.values()) session.dispose?.();
+    process.exit(0);
+  }
+}, 1000);
+
 // A signal from the host ends the process cleanly.
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {

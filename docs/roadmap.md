@@ -40,7 +40,7 @@
 | UI 最小面 | 一个窗口 + 状态条显示「引擎：未启动/运行中/端口 N」 |
 | 打包 | ad-hoc 签名 dmg（正式签名留到 M11） |
 
-**验收**：`nsh run .` 起窗口；点「启动引擎」→ engine 进程起来 → WS 握手 → 状态条显示运行中；关窗 → engine 被回收。没有对话，没有终端。
+**验收**：`nsh run .` 起窗口；点「启动引擎」（或启动时自动）→ engine 进程起来 → WS 握手 → 状态条显示运行中；**退出应用 → engine 随之退出**（关窗不退出 app 是 macOS 惯例；托盘常驻在 M10）。没有对话，没有终端。
 
 **风险**：mixed 模板与 `nsh check` 的首次配置（`"rust": "."`、`.nsh/types` 生成）；sidecar 与 UI 的路径定位在 `nsh run` 与打包后两种形态下的差异。
 
@@ -52,10 +52,12 @@
 
 | 层 | 内容 |
 |---|---|
-| engine | `SessionManager` + `createAgentSession`（SDK，单会话）；`session.prompt` / `stream` / `abort`；`agent_settled` 作为回合终点 |
-| wire | `session.list` / `session.open` / `session.prompt` / `session.abort` + `message.delta` / `message.complete` / `agent.state` / `error` |
-| UI | 侧栏会话列表（扫描 `~/.pi/agent/sessions`，Q18 对账）；对话 sheet（`TextView` 流式 markdown + 思考块 + 工具卡）；composer（`Input` + 发送/停止） |
-| 数据 | 会话选择（直接选目录或最近会话）、未读计数（协议态） |
+| engine | `SessionManager` + `createAgentSession`（SDK，单会话）；`session.create/open/prompt/abort/close`；`agent_settled` 作为回合终点 |
+| wire | 上述命令 + `message.delta` / `message.complete` / `agent.state` / `tool.start` / `tool.end` / `error` |
+| UI | 侧栏会话列表（engine 用 `SessionManager.listAll` 枚举，Q18 对账）；对话 sheet（**M1 用纯文本渲染**，Markdown 留到后续）；composer（`Input` + 发送/停止） |
+| 数据 | 会话选择（列表点开）、流式状态；未读计数留到 M2（容器模型） |
+
+**实现备注**：工具卡事件已接（`tool.start/end` 折成一行），但 M1 的测试对话未触发真实工具调用——工具卡的**端到端**验证在 M3（TUI/工具密集场景）补。
 
 **验收**（全部要有手测记录）：
 1. 侧栏列出 pi CLI 昨天创建的会话，点开显示完整历史。
