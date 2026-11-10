@@ -33,7 +33,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 仓库结构 | `app/`（TSX + `src/lib.rs` native module，mixed 模板）+ `engine/`（Bun + pin 的 pi） |
+| 仓库结构 | 仓库根即 app（TSX + `src/lib.rs`，mixed 模板的约定：`App.tsx` 与 `nsh.json` 同级）+ `engine/`（Bun + pin 的 pi） |
 | 构建 | `engine/`：`bun build --compile` → 单文件 sidecar，产物进 app bundle 的 `Contents/Helpers/`（Q28=B） |
 | native module | `zu/engine`：`spawnEngine()` / `stopEngine()` / `engineStatus()`；Rust 侧 `current_exe()` 定位 sidecar |
 | engine 最小面 | loopback WS server + token 握手 + `ping`/`pong` + 进程退出时清理 |
