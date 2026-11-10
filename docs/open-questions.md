@@ -1,6 +1,6 @@
 # 产品 / 架构 / 技术问题清单
 
-> 状态：**Q1–Q27 已裁决；Q28 待回答**（sidecar 的启动方式，Q25 的技术发现）。裁决细节落在三份架构文档的决策记录表；spike 实测见 [spike-report.md](spike-report.md)。
+> 状态：**Q1–Q28 已裁决；Q29–Q31 待回答**（可行性分析衍生的技术选型）。裁决细节落在三份架构文档的决策记录表；spike 实测见 [spike-report.md](spike-report.md)。
 
 ## 裁决总表
 
@@ -116,7 +116,11 @@
 
 **需要你回答**：A / B / C？
 
-### Q28：sidecar 怎么被启动？（nsh 能力白名单的实测限制）
+### Q28（已定）：B — Rust nativeModule
+
+**裁决**：mixed 模板 + `#[native_module]` 暴露 `spawnEngine()`，Rust 侧 `current_exe()` 定位 `../Helpers/pi-engine`。该模块同时是 PTY / Ghostty 仿真核 / LSP 客户端的统一落脚点（见 [feasibility.md](feasibility.md)）。
+
+### Q28 原问题（留档）：sidecar 怎么被启动？（nsh 能力白名单的实测限制）
 
 **背景（这是 Q25 的技术发现，必须拍板）**：sidecar 放 `Zu.app/Contents/Helpers/pi-engine` 没问题，但**让 nsh 的 TSX 去执行它**受一条限制：nsh 的 `capabilities.process.execute` 只接受**裸命令名或绝对路径**（`valid_command`，nsh `crates/nsh-core/src/access.rs:1103`），并且运行时是**精确字符串比对**（`allows_process`，`:1469`），**不支持 `${dataDir}` / `${resourcesDir}` 等变量**——这一点在源码里确认过，与 `fs` 能力（支持 `${dataDir}`）不同。而 bundle 路径随安装位置变化（`/Applications`、`~/Applications`、任意目录）。
 
@@ -137,3 +141,45 @@
 4. Zu engine 与终端 pi CLI 对同一 captain 的并发写。
 5. 签名/公证：嵌套签名 + Bun JIT entitlement 的实际可行性（Q25）。
 6. 用户扩展（ghostex-session.ts 等）在 `ctx.hasUI = true` 下经 wire 桥正常工作（Q23）。
+
+## 待回答（Q29–Q31，可行性分析衍生）
+
+> 背景见 [feasibility.md](feasibility.md)。三项都影响 Q28 落地后的第一个里程碑。
+
+### Q29：Ghostty 仿真核什么时候替换 nsh 的 VtEmulator？
+
+**背景**：nsh 的 `Terminal` 自带 `VtEmulator`（`vte` crate，alacritty 的解析器，684 行 Rust 实现），TUI 基本够用；`TerminalEmulator` trait 与 `TerminalEmulatorFactory` 允许换 libghostty-vt（注释点名许可）。替换的技术路径已明确（feasibility §1），但它是**额外工作量**：vt cell → `TerminalLine`/`TerminalRun` 映射、事件语义对齐、与 `steer-ghostty` 的 static link 合并。
+
+**选项**：
+- **A v1 用内置 VtEmulator，Ghostty 作为后续独立里程碑**：TUI 先跑起来，用真 claude/codex 冒烟看是否有渲染缺陷（alt screen、宽字符、鼠标）。风险：若内置实现有硬伤，返工一次。
+- **B 一开始就上 libghostty-vt**：终态一步到位，与 Steer 共享仿真核。风险：v1 变重，且要先把两个 build script（nsh 的 libghostty 静态链接 + steer-ghostty）合并。
+
+**建议**：**A**——先用真 TUI 冒烟暴露内置实现的缺陷，再决定是否值得替换；Ghostty 的核心价值（性能、完整 VT）在 TUI 场景不一定立刻显现。
+
+**需要你回答**：A / B？
+
+### Q30：LSP 客户端放 Rust native module 还是 engine？
+
+**背景**：「完整 IDE」的唯一大件。nsh 的 Editor 本身齐备（高亮/折叠/多光标/find-replace/诊断/装饰），但**没有 LSP 客户端**——gallery 的「语言服务器」是正则模拟。真 LSP 需要起子进程 + stdio JSON-RPC + 增量同步（didChange）+ 多服务器管理。
+
+**选项**：
+- **A Rust native module**：`lsp-types` crate + `std::process`；与 PTY 同层，`Callback::post` 推送诊断。约 2-4k 行 Rust。
+- **B engine（Bun）**：用 npm 生态（`vscode-languageserver-protocol` 等），经 wire 推给 UI。生态现成，但 engine 是 pi 的领域，塞 LSP 会让它的职责变杂。
+- **C 不做 LSP**：编辑器只有高亮与编辑，没有补全/跳转/诊断。IDE 定位打折。
+
+**建议**：**A**。理由：LSP 与 PTY 共享「长生命周期子进程 + 异步流」模型，同一个 native module 里复用基础设施；engine 保持纯净（只跑 pi）。
+
+**需要你回答**：A / B / C？
+
+### Q31：Rust native module 的职责边界
+
+**背景**：Q28=B 之后，这个模块要同时管：engine sidecar 的 spawn/回收、PTY 的创建与生命周期、可选的 Ghostty 仿真核、LSP 子进程、Git 调用。它是一个「桌面能力的总入口」，如果边界不清，会变成第二个上帝对象。
+
+**需要你定的边界**（可多选/组合）：
+1. **只做「进程与句柄」**：一切对外部进程的操作（engine、PTY、LSP、git）都在这里，UI 经 TSX 调用。好处：唯一出口，便于审计；坏处：模块大。
+2. **按域拆分多个 native module**（`zu/engine`、`zu/pty`、`zu/lsp`、`zu/git`），共享一个内部 crate。好处：职责清晰；坏处：注册面变多。
+3. **生命周期归属**：所有子进程的 owner 是「sheet」还是「容器」？（PTY 的 owner 是容器——容器死全回收；engine 是进程级单例；LSP 按 workspace 共享；git 是一次性调用。）需要明确「谁 kill 谁」。
+
+**建议**：**2 + 3**——按域拆注册面（每个域一个小模块，但共用一个 `zu-native` crate），生命周期表写进架构文档：engine = 进程级单例；PTY = 容器；LSP = workspace；git = 一次性。
+
+**需要你回答**：1 / 2 / 3 的组合，或你的边界想法。
