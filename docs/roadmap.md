@@ -21,7 +21,7 @@
 ## 2. 里程碑纪律
 
 - **可构建可用**：每个 M 结束时 `nsh run .` 能起窗口并完成该 M 的目标场景；打包（M0 起 ad-hoc dmg）能生成可运行的 app。
-- **每个 M 一个分支 + 一个 PR**，结束时打 `mN` 标签；不跨 M 做大规模重构（发现的架构问题先记 `open-questions.md`，不阻塞当前 M）。
+- **每个 M 一个分支 + 一个 PR**，结束时打 `mN` 标签；不跨 M 做大规模重构（发现的架构问题先记 `decisions.md` 的待决区，不阻塞当前 M）。
 - **门禁**：`nsh check`、`nsh test`、engine 的 `bun test`；每个 M 至少一条端到端冒烟（真 pi、真 PTY 等用 env 门控）。
 - **技术债挂账**：能跑优先，但每笔临时手段必须在 PR 描述里注明「何时还」。
 
@@ -84,7 +84,7 @@
 |---|---|
 | native module | `zu/pty`：`Pty::new/onData/onExit/write/resize/kill`（`portable-pty`） |
 | UI | Terminal sheet（nsh `Terminal` 组件）接 PTY；external 容器（`terminal` / `claude` / `codex` / `copilot`，0 号即 PTY 进程）；`onResize` 回写 PTY |
-| 仿真核 | **先用 nsh 内置 `VtEmulator`**；按 [q29-terminal-emulator.md](q29-terminal-emulator.md) 的待实测清单冒烟，产出缺陷报告；同时给 nsh 提 alt screen 污染的修复 PR |
+| 仿真核 | **先用 nsh 内置 `VtEmulator`**；按 [evidence/terminal-emulator.md](evidence/terminal-emulator.md) 的待实测清单冒烟，产出缺陷报告；同时给 nsh 提 alt screen 污染的修复 PR |
 | 生命周期 | PTY 归容器（容器死全回收；重启不恢复终端，Q3/§9） |
 
 **验收**：
@@ -210,6 +210,6 @@ M0 ──▶ M1 ──▶ M2 ──▶ M3 ──┬─▶ M4 ──▶ M5 ──
 
 ## 17. 每个里程碑都要带的持续项
 
-- `open-questions.md` 的「v1 待验证风险」逐条销账（真实会话、fork 观感、并发写、签名）。
+- [architecture.md](architecture.md) §7 的已知风险逐条销账（真实会话、fork 观感、并发写、签名）。
 - pi 版本锁定与兼容性台账（E11 的纪律）：每次 pi 升级跑一遍引擎测试与 TUI 冒烟。
 - 文档同步：架构决策变更同日更新对应 `docs/*.md`；用户可感知的交互写进 README 的当前状态。

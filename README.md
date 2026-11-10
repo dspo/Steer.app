@@ -4,70 +4,49 @@
 coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上——当前为 outline PoC，引擎未接线。工作台形态
 借鉴 [ThinkRail](https://github.com/JetBrains/ThinkRail) 与 iTerm2/Warp：壳（rail、项目侧栏、工具栏、
 状态条）包着一块 `DockArea` 画布，**panel** 持有可拖拽的 **sheet**（Pi 会话、终端、各 agent TUI、
-webview、会话的 aux 视图）。logo 暂用 `<Z>`（Steer 的 `<->` 同款构型）。
+webview、会话的 aux 视图）。logo 为 Steer 的 `<->` 构型加载祖冲之密率（上 355、下 113）。
 
-## Architecture docs
+**当前状态**：outline PoC（工作台可交互、内容为 mock），引擎与 native module 尚未接线；下一步是 [roadmap](docs/roadmap.md) 的 M0。
 
-| Doc | What it covers | Status |
-|---|---|---|
-| [docs/engine-architecture.md](docs/engine-architecture.md) | 引擎与前后端架构：vendored pi sidecar、`EngineConnection` 边界、wire、能力面、分发、spike 清单 | 定稿；Q6 已裁决（E9） |
-| [docs/ui-architecture.md](docs/ui-architecture.md) | 前端 UI 架构：轮廓分离、panel/sheet 画布、sheet 注册表、布局 store、待建清单 | 定稿；Q4/Q5 已裁决（U7–U10） |
-| [docs/domain-model.md](docs/domain-model.md) | 关系对象模型：Project/membership、SessionContainer、资源三类、生命周期、状态分级表、pi 扩展裁决 | 定稿；Q1–Q3 已裁决（§4.4/§8/§9） |
-| [docs/spike-report.md](docs/spike-report.md) | Spike 实测报告：bun compile、pi 会话格式与 custom entry、存储布局、子会话自证 | **已完成** |
-| [docs/roadmap.md](docs/roadmap.md) | **路线图**：产品目标、里程碑纪律、M0–M11 与条件性子里程碑 | **当前** |
-| [docs/feasibility.md](docs/feasibility.md) | 重型集成可行性：Ghostty 终端、浏览器、PTY/TUI、编辑器/IDE、Git UI | 已完成 |
-| [docs/q29-terminal-emulator.md](docs/q29-terminal-emulator.md) | Q29 调研：nsh 内置 VtEmulator 与 Ghostty 的逐项对比、trait 上限约束 | 待复判 |
-| [docs/open-questions.md](docs/open-questions.md) | 问题清单：Q1–Q28 裁决、Q29–Q31 待回答、v1 待验证风险 | **Q29–Q31 待回答** |
+## 文档
 
-开放问题回答后，结论并入对应文档的决策记录表，条目随之删除。
+**决策文档**（最终形态，轻易不动）
 
-## Architecture (frontend)
+| Doc | 内容 |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | 架构：约束与原则、后端 sidecar、前端轮廓/画布、对象模型、技术选型 |
+| [docs/decisions.md](docs/decisions.md) | 决策台账：Q1–Q31（问题 → 裁决 → 落点） |
+| [docs/roadmap.md](docs/roadmap.md) | 产品目标、里程碑纪律、M0–M11 与条件性里程碑 |
 
-- **轮廓与内嵌对象分离** — the shell holds no domain state; the canvas is a controlled
-  `nsh/base DockArea`: the app owns the layout, the area reports every edit as the whole new
-  layout, and sheet bodies render keyed by sheet id (so a sheet keeps its state wherever it
-  moves).
-- **`dock.ts`** — the layout store: `initialLayout`, `appendSheet` (into the shown group),
-  `activateSheet`, `sheetCount`, fresh instance ids. All pure edits of the layout value.
-- **`sheets.tsx`** — the sheet registry: kinds (session, terminal, claude, codex, copilot,
-  webview, editor, diff, files, subagents, tasks, traces, stats), tab titles and glyphs, and
-  the mock body (one line of text plus a tap counter that survives drags).
-- **`App.tsx`** — the shell: rail, projects pane (a session's row opens its sheet), toolbar
-  (add a sheet of a kind, zoom the shown group, reset), the `DockArea` with styled parts
-  (tab bar, handles, drop indicator), and the status line.
+**依据文档**（决策的过程与证据）
 
-## Interactions (all `DockArea`, native)
+| Doc | 内容 |
+|---|---|
+| [docs/evidence/decision-log.md](docs/evidence/decision-log.md) | 每条决策的约束、选项与选择理由；被否决的方向 |
+| [docs/evidence/spike-report.md](docs/evidence/spike-report.md) | spike 实测：bun compile、pi 会话 API、custom entry、存储布局 |
+| [docs/evidence/feasibility.md](docs/evidence/feasibility.md) | 五项重型集成可行性：终端、浏览器、PTY、编辑器/IDE、Git |
+| [docs/evidence/terminal-emulator.md](docs/evidence/terminal-emulator.md) | nsh VtEmulator 与 Ghostty 的逐项对比、trait 上限约束 |
 
-- Drag a sheet's tab onto another panel — it moves there, state intact.
-- Drag a tab to a group's edge — the group splits, the sheet docks there.
-- Drag the hairline handles (a thumb grows in under the pointer) — resize panels and docks.
-- Tab presses switch sheets; a tab's × closes it; Zoom fills the area with one panel.
-- Docks (left) toggle, resize, and host sheets like any panel.
-- Below 600 pt the area goes compact: one group at a time, docks as drawer and sheet.
-
-## Layout
+## 当前实现（outline）
 
 | File | What it is |
 |---|---|
-| `App.tsx` | The shell + the controlled `DockArea` wiring |
-| `dock.ts` | Layout data and its pure edits |
-| `sheets.tsx` | The sheet registry and mock bodies |
-| `ui.tsx` | Canvas-stroked glyphs (`Glyph`), `Dot`, `Chip`, `SectionTitle` |
+| `App.tsx` | The shell + the controlled `DockArea` wiring (rail, projects pane, toolbar, status line) |
+| `dock.ts` | Layout data and its pure edits (`initialLayout`, `appendSheet`, `activateSheet`) |
+| `sheets.tsx` | The sheet registry: 13 kinds, tab titles and glyphs, mock bodies |
+| `ui.tsx` | Canvas glyphs, `Logo`（`<->` + 355/113）, `Dot`, `Chip`, `SectionTitle` |
 | `theme.json` | Design tokens (shadcn-style, light + dark) via `nsh.json` `"theme"` |
-| `App.test.tsx` | Headless `nsh test`: outline, add-sheet, counter |
+| `App.test.tsx` | Headless `nsh test`: outline, add-sheet, counter-survives-move |
+
+交互全部来自 `nsh/base DockArea`：拖 sheet 到另一 panel（移动且状态不丢）、拖到组边缘分栏、拖手缩放、`×` 关闭、Zoom、<600pt compact。
 
 ## Run it
 
-With `nsh` on your `PATH` ([install](https://nsh.dev/docs/installation)), or the checkout build
-`~/projects/github/nsh/target/debug/nsh`:
+With `nsh` on your `PATH` ([install](https://nsh.dev/docs/installation)), or a checkout build:
 
 ```sh
-nsh run . --target macos   # the AppKit host — the real drag/resize feel
-nsh run . --target gpui    # the GPUI host
+nsh run . --target macos   # the AppKit host
 nsh run . --target web     # the browser
 nsh check .                # typecheck the TSX
 nsh test .                 # the headless tests
 ```
-
-Next steps (see the architecture notes in the repo's plan history): wire `EngineConnection`
-to a vendored pi sidecar; sheet bodies become projections of the session stores.

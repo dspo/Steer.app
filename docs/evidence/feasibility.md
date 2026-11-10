@@ -218,7 +218,7 @@ Rust native module 从「启动引擎的一个小工具」升级为**重型集�
 - 「PTY/终端」不再是 v4 的单独一档，而应与 Q28 的 native module 一起在 v1 之后立即建立骨架（空 PTY + 空 LSP 桩），避免界面先做完再回头改底层。
 - 浏览器最小（数天），可提前到 v2 与容器模型一起做。
 
-## 7. 衍生问题（见 open-questions Q29–Q31）
+## 7. 衍生问题（见 ../decisions.md 的 Q29–Q31）
 
 - **Q29**：Ghostty 仿真核替换的时机（v1 内置 VtEmulator 够用 vs 一开始就上 libghostty-vt）。
 - **Q30**：LSP 客户端放 Rust native module 还是 engine。
