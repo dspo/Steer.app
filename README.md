@@ -6,7 +6,7 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 状态条）包着一块 `DockArea` 画布，**panel** 持有可拖拽的 **sheet**（Pi 会话、终端、各 agent TUI、
 webview、会话的 aux 视图）。logo 为 Steer 的 `<->` 构型加载祖冲之密率（上 355、下 113）。
 
-**当前状态（2026-11-10）：M0/M1/M2 完成。** 应用能连上随包分发的 pi 引擎（Bun sidecar，`zu/engine` 原生模块启动），侧栏列出 `~/.pi` 里的全部会话，打开即显示历史，输入后回复流式进入转录，工具调用显示为卡片，流式中可停止，引擎重启后续聊；M2 把 wire 冻成 `contracts/` v1、让引擎可自愈（心跳、退避重启、`generation`、快照重连）、把扩展宿主接到 nsh 对话框/Toast/状态条，并立起 zh-CN/en 键表。门禁：`nsh check` ✓、`nsh test` 22/22 ✓、`cargo check` ✓、`script/bundle-mac.sh` → 127 MB app / 50 MB dmg。下一步是 [roadmap](docs/roadmap.md) 的 M3（容器与 Panel/Sheet）。
+**当前状态（as of `186df66`，2026-11-10）：M0/M1/M2 完成。** 应用能连上随包分发的 pi 引擎（Bun sidecar，`zu/engine` 原生模块启动），侧栏列出 `~/.pi` 里的全部会话，打开即显示历史，输入后回复流式进入转录，工具调用显示为卡片，流式中可停止，引擎重启后续聊；M2 把 wire 冻成 `contracts/` v1、让引擎可自愈（心跳、退避重启、`generation`、快照重连）、把扩展宿主接到 nsh 对话框/Toast/状态条，并立起 zh-CN/en 键表。门禁：`nsh check` ✓、`nsh test` 22/22 ✓、`cargo check` ✓、`script/bundle-mac.sh` → 127 MB app / 50 MB dmg。下一步是 [roadmap](docs/roadmap.md) 的 M3（容器与 Panel/Sheet）。
 
 ## 文档
 

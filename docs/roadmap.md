@@ -53,7 +53,7 @@
 
 ## 5. M2 — 契约与监督（横切面）· 已完成
 
-> **状态：已完成（2026-11-10）。** `contracts/` v1 冻结（TS 类型 + 命令/事件表 + 运行时校验 + `protocol.md`）；`state.subscribe` 快照重连、`generation` 持久化、5 s 心跳 / 15 s 判死 / 指数退避重启；`bindExtensions({ mode: "rpc" })` 的 UI 矩阵（confirm 走 `AlertDialog`，select/input/editor 走应用内 Dialog，notify/status/title 走壳，其余 no-op + `ui.unsupported`）；project trust 走同一 select 并写 pi trust store；zh-CN/en 键表 + parity。**22 条测试**覆盖契约、快照/重连、杀进程自愈（中断标记）、协议版本拒连、真实扩展 confirm/notify 与对话框矩阵。
+> **状态：已完成（2026-11-10，`186df66`）。** `contracts/` v1 冻结（TS 类型 + 命令/事件表 + 运行时校验 + `protocol.md`）；`state.subscribe` 快照重连、`generation` 持久化、5 s 心跳 / 15 s 判死 / 指数退避重启；`bindExtensions({ mode: "rpc" })` 的 UI 矩阵（confirm 走 `AlertDialog`，select/input/editor 走应用内 Dialog，notify/status/title 走壳，其余 no-op + `ui.unsupported`）；project trust 走同一 select 并写 pi trust store；zh-CN/en 键表 + parity。**22 条测试**覆盖契约、快照/重连、杀进程自愈（中断标记）、协议版本拒连、真实扩展 confirm/notify 与对话框矩阵。
 
 **目的**：把 M1 临时定义的协议冻成契约，把引擎从"能重启"升级到"能自愈"，把扩展宿主打通。**这一档不加用户可见的大功能，但后面每一条都踩在它上面。**
 
