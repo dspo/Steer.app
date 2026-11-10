@@ -75,9 +75,11 @@ test("stopping mid-stream keeps the transcript", async () => {
   if (skip) return;
   await freshEngine();
   await createSession("/tmp/zu-test");
-  await send("Write an 800-word essay about the history of pi. Do not stop early.");
-  // Wait only for the stream to start producing text, then abort it.
-  for (let waited = 0; waited < 20000; waited += 50) {
+  // A task the model starts writing at once, so the abort lands mid-stream.
+  await send("Count from 1 to 300, one number per line.");
+  // Wait for the stream to start producing text, then abort it. A slow or
+  // throttled provider gets up to 45 s before the case is given up.
+  for (let waited = 0; waited < 45000; waited += 50) {
     if (streaming() && messages().some((message) => message.role === "assistant" && message.text.length > 0)) break;
     await sleep(50);
   }
