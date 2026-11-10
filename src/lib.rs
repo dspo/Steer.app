@@ -20,12 +20,14 @@ use nsh_core::prelude::*;
 
 mod fs;
 mod git;
+mod lsp;
 mod pty;
 
 pub use fs::{Fs, FsEntry, FsExpected, FsFile, FsStat, FsWriteResult};
 pub use git::{
     Git, GitBranch, GitBranches, GitChange, GitCommit, GitDiff, GitStatus,
 };
+pub use lsp::{Lsp, LspExit, LspOptions};
 pub use pty::{Pty, PtyExit, PtyOptions};
 
 /// The sidecar's default loopback port; `ZU_PORT` overrides it for a second
@@ -226,6 +228,7 @@ fn native(registry: &mut Registry) {
         .module::<Engine>()
         .module::<Fs>()
         .module::<Git>()
+        .class::<Lsp>()
         .class::<Pty>();
 }
 

@@ -22,6 +22,7 @@ import { DiffBody, EditorBody, FilesBody } from "./files";
 import { browserTabTitle } from "./browser";
 import { BrowserBody } from "./browser-ui";
 import { ChangesBody, HistoryBody } from "./git-ui";
+import { ProblemsBody } from "./lsp-ui";
 import { diffSheetPaths, editorSheetPath } from "./editors";
 import { baseName } from "./fs";
 
@@ -49,6 +50,7 @@ export type SheetKind =
   | "files"
   | "changes"
   | "history"
+  | "problems"
   | "subagents"
   | "tasks"
   | "traces"
@@ -76,6 +78,7 @@ const SPECS: Record<SheetKind, SheetSpec> = {
   files: { title: K.sheet.filesTitle, glyph: "folder", tint: "muted-foreground", note: K.sheet.filesNote },
   changes: { title: K.sheet.changesTitle, glyph: "diff", tint: "muted-foreground", note: K.sheet.changesNote },
   history: { title: K.sheet.historyTitle, glyph: "commit", tint: "muted-foreground", note: K.sheet.historyNote },
+  problems: { title: K.sheet.problemsTitle, glyph: "alert", tint: "warn", note: K.sheet.problemsNote },
   subagents: { title: K.sheet.subagentsTitle, glyph: "branch", tint: "muted-foreground", note: K.sheet.subagentsNote },
   tasks: { title: K.sheet.tasksTitle, glyph: "archive", tint: "muted-foreground", note: K.sheet.tasksNote },
   traces: { title: K.sheet.tracesTitle, glyph: "tree", tint: "muted-foreground", note: K.sheet.tracesNote },
@@ -111,6 +114,11 @@ export function sheetTitle(id: string): string {
   if (kind === "diff") {
     const pair = diffSheetPaths(id);
     return pair ? `${baseName(pair.oldPath)} ↔ ${baseName(pair.newPath)}` : id;
+  }
+  if (kind === "problems") {
+    const container = containers().find((row) => row.id === instance);
+    const folder = container ? baseName(container.cwd) : "";
+    return folder ? `${t(K.sheet.problemsTitle)} · ${folder}` : t(K.sheet.problemsTitle);
   }
   if (kind === "files" || kind === "changes" || kind === "history") {
     const container = containers().find((row) => row.id === instance);
@@ -162,6 +170,7 @@ export function SheetBody(props: { id: string }) {
   if (kind === "files") return <FilesBody containerId={instance} />;
   if (kind === "changes") return <ChangesBody containerId={instance} />;
   if (kind === "history") return <HistoryBody containerId={instance} />;
+  if (kind === "problems") return <ProblemsBody containerId={instance} />;
   if (kind === "editor") return <EditorBody sheetId={props.id} />;
   if (kind === "diff") return <DiffBody sheetId={props.id} />;
   return (

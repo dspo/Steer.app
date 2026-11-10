@@ -30,6 +30,7 @@ import {
   sessionTitle,
   viewFor,
 } from "./sessions";
+import { stopLspContainer } from "./lsp";
 import {
   closeTerminal,
   containerOfTerminalSheet,
@@ -247,6 +248,9 @@ export async function archiveContainer(id: string): Promise<void> {
     // An external container is its process: archiving kills the PTY before
     // the canvas switches away (the handle is not tied to the sheet).
     closeTerminal(id);
+    // Language servers belong to the workspace too; archiving ends them and
+    // clears their diagnostics, so a dead container leaves no process behind.
+    stopLspContainer(id);
     containers.set(data.containers ?? []);
     if (activeContainerId() === id) {
       savedFor = null;

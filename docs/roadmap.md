@@ -222,10 +222,27 @@
 
 | 项 | 内容 |
 |---|---|
-| native module | `zu/lsp`：起语言服务器、stdio JSON-RPC、`didOpen/didChange` 增量、诊断/hover/definition/completion |
-| UI | 诊断标记与 Problems 面板；hover 卡片（`TextView`）；F12 跳转；补全列表 |
+| native module | `zu/lsp`：起语言服务器（argv、显式 cwd、无 shell）、`Content-Length` 帧、完整消息/ stderr / exit 的 `Callback::post`、进程组清理；ID/超时/取消在 TS |
+| UI | 每容器/语言族一个客户端；**全文** `didOpen/didChange/didSave/didClose`（诚实：`didChange` 发整份文本，不是增量 range）；诊断进 `Editor.diagnostics` 与 Problems；hover 卡片（`Overlay` + `TextView`）；F12/Mod-click 定义跳转；补全列表；Problems `problems:{containerId}` + 顶栏入口 + 重启 |
+| 语言 | `rust-analyzer`、`typescript-language-server --stdio`、`gopls`；只同步容器根内的文件 |
 
-**验收**：Rust 文件有类型错误 → Problems 显示；hover 有签名；F12 跳到定义；补全有候选。
+**状态（2026-11-11，实现完成、验收达成，有限制）**：Rust fixture（`/tmp` 下真实 Cargo 项目，故意
+类型错误）经真实 `rust-analyzer 1.99.1` 跑通 initialize（42 ms）→ didOpen → diagnostics
+（697 ms，`E0308 expected i32, found &'static str`）→ hover（含 `pub fn add(left: i32, right:
+i32) -> i32`）→ definition（`src/lib.rs`，selection `0:7–0:10`）→ completion（`value` 的
+`detail: i32`、`add` 的 `fn(i32, i32) -> i32`）；见 [evidence/m11-lsp.md](evidence/m11-lsp.md)。
+headless UI（真实 `Workbench`、真实 `zu/lsp` 进程、受控 fake server）验证诊断进编辑器与
+Problems、Problems 行打开文件并 reveal、F12 打开目标 sheet、补全列表、重启换 pid。
+门禁 `nsh check`/`nsh build`/`cargo check --all-targets`/`cargo test --lib`（37）/
+`nsh test .`（141/141，`ZU_PORT=47835`）。
+
+**未达成 / 限制**：真实 rust-analyzer 验收只覆盖 Rust；TypeScript/Go 映射已实现但未用真实
+`typescript-language-server`/`gopls` 跑验收。headless 的 `app.hover` 只在 selector 自身的
+view 上派发 `MouseMove`，而 `Editor` 在内部 rows 上监听，所以「指针 → onHover」这条路径
+无法在 headless 驱动；UI 测试只渲染同一个 `HoverCard`（固定 anchor），真实 hover 由 native
+测试覆盖。诊断只保留**打开的文件**（Problems 是编辑器视图，不是全工作区索引）；服务端索引
+进度只显示 `$/progress` 的标题；补全关闭 snippet support，`insertText` 不发 snippet；
+应用重启/归档不恢复语言服务器，重启后按打开的文件重新 didOpen。
 
 ## 15. M12 — 常驻、通知与自更新
 

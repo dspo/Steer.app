@@ -105,8 +105,14 @@
 | Q62 | 浏览器 sheet 的状态与非可见降级 | 每个 sheet 的 URL/标题/loading/canGoBack/canGoForward/error/页面消息日志存在 UI store（`browser.ts`），key 为 `webview:{containerId}:{n}`（n 递增，可多开）；nsh 的 `WebView` **没有 pause API**，所以非可见 sheet **卸载 `WebView`、显示时按 store 的 URL 重挂载**：URL/标题保留，页面运行时状态（滚动、表单、SPA 内存、页内 history）丢失；应用重启只恢复页签 id，store 为空，因此是新标签页。不声称存在暂停能力 | `browser.ts`、`browser-ui.tsx`、`dock.ts`；arch §4.3/§5.5 |
 | Q63 | 地址栏接受什么 | **只开 http/https**：裸域名/裸 `host:port` 补 `https://`，`HTTP://` 规范为小写 scheme；`javascript:`/`data:`/`file:`/`about:` 与不是主机的文本（含空格、无点的裸词）拒绝并显示原因，**不**转成搜索引擎查询。搜索通过搜索结果 URL 或页面自己的搜索框完成；M10 不引入默认搜索引擎 | `browser.ts` 的 `normalizeAddress`；`browser.test.ts`；M10 证据 §4 |
 
+## LSP（M11）
+
+| # | 问题 | 裁决 | 落点 |
+|---|---|---|---|
+| Q64 | LSP 的传输、同步与语言映射 | **Rust 只做进程与帧，TS 做协议**：`zu/lsp` 以 argv 数组 + 显式 canonical cwd 起 server（无 shell、独立进程组），`Content-Length` 帧有界（header 8 KiB / body 8 MiB / stdin 队列 8 MiB），每条完整消息、stderr 片段与 exit 经 `Callback::post` 推给 TSX；JSON-RPC id、超时（initialize 60 s、hover 8 s、definition 10 s、completion 8 s）、`$/cancelRequest` 与陈旧应答丢弃都在 `lsp.ts`。**全文同步**：`didChange` 发整份文本（180 ms 防抖），不假装增量 range；只同步容器根内文件，只保留打开文件的 `publishDiagnostics`。语言映射 rust→`rust-analyzer`、ts/tsx/js/jsx→`typescript-language-server --stdio`、go→`gopls`，每容器 × 语言族一个进程，归档即停；命令解析保留 rustup 的 symlink（不 canonicalize）。LSP 永远不经过 engine wire、agent 或网络 | `src/lsp.rs`、`lsp.ts`、`lsp-ui.tsx`、`files.tsx`、`sheets.tsx`、`shell.tsx`；arch §3.6/§4.3/§5.5/§8.13；M11 证据 |
+
 ## 决策编号说明
 
-- Q1–Q63 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（Q56/§3.6 的 `zu/fs`）、git 执行与根/路径边界（Q58/§3.6 的 `zu/git`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）、浏览器的能力/链接策略与非可见降级（Q61/Q62/§4.3）。
+- Q1–Q64 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（Q56/§3.6 的 `zu/fs`）、git 执行与根/路径边界（Q58/§3.6 的 `zu/git`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）、浏览器的能力/链接策略与非可见降级（Q61/Q62/§4.3）、LSP 的传输/全文同步/语言映射（Q64/§3.6）。
 - 原 engine/ui/domain 三份文档里的 E/U 编号已废弃，统一并入本表。
 - 条件性里程碑（M-tty / M-arch / M-web）的触发条件见 [roadmap.md](roadmap.md) §17。

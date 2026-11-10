@@ -1,11 +1,14 @@
 import { Dialog, DiffView, Editor, Input, type DiffStats, type EditorRef, type EditorSearchResult } from "nsh/base";
-import { cleanup, effect, List, signal, Text, token, untracked, View } from "nsh";
+import { cleanup, effect, keymap, List, signal, Text, token, untracked, View } from "nsh";
+import type { Bounds } from "nsh";
 import type { DiffLayout } from "nsh/base";
 import { containers } from "./containers";
 import {
   closeEditor,
   diffSheetPaths,
   editorDocs,
+  editorPathFor,
+  editorSheetId,
   editorSheetPath,
   ensureEditor,
   languageFor,
@@ -28,6 +31,17 @@ import {
   type FileRow,
 } from "./file-tree";
 import { visiblePanels } from "./dock";
+import {
+  clearPendingReveal,
+  diagnosticsFor,
+  lspCompletion,
+  lspDefinition,
+  lspHover,
+  pendingReveals,
+  requestReveal,
+  type LspCompletionResult,
+} from "./lsp";
+import { HoverCard } from "./lsp-ui";
 import { K, t } from "./i18n";
 import { Glyph, motionStyle, shadowDialog, SheetAction as Action, SheetIconButton as IconButton } from "./ui";
 
@@ -399,7 +413,30 @@ export function EditorBody(props: { sheetId: string }) {
   const query = signal("");
   const replacement = signal("");
   const searchResult = signal<EditorSearchResult | null>(null);
+  const focused = signal(false);
+  const hoverCard = signal<{ markdown: string; anchor: Bounds } | null>(null);
   let editor: EditorRef | undefined;
+  let hoverSeq = 0;
+  let definitionSeq = 0;
+  let completionSeq = 0;
+
+  // A definition or a Problems row asked this sheet to reveal a position; do
+  // it once the document is ready (a newly opened sheet loads asynchronously).
+  effect(() => {
+    const target = pendingReveals()[props.sheetId];
+    if (!target || !editor || doc()?.status !== "ready") return;
+    editor.revealPosition(target.range.start, true);
+    // A navigation (definition, a Problems row) should leave the caret's
+    // editor taking the keyboard, as every editor does when it opens a target.
+    editor.focus();
+    clearPendingReveal(props.sheetId, target.nonce);
+  });
+
+  // Ctrl+Space is the editors' usual "show completions"; only the focused,
+  // visible sheet answers, so split editors do not fight over the list.
+  keymap.bind("ctrl+space", () => {
+    if (focused() && isVisible(props.sheetId)) editor?.showCompletions();
+  });
 
   const close = (): void => closeEditor(props.sheetId);
   const save = (): void => void saveEditor(props.sheetId);
@@ -414,6 +451,76 @@ export function EditorBody(props: { sheetId: string }) {
     if (!result) return t(K.editor.noMatches);
     if (result.error) return result.error;
     return t(K.editor.matches, { count: result.count });
+  };
+
+  const realPath = (): string => doc()?.realPath || path;
+
+  const askHover = (event: any): void => {
+    if (!doc()?.realPath) return;
+    const seq = ++hoverSeq;
+    void lspHover(containerId, realPath(), event.position, doc()?.text ?? "")
+      .then((result) => {
+        if (seq !== hoverSeq) return;
+        const parts: string[] = [];
+        if (result?.markdown.trim()) parts.push(result.markdown);
+        for (const diagnostic of event.diagnostics ?? []) {
+          parts.push(`**${diagnostic.severity ?? "error"}** · ${diagnostic.message}`);
+        }
+        if (parts.length === 0) {
+          hoverCard.set(null);
+          return;
+        }
+        hoverCard.set({ markdown: parts.join("\n\n---\n\n"), anchor: event.pageBounds });
+      })
+      .catch(() => {
+        if (seq === hoverSeq) hoverCard.set(null);
+      });
+  };
+
+  const askDefinition = (event: any): void => {
+    const seq = ++definitionSeq;
+    void lspDefinition(containerId, realPath(), event.position, doc()?.text ?? "")
+      .then((target) => {
+        if (seq !== definitionSeq) return;
+        if (event.trigger === "hover") {
+          // The underline is over the word under the pointer in *this*
+          // document; the target's range may be in another file.
+          if (target) editor?.presentDefinitionLink(event.id, event.range);
+          else editor?.hideDefinitionLink();
+          return;
+        }
+        if (!target) return;
+        const targetPath = editorPathFor(containerId, target.path);
+        const targetSheet = editorSheetId(containerId, targetPath);
+        if (targetSheet === props.sheetId) {
+          editor?.revealPosition(target.target.start, true);
+          return;
+        }
+        openEditorSheet(containerId, targetPath);
+        requestReveal(targetSheet, target.target);
+      })
+      .catch(() => {});
+  };
+
+  const askCompletion = (event: any): void => {
+    const seq = ++completionSeq;
+    void lspCompletion(
+      containerId,
+      realPath(),
+      event.position,
+      doc()?.text ?? "",
+      event.trigger,
+      event.character ?? null,
+    )
+      .then((result: LspCompletionResult) => {
+        // The editor drops a stale id itself; this also drops an older
+        // answer that arrived after a newer question.
+        if (seq !== completionSeq) return;
+        editor?.presentCompletions(event.id, result.items, result.incomplete);
+      })
+      .catch(() => {
+        if (seq === completionSeq) editor?.presentCompletions(event.id, []);
+      });
   };
 
   return (
@@ -544,8 +651,20 @@ export function EditorBody(props: { sheetId: string }) {
           lineHeight={20}
           accessibilityLabel={baseName(path)}
           search={search()}
+          completion
+          completionTriggerCharacters={[".", ":"]}
+          diagnostics={doc()?.realPath ? diagnosticsFor(containerId, doc()!.realPath!) : []}
           onSearchChange={({ result }) => searchResult.set(result)}
           onChange={({ value }) => setEditorText(props.sheetId, value)}
+          onFocus={() => focused.set(true)}
+          onBlur={() => focused.set(false)}
+          onHover={askHover}
+          onHoverEnd={() => {
+            hoverSeq += 1;
+            hoverCard.set(null);
+          }}
+          onDefinitionRequest={askDefinition}
+          onCompletionRequest={askCompletion}
         />
 
         <View class="flex-row items-center gap-3 border-t border-line bg-inset px-3 py-1">
@@ -557,6 +676,11 @@ export function EditorBody(props: { sheetId: string }) {
           </Text>
           <Text class="text-[10px] text-faint">{formatBytes(doc()?.size ?? 0)}</Text>
           <Text class="text-[10px] text-faint">{doc()?.encoding ?? "utf-8"}</Text>
+          <Text testID="editor-diagnostics" class="text-[10px] text-faint">
+            {t(K.editor.diagnostics, {
+              count: doc()?.realPath ? diagnosticsFor(containerId, doc()!.realPath!).length : 0,
+            })}
+          </Text>
           <View style={{ flex: 1 }} />
           <Text
             testID="editor-state"
@@ -569,6 +693,17 @@ export function EditorBody(props: { sheetId: string }) {
                 : t(K.editor.saved)}
           </Text>
         </View>
+      </If>
+
+      <If when={hoverCard() !== null}>
+        <HoverCard
+          markdown={hoverCard()!.markdown}
+          anchor={hoverCard()!.anchor}
+          onClose={() => {
+            hoverSeq += 1;
+            hoverCard.set(null);
+          }}
+        />
       </If>
     </View>
   );

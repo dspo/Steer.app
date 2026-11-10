@@ -4,6 +4,10 @@ import { closeSheet, containers, layout, setLayout } from "./containers";
 import { appendSheet, visiblePanels } from "./dock";
 import { canonicalRoot, failure, readText, sameVersion, statPath, writeText, type FsFailure } from "./fs";
 import { t, K } from "./i18n";
+import { languageFor } from "./languages";
+import { documentChanged, documentClosed, documentSaved, openLspDocument } from "./lsp";
+
+export { languageFor };
 
 /**
  * The editors' documents and their sheet identity.
@@ -32,6 +36,12 @@ export interface EditorDoc {
   containerId: string;
   /** The absolute path the sheet opened (inside the container's cwd). */
   path: string;
+  /**
+   * The canonical path (`/tmp` on macOS is `/private/tmp`), set by the first
+   * successful read. The language server sees canonical paths, so diagnostics
+   * and definitions are keyed by this, while the sheet id keeps `path`.
+   */
+  realPath: string;
   /** The workspace root as `zu/fs` canonicalizes it; "" until the first read. */
   root: string;
   text: string;
@@ -111,78 +121,6 @@ export function diffSheetPaths(
     : { containerId: rest.slice(0, at), oldPath, newPath };
 }
 
-/** The editor's language for a path: its extension's name, else the file
- * name (the editor also knows `Dockerfile`, `Makefile`, ... by name). */
-const LANGUAGES: Record<string, string> = {
-  rs: "rust",
-  ts: "typescript",
-  mts: "typescript",
-  cts: "typescript",
-  tsx: "tsx",
-  js: "javascript",
-  mjs: "javascript",
-  cjs: "javascript",
-  jsx: "jsx",
-  json: "json",
-  jsonc: "json",
-  md: "markdown",
-  mdx: "markdown",
-  css: "css",
-  scss: "scss",
-  less: "less",
-  html: "html",
-  htm: "html",
-  xml: "xml",
-  svg: "xml",
-  toml: "toml",
-  ini: "ini",
-  cfg: "ini",
-  yaml: "yaml",
-  yml: "yaml",
-  sh: "shell",
-  bash: "shell",
-  zsh: "shell",
-  fish: "shell",
-  py: "python",
-  rb: "ruby",
-  go: "go",
-  c: "c",
-  h: "c",
-  cc: "cpp",
-  cpp: "cpp",
-  cxx: "cpp",
-  hpp: "cpp",
-  hh: "cpp",
-  java: "java",
-  kt: "kotlin",
-  kts: "kotlin",
-  swift: "swift",
-  m: "objective-c",
-  mm: "objective-c",
-  cs: "csharp",
-  php: "php",
-  lua: "lua",
-  sql: "sql",
-  graphql: "graphql",
-  gql: "graphql",
-  proto: "protobuf",
-  diff: "diff",
-  patch: "diff",
-  lock: "plaintext",
-};
-
-/** The editor's language for a path. */
-export function languageFor(path: string): string {
-  const name = path.split("/").pop() ?? path;
-  const lower = name.toLowerCase();
-  if (lower === "dockerfile" || lower.startsWith("dockerfile.")) return "dockerfile";
-  if (lower === "makefile" || lower === "gnumakefile") return "makefile";
-  if (lower === ".gitignore" || lower === ".gitattributes" || lower === ".editorconfig") return lower;
-  const dot = lower.lastIndexOf(".");
-  const ext = dot > 0 ? lower.slice(dot + 1) : "";
-  return LANGUAGES[ext] ?? name;
-}
-
 /** The active container's cwd, or a coded failure when it has none. */
 function rootOf(containerId: string): { root: string } | { error: FsFailure } {
   const container = containers().find((row) => row.id === containerId);
@@ -213,8 +151,11 @@ async function load(doc: EditorDoc): Promise<void> {
   try {
     const base = await canonicalRoot(owner.root);
     patch(doc.sheetId, { root: base });
+    const real = await statPath(base, doc.path);
     const file = await readText(base, doc.path);
+    const realPath = real.kind === "file" ? real.path : doc.path;
     patch(doc.sheetId, {
+      realPath,
       text: file.text,
       baseline: file.text,
       dirty: false,
@@ -226,6 +167,9 @@ async function load(doc: EditorDoc): Promise<void> {
       mtimeMs: file.mtimeMs,
       size: file.size,
     });
+    // A supported file opening is the only trigger besides Problems: the
+    // server starts now, with the same text the sheet read.
+    openLspDocument(doc.containerId, base, realPath, file.text, languageFor(doc.path));
   } catch (error) {
     const problem = failure(error);
     // Binary and too-large files are states, not transient failures: keep the
@@ -233,6 +177,7 @@ async function load(doc: EditorDoc): Promise<void> {
     patch(doc.sheetId, {
       text: "",
       baseline: "",
+      realPath: "",
       dirty: false,
       status: "ready",
       readonly: true,
@@ -255,6 +200,7 @@ export function ensureEditor(containerId: string, path: string): string {
     containerId,
     path,
     root: "",
+    realPath: "",
     text: "",
     baseline: "",
     dirty: false,
@@ -276,6 +222,9 @@ export function setEditorText(id: string, text: string): void {
   const doc = editorDocs()[id];
   if (!doc || doc.readonly) return;
   patch(id, { text, dirty: text !== doc.baseline });
+  // The language server gets the full text on a pause in typing; the store
+  // owns this call so a hidden sheet stays synchronized too.
+  documentChanged(doc.containerId, doc.realPath || doc.path, text);
 }
 
 /** Reads the file again, dropping the unsaved edit and clearing a conflict. */
@@ -355,6 +304,7 @@ export async function saveEditor(id: string): Promise<void> {
       mtimeMs: after.mtimeMs,
       size: after.size,
     });
+    documentSaved(doc.containerId, doc.realPath || doc.path, after.text);
   } catch (error) {
     const problem = failure(error);
     // `ERR_FS_STALE` from the write itself is the same read-only conflict.
@@ -372,10 +322,20 @@ export async function saveEditor(id: string): Promise<void> {
   }
 }
 
+/** The path a sheet already uses for `path` (a canonical alias, else itself). */
+export function editorPathFor(containerId: string, path: string): string {
+  for (const doc of Object.values(editorDocs())) {
+    if (doc.containerId === containerId && (doc.realPath || doc.path) === path) return doc.path;
+  }
+  return path;
+}
+
 /** Forgets a document (its sheet closed). Unsaved text goes with it. */
 export function dropEditor(id: string): void {
   const current = editorDocs();
-  if (!(id in current)) return;
+  const doc = current[id];
+  if (!doc) return;
+  documentClosed(doc.containerId, doc.realPath || doc.path);
   const next = { ...current };
   delete next[id];
   editorDocs.set(next);

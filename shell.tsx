@@ -37,6 +37,7 @@ import { SheetBody, sheetGlyph, sheetTitle } from "./sheets";
 import { externalKindLabel } from "./terminals";
 import { saveActiveEditor } from "./editors";
 import { openChangesSheet, openHistorySheet } from "./git";
+import { openProblemsSheet } from "./lsp-ui";
 import { K, shellLocale, t, toggleShellLocale } from "./i18n";
 import { UIHost, statuses, unsupportedMethods } from "./ui-host";
 import { openSubagents } from "./subagents";
@@ -502,6 +503,22 @@ function EngineBar() {
         onPress={() => openChangesSheet()}
       >
         <Glyph name="diff" size={15} tint={token("muted-foreground")} />
+      </View>
+      <View
+        role="button"
+        testID="open-problems"
+        accessibilityLabel={t(K.lsp.problems)}
+        tooltip={t(K.lsp.problems)}
+        disabled={activeContainerId() === null}
+        class={
+          activeContainerId() === null
+            ? "h-7 w-7 items-center justify-center rounded-lg opacity-40"
+            : "h-7 w-7 items-center justify-center rounded-lg hover:bg-hover active:opacity-60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+        }
+        style={{ ...motionStyle("fast") }}
+        onPress={() => openProblemsSheet()}
+      >
+        <Glyph name="alert" size={15} tint={token("muted-foreground")} />
       </View>
       <View
         role="button"

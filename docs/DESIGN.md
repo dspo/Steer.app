@@ -326,3 +326,56 @@ M10 不新增半径、阴影或控件尺寸：Browser sheet 复用 M6 的顶栏/
 checklist 的半径/字号/间距/对齐/颜色/hover/pressed/状态/motion 组按截图与代码核对；hover 与按下
 中间帧未单独截。深色下 `example.com` 自己画 `#222` 背景但 nsh 0.4.0 的 WKWebView 仍用黑字，
 对比度差——这是站点 + web view 上游行为，sheet chrome 正常；不把它算作设计通过。
+
+## 12. M11 LSP（悬停卡与 Problems 的表面与动效）
+
+M11 不新增 token、半径或控件尺寸：悬停卡复用 `popover`/`line`/`code`/`inset` 与
+`shadowRaised()`（12 半径，与 M6 菜单/Toast 同一表面语言）；Problems 复用 `card`/
+`inset`/`line`/`hover`/`accent`、`SheetAction`/`SheetIconButton`/`Glyph`/`Dot`。
+severity 的颜色只用既有 token：error `destructive`、warning `warn`、info `info`、
+hint `muted-foreground`——颜色之外每行都有严重度的文字标签（accessibilityLabel）与
+来源/错误码文字，不靠颜色单独表意。
+
+| 表面 | 几何 | 状态 |
+|---|---|---|
+| 悬停卡 | `Overlay` 锚在 `event.pageBounds`（词的范围在根视图的盒子），placement `bottom`、align `start`、offset 6、margin 8；宽 430，最大高 300，超出滚动；内边距 12/10 | 打开即显示，无入场动画（同 M6 toast 的理由）；按卡外、Escape 关闭；`TextView` 支持选取复制，链接报告而不外开 |
+| 诊断 | `Editor.diagnostics` 的波浪线 + 行号标记，全部由 `Editor` 绘制（error `destructive`，warning 琥珀，info 蓝，hint muted） | 随 `publishDiagnostics` 更新；编辑后由编辑器按范围携带；非可见 sheet 不丢（诊断在 store，不在组件） |
+| Problems 行 | 高约 34：6pt 严重度 Dot、11.5 正文（最多 3 行）、10 等宽 `相对路径:行:列`、右侧 source/code | hover `bg-hover`（120ms 颜色）、pressed `bg-accent`、键盘 focus 2pt `outline-ring`；点击打开文件并 reveal 范围 |
+| Problems 头 | 48 高：alert 图标、12/600 标题、10 等宽根路径、10.5 `tabular-nums` 计数、`SheetAction` 全部重启 | 无 server 时「全部重启」disabled（40% + 无 hover） |
+| server 条 | `bg-inset`，每行 6pt 状态 Dot + `command · family` + 状态/进度 + 错误文本 + 24pt 重启图标 | starting/ready/indexing/error/stopped 五态；进度文字始终同时出现，不只靠 Dot |
+| 空/加载/错误 | 居中：check 18pt（空）、文字标题 12/600 + 11 说明；server 错误另有一条横幅 + 重试 | 空态区分「没有诊断」与「没有可启动的 server」；loading 只在 starting；索引中显示 `$/progress` 标题 |
+| 页签 | 沿用 M6 34pt 页签条；标题 `问题 · {folder}`，glyph `alert`/`warn` | 选中白 pill + primary 下划线 |
+
+**M11 动效清单**（写屏前列，交付后逐条核对；没有 `motion.*` 之外的时长）：
+
+| 变化 | 工具 / token | 减少动态效果 | 验证 |
+|---|---|---|---|
+| Problems 行 hover | `motionStyle("fast")`（120ms 颜色） | 立即 | headless 状态断言；未截帧 |
+| Problems 行 pressed | `active:bg-accent`，`fast` | 立即 | 代码路径 |
+| 严重度/服务器状态出现 | 即时文字 + Dot 颜色，无布局动画 | — | headless：诊断出现后计数/行文本断言 |
+| 诊断到达 | `Editor` 内部重绘波浪线，无应用动画 | — | headless：`editor-diagnostics` 计数从 0 → 2 |
+| 悬停卡出现 | 无入场动画；`Overlay` 即时放置 | — | headless：固定 anchor 渲染同一 `HoverCard` |
+| 悬停卡关闭 | 即时卸载 | — | 代码路径（press outside / Escape / hover 结束） |
+| 索引进度 | 文字即时替换（`$/progress`） | — | headless：受控 server 不推进度，只断言状态文字 |
+| 页签新增 Problems | 沿用 M6 页签 `medium`（180ms 背景/阴影） | 运行时 | headless 未截帧 |
+
+**Finishing checklist（M11，按代码与 headless 结果核对；没有真实截图）**：
+
+- **半径**：只复用 8（控件/输入）、10（行）、12（悬停卡/表面）；无一次性半径。
+- **排版**：12/600 标题、11.5 正文、10.5/10 元数据、10 等宽路径；最大 12（悬停卡内 12/18）；
+  没有低于 10 的可读正文。
+- **间距与对齐**：行左右 12、上下 6；头 12/6；server 条 12/6，行内 2；Dot 垂直居中于首行；
+  路径与消息左对齐，source/code 右对齐。
+- **颜色**：全部来自 token；severity 与 server 状态都有文字，禁用态是透明度 + disabled 语义。
+- **Hover / pressed**：行有 hover/pressed；重启按钮有 hover/pressed；disabled 重启无 hover；
+  悬停卡可选取、可按卡外/Escape 关闭。
+- **状态**：空 / loading / indexing / server error / 无 server / 有诊断 / 已重启都画了；
+  计数同时给出 error/warning，不只一个总数。
+- **动效**：全部来自 `motion.*`（120/180ms 颜色/透明度）；无自造时长；无入场或常驻动画。
+- **深色**：沿用 `popover`/`card`/`inset` 的 token，随 `appearance: system` 切换；未截图。
+
+**验证边界（诚实）**：M11 的验证全是 headless（真实 `Workbench` + 真实 `zu/lsp` 进程；
+Problems/诊断/补全/定义是真实路径，悬停卡用同一组件 + 固定 anchor 渲染，服务器是受控
+fake）；没有真实 macOS 截图，也没有用真实指针驱动 `Editor` 内部的 hover（headless 的
+`app.hover` 只把 `MouseMove` 派给 selector 自身，见 architecture §8.13）。因此本节的
+半径/字号/间距/颜色按代码核对，hover/pressed 的中间帧与深色外观未验证；不声称截图通过。
