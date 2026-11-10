@@ -24,6 +24,7 @@
 | E6 | `EngineConnection` 是 UI 侧**唯一引擎边界**（接口 + `WsHost` 实现 + `Fake` 测试实现）；UI 代码只 import 接口与 `contracts/` 类型 | 类比 Steer 的 AHP store 折影纪律 |
 | E7 | 容器注册表、PTY、子会话生命周期归 **sidecar**（它拥有全部进程）；Project/membership 归 **UI**；详见 domain-model.md | |
 | E8 | **pi 扩展机制用于调度面**：sidecar 内置扩展注册 captain 的 dispatch/abort/引导工具（实现闭包持有 SessionManager），**不用扩展承载所有权注册表**（扩展随单会话生灭，容器跨会话长寿） | 详见 domain-model.md §5 |
+| E9 | **唯一引擎路径**：不保留「系统 pi」直连通道（每会话一进程的形态随之永不再现）；调试用源码形态 `bun run engine/src/server.ts`；web 目标挂账 v5，contracts 约束为「UI 不用 web 不可用能力」（当前已满足，实时成本为零） | 原 Q6，2026-11-10 拍板 |
 
 ## 3. 拓扑
 
@@ -70,6 +71,7 @@ v1 仅此。UI 不持有 fs 能力（偏好走 Storage 模块）——UI 沙箱�
 - **版本自管**：`engine/package.json` 精确 pin `@earendil-works/pi-coding-agent =x.y.z` + `bun.lock` 进 git；升级 = 改 pin 的 PR（引擎测试 + 冒烟 + 兼容性台账逐条重验）；sidecar 内禁 pi 自我更新（`pi update` 不可达）。
 - **兼容性台账**：每个绕过 pi 缺口的适配登记「上游什么条件下可删」（借鉴 ThinkRail `pi-compatibility.md` 方法论）。
 - **MIT 合规**：NOTICE/About 保留 pi 版权与许可声明。
+- **注册表持久化**：容器注册表 = JSON 快照 + 原子 rename + 启动对账（注册表指向的会话文件缺失 → 该容器标记 dead）；**状态生命周期分级**（哪些对象跨重启、哪些与进程同寿——终端明确不恢复）见 domain-model.md §9。
 
 ## 7. 构建 / CI / 开发回路
 
@@ -102,18 +104,7 @@ v1 仅此。UI 不持有 fs 能力（偏好走 Storage 模块）——UI 沙箱�
 4. **nsh sockets 能力的端口授予形态**（固定端口段探测 vs host 级授权）。
 5. **asset 释放-执行**在 nsh TSX 里的顺滑度（决定是否需要 Rust nativeModule 退出舱）。
 
-## 11. 开放问题（需要拍板）
+## 11. 开放问题 → 裁决记录
 
-### Q6：要不要保留「系统 pi」调试通道与 web 目标？
-
-**背景**：`EngineConnection` 是接口，技术上可以有多个实现。讨论中出现过两条「第二路径」：① 一个直连用户系统装的 `pi --mode rpc` 的实现（每会话一个子进程），作为开发期调试或引擎故障时的逃逸通道；② web target（浏览器客户端连同一个 engine）作为未来第三平台。
-
-**为什么这是个问题**：本仓 adopt 的激进纪律是「不维护第二路径、不留死代码」。保留系统 pi 通道意味着：两套实现都要跟随 wire 演进、每会话一进程的回收地狱在调试形态里复活、测试矩阵翻倍。而 web 目标的影响面不同：它不影响引擎，只要求 **contracts 与 UI 不用浏览器拿不到的能力**——我们的 UI 本来就不用 process API（能力面只有回环 + storage），所以「为 web 留门」的实时成本几乎为零，真正的成本推迟到 v5 才发生。
-
-**选项**：
-- A：砍掉系统 pi 通道（唯一路径 = 内嵌 sidecar）；web 挂账 v5，contracts 设计仅要求「不引入 web 不可用的 UI 能力」（当前已满足）。
-- B：两个都保留：系统 pi 通道做成 engine 的 `--fallback-system` 模式；web 提前到 v2。
-
-**建议**：A。调试需要真 pi 时直接跑 `bun run engine/src/server.ts`（源码形态，热重启），不需要第二条产品路径。
-
-**需要你回答**：接受 A 吗？（是 / 否，若否说明想要哪条保留）
+- **Q6（系统 pi 通道与 web 目标）→ 已裁决为 E9**（2026-11-10）：砍掉系统 pi 通道，唯一路径 = 内嵌 sidecar；web 挂账 v5。
+- 本文档暂无未决问题。产品/架构/技术层面的新问题集中在 **docs/open-questions.md**（Q7 起），由产品负责人逐条回答后并入各文档决策记录。

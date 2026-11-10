@@ -8,13 +8,14 @@ draggable **sheets** (a Pi session, terminals, agents' TUIs, a webview, a sessio
 
 ## Architecture docs
 
-| Doc | What it covers | Open questions |
+| Doc | What it covers | Status |
 |---|---|---|
-| [docs/engine-architecture.md](docs/engine-architecture.md) | 引擎与前后端架构：vendored pi sidecar、`EngineConnection` 边界、wire、能力面、分发、spike 清单 | Q6 系统 pi 通道与 web 目标 |
-| [docs/ui-architecture.md](docs/ui-architecture.md) | 前端 UI 架构：轮廓分离、panel/sheet 画布、sheet 注册表、布局 store、待建清单 | Q4 布局 stash 三语义点、Q5 键盘范围 |
-| [docs/domain-model.md](docs/domain-model.md) | 关系对象模型：Project/membership、SessionContainer、资源三类、生命周期、pi 扩展裁决 | Q1 子会话转录归属、Q2 多容器并置、Q3 注册表格式 |
+| [docs/engine-architecture.md](docs/engine-architecture.md) | 引擎与前后端架构：vendored pi sidecar、`EngineConnection` 边界、wire、能力面、分发、spike 清单 | 定稿；Q6 已裁决（E9） |
+| [docs/ui-architecture.md](docs/ui-architecture.md) | 前端 UI 架构：轮廓分离、panel/sheet 画布、sheet 注册表、布局 store、待建清单 | 定稿；Q4/Q5 已裁决（U7–U10） |
+| [docs/domain-model.md](docs/domain-model.md) | 关系对象模型：Project/membership、SessionContainer、资源三类、生命周期、状态分级表、pi 扩展裁决 | 定稿；Q1–Q3 已裁决（§4.4/§8/§9） |
+| [docs/open-questions.md](docs/open-questions.md) | 产品/架构/技术问题清单（Q7–Q15），每条附机制背景、选项与建议 | **待回答** |
 
-开放问题在各自文档底部附了机制背景与选项解释——回答后把结论写回对应文档的决策记录表。
+开放问题回答后，结论并入对应文档的决策记录表，条目随之删除。
 
 ## Architecture (frontend)
 
