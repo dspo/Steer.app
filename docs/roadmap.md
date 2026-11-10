@@ -171,7 +171,7 @@
 
 ## 12. M9 — Git
 
-> **状态（2026-11-11，基线 `a856fa0` 的 M9 工作区，未提交）**：实现完成，验收全部达成。
+> **状态（2026-11-11，`30be72d`）**：实现完成，验收全部达成。
 > **已实现并实测**：`src/git.rs` 导出 `zu/git`（`status`/`diff`/`log`/`branches`/`stage`/`unstage`/`commit`/`checkout`/`createBranch`/`init`/`setIdentity`）。每次调用显式传工作区根；根必须是仓库顶层，`..`、绝对路径、pathspec magic 与 `-` 开头的路径一律拒绝；`git` 以 argv 数组执行、cwd 即根，不经过 shell，清掉 `GIT_DIR` 等重定向变量，不做任何 fetch/pull/push；唯一写入的 git 配置是仓库自己的 author identity（`--local`，全局配置不动）。status 用 porcelain v2 `-z` 解析（branch/oid/ahead/behind、staged/unstaged/untracked/conflicted、rename 的旧路径）；diff 用 `--no-ext-diff --no-textconv --unified=3`，untracked 走 `--no-index /dev/null`，补丁上限 2 MiB；log 用控制字符分隔的记录；commit 前用 `git var` 检查身份，缺失返回 `ERR_GIT_IDENTITY`。
 > **UI**：`changes:{containerId}`（真实文件列表按 staged/工作区/未跟踪/冲突分组、单文件与全部 stage/unstage、选中文件后用 M8 的 `DiffView` 的 `patch` 模式显示真实 `git diff`、提交行、身份对话框、空/加载/错误/未初始化仓库态）与 `history:{containerId}`（真实 log、分支菜单 checkout、新建分支对话框）；顶栏新增 `open-changes` / `open-history`。checkout 后重读 changes/history，并 reload 该容器中没有未保存改动的编辑器。
 > **已验证**：`git.test.ts` 对测试自建的真实临时仓库走完 status → stage → commit → `git log` → 修改 → `git diff`（hunk/行数）→ 分支创建/切换，并覆盖路径越界、非仓库、仓库子目录、空提交信息；`git.ui.test.tsx` 在真实 `Workbench` 顶栏打开 Changes，UI 内 stage 一个真实文件、提交并用 `zu/git` 的 `git log` 验证 author/subject/hash，DiffView 画出工作区 hunk（`+2 −1`），History 菜单 checkout 后 Changes 分支与打开的编辑器内容都跟着变。门禁 `nsh check`/`nsh build`/`cargo check --all-targets`/`cargo test --lib`/`nsh test .` 全绿。证据见 [evidence/m9-git.md](evidence/m9-git.md)。
