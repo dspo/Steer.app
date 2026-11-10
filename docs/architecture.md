@@ -248,9 +248,9 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 ## 7. 实现状态（2026-11-10）
 
 - **M0 完成**：`engine/`（Bun + pi 1.5.0）+ mixed 模板（`Cargo.toml`、`src/lib.rs` 的 `zu/engine`）+ sidecar 编译（75 MB 单文件，WASM 资产同目录）+ WS 握手。
-- **M1 完成**：`engine.ts`（连接/请求/事件）、`sessions.ts`（会话 store）、`sheets.tsx` 的会话 sheet（历史 + 流式 + composer，纯文本渲染）、`App.tsx` 的会话侧栏与引擎状态条。
+- **M1 完成**：`engine.ts`（连接/请求/事件）、`sessions.ts`（会话 store，16 ms 批 flush）、`sheets.tsx` 的会话 sheet（`TextView` 流式 Markdown、工具卡、composer）、`App.tsx` 的会话侧栏与引擎状态条。turn 结束时 engine 写 `zu.turn` custom entry；流式中停止会广播 idle 并保留已生成文本；引擎重启后用 `session.info` 拿到的文件路径续聊。
 - **外部审计**：`docs/review/` 是 17:13 的一次事实审计（agent 产出）；其中「alt screen 污染 scrollback」一条已被证伪并撤回，其余表述已按审计修订。
-- **已知问题**：开发期热更新（`nsh run` 的 hot reload）在 TSX 变更后报 `nsh hot: no module zu/native`——native module 在 hot bundle 期间不可解析。重启 app 即可；不影响运行期。正式打包不受影响（无 hot reload）。
+- **已知问题**：开发期热更新（`nsh run` 的 hot reload）在 TSX 变更后报 `nsh hot: no module zu/native`——native module 在 hot bundle 期间不可解析。重启 app 即可；不影响运行期。正式打包不受影响（无 hot reload）。另：headless 测试运行器没有帧循环，`requestAnimationFrame` 不跑，流式批 flush 因此用 `setTimeout(16)`。
 - **打包**：`script/bundle-mac.sh`——`nsh package` 出 `.app`，sidecar 拷进 `Contents/Helpers`，嵌套 ad-hoc 签名，`hdiutil` 出 dmg（127 MB app / 50 MB dmg）。打包后 app 优先用包内 sidecar（仓库的构建不能遮蔽它）。
 
 ## 8. 已知风险（非决策）

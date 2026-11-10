@@ -19,7 +19,8 @@ export type SessionMeta = {
 };
 
 export type Role = "user" | "assistant" | "tool";
-export type Msg = { role: Role; text: string; at?: number };
+export type ToolState = "running" | "done" | "failed";
+export type Msg = { role: Role; text: string; at?: number; tool?: { name: string; state: ToolState } };
 
 /** The sidebar's rows, newest first. */
 export const sessions = signal<SessionMeta[]>([]);
@@ -62,7 +63,9 @@ const flush = () => {
 const queueFlush = () => {
   if (frameQueued) return;
   frameQueued = true;
-  requestAnimationFrame(flush);
+  // A timer, not requestAnimationFrame: the headless test runner has no
+  // frame loop, so deltas would collect until the turn ended.
+  setTimeout(flush, 16);
 };
 
 onEngineEvent((event) => {
@@ -98,14 +101,15 @@ onEngineEvent((event) => {
       const label = String(event.toolName ?? "tool");
       const list = messages();
       if (event.type === "tool.start") {
-        messages.set([...list, { role: "tool", text: `${label} …` }]);
+        messages.set([...list, { role: "tool", text: label, tool: { name: label, state: "running" } }]);
       } else {
-        const text = `${label} ${event.isError ? "failed" : "done"}`;
+        const state: ToolState = event.isError ? "failed" : "done";
         const index = list.map((m) => m.role).lastIndexOf("tool");
+        const row = { role: "tool" as const, text: label, tool: { name: label, state } };
         if (index >= 0) {
-          messages.set([...list.slice(0, index), { role: "tool", text }, ...list.slice(index + 1)]);
+          messages.set([...list.slice(0, index), row, ...list.slice(index + 1)]);
         } else {
-          messages.set([...list, { role: "tool", text }]);
+          messages.set([...list, row]);
         }
       }
       break;

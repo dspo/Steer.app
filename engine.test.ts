@@ -1,6 +1,5 @@
 import { expect, test } from "nsh/test";
-import { connect, phase } from "./engine";
-import { request } from "./engine";
+import { connect, disconnect, phase, request } from "./engine";
 import { activeId, activePath, createSession, messages, openSession, refreshSessions, send, sessions, stop, streaming } from "./sessions";
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -9,10 +8,17 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 // ZU_SKIP_LIVE=1 to skip them where no credentials exist.
 const skip = process.env.ZU_SKIP_LIVE === "1";
 
-test("engine connects and lists pi sessions", async () => {
-  if (skip) return;
+/** A sidecar process of this build: leftovers from a failed case would
+ * answer with their own (old) command set. */
+async function freshEngine(): Promise<void> {
+  await disconnect();
   await connect();
   expect(phase()).toBe("connected");
+}
+
+test("engine connects and lists pi sessions", async () => {
+  if (skip) return;
+  await freshEngine();
   await refreshSessions();
   // The developer's ~/.pi holds sessions; a fresh machine may have none.
   expect(Array.isArray(sessions())).toBe(true);
@@ -31,12 +37,11 @@ test("a prompt streams into the transcript", async () => {
   expect(list.some((message) => message.role === "user")).toBe(true);
   expect(list.some((message) => message.role === "assistant" && message.text.length > 0)).toBe(true);
   await stop();
-});
+}, 90000);
 
 test("a closed session reopens with its history", async () => {
   if (skip) return;
-  await connect();
-  expect(phase()).toBe("connected");
+  await freshEngine();
   const id = await createSession("/tmp/zu-test");
   await send("Reply with exactly: kept");
   for (let waited = 0; waited < 120000 && streaming(); waited += 200) await sleep(200);
@@ -53,3 +58,68 @@ test("a closed session reopens with its history", async () => {
   expect(after.length).toBeGreaterThan(1);
   expect(after.some((message) => message.role === "assistant")).toBe(true);
 });
+
+test("a tool call shows a card in the transcript", async () => {
+  if (skip) return;
+  await freshEngine();
+  await createSession("/Users/chenzhongrun/projects/dspo/nsh-pi");
+  await send("Read the file README.md with the read tool, then reply with its first line only.");
+  for (let waited = 0; waited < 180000 && streaming(); waited += 200) await sleep(200);
+  const tool = messages().find((message) => message.role === "tool");
+  expect(tool).toBeDefined();
+  expect(typeof tool?.tool?.name).toBe("string");
+  expect(["done", "failed"]).toContain(tool?.tool?.state ?? "");
+});
+
+test("stopping mid-stream keeps the transcript", async () => {
+  if (skip) return;
+  await freshEngine();
+  await createSession("/tmp/zu-test");
+  await send("Write an 800-word essay about the history of pi. Do not stop early.");
+  // Wait only for the stream to start producing text, then abort it.
+  for (let waited = 0; waited < 20000; waited += 50) {
+    if (streaming() && messages().some((message) => message.role === "assistant" && message.text.length > 0)) break;
+    await sleep(50);
+  }
+  expect(streaming()).toBe(true);
+  const before = messages().length;
+  const partial = messages().find((message) => message.role === "assistant")?.text.length ?? 0;
+  expect(partial).toBeGreaterThan(0);
+  await stop();
+  for (let waited = 0; waited < 10000 && streaming(); waited += 100) await sleep(100);
+  expect(streaming()).toBe(false);
+  // The part that streamed stays; nothing is rolled back.
+  expect(messages().length).toBeGreaterThanOrEqual(before);
+  expect(messages().some((message) => message.role === "assistant")).toBe(true);
+}, 90000);
+
+test("an engine restart keeps the session and writes a durable zu entry", async () => {
+  if (skip) return;
+  await freshEngine();
+  const id = await createSession("/tmp/zu-test");
+  await send("Reply with exactly: durable");
+  for (let waited = 0; waited < 120000 && streaming(); waited += 200) await sleep(200);
+  // A session's file appears only once it has a message, so ask the engine
+  // for the path after the turn, not at creation.
+  const info = await request("session.info", { sessionId: id });
+  const path = String(info.path ?? "");
+  expect(path.length).toBeGreaterThan(0);
+
+  // The turn's end is a custom entry the pi loader reads and the model never
+  // sees (Q10); a CLI opening the file finds it.
+  expect(info.customTypes).toContain("zu.turn");
+  const reopened = await request("session.open", { path });
+  expect(reopened.customTypes).toContain("zu.turn");
+
+  // A restart: the sidecar process goes away, a new one starts, the file stays.
+  await disconnect();
+  await freshEngine();
+  await refreshSessions();
+  await openSession(path);
+  expect(messages().length).toBeGreaterThan(1);
+  await send("Reply with exactly: after-restart");
+  for (let waited = 0; waited < 120000 && streaming(); waited += 200) await sleep(200);
+  const replies = messages().filter((message) => message.role === "assistant");
+  expect(replies.length).toBeGreaterThanOrEqual(2);
+  expect(replies.some((message) => message.text.includes("after-restart"))).toBe(true);
+}, 120000);

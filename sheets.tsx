@@ -1,4 +1,4 @@
-import { Input } from "nsh/base";
+import { Input, TextView } from "nsh/base";
 import { Scroll, signal, Text, token, View } from "nsh";
 import { messages, send, stop, streaming } from "./sessions";
 import { Dot, Glyph, type GlyphName } from "./ui";
@@ -125,14 +125,21 @@ export function SheetBody(props: { id: string }) {
 
 /** One transcript row: the user's messages right-aligned, the assistant's
  * plain prose, a tool step as a dim line. M1 renders text, not Markdown. */
-function MessageRow(props: { role: string; text: string }) {
+function MessageRow(props: { role: string; text: string; tool?: { name: string; state: string } }) {
   if (props.role === "tool") {
+    const running = props.tool?.state === "running";
+    const failed = props.tool?.state === "failed";
     return (
-      <View class="flex-row items-center gap-2 py-0.5">
-        <Glyph name="terminal" size={11} tint={token("faint")} />
-        <Text class="text-[11px] font-mono text-faint" style={{ numberOfLines: 1 }}>
-          {props.text}
-        </Text>
+      <View
+        class="flex-row items-center gap-2 self-start rounded-lg border border-line bg-inset px-2.5 py-1.5"
+      >
+        {running ? (
+          <Dot tint={token("info")} size={6} />
+        ) : (
+          <Glyph name={failed ? "alert" : "check"} size={11} tint={failed ? token("destructive") : token("up")} />
+        )}
+        <Text class="text-[11px] font-medium text-foreground">{props.tool?.name ?? props.text}</Text>
+        <Text class="text-[10px] text-muted-foreground">{props.tool?.state ?? ""}</Text>
       </View>
     );
   }
@@ -147,7 +154,21 @@ function MessageRow(props: { role: string; text: string }) {
   }
   return (
     <View class="px-0.5">
-      <Text class="text-[13px] leading-[21px] text-foreground">{props.text}</Text>
+      <TextView
+        markdown={props.text}
+        options={{ streaming: streaming() }}
+        selectable
+        codeBlockScrollbar={false}
+        styles={{
+          root: { gap: 8, fontSize: 13, lineHeight: 20, color: token("foreground") },
+          heading1: { fontSize: 17, lineHeight: 23 },
+          heading2: { fontSize: 15, lineHeight: 21 },
+          heading3: { fontSize: 13, lineHeight: 20 },
+          code: { color: token("code") },
+          codeBlockCode: { color: token("code") },
+          link: { color: token("brand") },
+        }}
+      />
     </View>
   );
 }
@@ -169,7 +190,7 @@ export function SessionBody() {
     <View class="flex-1 bg-card">
       <Scroll style={{ flex: 1 }} contentStyle={{ paddingHorizontal: 16, paddingVertical: 12, gap: 10 }}>
         <Each of={messages()} key="index">
-          {(message) => <MessageRow role={message().role} text={message().text} />}
+          {(message) => <MessageRow role={message().role} text={message().text} tool={message().tool} />}
         </Each>
         <If when={streaming()}>
           <View class="flex-row items-center gap-2">

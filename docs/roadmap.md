@@ -46,7 +46,7 @@
 
 ## 4. M1 — 开启一个对话（第一个可用 App）
 
-> **状态：已完成（2026-11-10）。** 侧栏列出 pi 的全部会话；打开显示历史；prompt 流式进入转录；停止可用；关闭后重开同一会话仍带历史。4 条测试覆盖渲染、连接、真实流式回复与重开。
+> **状态：已完成（2026-11-10）。** 侧栏列出 pi 的全部会话；打开显示历史（`TextView` 渲染 Markdown）；prompt 流式进入转录；工具调用显示为卡片；流式中可停止且已生成部分保留；引擎重启后同一会话可续聊。**8 条测试**覆盖：shell 渲染、对话渲染 fixture、连接与列表、真实流式回复、工具卡、流式中停止、重开保留、引擎重启续聊 + `zu.turn` custom entry。
 
 **目的**：**在 Zu 里真正与 pi 对话。** 这是整条路线的原型车：侧栏 + 对话 + composer，能流式、能中止、能重启继续。
 
@@ -54,17 +54,17 @@
 |---|---|
 | engine | `SessionManager` + `createAgentSession`（SDK，单会话）；`session.create/open/prompt/abort/close`；`agent_settled` 作为回合终点 |
 | wire | 上述命令 + `message.delta` / `message.complete` / `agent.state` / `tool.start` / `tool.end` / `error` |
-| UI | 侧栏会话列表（engine 用 `SessionManager.listAll` 枚举，Q18 对账）；对话 sheet（**M1 用纯文本渲染**，Markdown 留到后续）；composer（`Input` + 发送/停止） |
+| UI | 侧栏会话列表（engine 用 `SessionManager.listAll` 枚举，Q18 对账）；对话 sheet（`TextView` 流式 Markdown、工具卡、composer `Input` + 发送/停止） |
 | 数据 | 会话选择（列表点开）、流式状态；未读计数留到 M2（容器模型） |
 
-**实现备注**：工具卡事件已接（`tool.start/end` 折成一行），但 M1 的测试对话未触发真实工具调用——工具卡的**端到端**验证在 M3（TUI/工具密集场景）补。
+**实现备注**：工具卡由 `tool.start/end` 折成带状态的卡片，测试用真实 `read` 工具调用验证；每个 turn 结束时 engine 向会话写一条 `zu.turn` custom entry（Q10 的机制从 M1 起用），pi 的加载器能读出它。
 
 **验收**（全部要有手测记录）：
 1. 侧栏列出 pi CLI 昨天创建的会话，点开显示完整历史。
 2. 输入一句话 → 流式回复 → 工具调用卡片出现 → 回合结束（`agent_settled`）。
 3. 流式中按「停止」→ 状态正确，转录保留。
 4. 关掉 app 重开 → 会话仍在，能继续对话（同一 pi session 文件）。
-5. 会话文件在 pi 的原生存储里，pi 的加载器能读回（`SessionManager.open` 已验证）；「pi CLI 看到 Zu 写的 custom entry」依赖调度事件的写入，**移到 M5 验证**。
+5. 会话文件在 pi 的原生存储里，pi 的加载器能读回，且**能看到 Zu 写的 `zu.turn` custom entry**（测试断言 `session.open` 返回的 `customTypes` 含它；`SessionManager` 就是 pi CLI 用的加载器）。
 
 **风险**：`createAgentSession` 的真实运行（spike 未验证项）；流式增量与 `TextView` 重渲的帧率；pi 的 `agent_settled` 之前是否还有事件。
 

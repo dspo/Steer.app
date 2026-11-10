@@ -21,6 +21,8 @@ type AgentSession = Awaited<ReturnType<typeof createAgentSession>>["session"];
 
 /** Open sessions by pi session id. */
 const open = new Map<string, AgentSession>();
+/** The manager each open session persists through (custom entries, leaf). */
+const managers = new Map<string, SessionManager>();
 /** Every connected UI; commands answer one, events go to all. */
 const clients = new Set<any>();
 
@@ -86,9 +88,18 @@ function subscribe(id: string, session: AgentSession): void {
       case "agent_start":
         broadcast({ type: "agent.state", sessionId: id, state: "running" });
         break;
-      case "agent_settled":
+      case "agent_settled": {
+        // A durable mark of the run's end, written where pi keeps the
+        // transcript: pi's own loader reads it, its context ignores it, and
+        // a CLI sees the entry. Q10's mechanism, used from M1 on.
+        try {
+          managers.get(id)?.appendCustomEntry("zu.turn", { at: Date.now() });
+        } catch {
+          // A read-only or already-closed session: the turn itself stands.
+        }
         broadcast({ type: "agent.state", sessionId: id, state: "idle" });
         break;
+      }
       case "agent_end":
         // Not the end of the turn: retries, compaction and steering may follow.
         break;
@@ -107,23 +118,32 @@ function subscribe(id: string, session: AgentSession): void {
   });
 }
 
-async function openSession(path: string): Promise<{ id: string; path: string; messages: any[] }> {
+async function openSession(
+  path: string,
+): Promise<{ id: string; path: string; messages: any[]; customTypes: string[] }> {
   const manager = SessionManager.open(path);
   const id = manager.getSessionId();
+  managers.set(id, manager);
+  const customTypes = () =>
+    manager
+      .getEntries()
+      .filter((entry) => entry.type === "custom")
+      .map((entry) => String((entry as any).customType));
   const existing = open.get(id);
   if (existing) {
-    return { id, path, messages: (existing.state?.messages ?? []).map(plain) };
+    return { id, path, messages: (existing.state?.messages ?? []).map(plain), customTypes: customTypes() };
   }
   const { session } = await createAgentSession({ sessionManager: manager });
   open.set(id, session);
   subscribe(id, session);
-  return { id, path, messages: (session.state?.messages ?? []).map(plain) };
+  return { id, path, messages: (session.state?.messages ?? []).map(plain), customTypes: customTypes() };
 }
 
 async function newSession(cwd: string): Promise<{ id: string; path?: string; messages: any[] }> {
   const manager = SessionManager.create(cwd);
-  const { session } = await createAgentSession({ sessionManager: manager });
   const id = manager.getSessionId();
+  managers.set(id, manager);
+  const { session } = await createAgentSession({ sessionManager: manager });
   open.set(id, session);
   subscribe(id, session);
   return { id, path: manager.getSessionFile(), messages: [] };
@@ -200,7 +220,23 @@ async function handle(ws: any, msg: any): Promise<void> {
       const session = open.get(String(msg.sessionId));
       if (!session) return fail(ws, id, type, "session not open");
       await session.abort();
+      // The aborted run may not settle; the UI's streaming state follows this.
+      broadcast({ type: "agent.state", sessionId: String(msg.sessionId), state: "idle" });
       reply(ws, id, type, {});
+      return;
+    }
+    case "session.info": {
+      const sid = String(msg.sessionId);
+      const manager = managers.get(sid);
+      if (!manager) return fail(ws, id, type, "session not open");
+      reply(ws, id, type, {
+        sessionId: sid,
+        path: manager.getSessionFile(),
+        customTypes: manager
+          .getEntries()
+          .filter((entry) => entry.type === "custom")
+          .map((entry) => String((entry as any).customType)),
+      });
       return;
     }
     case "session.close": {
@@ -208,6 +244,7 @@ async function handle(ws: any, msg: any): Promise<void> {
       if (session) {
         session.dispose?.();
         open.delete(String(msg.sessionId));
+        managers.delete(String(msg.sessionId));
       }
       reply(ws, id, type, {});
       return;

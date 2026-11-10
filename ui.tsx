@@ -22,7 +22,8 @@ export type GlyphName =
   | "caret-down"
   | "globe"
   | "pulse"
-  | "stop";
+  | "stop"
+  | "alert";
 
 type Draw = (c: CanvasRenderingContext2D) => void;
 
@@ -138,6 +139,18 @@ const glyphs: Record<GlyphName, Draw> = {
   stop: (c) => {
     c.beginPath();
     c.rect(6, 6, 8, 8);
+    c.fill();
+  },
+  alert: (c) => {
+    c.beginPath();
+    c.moveTo(10, 3.5);
+    c.lineTo(17, 16.5);
+    c.lineTo(3, 16.5);
+    c.closePath();
+    c.stroke();
+    line(c, [10, 8.5, 10, 12]);
+    c.beginPath();
+    c.arc(10, 14.4, 0.5, 0, Math.PI * 2);
     c.fill();
   },
 };
