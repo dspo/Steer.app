@@ -31,6 +31,10 @@
 | E13 | **自更新走 GitHub Releases**（nsh/updater 原生支持该源），与 Steer 同款：tag 触发构建、dmg 发布 | 原 Q14 |
 | E14 | **Pi → Zu 兼容是最高优先级不变量**：pi 原生产生的会话，Zu 必须能列出、显示、打开、加载、预览、继续；解析失败跳过不阻塞启动。这条约束优先于任何 Zu 侧模型洁癖（如容器必须已注册） | Q7 补充，2026-11-10 三轮 |
 | E15 | **不引入访问模式轴**：v1 无「沙箱访问 vs 完全访问」、无审批面、无 sandbox profile，直接用 pi 原生能力 | 原 Q17 |
+| E16 | **加载用户既有的 pi 扩展与 skill**（Q23）：Zu 是「自带一系列 pi 扩展的 pi 桌面端」，engine 走 pi 原生资源发现（`~/.pi/agent/{extensions,skills}` + `settings.json` 的 `packages`），行为与 pi CLI 等价；扩展的 `ctx.ui.*` 经 wire 桥到 nsh 原生对话框（confirm/select/input 三态最小集；`editor`/`custom` 降级为纯文本） | 原 Q23 |
+| E17 | **settings 读写策略**（Q24）：**读共享**（`~/.pi/agent/settings.json` 的 provider/model/thinking/packages）、**写独立**（Zu 偏好落 `~/.pi/zu/settings.json`）、**模型选择写回共享**（会话语义一致）；Zu 绝不向 pi 的 settings 写 schema 之外的键 | 原 Q24 |
+| E18 | **sidecar 放在 app bundle 内**（Q25）：`Zu.app/Contents/Helpers/pi-engine`，直接执行、**不释放到 dataDir**（签名与公证覆盖最干净）；嵌套签名 + hardened runtime + Bun 的 JIT entitlement（`com.apple.security.cs.allow-jit`）+ 公证。仓库公开（Q26） | 原 Q25/Q26 |
+| E19 | **遥测**（Q27）：支持 pi-telemetry 但**不列入早期里程碑**；先确认 pi 的开关方式（env / settings 键），默认不上报 | 原 Q27 |
 
 ## 3. 拓扑
 
@@ -62,17 +66,19 @@ UI 与引擎之间唯一的 import 面：TS 类型 + 小纯运行时，两边共
 
 ```json
 "capabilities": {
-  "process": { "exit": false, "execute": ["${dataDir}/engine/pi-engine"] },
+  "process": { "exit": false, "execute": ["sh"] },
   "network": { "sockets": ["127.0.0.1:*"] },
   "notifications": true
 }
 ```
 
+（`execute: ["sh"]` 是 Q28 的 v1 方案；若采用 Rust nativeModule 方案则不需要 process 能力。）
+
 UI **不持 fs、不持 storage 能力**（E11：全部用户状态经 engine wire 的 state 面落 `~/.pi/zu/`）；notifications 供后台完成提醒（E12）；托盘走 nsh desktop 模块（E12）。`execute` 的对象是引擎二进制——它属**应用安装工件**（app 数据目录），非用户状态；用户状态根只有 `~/.pi`。
 
 ## 6. 分发与生命周期
 
-- **释放-执行**：engine 二进制随 app bundle；首启或版本戳变化时释放到 `<dataDir>/engine/pi-engine-<版本>`、chmod +x、exec；留新删旧。
+- **sidecar 位置与启动**（E18）：二进制随 app bundle（`Contents/Helpers/pi-engine`），**直接执行不释放**——复制到 dataDir 会让签名/公证的覆盖关系变复杂。但 nsh 的 `capabilities.process.execute` 只认**裸命令名或绝对路径**（`valid_command`：绝对路径或纯名，不支持 `${dataDir}` 等变量，见 nsh `access.rs:1103-1113`、`allows_process` 精确字符串比对），而 bundle 路径随安装位置变化。两条实现路径见 Q28。
 - **懒启动**：第一个容器打开才 spawn；退出顺序：先 abort 全部活跃 turn 再 kill；子进程崩溃 → 指数退避重启 + UI banner。
 - **版本自管**：`engine/package.json` 精确 pin `@earendil-works/pi-coding-agent =x.y.z` + `bun.lock` 进 git；升级 = 改 pin 的 PR（引擎测试 + 冒烟 + 兼容性台账逐条重验）；sidecar 内禁 pi 自我更新（`pi update` 不可达）。
 - **兼容性台账**：每个绕过 pi 缺口的适配登记「上游什么条件下可删」（借鉴 ThinkRail `pi-compatibility.md` 方法论）。

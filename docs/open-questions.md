@@ -1,6 +1,6 @@
 # 产品 / 架构 / 技术问题清单
 
-> 状态：**Q1–Q22 已裁决；Q23–Q27 待回答**（pi 生态集成面与分发面，此前被架构骨架讨论遮蔽）。裁决细节落在三份架构文档的决策记录表；spike 实测见 [spike-report.md](spike-report.md)。
+> 状态：**Q1–Q27 已裁决；Q28 待回答**（sidecar 的启动方式，Q25 的技术发现）。裁决细节落在三份架构文档的决策记录表；spike 实测见 [spike-report.md](spike-report.md)。
 
 ## 裁决总表
 
@@ -29,11 +29,15 @@
 | Q21 | Zoom 持久性 | **B 持久**（写进容器布局 stash） | ui U14 |
 | Q22 | turn 进行中的语义 | 按「简单 > UX > 性能」：切容器丢弃增量、restore 重建；退出弹确认（早期可直接退出） | domain §8 |
 
-## 待回答（Q23–Q27）
+## 已裁决详情（Q23–Q28）
 
 > 这一批是「pi 生态集成面」与「分发面」的问题。前几轮聚焦引擎/UI/对象模型的骨架，这些被骨架讨论遮蔽了；它们直接落在 Q7「完全兼容」的边界上，越早定越省事。
 
-### Q23：用户已有的 pi 扩展与 skill，Zu 加载吗？
+### Q23（已定）：加载 — A 全量 + 最小 UI 桥
+
+**裁决**：加载。用户定位是「Zu 是一个自带一系列 pi 扩展的 pi 桌面端」；engine 走 pi 原生资源发现，扩展的 `ctx.ui.*` 桥到 nsh 原生对话框（confirm/select/input；editor/custom 降级）。落点 engine E16、ui 待建清单。
+
+### Q23 原问题（留档）：用户已有的 pi 扩展与 skill，Zu 加载吗？
 
 **背景（机制，这是本批最重要的一条）**：你的 `~/.pi/agent/` 里已经有真实资产——`extensions/`（ghostex-session.ts、otty-integration.ts）、`settings.json` 的 `packages: ["../../projects/dspo/pi-package"]`（本地 npm 扩展包）、`skills/`（一整套钉钉 skill）。pi 的扩展**能注册工具**（`pi.registerTool`）、**能注入上下文**（`pi.appendCustomMessageEntry`）、**能拦截工具调用请求用户确认**（`ctx.ui.confirm`）。
 
@@ -50,7 +54,11 @@
 
 **需要你回答**：A / B / C？若 A，`editor`/`custom` 降级可接受吗？
 
-### Q24：`settings.json` 共享还是独立？
+### Q24（已定）：B — 读共享、写独立、模型选择写回
+
+落点 engine E17。
+
+### Q24 原问题（留档）：`settings.json` 共享还是独立？
 
 **背景**：`~/.pi/agent/settings.json` 里有 `defaultProvider` / `defaultModel` / `defaultThinkingLevel` / `retry` / `theme` / `packages`。其中 `theme` 是 pi TUI 的主题（Zu 用不到），`packages` 是扩展清单（Q23 依赖它），`defaultProvider/defaultModel` 是会话语义的一部分。
 
@@ -63,7 +71,11 @@
 
 **需要你回答**：B 可以吗？（尤其「模型选择写回共享」这一条——它意味着 Zu 里切模型会改变 pi CLI 的默认。）
 
-### Q25：macOS 代码签名与公证
+### Q25（部分定案）：bundle 内放 sidecar，签名/公证待流程验证
+
+**已答**：可以放 `Zu.app/Contents/Helpers/pi-engine`（直接执行、不释放）；需嵌套签名 + hardened runtime + Bun JIT entitlement + 公证。**衍生问题见 Q28**（nsh 的 execute 白名单不支持变量路径）。
+
+### Q25 原问题（留档）：macOS 代码签名与公证
 
 **背景**：Steer 现在是 **ad-hoc 签名**（`script/bundle-mac`），用户下载 dmg 后需要右键打开或 `xattr -d com.apple.quarantine` 才能运行。Zu 多一个变数：**engine sidecar 是 69MB 的独立二进制**，嵌在 app bundle 里，需要**嵌套签名**（`codesign` 逐层），且 Bun 的 JIT 需要 `com.apple.security.cs.allow-jit` entitlement——否则签了名反而崩。公证（notarization）需要 Apple Developer 账号（$99/年）。
 
@@ -76,7 +88,11 @@
 
 **需要你回答**：C 可以吗？Apple Developer 账号是否已有/可申请？
 
-### Q26：仓库公开性
+### Q26（已定）：A — 公开
+
+落点 engine E18。
+
+### Q26 原问题（留档）：仓库公开性
 
 **背景**：Q14 定 GitHub Releases 作为更新源。nsh/updater 从 Releases 拉资产，若仓库私有则需要 token 内嵌（泄露风险）。另外开源与否影响：LICENSE（pi 是 MIT，我们若分发衍生需保留 NOTICE）、贡献者流程、上游协作方式（Zu 的增强有没有机会回流 pi 上游）。
 
@@ -86,7 +102,11 @@
 
 **需要你回答**：A / B / C？
 
-### Q27：遥测策略
+### Q27（已定）：支持 telemetry，但不在早期里程碑
+
+落点 engine E19；先确认 pi 的开关方式，默认不上报。
+
+### Q27 原问题（留档）：遥测策略
 
 **背景**：pi 的依赖里有 `@earendil-works/pi-telemetry`。默认行为需要确认（是否默认上报、上报什么、能否关闭）。Zu 作为桌面端会有自己的崩溃/使用数据诉求，但「用户的 coding agent 在本地跑」这件事让隐私预期很高。
 
@@ -96,7 +116,24 @@
 
 **需要你回答**：A / B / C？
 
+### Q28：sidecar 怎么被启动？（nsh 能力白名单的实测限制）
+
+**背景（这是 Q25 的技术发现，必须拍板）**：sidecar 放 `Zu.app/Contents/Helpers/pi-engine` 没问题，但**让 nsh 的 TSX 去执行它**受一条限制：nsh 的 `capabilities.process.execute` 只接受**裸命令名或绝对路径**（`valid_command`，nsh `crates/nsh-core/src/access.rs:1103`），并且运行时是**精确字符串比对**（`allows_process`，`:1469`），**不支持 `${dataDir}` / `${resourcesDir}` 等变量**——这一点在源码里确认过，与 `fs` 能力（支持 `${dataDir}`）不同。而 bundle 路径随安装位置变化（`/Applications`、`~/Applications`、任意目录）。
+
+**方案**：
+- **A `sh -c` 逃生口**：`execute: ["sh"]`，TSX 里 `spawn("sh", ["-c", "<engine 绝对路径>"])`。零 Rust 改动、v1 立刻可用。代价：白名单退化为「任意命令可执行」（`sh -c` 什么都能跑），安全上是自己削弱自己的沙箱——但 Zu 的代码是自有的、可信的，实际风险有限。需注意路径引号（安装路径可能含空格）。
+- **B Rust nativeModule（mixed 模板）**：`nsh.json` 加 `"rust": "."`，`src/lib.rs` 用 `#[native_module]` 暴露 `spawnEngine()/stopEngine()`，Rust 侧 `current_exe()` 定位 `../Helpers/pi-engine` 并 spawn。沙箱语义正确、路径解析稳。代价：仓库从「纯 TSX」变成 mixed（引入 Cargo 构建），且这个 native module 会成为后续 PTY（v4）的落脚点。
+- **C 上游加 `${resourcesDir}` 支持**：给 nsh 提 PR 让 `execute` 支持 bundle 资源占位符。最干净的长态，但依赖上游接受与发版节奏。
+
+**我的建议**：**B**。理由：A 会让 `execute: ["sh"]` 永远留在 manifest 里，且 PTY（v4）无论如何都需要 Rust nativeModule（Bun 无内建 PTY），提前引入 mixed 模板不是额外成本而是把必经之路走早；C 可作为后续优化（若上游接受，Rust 模块可简化为纯 TSX 调用）。
+
+**需要你回答**：A / B / C？（若选 B，我下一轮就把 mixed 模板的骨架搭起来。）
+
 ## 留档：需要 v1 验证的风险（非待决问题）
-__zcode_status=$?
-if [ "$__zcode_status" -eq 0 ]; then pwd -P > '/var/folders/95/8zwvhfps75qfwg997qzy6vjw0000gn/T/zcode-3c75de9f-7d82-4218-bf7a-5f71190caa4b-cwd'; fi
-exit "$__zcode_status"
+
+1. `createAgentSession` 在 Bun 下的完整真实会话。
+2. `parentSession` 在 pi CLI 里的 fork 观感。
+3. pi 升级对 `~/.pi/agent/sessions` 布局的影响（兼容性台账）。
+4. Zu engine 与终端 pi CLI 对同一 captain 的并发写。
+5. 签名/公证：嵌套签名 + Bun JIT entitlement 的实际可行性（Q25）。
+6. 用户扩展（ghostex-session.ts 等）在 `ctx.hasUI = true` 下经 wire 桥正常工作（Q23）。

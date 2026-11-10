@@ -42,7 +42,8 @@
 4. **自定义拖拽预览**：`renderDragPreview` 圆角 chip（gallery 同款），当前用默认形态。
 5. **会话 sheet 族实化**：主对话（transcriptStore 投影）、subagents/后台任务/轨迹/统计（同一会话域的派生视图）；流式渲染用 gallery Chat 的 pending + rAF 每帧批 flush 模式；转录用 `List` 虚拟化 + `maintainVisibleContentPosition` 跟随底部。
 6. **i18n（U11）**：zh-CN 第一 + en fallback；键表与 parity 测试从第一个真实 sheet 起 立；`nsh-i18n`/`set_locale` 形态并入 spike。
-7. **托盘与通知（U12）**：托盘图标 + 菜单（显示/隐藏窗口、退出）；通知权限申请 + turn settle/交付两类通知（首版激进：全部容器的完成事件都报）；关窗拦截为「收起」（无确认、后台继续）；单实例通过第二实例转发激活。
+7. **扩展 UI 桥（Q23）**：engine 侧 `ctx.hasUI = true` 时，扩展的 `ctx.ui.confirm/select/input` 经 wire 转成 nsh 原生的 `AlertDialog` / `Picker` / `Input` 对话框；`ctx.ui.editor` 与 `ctx.ui.custom`（扩展自带 TUI 渲染）降级为纯文本对话框并记录。
+8. **托盘与通知（U12）**：托盘图标 + 菜单（显示/隐藏窗口、退出）；通知权限申请 + turn settle/交付两类通知（首版激进：全部容器的完成事件都报）；关窗拦截为「收起」（无确认、后台继续）；单实例通过第二实例转发激活。
 
 ## 4. 与关系对象模型的接缝
 
