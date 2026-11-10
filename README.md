@@ -6,7 +6,7 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 状态条）包着一块 `DockArea` 画布，**panel** 持有可拖拽的 **sheet**（Pi 会话、终端、各 agent TUI、
 webview、会话的 aux 视图）。logo 为 Steer 的 `<->` 构型加载祖冲之密率（上 355、下 113）。
 
-**当前状态（2026-11-10）：M0–M4 完成。** 应用能连上随包分发的 pi 引擎（Bun sidecar，`zu/engine` 原生模块启动）；侧栏按 **Project → 容器** 组织，无归属容器落 Chats，全部 pi 会话用虚拟化列表保留；空画布/「＋」进入 **Launcher**（composer 先行、项目 chip、锁定目标），提交后才创建容器；容器 = 一组面板，各自恢复布局与 zoom，可持多个 pi 会话；归属显式（菜单或拖行），重启后由 `projects.json`/`registry.json` 恢复。门禁：`nsh check` ✓、`nsh test` 45/45 ✓、`cargo check` ✓、`script/bundle-mac.sh` → 127 MB app / 51 MB dmg。下一步是 [roadmap](docs/roadmap.md) 的 M5（子代理与调度面）。
+**当前状态（as of `2a1b9d8`，2026-11-10）：M0–M4 完成。** 应用能连上随包分发的 pi 引擎（Bun sidecar，`zu/engine` 原生模块启动）；侧栏按 **Project → 容器** 组织，无归属容器落 Chats，全部 pi 会话用虚拟化列表保留；空画布/「＋」进入 **Launcher**（composer 先行、项目 chip、锁定目标），提交后才创建容器；容器 = 一组面板，各自恢复布局与 zoom，可持多个 pi 会话；归属显式（菜单或拖行），重启后由 `projects.json`/`registry.json` 恢复。门禁：`nsh check` ✓、`nsh test` 45/45 ✓、`cargo check` ✓、`script/bundle-mac.sh` → 127 MB app / 51 MB dmg。下一步是 [roadmap](docs/roadmap.md) 的 M5（子代理与调度面）。
 
 ## 文档
 

@@ -84,7 +84,7 @@
 
 ## 7. M4 — Project 与 Launcher · 已完成
 
-> **状态：已完成（2026-11-10）。** `projects.json` v1（projects/membership）+ `project.list/create/update/setMembership`；多根、唯一 primary、路径/目录校验、名称跟随/固定；容器 cwd = primary 快照；Launcher（composer → 容器、项目 chip、锁定目标）；侧栏 Project → 容器分组、Chats 桶、菜单/拖行换项目；全部会话改用虚拟化 `List`，引擎会话索引按 mtime 水位缓存（不清空时不再全量 `listAll`）。**45 条测试**覆盖双根项目、Launcher 创建（cwd=primary）、分组、拖行/菜单归属、重启保持与 700 会话虚拟化。
+> **状态：已完成（2026-11-10，`2a1b9d8`）。** `projects.json` v1（projects/membership）+ `project.list/create/update/setMembership`；多根、唯一 primary、路径/目录校验、名称跟随/固定；容器 cwd = primary 快照；Launcher（composer → 容器、项目 chip、锁定目标）；侧栏 Project → 容器分组、Chats 桶、菜单/拖行换项目；全部会话改用虚拟化 `List`，引擎会话索引按 mtime 水位缓存（不清空时不再全量 `listAll`）。**45 条测试**覆盖双根项目、Launcher 创建（cwd=primary）、分组、拖行/菜单归属、重启保持与 700 会话虚拟化。
 
 **目的**：让"从哪开始"可组织：项目（多根、primary）与发射台。
 
