@@ -67,4 +67,4 @@
 
 - Q1–Q31 覆盖**已讨论**的问题。以下议题未经讨论、尚在正文里悬空（不是已裁决）：扩展宿主契约（Q23 的 UI 桥细节）、project trust、引擎监督与重连策略、文件读写归属（Editor 保存走 wire 还是 native module）、协议完整性校验、pi 会话格式版本、归档容器的可达性（Q11）、模型选择入口、i18n 落地时机。
 - 原 engine/ui/domain 三份文档里的 E/U 编号已废弃，统一并入本表。
-- 条件性里程碑（M-tty / M-arch / M-web）的触发条件见 [roadmap.md](roadmap.md) §15。
+- 条件性里程碑（M-tty / M-arch / M-web）的触发条件见 [roadmap.md](roadmap.md) §17。

@@ -330,3 +330,4 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 - [decisions.md](decisions.md)：Q1–Q31 决策台账（问题 → 裁决 → 落点 → 理由）。
 - [roadmap.md](roadmap.md)：产品目标与里程碑。
 - [evidence/](evidence/)：spike 实测、可行性分析、终端仿真核对比、决策过程记录。
+- [review/](review/)：外部事实审计与架构评审（2026-11-10）。成立的 P0/P1 已并入本文；被证伪的一条（alt screen）已撤回。
