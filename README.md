@@ -6,6 +6,16 @@ borrows from [ThinkRail](https://github.com/JetBrains/ThinkRail) and iTerm2/Warp
 (rail, projects pane, toolbar, status line) around a `DockArea` canvas whose **panels** hold
 draggable **sheets** (a Pi session, terminals, agents' TUIs, a webview, a session's aux views).
 
+## Architecture docs
+
+| Doc | What it covers | Open questions |
+|---|---|---|
+| [docs/engine-architecture.md](docs/engine-architecture.md) | 引擎与前后端架构：vendored pi sidecar、`EngineConnection` 边界、wire、能力面、分发、spike 清单 | Q6 系统 pi 通道与 web 目标 |
+| [docs/ui-architecture.md](docs/ui-architecture.md) | 前端 UI 架构：轮廓分离、panel/sheet 画布、sheet 注册表、布局 store、待建清单 | Q4 布局 stash 三语义点、Q5 键盘范围 |
+| [docs/domain-model.md](docs/domain-model.md) | 关系对象模型：Project/membership、SessionContainer、资源三类、生命周期、pi 扩展裁决 | Q1 子会话转录归属、Q2 多容器并置、Q3 注册表格式 |
+
+开放问题在各自文档底部附了机制背景与选项解释——回答后把结论写回对应文档的决策记录表。
+
 ## Architecture (frontend)
 
 - **轮廓与内嵌对象分离** — the shell holds no domain state; the canvas is a controlled
