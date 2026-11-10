@@ -136,7 +136,7 @@
 
 ## 10. M7 — 终端与 agent TUI（细节开始）· 实现完成，验收未全过
 
-> **状态：实现完成，2 项验收未达成（2026-11-11）。**
+> **状态：实现完成，2 项验收未达成（2026-11-11，`52a1ed1`）。**
 > 已实现并实测：`zu/pty`（`portable-pty` + 引擎线程回调）、external 容器（`Terminal`/`Claude`/`Codex`/`Copilot`，无 pi session）、真实 Terminal sheet、Launcher 动作行、归档杀 PTY、按容器布局 stash。门禁 `nsh check`/`nsh build`/`cargo check`/`nsh test` 全绿。
 > **已验证**：shell 跑 `ls`/`vim`/`htop`；Terminal 视图的 `TerminalRef.text()` 读回 `printf` 输出；resize 后 PTY 与 `stty size` 一致；关闭 handle/归档杀进程；Claude Code v2.1.278 的 TUI 在本机渲染出 banner/composer，Ctrl+C 回到 shell。
 > **未达成 1**：Claude Code 的**真实对话**没有完成——本机一次真实 turn 返回 `API error · Retrying`（无模型回复），所以只验证了「TUI 启动 + Ctrl+C 中断」，没有验证「完成一次对话」。
