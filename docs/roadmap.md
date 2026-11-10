@@ -64,7 +64,7 @@
 2. 输入一句话 → 流式回复 → 工具调用卡片出现 → 回合结束（`agent_settled`）。
 3. 流式中按「停止」→ 状态正确，转录保留。
 4. 关掉 app 重开 → 会话仍在，能继续对话（同一 pi session 文件）。
-5. 用 pi CLI 打开同一会话 → 看到刚才的对话与 Zu 写的 custom entry（Q10）。
+5. 会话文件在 pi 的原生存储里，pi 的加载器能读回（`SessionManager.open` 已验证）；「pi CLI 看到 Zu 写的 custom entry」依赖调度事件的写入，**移到 M5 验证**。
 
 **风险**：`createAgentSession` 的真实运行（spike 未验证项）；流式增量与 `TextView` 重渲的帧率；pi 的 `agent_settled` 之前是否还有事件。
 
