@@ -71,7 +71,7 @@ function Rail() {
   return (
     <View class="bg-sidebar border-r border-line" style={{ width: 48, alignItems: "center", paddingTop: 12, paddingBottom: 12, gap: 4 }}>
       <View class="items-center justify-center rounded-[10px] bg-primary" style={{ width: 32, height: 32, marginBottom: 8 }}>
-        <Glyph name="pi" size={18} tint={token("primary-foreground")} />
+        <Text class="font-mono text-[12px] font-bold" style={{ color: token("primary-foreground") }}>{"<Z>"}</Text>
       </View>
       {panes.map((p, i) => (
         <View

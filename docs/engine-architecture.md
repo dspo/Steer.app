@@ -20,11 +20,15 @@
 | E2 | **拒绝**：pi 塞进 QuickJS（npm 依赖树 + Node 全量 API 不可行）；依赖系统 pi（版本不可控，已否决）；Rust root（权威是 JS 引擎，无 Rust 数据面可做） | |
 | E3 | 引擎进程拓扑：**单 sidecar 进程多路复用 N 会话**（SDK `createAgentSession` × N + `AgentSessionRuntime`），**不是每会话一个进程** | pi 的 `--mode rpc` 是 1 进程 1 会话，无多路复用协议；官方指定进程内集成用 SDK。进程数恒为 1，会话回收/resume 是内存策略（LRU dispose + 文件 rehydrate），不是进程管理 |
 | E4 | 传输：**loopback WebSocket + 握手 token**（token 落 `<dataDir>/engine/token`，0600） | sidecar 与 UI 双向事件/命令 |
-| E5 | 会话 durable 权威：**pi 的 session JSONL 文件**（`SessionManager` 注入自定义目录 → `<appData>/pi/sessions`）；UI 永不镜像转录 | resume = 按文件重建会话；engine 崩溃重启后按需 rehydrate |
+| E5 | 会话 durable 权威：**pi 的原生会话存储（`~/.pi` 默认布局）**，与原生 pi 完全双向兼容——Zu 打开时自然加载全部 sessions，不问出处；pi CLI 同样看得到（Q10）。UI 永不镜像转录 | resume = 按文件重建会话；engine 崩溃重启后按需 rehydrate |
 | E6 | `EngineConnection` 是 UI 侧**唯一引擎边界**（接口 + `WsHost` 实现 + `Fake` 测试实现）；UI 代码只 import 接口与 `contracts/` 类型 | 类比 Steer 的 AHP store 折影纪律 |
-| E7 | 容器注册表、PTY、子会话生命周期归 **sidecar**（它拥有全部进程）；Project/membership 归 **UI**；详见 domain-model.md | |
+| E7 | 容器注册表、PTY、子会话生命周期归 **sidecar**（它拥有全部进程）；**全部用户状态落 `~/.pi/zu/`（E11），经 engine wire 的 state 面**；详见 domain-model.md | |
 | E8 | **pi 扩展机制用于调度面**：sidecar 内置扩展注册 captain 的 dispatch/abort/引导工具（实现闭包持有 SessionManager），**不用扩展承载所有权注册表**（扩展随单会话生灭，容器跨会话长寿） | 详见 domain-model.md §5 |
 | E9 | **唯一引擎路径**：不保留「系统 pi」直连通道（每会话一进程的形态随之永不再现）；调试用源码形态 `bun run engine/src/server.ts`；web 目标挂账 v5，contracts 约束为「UI 不用 web 不可用能力」（当前已满足，实时成本为零） | 原 Q6，2026-11-10 拍板 |
+| E10 | **品牌名 Zu**（祖冲之——纪念其对 π 的贡献）；bundle id `dev.dspo.zu`；logo 开发期暂用 `<Z>` 文本（Steer `<->` 同款构型），命名集中在 nsh.json 与常量 | 原 Q8，2026-11-10 拍板 |
+| E11 | **用户状态根 = `~/.pi`，与原生 pi 完全双向兼容**：pi 会话用 pi 原生存储（默认布局，不隔离不镜像）；Zu 的全部增强状态（容器注册表、Project/membership、布局 stash）落 `~/.pi/zu/` 命名空间（pi 对未知文件视而不见——spike ③ 验证），**经 engine wire 的 state 面**（UI 的 nsh Storage 裁撤，UI 不持 fs 能力）；与 Steer「共享状态根 ~/.manox」同构。**凭据天然共享**：用户的 `~/.pi` 登录态对 Zu 直接生效，无需导入 | 原 Q7 + Q10 方向，2026-11-10 拍板；互通兼容包络见 open-questions Q10 |
+| E12 | **v1 即托盘 + 系统通知**（原 Q12C）：托盘常驻（关窗不退出，后台 run 继续）、turn settle / 子会话交付发系统通知——引入「应用生命周期 ≠ 窗口生命周期」语义（退出菜单、单实例；生命周期细则见 open-questions Q16） | 2026-11-10 拍板 |
+| E13 | **自更新走 GitHub Releases**（nsh/updater 原生支持该源），与 Steer 同款：tag 触发构建、dmg 发布 | 原 Q14，2026-11-10 拍板 |
 
 ## 3. 拓扑
 
@@ -58,11 +62,11 @@ UI 与引擎之间唯一的 import 面：TS 类型 + 小纯运行时，两边共
 "capabilities": {
   "process": { "exit": false, "execute": ["${dataDir}/engine/pi-engine"] },
   "network": { "sockets": ["127.0.0.1:*"] },
-  "storage": true
+  "notifications": true
 }
 ```
 
-v1 仅此。UI 不持有 fs 能力（偏好走 Storage 模块）——UI 沙箱被攻破也摸不到项目代码。
+UI **不持 fs、不持 storage 能力**（E11：全部用户状态经 engine wire 的 state 面落 `~/.pi/zu/`）；notifications 供后台完成提醒（E12）；托盘走 nsh desktop 模块（E12）。`execute` 的对象是引擎二进制——它属**应用安装工件**（app 数据目录），非用户状态；用户状态根只有 `~/.pi`。
 
 ## 6. 分发与生命周期
 
@@ -71,7 +75,8 @@ v1 仅此。UI 不持有 fs 能力（偏好走 Storage 模块）——UI 沙箱�
 - **版本自管**：`engine/package.json` 精确 pin `@earendil-works/pi-coding-agent =x.y.z` + `bun.lock` 进 git；升级 = 改 pin 的 PR（引擎测试 + 冒烟 + 兼容性台账逐条重验）；sidecar 内禁 pi 自我更新（`pi update` 不可达）。
 - **兼容性台账**：每个绕过 pi 缺口的适配登记「上游什么条件下可删」（借鉴 ThinkRail `pi-compatibility.md` 方法论）。
 - **MIT 合规**：NOTICE/About 保留 pi 版权与许可声明。
-- **注册表持久化**：容器注册表 = JSON 快照 + 原子 rename + 启动对账（注册表指向的会话文件缺失 → 该容器标记 dead）；**状态生命周期分级**（哪些对象跨重启、哪些与进程同寿——终端明确不恢复）见 domain-model.md §9。
+- **注册表持久化**：容器注册表 = JSON 快照 + 原子 rename + 启动对账（注册表指向的会话文件缺失 → 该容器标记 dead）；落 `~/.pi/zu/registry.json`；**状态生命周期分级**（哪些对象跨重启、哪些与进程同寿——终端明确不恢复）见 domain-model.md §9。
+- **自更新**：GitHub Releases（E13，原 Q14），与 Steer 同款 tag 触发管线。
 
 ## 7. 构建 / CI / 开发回路
 
@@ -100,7 +105,7 @@ v1 仅此。UI 不持有 fs 能力（偏好走 Storage 模块）——UI 沙箱�
 
 1. **`bun build --compile` 打 pi**：pi 依赖含 `photon-node`（WASM 图像）与 `quickjs-wasi`——确认 compile 产物带资源跑通一次真实会话。（整个方案的地基）
 2. **`createAgentSession` 程序化面**：会话创建/steer/abort/事件类型在 Bun 下的实际形态；`SessionManager` 能否注入自定义目录（子会话分层的生死，见 domain-model.md Q1）。ThinkRail `packages/server` 是参考实现。
-3. **pi 状态与配置隔离**：session 目录可指定已知；settings/扩展发现的隔离机制（env/flag）待证——目标 `<appData>/pi/` 完全自治，不渗用户 `~/.pi`。
+3. **`~/.pi` 兼容性验证**（原「隔离机制」，随 Q7/E11 转向）：① pi 对其状态根内未知文件/目录（如 `zu/`）的容忍度；② pi 会话文件格式是否支持自定义条目类型且原生 pi 忽略之（session-format.md）——决定子会话关系能否自证据到文件内（domain-model §4.4）；③ pi 原生会话存储的实际布局与 `SessionManager` 默认行为（Zu 直接用默认，不用自定义目录）。
 4. **nsh sockets 能力的端口授予形态**（固定端口段探测 vs host 级授权）。
 5. **asset 释放-执行**在 nsh TSX 里的顺滑度（决定是否需要 Rust nativeModule 退出舱）。
 

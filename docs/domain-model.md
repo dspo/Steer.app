@@ -4,7 +4,7 @@
 
 ## 0. 一句话
 
-**Project 与 membership 归 UI 侧（Storage 持久化），SessionContainer 注册表归 engine sidecar（它拥有全部进程生命周期），pi 只做会话权威（session 文件）**；pi 扩展机制被用在它真正擅长的地方（captain 调度工具与上下文注入），所有权与生命周期这类跨会话关系永远住在比会话长寿的那一层。
+**Project 与 membership 逻辑上归 UI（内容权威在 UI store，写面经 engine wire 落 `~/.pi/zu/`），SessionContainer 注册表归 engine sidecar（它拥有全部进程生命周期），pi 只做会话权威（原生会话文件，与 pi CLI 完全双向兼容）**；pi 扩展机制被用在它真正擅长的地方（captain 调度工具与上下文注入），所有权与生命周期这类跨会话关系永远住在比会话长寿的那一层。
 
 ## 1. 从 Steer 继承的三条原则
 
@@ -18,12 +18,12 @@
 
 | 对象 | 类 | 权威持有者 | 持久化 | Steer 对应 |
 |---|---|---|---|---|
-| Project（roots/primary/name/position） | 组织 | **UI 侧** store | nsh Storage JSON | `projects.rs` |
+| Project（roots/primary/name/position） | 组织 | **UI 侧**（内容权威；写面经 engine wire） | `~/.pi/zu/`（E11） | `projects.rs` |
 | membership（container→project） | 组织 | UI 侧，**活读** | 同上 | `[project_membership]` |
-| SessionContainer 注册表 | 组织/生命周期 | **engine sidecar** | sidecar 状态目录（格式见 Q3） | `container.rs`（宿主侧对象，runtime 零污染） |
-| Pi Session 转录 | 会话 | **pi** | pi session JSONL 文件 | manox journal 位 |
+| SessionContainer 注册表 | 组织/生命周期 | **engine sidecar** | `~/.pi/zu/registry.json`（JSON 快照，§9） | `container.rs`（宿主侧对象，runtime 零污染） |
+| Pi Session 转录 | 会话 | **pi** | pi 原生会话存储（`~/.pi` 默认布局，完全兼容，Q7/Q10） | manox journal 位 |
 | 资源（PTY、webview） | 资源 | engine | **不持久**（本次 engine 进程） | 资源类（D6） |
-| 视图（panel/sheet 布局） | 视图 | UI | nsh Storage（按容器 stash） | dock_stash 按容器 id（A2） |
+| 视图（panel/sheet 布局） | 视图 | UI | `~/.pi/zu/`（按容器 stash，经 engine wire） | dock_stash 按容器 id（A2） |
 | unread/attention | 会话的投影 | engine 事件 | 无 UI 本地镜像 | unread 是协议状态 |
 
 ## 3. Project 模型（你的第 1 点）
@@ -91,21 +91,16 @@ SessionContainer {
 | `abort`（addr=run id） | 停止 | Steer Abort |
 | `list_agents`（只读） | 子会话清单 + 健康 verdict（live + settled 常驻） | Steer ListAgents / U2 名册面 |
 
-### 4.4 子会话的存储与身份（Q1 裁决）
+### 4.4 子会话的存储与身份（Q1 + Q7/Q10 联合裁决）
 
-**engine 注册表为权威**（dispatch 创建时记 `parent→child` 边，名册面的数据源）；子会话转录文件与 captain **目录隔离**，且**路径即关系**：
+**与原生 pi 完全兼容优先（Q7）**：全部会话文件（captain 与子会话）住 **pi 原生会话存储（`~/.pi` 默认布局）**——Zu 不隔离、不另设目录；Zu 打开时自然加载全部 sessions（不问出处），pi CLI 同样看得到（Q10 双向互通）。
 
-```
-<appData>/pi/containers/
-  {captainSessionId}/
-    session.jsonl            # 0 号（captain）转录
-    subagents/
-      {runId}.jsonl          # 1 级子会话转录——目录名即父容器，路径不言自明
-```
+关系边（parent→child）的承载，按「不言自明」要求分两层：
 
-- 从路径可直接读出：容器（目录名 = captain 会话 id）、层级（`session.jsonl` vs `subagents/`）、成员（文件名 = run id）。pi 原生会话枚举（`pi --resume`）指向 `containers/` 根时**看不到任何散落的子会话**。
-- 名册（live + settled）的唯一权威是注册表；文件只是转录缓存。名册 UI 是人类接触子会话的唯一入口（不变量 7）。
-- 待验证（并入 engine spike ②）：`SessionManager` 注入的自定义粒度——若支持 per-session 存储根则按上图落；若只支持整体换目录，退路为 `subagents/` 整体作为一个 session-dir（pi 默认文件命名，父边仍由注册表承载，路径层级已满足「不言自明」）。
+1. **注册表为权威**：dispatch 创建时在 `~/.pi/zu/registry.json` 记 `parent→child` 边（名册面的数据源）——pi 视而不见的命名空间（spike ③ 验证容忍度）。
+2. **pi 可见的归属线索**：子会话的 pi 会话名（`--name` / SessionManager name）采用约定词汇 **`zu:{captainShortId}:{runId}`**——pi CLI 的会话列表里自带归属前缀；若 spike ③ 证实 pi 会话文件支持自定义条目且原生 pi 忽略未知条目，再向子会话文件追加 `zu` 元数据条目，让关系自证据到文件内。
+
+原「目录隔离 + 路径即关系」方案随 Q7 **撤销**——它与「完全兼容、双向互通」结构性冲突；「不言自明」的载体从路径改为「命名约定 + 注册表（+ 文件内元数据，待证）」。人类接触子会话的唯一入口仍是名册 UI（不变量 7），但 pi CLI 直开子会话文件是允许的（它自己报兼容错，Q10 原话）。
 
 ## 5. pi 扩展机制的裁决（你的第 2 点后半）
 
@@ -132,11 +127,23 @@ SessionContainer {
 6. fork 不携带成员与资源。
 7. 子会话只收 captain 的消息，GUI 不开人类直连入口（协议层不拦截，Steer D4 同语义）。
 
-## 8. 已裁决（原开放问题，2026-11-10）
+## 8. 已裁决（2026-11-10 两轮）
 
-- **Q1 子会话转录归属**：注册表为权威 + 目录隔离 + 路径即关系（§4.4）。
-- **Q2 跨容器画布**：**永久不做**（不是 v1 限定）；跨容器需求走多窗口，每窗一个容器（ui-architecture U10 同款裁决）。
-- **Q3 注册表格式**：JSON 快照 + 原子 rename + 启动对账；配套裁决为下面的**状态生命周期分级**——注意产品负责人的补充：**并非所有状态都值得跨重启**（如终端），分级表据此把对象显式分为持久层与易失层。
+**第一轮（Q1–Q3）**
+- **Q1 子会话转录归属**：注册表为权威 + 关系不言自明（§4.4；载体经 Q7 修订为命名约定 + 注册表）。
+- **Q2 跨容器画布**：**永久不做**；跨容器需求走多窗口，每窗一个容器（ui-architecture U10）。
+- **Q3 注册表格式**：JSON 快照 + 原子 rename + 启动对账；配套 §9 状态生命周期分级。
+
+**第二轮（Q7–Q15）**
+- **Q7 持久化根**：**全部用户状态落 `~/.pi`，与原生 pi 完全双向兼容**——pi 的持久化逻辑我们完全兼容；我们的增强要么 pi 不看、要么我们对 pi 视而不见（→ engine E11；§4.4 随之改写）。**凭据天然共享**，无需导入。
+- **Q8 品牌名**：**Zu**（祖冲之，纪念其对 π 的贡献）；logo 开发期暂用 `<Z>`（Steer `<->` 同款构型）→ engine E10，已落码。
+- **Q9 界面语言**：对齐 Steer——zh-CN 第一 + en fallback，键表第一天立住（→ ui U11）。
+- **Q10 双向互通**：目标即「pi 的 desktop 端」——Zu 自然加载全部 sessions、不问出处；pi CLI 同样。若 Zu 的增强（自定义工具、沙箱访问 vs 完全访问）导致个别会话不兼容，**由打开方自行报错**（pi 原话语义）。**兼容包络细则留下一轮讨论**（open-questions Q10）。
+- **Q11 归档可见性**：**v1 暂不考虑**；未来候选为设置页「归档管理」子页（列入明确不做）。
+- **Q12 托盘与通知**：**C——托盘 + 系统通知**（→ engine E12、ui U12）；生命周期语义细则留下一轮（open-questions Q16）。
+- **Q13 子代理定义体系**：**下一轮继续**（open-questions Q13，已附 ThinkRail 调研：markdown + frontmatter 定义文件，builtin/personal/project 三源，字段含 tools/model/thinking/maxTurns/skills）。
+- **Q14 自更新**：GitHub Releases，与 Steer 同款（→ engine E13）。
+- **Q15 外部容器种类**：**只做四类**（Terminal / Claude / Codex / Copilot TUI）；VS Code / ChatGPT 等 GUI 直发不做。
 
 ## 9. 状态生命周期分级（Q3 配套裁决）
 
@@ -144,11 +151,18 @@ SessionContainer {
 
 | 层 | 对象 | 载体 | 跨重启 |
 |---|---|---|---|
-| 持久 | Project / membership | UI nsh Storage | ✓ |
-| 持久 | 容器注册表（Pi 型容器、archived 位、成员边） | engine JSON 快照 | ✓ |
-| 持久 | pi 会话转录（captain + 子会话） | `containers/` 文件树（§4.4） | ✓ |
-| 持久 | 视图布局 stash（按容器）+ 上次活跃容器指针 | UI nsh Storage | ✓ |
+| 持久 | Project / membership | `~/.pi/zu/`（经 engine wire，E11） | ✓ |
+| 持久 | 容器注册表（Pi 型容器、archived 位、成员边） | `~/.pi/zu/registry.json` | ✓ |
+| 持久 | pi 会话转录（captain + 子会话） | pi 原生会话存储（`~/.pi`，完全兼容） | ✓ |
+| 持久 | 视图布局 stash（按容器）+ 上次活跃容器指针 | `~/.pi/zu/`（经 engine wire） | ✓ |
 | 易失 | **PTY 终端 / webview 页面** | engine 进程 | ✗（**应用重启不恢复终端**——2026-11-10 拍板） |
 | 易失 | 进行中的 run / 排队中的消息 / 未读计数 | engine 进程 | ✗（转录已落盘部分保留；未读启动归零） |
 
 对账语义：boot 时注册表指向的 captain 文件缺失 → 该容器标记 dead（可清理）；资源 sheet 在布局恢复时静默移除（ui-architecture U8）。新对象入库时先回答「它属于哪一层」，不允许出现未分级的持久化写面。
+
+## 10. 明确不做（non-goals）
+
+- 跨容器画布（Q2，永久）。
+- 归档容器的可见性/恢复入口（Q11：v1 不做；未来候选 = 设置页「归档管理」子页）。
+- 会话中根集的 live 刷新、项目名进提示词（Steer INITIAL-CWD 同款边界）。
+- 子会话的 GUI 人类直连入口（不变量 7 保留语义）。

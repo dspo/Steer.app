@@ -1,11 +1,11 @@
 {
-  "name": "Pi",
-  "id": "dev.dspo.pi",
+  "name": "Zu",
+  "id": "dev.dspo.zu",
   "version": "0.1.0",
   "build": 1,
   "appearance": "system",
   "window": {
-    "title": "Pi"
+    "title": "Zu"
   },
   "theme": "theme.json"
 }

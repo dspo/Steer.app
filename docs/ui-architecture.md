@@ -20,6 +20,8 @@
 | U8 | 死资源 sheet 在布局恢复时**静默移除**（简单实现优先；不做占位组件） | 原 Q4②，产品负责人授权自决 |
 | U9 | 键盘 v1 **最小集**：`⌘W` 关 sheet、`⌘1-9` 切 sheet、`⌘K` 命令面板（nsh/base `Command`，承载打开/切换/zoom/重置全部动作） | 原 Q5 |
 | U10 | **单容器画布是永久形态**：跨容器画布永不出现（非 v1 限定）；跨容器需求走多窗口（每窗一个容器，nsh 多窗口原生） | 原 Q2（domain-model §8 同步记录） |
+| U11 | **i18n 对齐 Steer：zh-CN 第一语言 + en fallback，键表第一天立住**（nsh-i18n 或自带轻量 Fluent；`set_locale` 能力并入 spike） | 原 Q9，2026-11-10 拍板 |
+| U12 | **托盘常驻 + 系统通知**（v1）：关窗不退出（后台 run 继续）、turn settle / 子会话交付发通知；退出走托盘菜单——应用生命周期 ≠ 窗口生命周期 | 原 Q12C，2026-11-10 拍板；生命周期细则见 open-questions Q16 |
 
 ## 2. 现有实现盘点（本仓已落地）
 
@@ -32,12 +34,13 @@
 
 ## 3. 待建清单
 
-1. **按容器 stash 的布局存储**：`layoutStore: Record<containerId, DockAreaLayout>`（切容器 = stash 当前 + restore 目标，对应 Steer A2 的按容器键 stash）；持久化到 nsh Storage（`onLayoutChange` 是高频事件，**debounce 后保存**——文档原话「it comes on every edit」）。
+1. **按容器 stash 的布局存储**：`layoutStore: Record<containerId, DockAreaLayout>`（切容器 = stash 当前 + restore 目标，对应 Steer A2 的按容器键 stash）；**持久化落 `~/.pi/zu/`（E11），经 engine wire 的 state 面——UI 的 nsh Storage 裁撤**；`onLayoutChange` 是高频事件，**debounce 后保存**（文档原话「it comes on every edit」）。
 2. **启动恢复**：上次活跃容器 + 其布局（`lastContainerId` 持久，U7）；恢复时对指向已死资源的 sheet **静默移除**（U8）。
 3. **键盘与焦点路由**：v1 最小集（U9）——`⌘W` / `⌘1-9` / `⌘K`；panel 获焦高亮；命令面板承载全部 sheet/布局动作。
 4. **自定义拖拽预览**：`renderDragPreview` 圆角 chip（gallery 同款），当前用默认形态。
 5. **会话 sheet 族实化**：主对话（transcriptStore 投影）、subagents/后台任务/轨迹/统计（同一会话域的派生视图）；流式渲染用 gallery Chat 的 pending + rAF 每帧批 flush 模式；转录用 `List` 虚拟化 + `maintainVisibleContentPosition` 跟随底部。
-6. **i18n**：接入 nsh-i18n 或自持 Fluent（词汇表归属待定，v1 可先英文）。
+6. **i18n（U11）**：zh-CN 第一 + en fallback；键表与 parity 测试从第一个真实 sheet 起 立；`nsh-i18n`/`set_locale` 形态并入 spike。
+7. **托盘与通知（U12）**：托盘图标 + 菜单（显示/隐藏窗口、退出）；通知权限申请 + turn settle/交付两类通知；关窗不退出的窗口关闭拦截。
 
 ## 4. 与关系对象模型的接缝
 

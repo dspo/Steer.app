@@ -1,10 +1,10 @@
-# nsh-pi (Pi Desktop)
+# Zu (`nsh-pi`)
 
-A **panel + sheet workbench** for the [`pi`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
-coding agent, written in TSX on [NSH](https://nsh.dev) — outline PoC, no engine wired. The shape
-borrows from [ThinkRail](https://github.com/JetBrains/ThinkRail) and iTerm2/Warp: a shell
-(rail, projects pane, toolbar, status line) around a `DockArea` canvas whose **panels** hold
-draggable **sheets** (a Pi session, terminals, agents' TUIs, a webview, a session's aux views).
+**Zu**（祖冲之——纪念其对 π 的贡献）是 [`pi`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
+coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上——当前为 outline PoC，引擎未接线。工作台形态
+借鉴 [ThinkRail](https://github.com/JetBrains/ThinkRail) 与 iTerm2/Warp：壳（rail、项目侧栏、工具栏、
+状态条）包着一块 `DockArea` 画布，**panel** 持有可拖拽的 **sheet**（Pi 会话、终端、各 agent TUI、
+webview、会话的 aux 视图）。logo 暂用 `<Z>`（Steer 的 `<->` 同款构型）。
 
 ## Architecture docs
 
