@@ -64,6 +64,7 @@ import {
   type ProjectsFile,
   type Registry,
 } from "./store";
+import { dispatchExtension, SubagentManager, type SubagentHost } from "./subagents";
 import { PI_VERSION } from "./version";
 
 const PORT = Number(process.env.ZU_PORT ?? 47823);
@@ -106,6 +107,31 @@ let uiSeq = 0;
 
 let registry: Registry = readRegistry();
 let projectsFile: ProjectsFile = readProjects();
+
+const subagents = new SubagentManager({
+  agentDir: AGENT_DIR,
+  captainFor: (id) => open.get(id),
+  settledRuns: () => registry.subagentRuns,
+  saveSettled: (run) => {
+    registry.subagentRuns = [...registry.subagentRuns.filter((entry) => entry.runId !== run.runId), run];
+    saveRegistry();
+  },
+  appendCaptainNote: (captainId, kind, text, data) => {
+    const captain = open.get(captainId);
+    try {
+      captain?.manager.appendCustomEntry(kind === "dispatch" ? "zu.dispatch" : "zu.delivery", data);
+    } catch {
+      // A closed captain still gets the shell event below.
+    }
+    emit("subagent.note", { kind, text, ...(data as Record<string, unknown>) }, captainId);
+  },
+  emit: (type, data, sessionId) => emit(type as EventType, data, sessionId),
+  projectTrusted: (cwd) => trustStore.get(cwd) === true,
+  isArchived: (captainId) => {
+    const container = containerForSession(captainId);
+    return !!container?.archived;
+  },
+} satisfies SubagentHost);
 let runSeq = 0;
 let projectSeq = 0;
 
@@ -646,7 +672,7 @@ async function resolveTrust(ws: any, cwd: string): Promise<boolean> {
  * Creates pi's services for one cwd, resolving project trust through the
  * shell before project-local extensions and settings load (Q23/Q33).
  */
-async function services(cwd: string, ws: any) {
+async function services(cwd: string, ws: any, extensionFactories: any[] = []) {
   const needsTrust = hasTrustRequiringProjectResources(cwd);
   const projectTrusted = !needsTrust || trustStore.get(cwd) === true;
   const settingsManager = SettingsManager.create(cwd, AGENT_DIR, { projectTrusted });
@@ -655,6 +681,7 @@ async function services(cwd: string, ws: any) {
     agentDir: AGENT_DIR,
     settingsManager,
     additionalExtensionPaths: extraExtensionPaths,
+    extensionFactories,
     noExtensions: process.env.ZU_NO_EXTENSIONS === "1",
   });
   await resourceLoader.reload(
@@ -669,7 +696,7 @@ async function services(cwd: string, ws: any) {
 
 async function makeRecord(manager: SessionManager, ws: any, cwd: string): Promise<Rec> {
   const id = manager.getSessionId();
-  const { settingsManager, resourceLoader } = await services(cwd, ws);
+  const { settingsManager, resourceLoader } = await services(cwd, ws, [dispatchExtension(subagents, id)]);
   const created = await createAgentSession({
     sessionManager: manager,
     settingsManager,
@@ -820,6 +847,7 @@ async function setArchived(id: string, archived: boolean): Promise<ContainerList
   container.updatedAt = Date.now();
   if (archived) {
     for (const session of container.sessions) {
+      await subagents.archiveCaptain(session.sessionId);
       const rec = open.get(session.sessionId);
       if (rec) {
         if (rec.session.isStreaming) {
@@ -1178,6 +1206,60 @@ async function handle(ws: any, message: Envelope): Promise<void> {
       reply(ws, makeReply(id, message.type, rec.extensions));
       return;
     }
+    case "session.tools": {
+      const rec = await requireSession(ws, message, payload);
+      if (!rec) return;
+      reply(
+        ws,
+        makeReply(id, message.type, {
+          tools: rec.session.getAllTools().map((tool: any) => String(tool.name ?? tool)),
+        }),
+      );
+      return;
+    }
+    case "subagent.list": {
+      reply(
+        ws,
+        makeReply(id, message.type, {
+          runs: subagents.list({
+            containerId: payload.containerId === undefined ? undefined : String(payload.containerId),
+            captainId: payload.captainId === undefined ? undefined : String(payload.captainId),
+          }),
+        }),
+      );
+      return;
+    }
+    case "subagent.transcript": {
+      try {
+        reply(ws, makeReply(id, message.type, subagents.transcript(String(payload.runId ?? ""))));
+      } catch (error: any) {
+        reply(ws, makeErrorReply(id, message.type, String(error?.message ?? error), "subagent_not_found"));
+      }
+      return;
+    }
+    case "subagent.dispatch": {
+      try {
+        const captainId = String(payload.captainId ?? "");
+        const task = String(payload.task ?? "");
+        if (!task) throw new Error("task is required");
+        const run = payload.runId
+          ? subagents.resume(captainId, String(payload.runId), task)
+          : subagents.spawn(captainId, String(payload.agent ?? "worker"), task);
+        reply(ws, makeReply(id, message.type, { run }));
+      } catch (error: any) {
+        reply(ws, makeErrorReply(id, message.type, String(error?.message ?? error), "subagent_dispatch_failed"));
+      }
+      return;
+    }
+    case "subagent.abort": {
+      try {
+        await subagents.abort(String(payload.runId ?? ""));
+        reply(ws, makeReply(id, message.type, {}));
+      } catch (error: any) {
+        reply(ws, makeErrorReply(id, message.type, String(error?.message ?? error), "subagent_abort_failed"));
+      }
+      return;
+    }
     case "session.prompt": {
       const rec = await requireSession(ws, message, payload);
       if (!rec) return;
@@ -1279,6 +1361,7 @@ setInterval(() => {
 }, 1000);
 
 function shutdown(code: number): void {
+  subagents.dispose();
   for (const rec of open.values()) {
     try {
       rec.session.dispose();

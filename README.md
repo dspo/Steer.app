@@ -6,7 +6,7 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 状态条）包着一块 `DockArea` 画布，**panel** 持有可拖拽的 **sheet**（Pi 会话、终端、各 agent TUI、
 webview、会话的 aux 视图）。logo 为 Steer 的 `<->` 构型加载祖冲之密率（上 355、下 113）。
 
-**当前状态（as of `2a1b9d8`，2026-11-10）：M0–M4 完成。** 应用能连上随包分发的 pi 引擎（Bun sidecar，`zu/engine` 原生模块启动）；侧栏按 **Project → 容器** 组织，无归属容器落 Chats，全部 pi 会话用虚拟化列表保留；空画布/「＋」进入 **Launcher**（composer 先行、项目 chip、锁定目标），提交后才创建容器；容器 = 一组面板，各自恢复布局与 zoom，可持多个 pi 会话；归属显式（菜单或拖行），重启后由 `projects.json`/`registry.json` 恢复。门禁：`nsh check` ✓、`nsh test` 45/45 ✓、`cargo check` ✓、`script/bundle-mac.sh` → 127 MB app / 51 MB dmg。下一步是 [roadmap](docs/roadmap.md) 的 M5（子代理与调度面）。
+**当前状态（2026-11-10）：M0–M5 完成。** 应用能连上随包分发的 pi 引擎（Bun sidecar，`zu/engine` 原生模块启动）；侧栏按 **Project → 容器** 组织，无归属容器落 Chats，全部 pi 会话用虚拟化列表保留；空画布/「＋」进入 **Launcher**（composer 先行、项目 chip、锁定目标），提交后才创建容器；容器 = 一组面板，各自恢复布局与 zoom，可持多个 pi 会话；归属显式（菜单或拖行），重启后由 `projects.json`/`registry.json` 恢复。M5 让 captain 在进程内派子代理：`dispatch`/`list_agents` 只在 captain 注册，名册显示 live/settled，子会话只读转录，archive 级联中断 live。门禁：`nsh check` ✓、`nsh test` 50/50 ✓、`cargo check` ✓、`script/bundle-mac.sh` → 127 MB app / 51 MB dmg。下一步是 [roadmap](docs/roadmap.md) 的 M6（轮廓打磨）。
 
 ## 文档
 
@@ -39,13 +39,14 @@ webview、会话的 aux 视图）。logo 为 Steer 的 `<->` 构型加载祖冲�
 | `i18n.ts`, `locales/` | zh-CN/en key tables and the parity test's key list |
 | `containers.ts` | Container store: create/switch/archive, layout stash + zoom restore, sidebar projection |
 | `projects.ts` | Project store: `projects.json` projection, explicit membership, Launcher state |
+| `subagents.ts` | Subagent roster store: runs, selection, read-only transcript, note/auto-open wiring |
 | `launcher.tsx` | Launcher, project chip and the project creation dialog |
 | `dock.ts` | Layout data and pure edits: stable session sheet ids, append/activate/prune, visible-panel set |
 | `sheets.tsx` | The sheet registry: 13 kinds, tab titles and glyphs, mock bodies |
 | `sessions.ts` | Per-session views: folds engine events by session id, rebuilds from a snapshot, reopens by file |
 | `ui.tsx` | Canvas glyphs, `Logo`（`<->` + 355/113）, `Dot`, `Chip`, `SectionTitle` |
 | `theme.json` | Design tokens (shadcn-style, light + dark) via `nsh.json` `"theme"` |
-| Tests | `App.test.tsx`、`containers.test.ts`、`containers.ui.test.tsx`、`dock.test.ts`、`dock-move.test.tsx`、`contracts.test.ts`、`i18n.test.ts`、`many-sessions.test.tsx`、`projects.test.ts`、`projects.ui.test.tsx`、`ui-host.test.tsx`、`engine.test.ts`（live，45 条） |
+| Tests | `App.test.tsx`、`containers.test.ts`、`containers.ui.test.tsx`、`dock.test.ts`、`dock-move.test.tsx`、`contracts.test.ts`、`i18n.test.ts`、`many-sessions.test.tsx`、`projects.test.ts`、`projects.ui.test.tsx`、`subagents.test.ts`、`subagents.ui.test.tsx`、`ui-host.test.tsx`、`engine.test.ts`（live，50 条） |
 
 交互全部来自 `nsh/base DockArea`：拖 sheet 到另一 panel（移动且状态不丢）、拖到组边缘分栏、拖手缩放、`×` 关闭、Zoom、<600pt compact。
 

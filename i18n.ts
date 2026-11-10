@@ -105,6 +105,17 @@ export const K = {
     rootsHint: "app.project.rootsHint",
     rootsCount: "app.project.rootsCount",
   },
+  subagents: {
+    title: "app.subagents.title",
+    empty: "app.subagents.empty",
+    abort: "app.subagents.abort",
+    transcript: "app.subagents.transcript",
+    running: "app.subagents.running",
+    settled: "app.subagents.settled",
+    failed: "app.subagents.failed",
+    aborted: "app.subagents.aborted",
+    interrupted: "app.subagents.interrupted",
+  },
   launcher: {
     title: "app.launcher.title",
     subtitle: "app.launcher.subtitle",

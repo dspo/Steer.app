@@ -32,6 +32,7 @@ import { error as sessionError, refreshSessions, sessions, activeId } from "./se
 import { SheetBody, sheetGlyph, sheetTitle } from "./sheets";
 import { K, shellLocale, t, toggleShellLocale } from "./i18n";
 import { UIHost, statuses, unsupportedMethods } from "./ui-host";
+import { openSubagents } from "./subagents";
 import { Chip, Dot, Glyph, Logo } from "./ui";
 
 /**
@@ -420,6 +421,16 @@ function EngineBar() {
         onPress={toggleShellLocale}
       >
         <Text class="text-[11px] font-medium text-muted-foreground">{shellLocale() === "zh-CN" ? "EN" : "中"}</Text>
+      </View>
+      <View
+        role="button"
+        testID="open-subagents"
+        accessibilityLabel={t(K.subagents.title)}
+        class="h-6 flex-row items-center gap-1 rounded-md border border-line px-2 hover:bg-hover active:opacity-70"
+        onPress={openSubagents}
+      >
+        <Glyph name="branch" size={11} tint={token("muted-foreground")} />
+        <Text class="text-[11px] font-medium text-muted-foreground">{t(K.subagents.title)}</Text>
       </View>
       <If when={phase() === "connected" || phase() === "starting" || phase() === "recovering"}>
         <View

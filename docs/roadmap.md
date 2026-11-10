@@ -97,7 +97,9 @@
 
 **验收**：建双根项目 → 从 Launcher 开对话（cwd = primary）→ 侧栏正确分组 → 拖容器换项目 → 重启后 membership 保持；660+ 会话下列表滚动不卡。
 
-## 8. M5 — 子代理与调度面（架构落地完成）
+## 8. M5 — 子代理与调度面（架构落地完成）· 已完成
+
+> **状态：已完成（2026-11-10）。** `SubagentManager` 在引擎进程内创建子会话（`zu/subagents/{captainId}/{ts}_{runId}.jsonl`、`parentSession` 指向 captain、继承模型）；`dispatch`/`list_agents` 仅作为 captain 的 extension factory 注册，子会话 `noExtensions`，三级以上无工具可用；工具支持 spawn/resume/inject/abort（`wait` 可选）；live 在内存、settled 进 `registry.json.subagentRuns[]`；archive captain 中断 live 并保留 settled；名册 sheet、只读转录与 captain 的 `zu.dispatch`/`zu.delivery` note 行。**50 条测试**覆盖 captain 工具注册、子代理交付/续跑、重启后 settled 读取、archive 级联与名册 UI。
 
 **目的**：让 captain 派活、并行跑、可见可续跑。**至此关系对象模型完整：Project → Container → 会话/资源/视图。**
 

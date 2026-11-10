@@ -65,7 +65,8 @@ UI 与引擎之间唯一的共享面：TS 类型 + 运行时校验 + `protocol.m
 | 域 | 命令 | 执行者 | 幂等 |
 |---|---|---|---|
 | `engine.*` | `ping`、`info`、`health` | engine | 是 |
-| `session.*` | `list`、`create`、`open`、`info`、`extensions`、`prompt`、`steer`、`followUp`、`abort`、`close` | engine（pi） | `open` 按 path 幂等；`create`/`prompt`/`steer`/`followUp` 非幂等 |
+| `session.*` | `list`、`create`、`open`、`info`、`extensions`、`tools`、`prompt`、`steer`、`followUp`、`abort`、`close` | engine（pi） | `open` 按 path 幂等；`create`/`prompt`/`steer`/`followUp` 非幂等 |
+| `subagent.*` | `list`、`transcript`、`dispatch`、`abort` | engine（Zu 调度面） | `dispatch` 非幂等；其余幂等 |
 | `project.*` | `list`、`create`、`update`、`setMembership` | engine（Zu 状态） | `create` 非幂等；其余幂等 |
 | `container.*` | `list`、`create`、`show`、`attachSession`、`archive`、`unarchive` | engine（Zu 状态） | `create` 非幂等；其余幂等 |
 | `layout.*` | `get`、`put` | engine（Zu 状态） | 是（last write wins） |
@@ -74,7 +75,7 @@ UI 与引擎之间唯一的共享面：TS 类型 + 运行时校验 + `protocol.m
 
 **PTY 不经 wire**：字节流不过 JSON/WS，`zu/pty` 的 `Callback::post` 直接推给 TSX 的 Terminal（§3.6）。
 
-**事件**（全部带 `sessionId`，除 `engine.*`）：`engine.heartbeat`（每 5 s）、`session.info`（名称/thinking/文件路径变更）、`message.delta`、`message.complete`、`agent.state`（M2 只发 `running`/`idle`；更细的 thinking/executing/awaiting 留给后续）、`tool.start`、`tool.end`、`tool.update`、`queue.update`（steering/followUp 排队）、`compaction.start/end`、`retry.start/end`、`ui.request`、`ui.notify`、`ui.status`、`ui.title`、`ui.unsupported`、`error`。完整表见 `contracts/protocol.md`。
+**事件**（全部带 `sessionId`，除 `engine.*`）：`subagent.started`、`subagent.settled`、`subagent.note`、`engine.heartbeat`（每 5 s）、`session.info`（名称/thinking/文件路径变更）、`message.delta`、`message.complete`、`agent.state`（M2 只发 `running`/`idle`；更细的 thinking/executing/awaiting 留给后续）、`tool.start`、`tool.end`、`tool.update`、`queue.update`（steering/followUp 排队）、`compaction.start/end`、`retry.start/end`、`ui.request`、`ui.notify`、`ui.status`、`ui.title`、`ui.unsupported`、`error`。完整表见 `contracts/protocol.md`。
 
 **回合终点**：`agent_settled`（`agent_end` 只是一次低层 run 结束）。**完成态权威**：`message_end` 与 pi 会话文件是唯一真相；UI 的渲染 = 文件投影 + 事件增量加速，所以切容器、重连、崩溃恢复是同一套重建逻辑。
 
@@ -266,6 +267,8 @@ M3 落地的注册表记录（`registry.json` 的 `containers[]`）：
 
 ### 5.6 调度面（pi 扩展）
 
+**M5 实现**：engine 内置 `dispatchExtension` 只作为 captain 会话的 `extensionFactories` 注册。工具为 `dispatch`（spawn/resume/inject/abort，`wait` 可选）与 `list_agents`。子会话由 `SubagentManager` 在进程内创建（不走 `pi` 子进程），用独立 `SessionManager` 落 `zu/subagents/{captainId}/`、`parentSession` 指向 captain、继承 captain 的 model/thinking，且 `noExtensions`，因此子会话没有 dispatch 工具。live run 只在内存，settled 写 `registry.json.subagentRuns[]`；archive captain 会 `archiveCaptain` 中断 live 并保留 settled。名册/只读转录走 `subagent.list/transcript`，dispatch/delivery 同时写 captain 的 `zu.dispatch`/`zu.delivery` custom entry 与 `subagent.note` 事件。
+
 sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `SessionManager`：
 
 | 动词 | 语义 |
@@ -325,6 +328,7 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 - **M2 完成**：`contracts/protocol.ts` + `protocol.md`（信封、命令/事件表、幂等/重放、UI 矩阵）；`engine.ts` 的快照重连与监督（心跳、指数退避、`generation`）；`ui-host.tsx`（confirm 的 `AlertDialog`、select/input/editor 的 Dialog、toast/status/title）；`i18n.ts` + `locales/*.ts`（Q39）。门禁 22/22。
 - **M3 完成**：`registry.json`/`layouts/`、容器生命周期与 archive 单点 teardown、按需 rehydrate 与 LRU、`containers.ts` 的按容器布局/zoom、`sessions.ts` 的多会话视图、可见性节流；侧栏容器 + 全部会话过渡形态。门禁 35/35。
 - **M4 完成**：`projects.json` + `project.*` 命令、Launcher（composer 先行、项目 chip、锁定目标）、项目/拖拽归属、虚拟化全部会话 `List`、会话索引按 mtime 水位缓存。门禁 45/45。
+- **M5 完成**：进程内 `SubagentManager`、仅 captain 注册的 `dispatch`/`list_agents`、`zu/subagents` 存储与 `parentSession`、live/settled 名册、只读转录、captain note、archive 级联。门禁 50/50。
 - **外部审计**：2026-11-10 的一轮事实审计与架构评审，成立的 P0/P1 已并入本文；其中「alt screen 污染 scrollback」一条被证伪并撤回（`push_scrollback` 有 `primary.is_some()` 守卫），教训记在 [evidence/terminal-emulator.md](evidence/terminal-emulator.md)。审计材料已随收敛删除。
 - **已知问题**：开发期热更新（`nsh run` 的 hot reload）在 TSX 变更后报 `nsh hot: no module zu/native`——native module 在 hot bundle 期间不可解析。重启 app 即可；不影响运行期。正式打包不受影响（无 hot reload）。另：headless 测试运行器没有帧循环，`requestAnimationFrame` 不跑，流式批 flush 因此用 `setTimeout(16)`。
 - **打包**：`script/bundle-mac.sh`——`nsh package` 出 `.app`，sidecar 拷进 `Contents/Helpers`，嵌套 ad-hoc 签名，`hdiutil` 出 dmg（127 MB app / 51 MB dmg）。打包后 app 优先用包内 sidecar（仓库的构建不能遮蔽它）。

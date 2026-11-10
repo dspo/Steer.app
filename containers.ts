@@ -255,6 +255,16 @@ export function setLayout(next: DockAreaLayout): void {
 }
 
 /** The zoom changed: remember it beside the layout (it is not in the tree). */
+/** Opens an auxiliary sheet (`subagents:{containerId}`, ...) in the canvas. */
+export function openAuxSheet(kind: "subagents" | "stats" | "tasks" | "traces"): void {
+  const container = activeContainerId();
+  if (!container) return;
+  const id = `${kind}:${container}`;
+  layout.set(appendSheet(layout(), id));
+  syncVisible();
+  scheduleSave();
+}
+
 export function setZoom(panel: string | null): void {
   zoomedPanel.set(panel);
   syncVisible();

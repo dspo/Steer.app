@@ -1,10 +1,11 @@
 import { Input, TextView } from "nsh/base";
 import { Scroll, signal, Text, token, View } from "nsh";
 import { send, sessionTitle, stop, viewFor } from "./sessions";
+import { abortRun, loadSubagents, runs, selectedRunId, selectRun, transcript, subagentError } from "./subagents";
 import { phase } from "./engine";
 import { visiblePanels } from "./dock";
 import { K, t } from "./i18n";
-import { Dot, Glyph, type GlyphName } from "./ui";
+import { Chip, Dot, Glyph, type GlyphName } from "./ui";
 
 /** The color tokens the registry tints glyphs with. */
 type TintToken = "brand" | "warn" | "up" | "info" | "muted-foreground" | "primary-foreground" | "faint";
@@ -72,6 +73,7 @@ export function sheetTitle(id: string): string {
   if (kind === "session") {
     return instance ? sessionTitle(instance) : t(K.sheet.sessionTitle);
   }
+  if (kind === "subagents") return t(K.subagents.title);
   const spec = SPECS[kind];
   return spec ? (instance ? `${t(spec.title)} · ${instance}` : t(spec.title)) : id;
 }
@@ -105,6 +107,7 @@ export function SheetBody(props: { id: string }) {
   const { kind, instance } = sheetParts(props.id);
   const spec = SPECS[kind];
   if (kind === "session") return <SessionBody id={instance || "pending"} sheetId={props.id} />;
+  if (kind === "subagents") return <SubagentsBody containerId={instance} />;
   return (
     <View
       class="flex-1 items-center justify-center gap-3 bg-card"
@@ -155,6 +158,14 @@ function MessageRow(props: {
       </View>
     );
   }
+  if (props.role === "note") {
+    return (
+      <View class="flex-row items-center gap-2 self-start px-0.5">
+        <Glyph name="branch" size={11} tint={token("brand")} />
+        <Text class="text-[11px] text-muted-foreground">{props.text}</Text>
+      </View>
+    );
+  }
   if (props.role === "user") {
     return (
       <View class="items-end">
@@ -193,6 +204,117 @@ function Banner(props: { text: string; tone: "warn" | "destructive" }) {
       <Text class="text-[11px] text-muted-foreground" style={{ flex: 1 }}>
         {props.text}
       </Text>
+    </View>
+  );
+}
+
+/** A subagent's status in the shell's language. */
+function statusLabel(status: string): string {
+  switch (status) {
+    case "running":
+      return t(K.subagents.running);
+    case "settled":
+      return t(K.subagents.settled);
+    case "failed":
+      return t(K.subagents.failed);
+    case "aborted":
+      return t(K.subagents.aborted);
+    default:
+      return t(K.subagents.interrupted);
+  }
+}
+
+/** The roster: live and settled runs, with a read-only transcript. */
+function SubagentsBody(props: { containerId: string }) {
+  void loadSubagents(props.containerId);
+  const selected = () => runs().find((run) => run.runId === selectedRunId());
+  return (
+    <View class="flex-1 flex-row bg-card">
+      <View class="border-r border-line" style={{ width: 300 }}>
+        <View class="flex-row items-center gap-2 border-b border-line px-3 py-2">
+          <Glyph name="branch" size={13} tint={token("muted-foreground")} />
+          <Text class="flex-1 text-[12px] font-semibold text-foreground">{t(K.subagents.title)}</Text>
+          <Chip label={String(runs().length)} />
+        </View>
+        <Scroll style={{ flex: 1 }} contentStyle={{ paddingVertical: 4 }}>
+          <If
+            when={runs().length === 0}
+            else={
+              <Each of={runs()} key={(run) => run.runId}>
+                {(run) => {
+                  const value = run();
+                  const active = value.runId === selectedRunId();
+                  return (
+                    <View
+                      role="button"
+                      testID={`subagent-run-${value.runId}`}
+                      accessibilityLabel={`Subagent ${value.agent} ${value.runId}`}
+                      class={active ? "bg-accent" : "hover:bg-hover"}
+                      style={{ paddingHorizontal: 12, paddingVertical: 7, gap: 2 }}
+                      onPress={() => void selectRun(value.runId)}
+                    >
+                      <View class="flex-row items-center gap-1.5">
+                        <Dot tint={token(value.status === "running" ? "info" : value.status === "settled" ? "up" : "destructive")} size={6} />
+                        <Text class="text-[12px] font-medium text-foreground" style={{ flex: 1, numberOfLines: 1 }}>
+                          {value.agent}
+                        </Text>
+                        <Text class="text-[10px] text-faint">{statusLabel(value.status)}</Text>
+                      </View>
+                      <Text class="text-[10.5px] text-muted-foreground" style={{ numberOfLines: 1 }}>
+                        {value.task}
+                      </Text>
+                      <Text class="text-[10px] font-mono text-faint">{value.runId}</Text>
+                    </View>
+                  );
+                }}
+              </Each>
+            }
+          >
+            <Text class="px-3 py-4 text-[11.5px] text-muted-foreground">{t(K.subagents.empty)}</Text>
+          </If>
+        </Scroll>
+      </View>
+      <View class="flex-1">
+        <If
+          when={!!selected()}
+          else={
+            <View class="flex-1 items-center justify-center gap-1">
+              <Text class="text-[12px] text-muted-foreground">{t(K.subagents.transcript)}</Text>
+            </View>
+          }
+        >
+          <View class="flex-row items-center gap-2 border-b border-line px-3 py-2">
+            <View style={{ flex: 1 }}>
+              <Text class="text-[12px] font-semibold text-foreground">{`${selected()?.agent ?? ""} · ${selectedRunId() ?? ""}`}</Text>
+              <Text class="text-[10.5px] text-muted-foreground" style={{ numberOfLines: 1 }}>
+                {selected()?.task ?? ""}
+              </Text>
+            </View>
+            <If when={selected()?.status === "running"}>
+              <View
+                role="button"
+                testID="subagent-abort"
+                accessibilityLabel={t(K.subagents.abort)}
+                class="rounded-md border border-line px-2 py-1 hover:bg-hover"
+                onPress={() => selectedRunId() && void abortRun(selectedRunId()!)}
+              >
+                <Text class="text-[11px] text-destructive">{t(K.subagents.abort)}</Text>
+              </View>
+            </If>
+          </View>
+          <Scroll style={{ flex: 1 }} contentStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8 }}>
+            <Each of={transcript()} key="index">
+              {(message) => (
+                <MessageRow
+                  role={message().role}
+                  text={message().text}
+                  streaming={false}
+                />
+              )}
+            </Each>
+          </Scroll>
+        </If>
+      </View>
     </View>
   );
 }

@@ -22,7 +22,7 @@
 /** The protocol this build speaks. Bump it only for an incompatible change. */
 export const PROTOCOL_VERSION = 1;
 
-export type CommandGroup = "engine" | "session" | "state" | "container" | "project" | "layout" | "ui";
+export type CommandGroup = "engine" | "session" | "subagent" | "state" | "container" | "project" | "layout" | "ui";
 
 /**
  * What replaying the same command envelope means:
@@ -84,6 +84,36 @@ export const COMMANDS = {
     idempotent: true,
     replay: "safe",
     note: "A session's file, name, run state and custom entry types.",
+  },
+  "session.tools": {
+    group: "session",
+    idempotent: true,
+    replay: "safe",
+    note: "The tools registered in a session, including the dispatch tool on a captain.",
+  },
+  "subagent.list": {
+    group: "subagent",
+    idempotent: true,
+    replay: "safe",
+    note: "Live and settled subagent runs of a container or captain.",
+  },
+  "subagent.transcript": {
+    group: "subagent",
+    idempotent: true,
+    replay: "safe",
+    note: "A subagent run's read-only transcript (live from memory, settled from its file).",
+  },
+  "subagent.dispatch": {
+    group: "subagent",
+    idempotent: false,
+    replay: "duplicate",
+    note: "Starts a subagent run, or resumes a settled one by run id.",
+  },
+  "subagent.abort": {
+    group: "subagent",
+    idempotent: true,
+    replay: "safe",
+    note: "Aborts a live subagent run; aborting a settled run is a no-op.",
   },
   "session.extensions": {
     group: "session",
@@ -229,6 +259,9 @@ export const EVENTS = {
   "ui.status": { scope: "ui", note: "An extension status line, by key; absent text clears it." },
   "ui.title": { scope: "ui", note: "An extension asked for the window title." },
   "ui.unsupported": { scope: "ui", note: "An extension UI method the shell cannot show; logged, never silent." },
+  "subagent.started": { scope: "subagent", note: "A subagent run started (live in memory)." },
+  "subagent.settled": { scope: "subagent", note: "A subagent run settled; the run and output are on the wire." },
+  "subagent.note": { scope: "subagent", note: "A dispatch/delivery note for the captain's transcript." },
   "error": { scope: "engine", note: "A command or extension failed outside a reply." },
 } as const;
 
@@ -370,6 +403,48 @@ export interface SessionData {
   containerId?: string;
   messages: PlainMessage[];
   customTypes?: string[];
+}
+
+export type SubagentStatus = "running" | "settled" | "failed" | "aborted" | "interrupted";
+
+/** A subagent run: live in memory, settled in registry.subagentRuns. */
+export interface SubagentRun {
+  runId: string;
+  captainId: string;
+  containerId: string;
+  agent: string;
+  task: string;
+  status: SubagentStatus;
+  startedAt: number;
+  settledAt?: number;
+  verdict?: string;
+  output?: string;
+  sessionPath?: string;
+}
+
+export interface SubagentListData {
+  runs: SubagentRun[];
+}
+
+export interface SubagentListPayload {
+  containerId?: string;
+  captainId?: string;
+}
+
+export interface SubagentTranscriptPayload {
+  runId: string;
+}
+
+export interface SubagentTranscriptData {
+  run: SubagentRun;
+  messages: PlainMessage[];
+}
+
+export interface SubagentDispatchPayload {
+  captainId: string;
+  agent?: string;
+  task?: string;
+  runId?: string;
 }
 
 export interface ExtensionInfo {

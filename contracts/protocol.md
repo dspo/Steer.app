@@ -88,6 +88,7 @@ dropped after the first was matched).
 | `session.open` | `{ path }` | yes (by path) | safe | `SessionData` |
 | `session.info` | `{ sessionId }` | yes | safe | `{ sessionId, path, name?, running, customTypes }` |
 | `session.extensions` | `{ sessionId }` | yes | safe | `{ extensions, errors }` |
+| `session.tools` | `{ sessionId }` | yes | safe | `{ tools: string[] }` |
 | `session.prompt` | `{ sessionId, text }` | no | duplicate | `{ accepted: true }` |
 | `session.steer` | `{ sessionId, text }` | no | duplicate | `{ accepted: true }`; an idle session errors |
 | `session.followUp` | `{ sessionId, text }` | no | duplicate | `{ accepted: true }`; an idle session errors |
@@ -150,6 +151,29 @@ or `null` (DockArea keeps zoom outside its layout tree).
 | `layout.get` | `{ containerId }` | yes | safe | `{ containerId, layout: null }` when none |
 | `layout.put` | `{ containerId, layout, zoom }` | yes | safe | the stored record; last write wins |
 
+### subagent.*
+
+Subagent runs are created inside the engine, not by spawning a `pi` process.
+Each run is a second AgentSession with an isolated context, a session file
+under `~/.pi/zu/subagents/{captainId}/{timestamp}_{runId}.jsonl`, a
+`parentSession` header pointing at the captain, and the captain's model. The
+dispatch tools are registered only on captain sessions, so a subagent can never
+dispatch again (the two-level rule).
+
+| Command | Payload | Idempotent | Replay | Reply |
+|---|---|---|---|---|
+| `subagent.list` | `{ containerId?, captainId? }` | yes | safe | `{ runs: SubagentRun[] }` (live + settled) |
+| `subagent.transcript` | `{ runId }` | yes | safe | `{ run, messages }`, read-only |
+| `subagent.dispatch` | `{ captainId, agent?, task, runId? }` | no | duplicate | `{ run }`; with `runId` it resumes a settled run |
+| `subagent.abort` | `{ runId }` | yes | safe | `{}`; a settled run is a no-op |
+
+`SubagentRun = { runId, captainId, containerId, agent, task, status,
+startedAt, settledAt?, verdict?, output?, sessionPath? }`, with status
+`running | settled | failed | aborted | interrupted`. Live runs exist only in
+engine memory; settled runs are written to `registry.json`'s
+`subagentRuns[]`. Archiving a captain interrupts its live runs and keeps the
+settled ones.
+
 ### state.*
 
 | Command | Idempotent | Replay | Reply |
@@ -211,6 +235,9 @@ All except `engine.*` carry `sessionId`.
 | `ui.status` | `{ key, text? }` | an extension status line; absent text clears it |
 | `ui.title` | `{ title }` | an extension asked for the window title |
 | `ui.unsupported` | `{ method }` | an extension UI method the shell cannot show; logged |
+| `subagent.started` | `{ run }` | a run started (live in memory) |
+| `subagent.settled` | `{ run }` | a run settled, failed, aborted or was interrupted |
+| `subagent.note` | `{ kind: "dispatch" \| "delivery", text, runId }` | a captain transcript note; also a `zu.dispatch`/`zu.delivery` custom entry |
 | `error` | `{ message, code? }` | a failure outside a reply |
 
 `session.info` is both a command and an event name; direction and the envelope

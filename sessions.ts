@@ -25,7 +25,7 @@ export type SessionMeta = {
   preview: string;
 };
 
-export type Role = "user" | "assistant" | "tool";
+export type Role = "user" | "assistant" | "tool" | "note";
 export type ToolState = "running" | "done" | "failed";
 export type Msg = {
   role: Role;
@@ -224,6 +224,15 @@ onEngineEvent((event) => {
           sessions().map((row) => (row.id === id ? { ...row, name: String(data.name) } : row)),
         );
       }
+      break;
+    }
+    case "subagent.note": {
+      if (!id) return;
+      const data = (event.data ?? {}) as any;
+      const current = views()[id] ?? blankView(id);
+      patchView(id, {
+        messages: [...current.messages, { role: "note", text: String(data.text ?? "") }],
+      });
       break;
     }
     case "error": {

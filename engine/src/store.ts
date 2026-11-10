@@ -12,7 +12,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ContainerLayoutData, ContainerRecord, ProjectRecord } from "../../contracts/protocol";
+import type { ContainerLayoutData, ContainerRecord, ProjectRecord, SubagentRun } from "../../contracts/protocol";
 
 export const REGISTRY_VERSION = 1;
 
@@ -26,7 +26,10 @@ export interface RunRecord {
 export interface Registry {
   v: number;
   containers: ContainerRecord[];
+  /** Volatile turn runs; cleared on startup. */
   runs: RunRecord[];
+  /** Settled subagent runs; kept across restarts (live ones are in memory). */
+  subagentRuns: SubagentRun[];
   activeContainerId: string | null;
 }
 
@@ -71,7 +74,7 @@ function atomicWrite(path: string, value: unknown): void {
 }
 
 export function emptyRegistry(): Registry {
-  return { v: REGISTRY_VERSION, containers: [], runs: [], activeContainerId: null };
+  return { v: REGISTRY_VERSION, containers: [], runs: [], subagentRuns: [], activeContainerId: null };
 }
 
 /**
@@ -108,10 +111,14 @@ export function readRegistry(): Registry {
         );
       })
     : [];
+  const subagentRuns = Array.isArray(value.subagentRuns)
+    ? (value.subagentRuns as SubagentRun[]).filter((run) => !!run && typeof run.runId === "string")
+    : [];
   return {
     v: typeof value.v === "number" ? value.v : REGISTRY_VERSION,
     containers,
     runs,
+    subagentRuns,
     activeContainerId: typeof value.activeContainerId === "string" ? value.activeContainerId : null,
   };
 }
