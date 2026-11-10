@@ -86,23 +86,21 @@ function Rail() {
 
 /** Every pi session on disk; a press opens it in the canvas. */
 function Sidebar() {
-  const rows = sessions();
-  const open = activeId();
   return (
     <View class="bg-sidebar border-r border-line" style={{ width: 244 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingTop: 14, paddingBottom: 4 }}>
         <Glyph name="chat" size={15} tint={token("muted-foreground")} />
         <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: token("foreground") }}>Sessions</Text>
-        <Chip label={String(rows.length)} />
+        <Chip label={String(sessions().length)} />
       </View>
       <Scroll style={{ flex: 1, paddingBottom: 12 }}>
         <If
-          when={rows.length === 0}
+          when={sessions().length === 0}
           else={
-            <Each of={rows} key={(row) => row.path}>
+            <Each of={sessions()} key={(row) => row.path}>
               {(row) => {
                 const meta = row();
-                const active = meta.id === open;
+                const active = meta.id === activeId();
                 return (
                   <View
                     role="button"
@@ -139,30 +137,27 @@ function Sidebar() {
 
 /** The engine's state as a chip and the actions that change it. */
 function EngineBar() {
-  const state = phase();
-  const details = info();
-  const failure = lastError();
   return (
     <View class="flex-row items-center gap-2 border-b border-line bg-background px-3" style={{ height: 40 }}>
-      <Dot tint={token(PHASE_TINT[state] as any)} size={7} />
-      <Text class="text-[12px] font-medium text-foreground">{PHASE_LABEL[state] ?? state}</Text>
-      <If when={!!details}>
-        <Text class="text-[11px] text-faint">{`pi ${details?.pi} · protocol ${details?.protocol}`}</Text>
+      <Dot tint={token(PHASE_TINT[phase()] as any)} size={7} />
+      <Text class="text-[12px] font-medium text-foreground">{PHASE_LABEL[phase()] ?? phase()}</Text>
+      <If when={!!info()}>
+        <Text class="text-[11px] text-faint">{`pi ${info()?.pi} · protocol ${info()?.protocol}`}</Text>
       </If>
-      <If when={state === "error" || state === "stopped"}>
+      <If when={phase() === "error" || phase() === "stopped"}>
         <View
           role="button"
           accessibilityLabel="Connect"
           class="h-6 items-center justify-center rounded-md border border-line px-2 hover:bg-hover active:opacity-70"
           onPress={() => void boot()}
         >
-          <Text class="text-[11px] font-medium text-foreground">{state === "error" ? "重试" : "启动引擎"}</Text>
+          <Text class="text-[11px] font-medium text-foreground">{phase() === "error" ? "重试" : "启动引擎"}</Text>
         </View>
       </If>
       <View style={{ flex: 1 }} />
-      <If when={!!failure}>
+      <If when={!!lastError()}>
         <Text class="text-[11px] text-destructive" style={{ numberOfLines: 1 }}>
-          {failure ?? ""}
+          {lastError() ?? ""}
         </Text>
       </If>
       <View
@@ -186,7 +181,6 @@ function App() {
   const layout = signal<DockAreaLayout>(initialLayout());
   let area: DockAreaRef | undefined;
   const zoomed = signal<string | null>(null);
-  const failure = sessionError();
   return (
     <View class="flex-1 bg-background" style={{ flexDirection: "row" }}>
       <Rail />
@@ -231,8 +225,8 @@ function App() {
           <Text class="text-[11px] tabular-nums text-faint">{`${sheetCount(layout())} sheets`}</Text>
           <Text class="text-[11px] text-faint">{`${sessions().length} sessions`}</Text>
           <View style={{ flex: 1 }} />
-          <If when={!!failure}>
-            <Text class="text-[11px] text-destructive">{failure ?? ""}</Text>
+          <If when={!!sessionError()}>
+            <Text class="text-[11px] text-destructive">{sessionError() ?? ""}</Text>
           </If>
           <Text class="text-[11px] text-faint">拖页签换 panel · 拖到组边缘分栏 · 拖手调大小</Text>
         </View>

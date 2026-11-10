@@ -11,3 +11,11 @@ test("the shell shows the session list and engine controls", async () => {
   expect(showsPhase).toBe(true);
   await Engine.stop();
 });
+
+test("a conversation renders history, tool lines and prose", async () => {
+  const app = await open("./fixtures/session.tsx");
+  const texts = app.texts();
+  expect(texts).toContain("fold the extension channel");
+  expect(texts).toContain("read done");
+  expect(texts).toContain("the projection keys rows by message id");
+});

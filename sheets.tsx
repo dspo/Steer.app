@@ -156,7 +156,7 @@ function MessageRow(props: { role: string; text: string }) {
  * The conversation: the open session's transcript, the streaming indicator
  * and the composer. Return sends; Shift+Return breaks the line.
  */
-function SessionBody() {
+export function SessionBody() {
   const draft = signal("");
   const canSend = () => !!draft().trim();
   const submit = () => {
