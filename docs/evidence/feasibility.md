@@ -44,7 +44,7 @@ pub trait TerminalEmulator {
 组件本身不跑程序——app 用 `write`(入) 与 `onData`(出) 接任意字节源（文档：`a pseudo-terminal, a WebSocket, an SSH channel`）。
 
 ### 缺口
-无。**唯一约束**：factory 是 Rust API，必须从 Rust 侧提供 → 需要 native module（Q28=B 已具备）。
+**约束一**：factory 是 Rust API，必须从 Rust 侧提供 → 需要 native module（Q28=B 已具备）。**约束二**：`provide_context` 是 owner 子树作用域，而 `Terminal` 在自己的渲染里 `use_context`，所以不能从 TSX 直接给 `nsh/base` 的 `<Terminal>` 灌 factory——要写一个自己的 Rust 包装组件（`provide_context` + 渲染 `nsh_base::term::terminal()`）。
 
 ### 实现路径
 1. `src/emulator/ghostty.rs`：`struct GhosttyEmulator` 实现 trait，内部包 `steer-ghostty` 的 libghostty-vt 绑定（该 crate 已有 `sys.rs` 与 build script 静态链接）。

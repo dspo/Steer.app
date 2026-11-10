@@ -53,6 +53,16 @@
 | Q26 | 仓库公开性 | **公开** | arch §3.7 |
 | Q29 | 终端仿真核 | **M2 先用 nsh 内置**冒烟 + 修 alt 缺陷；「Ghostty + 扩 trait/组件」作为条件性里程碑 **M-tty**，一次换到位 | arch §6；[evidence/terminal-emulator.md](evidence/terminal-emulator.md) |
 
+## 待决（已登记，尚未裁决）
+
+外部审计（`docs/review/`）提出的问题大部分已在 [architecture.md](architecture.md) 落成决策；以下三项需要产品判断：
+
+| # | 议题 | 现状 | 需要定什么 |
+|---|---|---|---|
+| D1 | 浏览器里程碑的域名授权 | `capabilities.webview.hosts` 是构建期白名单，而地址栏意味着任意站点 | 要么承认 `hosts: ["*"]` 并在 UI 上标出风险，要么取消地址栏只做声明过的站点 |
+| D2 | 扩展的 `ctx.mode` 取值 | pi 现有 `"tui"`/`"print"`/`"rpc"`；Zu 是 GUI | 直接用 `"rpc"`（扩展按非 TUI 降级），还是与上游商量新增 `"gui"` |
+| D3 | 归档容器的可恢复性 | Q11 说 v1 不做 UI 入口，但 archive 是不可见 + 杀资源 | 确认「永不删除、后续在设置里找回」足够，还是 v1 就要一个最小恢复入口 |
+
 ## 决策编号说明
 
 - Q1–Q31 覆盖**已讨论**的问题。以下议题未经讨论、尚在正文里悬空（不是已裁决）：扩展宿主契约（Q23 的 UI 桥细节）、project trust、引擎监督与重连策略、文件读写归属（Editor 保存走 wire 还是 native module）、协议完整性校验、pi 会话格式版本、归档容器的可达性（Q11）、模型选择入口、i18n 落地时机。

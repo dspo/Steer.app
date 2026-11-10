@@ -104,7 +104,7 @@ let rows = virtual_list(count, move |at| { ... line(at) ... });
 |---|---|---|---|
 | **A 用 nsh 内置** | 现状 | agent TUI 全功能；缺鼠标/超链接/光标形状 | 零 |
 | **B 换 Ghostty（仅实现）** | `steer-ghostty` 绑定 + `TerminalEmulator` 实现 | 解析正确性（修 alt 污染）、内部性能 | 1–2 周；**鼠标/超链接仍然没有** |
-| **C Ghostty + 扩 nsh 终端栈** | B + 扩 `TerminalModes`/`TerminalStyle`/`TerminalCursor`/鼠标事件通道 + 组件输入输出 | 完整终端体验 | 数周；需要维护 nsh fork（或上游 PR） |
+| **C Ghostty + 扩 nsh 终端栈** | B + 扩 `TerminalModes`/`TerminalStyle`/`TerminalCursor`/鼠标事件通道 + 组件输入输出。**注意**：`provide_context` 是 owner 子树作用域，`Terminal` 在渲染时 `use_context` 拿 factory，所以 TSX 直接用 `nsh/base` 的 `<Terminal>` 拿不到——需要一个自己的 Rust 包装组件（`provide_context` + 渲染 `nsh_base::term::terminal()`） | 完整终端体验 | 数周；需要维护 nsh fork（或上游 PR） |
 
 ## 6. 建议
 

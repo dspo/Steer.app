@@ -48,13 +48,34 @@
 - **会话回收是内存策略**：`session.dispose()` + LRU；resume 是按 pi 会话文件重建，不涉及进程管理。进程数恒为 1。
 - **派发不另起进程**：需要隔离时在引擎内 fork `AgentSessionRuntime`，wire 协议对 UI 透明。
 
-### 3.3 wire（`contracts/`）
+### 3.3 wire 契约（`contracts/`）
 
-UI 与引擎之间唯一的共享面：TS 类型 + 小纯运行时，带协议版本（握手返回 `{ engine, pi, protocol }`，feature gate 按 `protocol` 不按 pi 版本）。
+UI 与引擎之间唯一的共享面：TS 类型 + 运行时校验 + `protocol.md`。**信封固定**：
 
-- **命令**：`container.list/open/archive`、`session.prompt/steer/followUp/abort/resume/fork`、`pty.open/resize/write/close`、`state.get/set`、`engine.info`
-- **事件**：`message.delta/complete`、`tool.update`、`agent.state`（thinking→executing→awaiting）、`cost.update`、`container.updated`（含未读）、`resource.gone`、`error`
-- **回合终点锚 `agent_settled`**（`agent_end` 只是一次低层 run 结束，retry/compaction/steering 之后仍会继续）；prompt 响应的 `disposition` 区分 started/handled。
+```ts
+{ v: 1, id: string, sessionId?: string, type: string, payload: unknown }
+// 回复：{ v, id, type: "reply", command, ok, data? , error? }
+// 事件：{ v, type: <event>, sessionId?, data }
+// 引擎→UI 的请求（扩展 UI）：{ v, id, type: "ui.request", method, params, timeoutMs }
+// UI 的应答：{ v, id, type: "ui.response", ok, result?, error? }
+```
+
+**命令按域分组，归属明确**：
+
+| 域 | 命令 | 执行者 | 幂等 |
+|---|---|---|---|
+| `engine.*` | `info`、`health` | engine | 是 |
+| `session.*` | `list`、`create`、`open`、`info`、`prompt`、`steer`、`followUp`、`abort`、`close` | engine（pi） | `open` 按 path 幂等；`create` 非幂等 |
+| `state.*` | `snapshot`、`subscribe` | engine（Zu 状态） | 是 |
+| `ui.*` | 扩展 UI 的请求/应答（`ui.request` / `ui.response`） | UI（nsh 对话框） | 请求带超时，超时即 resolve 默认值 |
+
+**PTY 不经 wire**：字节流不过 JSON/WS，`zu/pty` 的 `Callback::post` 直接推给 TSX 的 Terminal（§3.6）。
+
+**事件**（全部带 `sessionId`，除 `engine.*`）：`session.info`（模型/thinking/名称变更）、`message.delta`、`message.complete`、`agent.state`（thinking/executing/awaiting/idle）、`tool.start`、`tool.end`、`tool.update`、`queue.update`（steering/followUp 排队）、`compaction.start/end`、`retry.start/end`、`ui.request`、`error`。
+
+**回合终点**：`agent_settled`（`agent_end` 只是一次低层 run 结束）。**完成态权威**：`message_end` 与 pi 会话文件是唯一真相；UI 的渲染 = 文件投影 + 事件增量加速，所以切容器、重连、崩溃恢复是同一套重建逻辑。
+
+**重连**：UI 连上后先 `state.snapshot`（容器、打开会话、活跃 run、未读、engine `generation`），再订阅增量。协议版本 `v` 与 pi 版本在握手返回；`v` 不匹配即拒连并提示升级。
 
 ### 3.4 能力面（`nsh.json`）
 
@@ -66,6 +87,10 @@ UI 与引擎之间唯一的共享面：TS 类型 + 小纯运行时，带协议�
 
 WebSocket 按 `hosts` 授权（`sockets` 只给 `net.connect` 的裸 TCP，且只接受精确 `host:port`）；`notifications` 不是合法能力键，通知在 M10 用 nsh 的 desktop 模块。
 
+**port 与 token 由 native module 提供**：`Engine.port()` / `Engine.token()`（§3.6），UI 不读文件、不猜端口。端口是固定常量 `47823`——第二个实例会撞端口，由「单实例」与明确错误文案兜底（§7）。
+
+**威胁模型（写清楚边界）**：能力面保护的是 **UI/TSX 代码**被攻破时的爆炸半径；**agent 的动作不受它约束**——pi 的 bash 与工具仍以用户权限运行，由 pi 自己的权限模型负责。不要把「最小能力面」读成「agent 沙箱」。
+
 UI **不持 fs、不持 process**：全部用户状态经 wire 落 `~/.pi/zu/`，进程操作由 Rust native module 代劳（见 §3.6）。这是**自选策略**而非平台限制（nsh 的 `Storage` 不需要能力，`fs`/`process` 也可授予）——换来单一写入点，代价是 engine 不在时无法落盘。
 
 ### 3.5 存储布局（路径即关系）
@@ -76,13 +101,19 @@ UI **不持 fs、不持 process**：全部用户状态经 wire 落 `~/.pi/zu/`�
 ~/.pi/zu/
   registry.json                          # 容器注册表（JSON 快照 + 原子 rename + 启动对账）
   projects.json                          # Project + membership
-  layouts/{containerId}.json             # 视图 stash（含 zoom）
+  layouts/{containerId}.json             # 视图 stash（zoom 单独存，§4.3）
   settings.json                          # Zu 自己的偏好（pi 的 settings 只读）
   agents/{builtin,personal,project}/     # 子代理定义（markdown + frontmatter）
   subagents/{captainId}/{timestamp}_{runId}.jsonl   # 1 级子会话
 ```
 
 子会话的三重自证：路径（父容器）＋ 文件名（runId）＋ header（`{ id: runId, parentSession: <captain 路径> }`）。
+
+**版本化**：每个持久文件顶层带 `{ "v": 1, ... }`。读到 `v > 当前` 时只读打开并提示；`v < 当前` 走迁移链；迁移失败不阻塞启动（与不变量 1 一致）。
+
+**Project 只由用户显式创建**：自动纳入的会话落 Chats 桶，不按 cwd 生成项目（真实数据里 276 个 cwd 目录大多是 worktree 名，按目录建项目会产生大量无意义的组）。
+
+**对账是增量的**：记录上次扫描的 mtime 水位，`listAll` 只在首启或水位变化时全量；侧栏按「工作区 → 分组 → 会话」两层聚合 + 虚拟化，不做 660+ 行平铺。
 
 ### 3.6 Rust native module（重型集成的地基）
 
@@ -94,6 +125,9 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 | `zu/pty` | `portable-pty` 创建/读写/缩放/kill；输出经 `Callback::post` 推给 TSX | 容器 |
 | `zu/lsp` | 起语言服务器、stdio JSON-RPC、诊断/hover/补全 | workspace |
 | `zu/git` | shell out `git`（status/diff/log/branch/stage/commit） | 一次性调用 |
+| `zu/fs` | `read/write/stat/list`：编辑器与文件树的读写面；路径策略在 Rust 侧（工作区根 + 显式 grant） | 一次性调用 |
+
+**为什么是 `zu/fs` 而不是给 UI 开 `capabilities.fs`**：编辑器与文件树需要真实的读写，而 UI 的能力面要保持最小；`zu/fs` 让文件访问与 agent 的工具权限分开，LSP 的 `didOpen/didChange` 也能复用同一份内容（避免编辑器与 LSP 各读一遍）。**四域失败隔离**：engine、pty、lsp、git、fs 各自失败不影响其余；一个域的崩溃不能让 UI 失去所有能力。
 
 **为什么必须有它**：nsh 的 `capabilities.process.execute` 只接受裸命令名或绝对路径、且精确字符串比对（不支持 `${dataDir}` 等变量），bundle 路径随安装位置变化，TSX 无法直接执行 sidecar。
 
@@ -102,14 +136,16 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 - **sidecar 位置**：`Zu.app/Contents/Helpers/pi-engine`，直接执行、不释放到 dataDir（签名与公证覆盖最干净）。
 - **pi 版本自管**：`engine/package.json` 精确 pin + `bun.lock` 进 git；升级 = 改 pin 的 PR（引擎测试 + TUI 冒烟 + 兼容性台账）；sidecar 内禁 `pi update`。
 - **兼容性台账**：每个绕过 pi 缺口的适配登记「上游什么条件下可删」。
-- **自更新**：GitHub Releases（nsh/updater）；仓库公开。
-- **签名**：嵌套签名 + hardened runtime + Bun JIT entitlement（`com.apple.security.cs.allow-jit`）+ 公证。
+- **自更新**：GitHub Releases（nsh/updater）；仓库公开。**更新包必须包含 `Contents/Helpers`**——`nsh/updater` 替换整个 `.app`，漏掉即引擎消失。
+- **签名**：nsh 的 `nsh package --target macos` 只做 **ad-hoc** 签名、且不认识 `Contents/Helpers`；其余是我们的活（`script/bundle-mac.sh`）：拷 sidecar 与两个 WASM（**必须与 sidecar 同目录**，photon 用 `process.execPath` 兜底）→ 逐个 `codesign --options runtime`（sidecar 带 `com.apple.security.cs.allow-jit`）→ 签 app → `notarytool` → `stapler`。ad-hoc 打包从 M0 起每轮冒烟，别把未知量留到正式签名那天。
 - **遥测**：支持 pi-telemetry，但不在早期里程碑；默认不上报。
 
 ### 3.8 构建回路
 
-- `engine/build.ts`：`bun install --frozen-lockfile` → `bun build --compile --target=bun-darwin-arm64` → `dist/`（pi 上游同路径：`isBunBinary` / `copy-binary-assets` 的 WASM 资产布局）。
-- 开发：engine `bun run engine/src/server.ts`（热重启）+ UI `nsh dev`（热重载）两条循环并行。
+- `engine/package.json` 的 `build`：`check-version`（`src/version.ts` 必须等于 pin）→ `bun build --compile --target=bun-darwin-arm64` → `cp` 两个 WASM 到 `dist/`（pi 上游同路径：`isBunBinary` / `copy-binary-assets` 的资产布局）。
+- `script/bundle-mac.sh`：sidecar → `nsh package` → Helpers → 嵌套 ad-hoc 签名 → dmg。
+- 开发：engine `bun run src/server.ts`（热重启）+ UI `nsh run .`（热重载）两条循环并行；UI 侧热更新在 mixed 模板下不可用（`nsh hot: no module zu/native`），改 TSX 需重启。
+- **编译产物冒烟**：`dist/pi-engine` 起得来、握手成功、`session.list` 返回——每次改 engine 都跑（已由 `engine.test.ts` 的 freshEngine 覆盖）。
 
 ## 4. 前端：轮廓与画布
 
@@ -136,9 +172,23 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 
 v1 最小集：`⌘W` 关闭 sheet、`⌘1-9` 切 sheet、`⌘K` 命令面板（承载打开/切换/zoom/重置等全部动作）。panel 获焦高亮。
 
-### 4.5 扩展 UI 桥
+### 4.5 扩展宿主契约（Q23 的机制）
 
-engine 侧 `ctx.hasUI = true`；扩展的 `ctx.ui.confirm/select/input` 经 wire 转成 nsh 原生 `AlertDialog` / `Picker` / `Input`；`ctx.ui.editor` 与 `ctx.ui.custom` 降级为纯文本并记录。
+**不是"设 `hasUI = true`"就完了**：pi 默认给扩展一个 no-op 的 UI 上下文（`confirm` 静默 `false`、`notify` 静默丢弃），扩展与用户都不会察觉——这是最坏的"看起来加载了、实际什么都没发生"。契约：
+
+1. **显式绑定**：engine 用 `bindExtensions({ uiContext, mode })` 装配；`mode` 取 pi 已有的语义（`"rpc"`，或与上游商量新增 `"gui"`），让扩展按 `ctx.mode` 自我降级——这是 pi 已经设计好的写法，不自创。
+2. **UI 方法矩阵**：
+
+| 方法 | 处理 |
+|---|---|
+| `confirm` / `select` / `input` | `ui.request` → nsh `AlertDialog` / `Picker` / `Input`，应答 `ui.response`；超时按 pi 的默认值 resolve |
+| `editor` | 多行 `Input`（纯文本，无语法高亮） |
+| `notify` | 系统通知（M11 前为状态条 Toast） |
+| `setStatus` / `setTitle` | 状态条 / 窗口标题 |
+| `custom` / `setWidget` / `setFooter` / `setHeader` / `onTerminalInput` | **no-op 并记日志**（不静默） |
+
+3. **project trust**：项目有受保护资源时，Zu 弹一次「信任此项目」并写 pi 的 trust 面；否则 Q23 的"全量加载"在项目级不成立。信任状态与 Q24 的"写独立"不冲突：trust 是 pi 的语义，Zu 只触发它。
+4. **验收**：用本机 `~/.pi/agent/extensions` 里的真实扩展跑一次（加载、`confirm` 弹窗、`notify` 到达），不需要模型。
 
 ### 4.6 常驻与通知
 
@@ -213,6 +263,10 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 
 **扩展机制只承载调度面与会话内上下文，不承载所有权注册表**（扩展随会话生灭，容器跨会话长寿）。
 
+**按会话角色门控**：`dispatch` 只在 captain 会话注册，subagent 会话不注册——否则全量加载扩展会让子会话递归派发，破坏「只两级」。三级以上在工具层直接拒绝并返回明确错误。
+
+**run 的注册面**：`registry.json` 里加 `runs[]`（`runId`、`captainId`、定义名、状态）。**live 的 run 只在内存，settled 的 run 只在文件**；级联归档 = 归档 captain 时把 `runs[]` 中标为 settled 的条目保留、live 的中断并标注。`list_agents` 的 verdict 由两处合并：内存（live）+ 文件扫描（settled）。
+
 **子代理定义**：markdown + YAML frontmatter（`name/description/tools/model/thinking/maxTurns/skills`，正文即 system prompt），三来源 builtin / personal / project（`.pi/agents/`），persona 认 `skills` 字段，定义变更热生效。
 
 ### 5.7 调度事件写入
@@ -228,7 +282,10 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 5. 视图操作永不触碰会话与资源。
 6. 单一创建入口、单点 teardown。
 7. fork 不携带成员与资源。
-8. 子会话只收 captain 消息，GUI 无人类直连入口。
+8. 子会话只收 captain 消息，GUI 无人类直连入口；`dispatch` 只在 captain 注册。
+9. **完成态权威**：`message_end` 与 pi 会话文件是唯一真相；UI 渲染 = 文件投影 + 事件加速。
+10. **写者唯一性**：打开会话记录 `(path, size, mtime, leafId)`，写前校验；不一致转只读，不分叉。
+11. **持久文件带版本**：未知的高版本只读打开，迁移失败不阻塞启动。
 
 ## 6. 技术选型
 
@@ -238,12 +295,13 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 | 引擎 | pi `1.5.0`（精确 pin），Bun `--compile` 单文件 | pi 官方支持 bun 二进制分发 |
 | UI↔引擎 | loopback WS + token，`EngineConnection` 唯一边界 | 进程隔离 + 能力沙箱 |
 | 重型集成 | Rust native module（mixed 模板），按域拆 | Q28/Q31 |
-| 终端仿真核 | **先 nsh 内置 `VtEmulator`**；Ghostty + 扩 trait 作为条件性里程碑 | trait 上限锁死换核收益（见 evidence/terminal-emulator.md） |
+| 终端仿真核 | **先 nsh 内置 `VtEmulator`**；Ghostty + 扩 trait 作为条件性里程碑 | trait 上限锁死换核收益（见 evidence/terminal-emulator.md）；解析正确性由冒烟决定，不是已知缺陷 |
 | 浏览器 | nsh `WebView`（原生 WKWebView，嵌布局可裁剪） | 无需自研 |
 | 编辑器 | nsh `Editor` + 自研 LSP 客户端（Rust） | 组件齐备，LSP 是唯一缺口 |
 | Diff | nsh `DiffView`（split/unified、hunk 操作） | 无需自研 |
 | Git | shell out `git`（不引入 libgit2） | 零依赖、与 pi 工具行为一致 |
 | 语言 | zh-CN 第一 + en fallback，Fluent 键表 | 与 Steer 一致 |
+| nsh | `Cargo.toml` 的 `nsh-core`/`nsh-base = "0.4.0"` + `Cargo.lock`；CLI 用与它同版本的构建 | nsh 比 pi 更不稳定（0.4.0、trait `#[non_exhaustive]`），升级需跑 `nsh check`/`nsh test` + 终端与 DockArea 冒烟 |
 
 ## 7. 实现状态（2026-11-10）
 
@@ -255,12 +313,17 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 
 ## 8. 已知风险（非决策）
 
-1. `createAgentSession` 的真实运行（WASM 运行期加载）未验证。
+1. `createAgentSession` 的完整真实会话（WASM 运行期加载）在扩展与 MCP 路径上仍未跑到。
 2. `parentSession` 在 pi CLI 里的 fork 观感。
 3. pi 升级对 `~/.pi/agent/sessions` 布局的影响（台账登记）。
-4. Zu engine 与终端 pi CLI 对同一 captain 的并发写：pi 的会话写入是裸 `appendFileSync`，**没有锁**（`proper-lockfile` 只护 `auth-storage` 与 `settings-manager`），两个写者会各自推进 leaf——风险比初版描述更高。
-5. 签名/公证：嵌套签名 + JIT entitlement 的实际可行性。
-6. 用户扩展在 `ctx.hasUI = true` 下经 wire 桥的正常工作。
+4. **并发写**：pi 的会话写入是裸 `appendFileSync`，没有锁；两个写者会各自推进 leaf。按不变量 10 处理（检测 + 转只读）。
+5. 签名/公证：嵌套签名 + JIT entitlement 的实际可行性（M0 的 ad-hoc 打包已冒烟，正式签名未验）。
+6. **协议面**：`contracts/` 的 v1 尚未落成代码与 `protocol.md`；实现目前的 wire 是临时定义的（M1 用的 `session.*` 不在旧表里）。
+7. **引擎单点**：`generation`、心跳、退避重启、`state.snapshot` 未实现；引擎崩溃时在跑的回合会丢。
+8. **单实例与固定端口**：端口是常量 `47823`，第二个实例会撞端口；nsh 没有单实例原语，需锁文件或 `NSRunningApplication`，并给「端口被占用」明确文案。
+9. **`~/.pi/zu/` 的清理**：归档容器、死 subagent 文件、旧 layout 会增长；启动时清理孤儿 layout（容器已不在注册表）。
+10. **视图全量挂载**：DockArea 会把所有 panel 放进树（只有当前 tab 显示）；20 个 sheet（含 WebView/Editor/Terminal）同时存活时要「非可见 sheet 降级」（webview 暂停、editor 释放 rope、terminal 保留）。
+11. **WebView 信任边界**（浏览器里程碑）：页面 `postMessage` 进 UI 代码；定为「页面消息不进 wire、不进 agent 上下文」，`injectJavaScript` 只做日志回传。
 
 ## 9. 文档
 
