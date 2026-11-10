@@ -1,5 +1,7 @@
-import { signal, Text, token, View } from "nsh";
-import { Glyph, type GlyphName } from "./ui";
+import { Input } from "nsh/base";
+import { Scroll, signal, Text, token, View } from "nsh";
+import { messages, send, stop, streaming } from "./sessions";
+import { Dot, Glyph, type GlyphName } from "./ui";
 
 /** The color tokens the registry tints glyphs with. */
 type TintToken = "brand" | "warn" | "up" | "info" | "muted-foreground" | "primary-foreground" | "faint";
@@ -98,6 +100,7 @@ export function SheetBody(props: { id: string }) {
   const taps = signal(0);
   const { kind } = sheetParts(props.id);
   const spec = SPECS[kind];
+  if (kind === "session") return <SessionBody />;
   return (
     <View
       class="flex-1 items-center justify-center gap-3 bg-card"
@@ -115,6 +118,89 @@ export function SheetBody(props: { id: string }) {
       <Text class="text-xs text-muted-foreground">{spec.note}</Text>
       <Text class="text-[11px] font-mono text-faint">{props.id}</Text>
       <Text class="text-[11px] tabular-nums text-faint">{`taps ${taps()} · 拖我到另一个 panel，计数不丢`}</Text>
+    </View>
+  );
+}
+
+
+/** One transcript row: the user's messages right-aligned, the assistant's
+ * plain prose, a tool step as a dim line. M1 renders text, not Markdown. */
+function MessageRow(props: { role: string; text: string }) {
+  if (props.role === "tool") {
+    return (
+      <View class="flex-row items-center gap-2 py-0.5">
+        <Glyph name="terminal" size={11} tint={token("faint")} />
+        <Text class="text-[11px] font-mono text-faint" style={{ numberOfLines: 1 }}>
+          {props.text}
+        </Text>
+      </View>
+    );
+  }
+  if (props.role === "user") {
+    return (
+      <View class="items-end">
+        <View class="max-w-[82%] rounded-2xl bg-raised px-3 py-2" style={{ borderWidth: 1, borderColor: token("border") }}>
+          <Text class="text-[13px] leading-5 text-foreground">{props.text}</Text>
+        </View>
+      </View>
+    );
+  }
+  return (
+    <View class="px-0.5">
+      <Text class="text-[13px] leading-[21px] text-foreground">{props.text}</Text>
+    </View>
+  );
+}
+
+/**
+ * The conversation: the open session's transcript, the streaming indicator
+ * and the composer. Return sends; Shift+Return breaks the line.
+ */
+function SessionBody() {
+  const draft = signal("");
+  const canSend = () => !!draft().trim();
+  const submit = () => {
+    if (!canSend()) return;
+    const text = draft();
+    draft.set("");
+    void send(text);
+  };
+  return (
+    <View class="flex-1 bg-card">
+      <Scroll style={{ flex: 1 }} contentStyle={{ paddingHorizontal: 16, paddingVertical: 12, gap: 10 }}>
+        <Each of={messages()} key="index">
+          {(message) => <MessageRow role={message().role} text={message().text} />}
+        </Each>
+        <If when={streaming()}>
+          <View class="flex-row items-center gap-2">
+            <Dot tint={token("info")} size={6} />
+            <Text class="text-[12px] text-muted-foreground">running…</Text>
+          </View>
+        </If>
+      </Scroll>
+      <View class="border-t border-line px-3 py-2">
+        <View class="flex-row items-end gap-2 rounded-xl border border-border bg-background px-2 py-1.5">
+          <View style={{ flex: 1 }}>
+            <Input
+              value={draft()}
+              onChange={({ value }) => draft.set(value)}
+              multiline
+              placeholder="Message pi — Return sends, Shift+Return breaks"
+              onSubmit={submit}
+              style={{ fontSize: 13, lineHeight: 19, color: token("foreground"), placeholderColor: token("faint"), height: 38, paddingHorizontal: 6, paddingVertical: 6 }}
+            />
+          </View>
+          <View
+            role="button"
+            accessibilityLabel={streaming() ? "Stop" : "Send"}
+            class={streaming() ? "items-center justify-center rounded-full bg-destructive" : canSend() ? "items-center justify-center rounded-full bg-primary" : "items-center justify-center rounded-full bg-muted"}
+            style={{ width: 28, height: 28 }}
+            onPress={() => (streaming() ? void stop() : submit())}
+          >
+            <Glyph name={streaming() ? "stop" : "send"} size={13} tint={streaming() ? token("destructive-foreground") : canSend() ? token("primary-foreground") : token("faint")} />
+          </View>
+        </View>
+      </View>
     </View>
   );
 }

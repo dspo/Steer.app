@@ -6,7 +6,7 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上——当前为
 状态条）包着一块 `DockArea` 画布，**panel** 持有可拖拽的 **sheet**（Pi 会话、终端、各 agent TUI、
 webview、会话的 aux 视图）。logo 为 Steer 的 `<->` 构型加载祖冲之密率（上 355、下 113）。
 
-**当前状态**：outline PoC（工作台可交互、内容为 mock），引擎与 native module 尚未接线；下一步是 [roadmap](docs/roadmap.md) 的 M0。
+**当前状态：M1 完成。** 应用能连上随包分发的 pi 引擎（Bun sidecar，`zu/engine` 原生模块启动），侧栏列出 `~/.pi` 里的全部会话，打开即显示历史，输入后回复流式进入转录，停止可用。下一步是 [roadmap](docs/roadmap.md) 的 M2（工作台形态）。
 
 ## 文档
 

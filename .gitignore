@@ -1,2 +1,4 @@
 .nsh/
 target/
+engine/node_modules/
+engine/dist/

@@ -35,22 +35,11 @@
 | **kitty graphics / sixel** | 终端内图片不显示 | 少数场景 |
 | 焦点上报（`?1004`）、闪烁字体、上划线等 | 影响小 | 罕见 |
 
-### 一个真实的解析缺陷（源码证据）
+### 一处曾误判（已撤回，留档以免重犯）
 
-```rust
-// vt.rs:216  —— scroll_up 无条件写 scrollback
-fn scroll_up(&mut self, n: usize) {
-    for _ in 0..n {
-        let row = self.screen.remove(self.top);
-        if self.top == 0 { self.push_scrollback(row); }   // ← 没有 alt screen 判断
-        self.screen.insert(self.bottom, blank_row.clone());
-    }
-}
-// vt.rs:329  —— alternate() 只替换 screen，不设任何标志
-fn alternate(&mut self, on: bool, save_cursor: bool) { ... }
-```
+初版把 `scroll_up`（`vt.rs:216`）无条件调用 `push_scrollback` 读成「alt screen 会污染 scrollback」。**这是错的**：`push_scrollback` 自身第一行就守卫 `if self.primary.is_some() || self.max_scrollback == 0 { return; }`（`vt.rs:205-208`），而 `primary` 正是 alt screen 期间的标志；`vt.rs:649` 还有 `alternate_screen_restores_the_primary` 测试。
 
-→ **在 alt screen 里滚动（vim/tmux/less 都会）会把全屏 TUI 的画面写进 scrollback**，退出 TUI 后主屏幕的回看历史被污染。这是换 Ghostty 的**独立价值**（与 trait 无关，属于解析正确性）。
+教训：**只看调用点不构成缺陷判定**，要跟进被调函数与既有测试。这条撤回后，nsh 内置仿真核在 alt screen/scrollback 语义上是正确的，Q29 的论证只剩「trait 上限」与「未知风险」。
 
 ## 2. Ghostty（libghostty-vt）的覆盖面
 

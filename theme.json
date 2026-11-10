@@ -42,7 +42,8 @@
       "scrollbar-thumb": "color-mix(in srgb, var(--muted-foreground) 50%, var(--background))",
       "scrollbar-thumb-hover": "color-mix(in srgb, var(--muted-foreground) 80%, var(--background))",
       "brand-tint": "color-mix(in srgb, var(--brand) 16%, transparent)",
-      "scrim": "rgba(0,0,0,0.45)"
+      "scrim": "rgba(0,0,0,0.45)",
+      "destructive-foreground": "#ffffff"
     },
     "dark": {
       "background": "#131316",
@@ -80,7 +81,8 @@
       "scrollbar-thumb": "color-mix(in srgb, var(--muted-foreground) 50%, var(--background))",
       "scrollbar-thumb-hover": "color-mix(in srgb, var(--muted-foreground) 80%, var(--background))",
       "brand-tint": "color-mix(in srgb, var(--brand) 16%, transparent)",
-      "scrim": "rgba(0,0,0,0.5)"
+      "scrim": "rgba(0,0,0,0.5)",
+      "destructive-foreground": "#14121c"
     }
   }
 }

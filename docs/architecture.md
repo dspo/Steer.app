@@ -9,7 +9,7 @@
 
 ## 1. 第一性约束
 
-1. **pi 是 Node 生态的 JS 引擎**，nsh 的 TSX 运行时是 QuickJS 沙箱（无 npm、非全量 Node）→ pi 不能进 UI 进程。
+1. **pi 是 Node 生态的 JS 引擎**：它需要 `node:module`、动态 `require`、原生与 WASM 资产，以及一个能写 `~/.pi` 的进程。nsh 的 TSX 运行时虽是 QuickJS（可解析 npm 包、有 Node 子集），但这些不在其能力面内 → pi 不能进 UI 进程。
 2. **Zu 自管 pi 版本并经 pi 扩展机制定制** → 引擎必须随 app 携带，不依赖用户系统安装。
 3. **nsh 有能力沙箱** → UI 进程保持最小能力面（回环 + 通知），文件与进程访问全在引擎/native module 侧。
 
@@ -44,7 +44,7 @@
 
 ### 3.2 引擎形态
 
-- **单进程多会话**：一个 sidecar 进程内 `createAgentSession` × N + `AgentSessionRuntime`（`newSession`/`switchSession`/`fork`）。pi 的 `--mode rpc` 是 1 进程 1 会话、无多路复用协议，故不用它；官方指定进程内集成用 SDK。
+- **单进程多会话**：一个 sidecar 进程内 `createAgentSession` × N + `AgentSessionRuntime`（`newSession`/`switchSession`/`fork`）。pi 的 `--mode rpc` 是长生命周期的单会话进程（支持 `new_session`/`switch_session`/`fork`），但**不支持多会话并发**（事件无 sessionId），故不用它；官方指定进程内集成用 SDK。
 - **会话回收是内存策略**：`session.dispose()` + LRU；resume 是按 pi 会话文件重建，不涉及进程管理。进程数恒为 1。
 - **派发不另起进程**：需要隔离时在引擎内 fork `AgentSessionRuntime`，wire 协议对 UI 透明。
 
@@ -60,12 +60,13 @@ UI 与引擎之间唯一的共享面：TS 类型 + 小纯运行时，带协议�
 
 ```json
 "capabilities": {
-  "network": { "sockets": ["127.0.0.1:*"] },
-  "notifications": true
+  "network": { "hosts": ["127.0.0.1"] }
 }
 ```
 
-UI **不持 fs、不持 storage、不持 process**：全部用户状态经 wire 落 `~/.pi/zu/`，进程操作由 Rust native module 代劳（见 §3.6）。
+WebSocket 按 `hosts` 授权（`sockets` 只给 `net.connect` 的裸 TCP，且只接受精确 `host:port`）；`notifications` 不是合法能力键，通知在 M10 用 nsh 的 desktop 模块。
+
+UI **不持 fs、不持 process**：全部用户状态经 wire 落 `~/.pi/zu/`，进程操作由 Rust native module 代劳（见 §3.6）。这是**自选策略**而非平台限制（nsh 的 `Storage` 不需要能力，`fs`/`process` 也可授予）——换来单一写入点，代价是 engine 不在时无法落盘。
 
 ### 3.5 存储布局（路径即关系）
 
@@ -127,7 +128,7 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 
 - 布局是**纯数据**：app 持有 `DockAreaLayout`，`onLayoutChange` 回报整份新布局传回。
 - **sheet 身份 = 稳定 id**（`kind:instance`，如 `session:{containerId}`、`terminal:{containerId}:{n}`）；布局树只存 id，内容由 `sheets.tsx` 注册表解析。
-- **按容器 stash**：`layouts/{containerId}.json`，含 zoom 状态；`onLayoutChange` 高频，debounce 后保存。
+- **按容器 stash**：`layouts/{containerId}.json`；zoom **不在 `DockAreaLayout` 里**（它是内部 signal + `onZoomChange` 事件），要单独存，恢复后用 ref 的 `groupOf`/`toggleZoom` 灌回。`onLayoutChange` 高频，debounce 后保存。
 - **启动恢复上次活跃容器**；恢复时**静默移除**指向已死资源的 sheet。
 - **canvas 空态 = Launcher**（项目 chip + composer + agent 动作行）。
 
@@ -244,16 +245,23 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 | Git | shell out `git`（不引入 libgit2） | 零依赖、与 pi 工具行为一致 |
 | 语言 | zh-CN 第一 + en fallback，Fluent 键表 | 与 Steer 一致 |
 
-## 7. 已知风险（非决策）
+## 7. 实现状态（2026-11-10）
+
+- **M0 完成**：`engine/`（Bun + pi 1.5.0）+ mixed 模板（`Cargo.toml`、`src/lib.rs` 的 `zu/engine`）+ sidecar 编译（75 MB 单文件，WASM 资产同目录）+ WS 握手。
+- **M1 完成**：`engine.ts`（连接/请求/事件）、`sessions.ts`（会话 store）、`sheets.tsx` 的会话 sheet（历史 + 流式 + composer）、`App.tsx` 的会话侧栏与引擎状态条。
+- **已知问题**：开发期热更新（`nsh run` 的 hot reload）在 TSX 变更后报 `nsh hot: no module zu/native`——native module 在 hot bundle 期间不可解析。重启 app 即可；不影响运行期。正式打包不受影响（无 hot reload）。
+- **未做**：ad-hoc dmg 打包（`nsh package` + sidecar 拷贝 + `codesign -s -`）。
+
+## 8. 已知风险（非决策）
 
 1. `createAgentSession` 的真实运行（WASM 运行期加载）未验证。
 2. `parentSession` 在 pi CLI 里的 fork 观感。
 3. pi 升级对 `~/.pi/agent/sessions` 布局的影响（台账登记）。
-4. Zu engine 与终端 pi CLI 对同一 captain 的并发写。
+4. Zu engine 与终端 pi CLI 对同一 captain 的并发写：pi 的会话写入是裸 `appendFileSync`，**没有锁**（`proper-lockfile` 只护 `auth-storage` 与 `settings-manager`），两个写者会各自推进 leaf——风险比初版描述更高。
 5. 签名/公证：嵌套签名 + JIT entitlement 的实际可行性。
 6. 用户扩展在 `ctx.hasUI = true` 下经 wire 桥的正常工作。
 
-## 8. 文档
+## 9. 文档
 
 - [decisions.md](decisions.md)：Q1–Q31 决策台账（问题 → 裁决 → 落点 → 理由）。
 - [roadmap.md](roadmap.md)：产品目标与里程碑。

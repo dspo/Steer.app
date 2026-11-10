@@ -21,7 +21,8 @@ export type GlyphName =
   | "caret-right"
   | "caret-down"
   | "globe"
-  | "pulse";
+  | "pulse"
+  | "stop";
 
 type Draw = (c: CanvasRenderingContext2D) => void;
 
@@ -134,6 +135,11 @@ const glyphs: Record<GlyphName, Draw> = {
     c.stroke();
   },
   pulse: (c) => line(c, [3, 10, 7, 10, 9, 5, 11.5, 15, 13.5, 10, 17, 10]),
+  stop: (c) => {
+    c.beginPath();
+    c.rect(6, 6, 8, 8);
+    c.fill();
+  },
 };
 
 /** A glyph stroked with `tint` (a theme token or any color string). */

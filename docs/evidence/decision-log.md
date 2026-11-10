@@ -63,7 +63,7 @@
 
 ## 第五轮：可行性（Q29–Q31）
 
-**Q29 终端仿真核。** 关键发现：`TerminalEmulator` trait 的能力上限锁死了换核收益——`TerminalModes` 仅 2 字段、`TerminalCursor` 无形状、事件只有 Title/Bell/Reply，所以换 Ghostty 只拿到解析正确性（含发现的 alt screen 污染 scrollback 缺陷），拿不到鼠标/超链接/光标形状。性能也不是理由（line 级 trait 决定了每次渲染的转换成本换核也省不掉）。裁定：M2 先用内置冒烟 + 修 alt 缺陷；「Ghostty + 扩 trait/组件」作为 M-tty 一次换到位，避免换两遍。
+**Q29 终端仿真核。** 关键发现：`TerminalEmulator` trait 的能力上限锁死了换核收益——`TerminalModes` 仅 2 字段、`TerminalCursor` 无形状、事件只有 Title/Bell/Reply，所以换 Ghostty 只拿到解析正确性，拿不到鼠标/超链接/光标形状。性能也不是理由（line 级 trait 决定了每次渲染的转换成本换核也省不掉）。初版另称「发现 alt screen 污染 scrollback 的缺陷」，经复核**撤回**（`push_scrollback` 有 `primary.is_some()` 守卫）。裁定：M2 先用内置冒烟暴露未知缺陷；「Ghostty + 扩 trait/组件」作为 M-tty 一次换到位，避免换两遍。
 
 **Q30 LSP 位置。** 与 PTY 共享「长生命周期子进程 + 异步流」基础设施，放同一个 Rust native module；engine 保持只跑 pi。
 

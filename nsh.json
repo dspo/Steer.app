@@ -7,5 +7,13 @@
   "window": {
     "title": "Zu"
   },
-  "theme": "theme.json"
+  "theme": "theme.json",
+  "rust": ".",
+  "capabilities": {
+    "network": {
+      "hosts": [
+        "127.0.0.1"
+      ]
+    }
+  }
 }

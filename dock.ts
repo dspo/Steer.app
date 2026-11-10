@@ -12,20 +12,10 @@ type DockRegion = NonNullable<DockAreaLayout["left"]>;
 
 export type { DockAreaLayout, DockNode, DockRegion };
 
-/** The workbench at first: a session panel and its aux sheets beside the
- * agents' TUIs and a webview, the file tree docked left. */
+/** The canvas at first: one session sheet (M1 shows the open session). */
 export function initialLayout(): DockAreaLayout {
   return {
-    center: {
-      type: "split",
-      axis: "horizontal",
-      children: [
-        { type: "tabs", panels: ["session:demo", "subagents:demo", "traces:demo", "stats:demo", "tasks:demo"], activeIndex: 0 },
-        { type: "tabs", panels: ["terminal:1", "claude:1", "codex:1", "webview:1"], activeIndex: 0 },
-      ],
-      sizes: [null, 460],
-    },
-    left: { layout: { type: "tabs", panels: ["files:1"] }, size: 210 },
+    center: { type: "tabs", panels: ["session:1"], activeIndex: 0 },
   };
 }
 
