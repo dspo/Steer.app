@@ -52,19 +52,12 @@
 | Q25 | macOS 签名与公证 | sidecar 放 `Contents/Helpers`、直接执行不释放；嵌套签名 + hardened runtime + JIT entitlement + 公证 | arch §3.7 |
 | Q26 | 仓库公开性 | **公开** | arch §3.7 |
 | Q29 | 终端仿真核 | **M2 先用 nsh 内置**冒烟 + 修 alt 缺陷；「Ghostty + 扩 trait/组件」作为条件性里程碑 **M-tty**，一次换到位 | arch §6；[evidence/terminal-emulator.md](evidence/terminal-emulator.md) |
-
-## 待决（已登记，尚未裁决）
-
-外部审计（`docs/review/`）提出的问题大部分已在 [architecture.md](architecture.md) 落成决策；以下三项需要产品判断：
-
-| # | 议题 | 现状 | 需要定什么 |
-|---|---|---|---|
-| D1 | 浏览器里程碑的域名授权 | `capabilities.webview.hosts` 是构建期白名单，而地址栏意味着任意站点 | 要么承认 `hosts: ["*"]` 并在 UI 上标出风险，要么取消地址栏只做声明过的站点 |
-| D2 | 扩展的 `ctx.mode` 取值 | pi 现有 `"tui"`/`"print"`/`"rpc"`；Zu 是 GUI | 直接用 `"rpc"`（扩展按非 TUI 降级），还是与上游商量新增 `"gui"` |
-| D3 | 归档容器的可恢复性 | Q11 说 v1 不做 UI 入口，但 archive 是不可见 + 杀资源 | 确认「永不删除、后续在设置里找回」足够，还是 v1 就要一个最小恢复入口 |
+| Q32 | 浏览器的域名授权 | **任意站点**（`capabilities.webview.hosts: ["*"]`），地址栏可输入任意 URL；风险在 UI 上标明 | arch §3.4；M10 |
+| Q33 | 扩展的 `ctx.mode` | **`"rpc"`**，不自创 `"gui"`——pi 已有语义，ThinkRail 同样用 `bindExtensions({ mode: "rpc", uiContext })`，逐方法实现或降级 | arch §4.5 |
+| Q34 | 归档容器的可恢复性 | **永不删除**；v1 无 UI 入口，后续在设置页「归档管理」找回 | arch §5.4；M-arch |
 
 ## 决策编号说明
 
-- Q1–Q31 覆盖**已讨论**的问题。以下议题未经讨论、尚在正文里悬空（不是已裁决）：扩展宿主契约（Q23 的 UI 桥细节）、project trust、引擎监督与重连策略、文件读写归属（Editor 保存走 wire 还是 native module）、协议完整性校验、pi 会话格式版本、归档容器的可达性（Q11）、模型选择入口、i18n 落地时机。
+- Q1–Q34 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（§3.6 的 `zu/fs`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）。
 - 原 engine/ui/domain 三份文档里的 E/U 编号已废弃，统一并入本表。
 - 条件性里程碑（M-tty / M-arch / M-web）的触发条件见 [roadmap.md](roadmap.md) §17。

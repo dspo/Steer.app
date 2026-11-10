@@ -26,7 +26,6 @@ webview、会话的 aux 视图）。logo 为 Steer 的 `<->` 构型加载祖冲�
 | [docs/evidence/spike-report.md](docs/evidence/spike-report.md) | spike 实测：bun compile、pi 会话 API、custom entry、存储布局 |
 | [docs/evidence/feasibility.md](docs/evidence/feasibility.md) | 五项重型集成可行性：终端、浏览器、PTY、编辑器/IDE、Git |
 | [docs/evidence/terminal-emulator.md](docs/evidence/terminal-emulator.md) | nsh VtEmulator 与 Ghostty 的逐项对比、trait 上限约束 |
-| [docs/review/](docs/review/) | 外部事实审计与架构评审（2026-11-10）；其中成立的 P0/P1 已并入 architecture，被证伪的一条（alt screen）已撤回 |
 
 ## 当前实现（outline）
 

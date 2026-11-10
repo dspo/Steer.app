@@ -60,7 +60,7 @@
 | contracts | `contracts/` 的 v1：TS 类型 + 信封 `{v,id,sessionId?,type,payload}` + `protocol.md`；命令按 `engine/session/state/ui` 分组，标注幂等性与重放语义；事件清单对齐 pi（`queue.update`、`compaction.*`、`retry.*`、`session.info`） |
 | 重连 | `state.snapshot`（容器、打开会话、活跃 run、未读、`generation`）+ `state.subscribe`；UI 重连带快照；协议版本不匹配即拒连并提示 |
 | 引擎监督 | 心跳与退出码采集、指数退避重启、`generation` 递增；引擎死亡时 UI 的降级（已落盘转录只读可看） |
-| 扩展宿主 | `bindExtensions({ uiContext, mode })`；UI 方法矩阵（confirm/select/input/editor 走对话框，notify/setStatus/setTitle 走壳，其余 no-op + 日志）；`ui.request`/`ui.response` 与超时；project trust 触发 |
+| 扩展宿主 | `bindExtensions({ uiContext, mode: "rpc" })`（Q33）；UI 方法矩阵（confirm/select/input/editor 走对话框，notify/setStatus/setTitle 走壳，其余 no-op + 日志）；`ui.request`/`ui.response` 与超时；project trust 触发 |
 | i18n | Fluent 键表立起（zh-CN 第一 + en fallback），壳的文案全部进表；parity 测试 |
 
 **验收**：杀掉 engine 进程 → 自动重启 → UI 重连拿到快照并显示"已恢复"，进行中的回合被标为中断；本机的两个真实扩展加载后 `confirm` 弹出 nsh 对话框、`notify` 到达；`nsh test` 覆盖快照与重连。
@@ -71,7 +71,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 容器模型 | `registry.json`（`{v, containers[], runs[]}`）；`ContainerKind`；`alive()`；单一 `create_container` 入口与单点 teardown；archive/unarchive 的数据面（UI 入口留到 D3 裁决） |
+| 容器模型 | `registry.json`（`{v, containers[], runs[]}`）；`ContainerKind`；`alive()`；单一 `create_container` 入口与单点 teardown；archive/unarchive 的数据面（Q34：永不删除，v1 无 UI 入口） |
 | Panel/Sheet | 会话进 `DockArea`；按容器 stash（`layouts/{containerId}.json`，zoom 单独存并在恢复时用 `groupOf`/`toggleZoom` 灌回）；sheet 注册表接真实会话族（对话/subagents/统计占位）；启动恢复上次活跃容器 |
 | 多会话 | 同一容器多会话切换；引擎侧会话 LRU（`dispose` + 按需 rehydrate）；切容器丢弃增量、按文件重建 |
 | 降级 | 非可见 sheet 的节流策略（先只对会话 sheet 生效；终端/webview 在 M7/M10 落） |
@@ -157,7 +157,7 @@
 | 项 | 内容 |
 |---|---|
 | UI | Browser sheet（`WebView` + 地址栏 + 前进/后退/刷新）；每 sheet 一个 web view |
-| 授权 | 按 D1 裁决：`webview.hosts` 白名单或 `["*"]` 并在 UI 标明 |
+| 授权 | `webview.hosts: ["*"]`（Q32：任意站点，地址栏旁标明）；页面消息不进 wire、不进 agent 上下文 |
 | 边界 | 页面消息不进 wire、不进 agent 上下文；`injectJavaScript` 只做日志回传；非可见 sheet 暂停 |
 
 **验收**：打开文档页、搜索、前进后退；链接在 sheet 内或外部打开。
@@ -196,7 +196,7 @@
 | 名称 | 触发条件 | 内容 |
 |---|---|---|
 | **M-tty 终端增强** | M7 的缺陷清单超出可接受范围，或用户要求鼠标/超链接 | Ghostty 仿真核 + 扩 nsh trait/组件（鼠标、光标形状、OSC 8/52、下划线样式） |
-| **M-arch 归档管理** | D3 裁决需要 v1 恢复入口 | 设置页「归档管理」子页 |
+| **M-arch 归档管理** | 用户需要在设置里找回归档容器（Q34：永不删除，v1 无入口） | 设置页「归档管理」子页 |
 | **M-web** | 产品需要浏览器/移动端访问 | 同一 wire 的 web client |
 
 ## 18. 依赖与顺序

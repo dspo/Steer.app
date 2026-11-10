@@ -89,6 +89,8 @@ WebSocket 按 `hosts` 授权（`sockets` 只给 `net.connect` 的裸 TCP，且�
 
 **port 与 token 由 native module 提供**：`Engine.port()` / `Engine.token()`（§3.6），UI 不读文件、不猜端口。端口是固定常量 `47823`——第二个实例会撞端口，由「单实例」与明确错误文案兜底（§7）。
 
+**浏览器授权（Q32）**：`capabilities.webview.hosts: ["*"]`——地址栏意味着任意站点；UI 在地址栏旁标明，页面消息不进 wire、不进 agent 上下文（§8.11）。`webview` 授权在 M10 前一次性写进 `nsh.json`。
+
 **威胁模型（写清楚边界）**：能力面保护的是 **UI/TSX 代码**被攻破时的爆炸半径；**agent 的动作不受它约束**——pi 的 bash 与工具仍以用户权限运行，由 pi 自己的权限模型负责。不要把「最小能力面」读成「agent 沙箱」。
 
 UI **不持 fs、不持 process**：全部用户状态经 wire 落 `~/.pi/zu/`，进程操作由 Rust native module 代劳（见 §3.6）。这是**自选策略**而非平台限制（nsh 的 `Storage` 不需要能力，`fs`/`process` 也可授予）——换来单一写入点，代价是 engine 不在时无法落盘。
@@ -176,7 +178,7 @@ v1 最小集：`⌘W` 关闭 sheet、`⌘1-9` 切 sheet、`⌘K` 命令面板（
 
 **不是"设 `hasUI = true`"就完了**：pi 默认给扩展一个 no-op 的 UI 上下文（`confirm` 静默 `false`、`notify` 静默丢弃），扩展与用户都不会察觉——这是最坏的"看起来加载了、实际什么都没发生"。契约：
 
-1. **显式绑定**：engine 用 `bindExtensions({ uiContext, mode })` 装配；`mode` 取 pi 已有的语义（`"rpc"`，或与上游商量新增 `"gui"`），让扩展按 `ctx.mode` 自我降级——这是 pi 已经设计好的写法，不自创。
+1. **显式绑定**：engine 用 `bindExtensions({ uiContext, mode: "rpc" })` 装配（Q33）。`"rpc"` 是 pi 已有的语义，扩展按 `ctx.mode !== "tui"` 自我降级——不住创 `"gui"`；ThinkRail 的 `bindExtensions({ mode: "rpc", uiContext })` 是同一先例。
 2. **UI 方法矩阵**：
 
 | 方法 | 处理 |
@@ -307,7 +309,7 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 
 - **M0 完成**：`engine/`（Bun + pi 1.5.0）+ mixed 模板（`Cargo.toml`、`src/lib.rs` 的 `zu/engine`）+ sidecar 编译（75 MB 单文件，WASM 资产同目录）+ WS 握手。
 - **M1 完成**：`engine.ts`（连接/请求/事件）、`sessions.ts`（会话 store，16 ms 批 flush）、`sheets.tsx` 的会话 sheet（`TextView` 流式 Markdown、工具卡、composer）、`App.tsx` 的会话侧栏与引擎状态条。turn 结束时 engine 写 `zu.turn` custom entry；流式中停止会广播 idle 并保留已生成文本；引擎重启后用 `session.info` 拿到的文件路径续聊。
-- **外部审计**：`docs/review/` 是 17:13 的一次事实审计（agent 产出）；其中「alt screen 污染 scrollback」一条已被证伪并撤回，其余表述已按审计修订。
+- **外部审计**：2026-11-10 的一轮事实审计与架构评审，成立的 P0/P1 已并入本文；其中「alt screen 污染 scrollback」一条被证伪并撤回（`push_scrollback` 有 `primary.is_some()` 守卫），教训记在 [evidence/terminal-emulator.md](evidence/terminal-emulator.md)。审计材料已随收敛删除。
 - **已知问题**：开发期热更新（`nsh run` 的 hot reload）在 TSX 变更后报 `nsh hot: no module zu/native`——native module 在 hot bundle 期间不可解析。重启 app 即可；不影响运行期。正式打包不受影响（无 hot reload）。另：headless 测试运行器没有帧循环，`requestAnimationFrame` 不跑，流式批 flush 因此用 `setTimeout(16)`。
 - **打包**：`script/bundle-mac.sh`——`nsh package` 出 `.app`，sidecar 拷进 `Contents/Helpers`，嵌套 ad-hoc 签名，`hdiutil` 出 dmg（127 MB app / 50 MB dmg）。打包后 app 优先用包内 sidecar（仓库的构建不能遮蔽它）。
 
@@ -330,4 +332,3 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 - [decisions.md](decisions.md)：Q1–Q31 决策台账（问题 → 裁决 → 落点 → 理由）。
 - [roadmap.md](roadmap.md)：产品目标与里程碑。
 - [evidence/](evidence/)：spike 实测、可行性分析、终端仿真核对比、决策过程记录。
-- [review/](review/)：外部事实审计与架构评审（2026-11-10）。成立的 P0/P1 已并入本文；被证伪的一条（alt screen）已撤回。
