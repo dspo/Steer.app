@@ -1,0 +1,202 @@
+import { Canvas, type CanvasRenderingContext2D, Text, token, View } from "nsh";
+
+/**
+ * The outline's own line glyphs, stroked in a 20 × 20 box (the gallery's
+ * Canvas-glyph pattern). Outline only: names are the panes they stand for.
+ */
+export type GlyphName =
+  | "pi"
+  | "folder"
+  | "chat"
+  | "branch"
+  | "archive"
+  | "tree"
+  | "diff"
+  | "terminal"
+  | "gear"
+  | "plus"
+  | "send"
+  | "file"
+  | "check"
+  | "caret-right"
+  | "caret-down"
+  | "globe"
+  | "pulse";
+
+type Draw = (c: CanvasRenderingContext2D) => void;
+
+const line = (c: CanvasRenderingContext2D, points: number[]) => {
+  c.beginPath();
+  c.moveTo(points[0], points[1]);
+  for (let i = 2; i < points.length; i += 2) c.lineTo(points[i], points[i + 1]);
+  c.stroke();
+};
+const rect = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
+  c.beginPath();
+  c.roundRect(x, y, w, h, r);
+  c.stroke();
+};
+const arc = (c: CanvasRenderingContext2D, x: number, y: number, r: number, from = 0, to = Math.PI * 2) => {
+  c.beginPath();
+  c.arc(x, y, r, from, to);
+  c.stroke();
+};
+
+const glyphs: Record<GlyphName, Draw> = {
+  // π: the top bar, then the two legs, the right one dipping below.
+  pi: (c) => {
+    line(c, [4, 6.5, 16, 6.5]);
+    line(c, [6.5, 6.5, 6.5, 16]);
+    line(c, [13.5, 6.5, 13.5, 12.5]);
+    arc(c, 11, 12.5, 2.5, 0, Math.PI);
+  },
+  folder: (c) => {
+    c.beginPath();
+    c.moveTo(3.5, 15.5);
+    c.lineTo(3.5, 5);
+    c.lineTo(8, 5);
+    c.lineTo(9.5, 6.8);
+    c.lineTo(16.5, 6.8);
+    c.lineTo(16.5, 15.5);
+    c.closePath();
+    c.stroke();
+  },
+  chat: (c) => {
+    c.beginPath();
+    c.moveTo(4, 5.5);
+    c.lineTo(16, 5.5);
+    c.lineTo(16, 13);
+    c.lineTo(9, 13);
+    c.lineTo(5.5, 16.5);
+    c.lineTo(5.5, 13);
+    c.lineTo(4, 13);
+    c.closePath();
+    c.stroke();
+  },
+  branch: (c) => {
+    arc(c, 6, 5.5, 2);
+    arc(c, 6, 14.5, 2);
+    arc(c, 14, 7.5, 2);
+    line(c, [6, 7.5, 6, 12.5]);
+    c.beginPath();
+    c.moveTo(14, 9.5);
+    c.bezierCurveTo(14, 12.5, 10, 11.5, 8.5, 13);
+    c.stroke();
+  },
+  archive: (c) => {
+    rect(c, 3.5, 4.5, 13, 4, 1.5);
+    line(c, [5, 8.5, 5, 15.5, 15, 15.5, 15, 8.5]);
+    line(c, [8, 11.5, 12, 11.5]);
+  },
+  tree: (c) => {
+    line(c, [5, 3.5, 5, 16.5]);
+    line(c, [5, 6, 9, 6]);
+    line(c, [5, 11, 9, 11]);
+    line(c, [9, 11, 9, 14.5]);
+    line(c, [9, 14.5, 11.5, 14.5]);
+    line(c, [11.5, 12.5, 11.5, 16.5]);
+  },
+  diff: (c) => {
+    rect(c, 3.5, 3.5, 13, 13, 2.5);
+    line(c, [7, 7, 7, 13]);
+    line(c, [4.8, 10, 9.2, 10]);
+    line(c, [13, 7, 13, 13]);
+  },
+  terminal: (c) => {
+    rect(c, 3, 4, 14, 12, 2.5);
+    line(c, [6, 8, 8.5, 10, 6, 12]);
+    line(c, [10, 12.5, 14, 12.5]);
+  },
+  gear: (c) => {
+    arc(c, 10, 10, 3);
+    arc(c, 10, 10, 6.5);
+    for (let i = 0; i < 8; i++) {
+      const a = (i * Math.PI) / 4;
+      line(c, [10 + Math.cos(a) * 6.5, 10 + Math.sin(a) * 6.5, 10 + Math.cos(a) * 8.5, 10 + Math.sin(a) * 8.5]);
+    }
+  },
+  plus: (c) => line(c, [10, 5, 10, 15]),
+  send: (c) => line(c, [5, 11, 10, 6, 15, 11]),
+  file: (c) => {
+    line(c, [5, 3, 12, 3, 15.5, 6.5, 15.5, 17, 5, 17, 5, 3]);
+    line(c, [12, 3, 12, 6.5, 15.5, 6.5]);
+  },
+  check: (c) => line(c, [5, 10.5, 8.5, 14, 15, 6.5]),
+  "caret-right": (c) => line(c, [8, 6, 12.5, 10, 8, 14]),
+  "caret-down": (c) => line(c, [6, 8, 10, 12.5, 14, 8]),
+  globe: (c) => {
+    arc(c, 10, 10, 6.5);
+    line(c, [3.5, 10, 16.5, 10]);
+    c.beginPath();
+    c.moveTo(10, 3.5);
+    c.bezierCurveTo(6.5, 6, 6.5, 14, 10, 16.5);
+    c.bezierCurveTo(13.5, 14, 13.5, 6, 10, 3.5);
+    c.stroke();
+  },
+  pulse: (c) => line(c, [3, 10, 7, 10, 9, 5, 11.5, 15, 13.5, 10, 17, 10]),
+};
+
+/** A glyph stroked with `tint` (a theme token or any color string). */
+export function Glyph(props: { name: GlyphName; size?: number; tint?: string }) {
+  const size = props.size ?? 20;
+  return (
+    <Canvas
+      style={{ pointerEvents: "none", width: size, height: size }}
+      draw={(c, { width }) => {
+        c.scale(width / 20, width / 20);
+        c.strokeStyle = props.tint ?? token("muted-foreground");
+        c.fillStyle = c.strokeStyle;
+        c.lineWidth = 1.6;
+        c.lineCap = "round";
+        c.lineJoin = "round";
+        glyphs[props.name](c);
+      }}
+    />
+  );
+}
+
+/** A filled status dot. */
+export function Dot(props: { tint: string; size?: number }) {
+  const size = props.size ?? 7;
+  return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: props.tint }} />;
+}
+
+/** A small all-caps section title used across the sidebar and the panel. */
+export function SectionTitle(props: { label: string; trailing?: string }) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingTop: 16, paddingBottom: 6 }}>
+      <Text style={{ flex: 1, fontSize: 11, fontWeight: "600", letterSpacing: 0.6, color: token("faint") }}>{props.label}</Text>
+      {props.trailing ? (
+        <Text style={{ fontSize: 11, color: token("faint") }}>{props.trailing}</Text>
+      ) : null}
+    </View>
+  );
+}
+
+/** A rounded label chip (model names, branches, counts). */
+export function Chip(props: { label: string; tint?: string; filled?: boolean }) {
+  return (
+    <View
+      style={{
+        height: 20,
+        paddingHorizontal: 8,
+        borderRadius: 10,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: props.filled ? token("primary") : "transparent",
+        borderWidth: props.filled ? 0 : 1,
+        borderColor: token("border"),
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 11,
+          fontWeight: "500",
+          color: props.filled ? token("primary-foreground") : (props.tint ?? token("muted-foreground")),
+        }}
+      >
+        {props.label}
+      </Text>
+    </View>
+  );
+}

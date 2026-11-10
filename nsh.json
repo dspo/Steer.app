@@ -1,0 +1,11 @@
+{
+  "name": "Pi",
+  "id": "dev.dspo.pi",
+  "version": "0.1.0",
+  "build": 1,
+  "appearance": "system",
+  "window": {
+    "title": "Pi"
+  },
+  "theme": "theme.json"
+}
