@@ -1,10 +1,10 @@
 import { Terminal, type TerminalRef } from "nsh/base";
-import { cleanup, Scroll, signal, Text, token, View } from "nsh";
+import { cleanup, effect, Scroll, signal, Text, token, View } from "nsh";
 import { sessionTitle, viewFor } from "./sessions";
 import { abortRun, loadSubagents, runs, selectedRunId, selectRun, transcript, subagentError } from "./subagents";
 import { visiblePanels } from "./dock";
 import { ChatView, MessageRow } from "./chat-view";
-import { containers } from "./containers";
+import { closeSheet, containers } from "./containers";
 import {
   attachTerminal,
   bindTerminalRef,
@@ -214,6 +214,16 @@ export function TerminalBody(props: { containerId: string }) {
   const visible = () => visiblePanels().includes(sheetId());
   const handle = container() ? ensureTerminal(container()!) : undefined;
   let term: TerminalRef | undefined;
+
+  // A TUI agent's process is the sheet: when it exits, its tab goes with it.
+  // (A plain shell's exit follows the same rule; the container stays so its
+  // history is not silently archived.)
+  effect(() => {
+    const current = info();
+    if (current && !current.running && current.exitCode !== null) {
+      closeSheet(sheetId());
+    }
+  });
 
   // The sheet going away (a closed tab, a project switch that drops the
   // container) detaches the Terminal without killing the shell: the store

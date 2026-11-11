@@ -60,6 +60,6 @@ test("projects keep the registry's position order", () => {
 });
 
 test("the VS Code URL is the vscode scheme over the absolute path", () => {
-  expect(vscodeUrl("/Users/me/My Project")).toBe("vscode://file/Users/me/My%20Project");
-  expect(vscodeUrl("relative/root")).toBe("vscode://file/relative/root");
+  expect(vscodeUrl("/Users/me/My Project")).toBe("vscode://file/Users/me/My%20Project?windowId=_blank");
+  expect(vscodeUrl("relative/root")).toBe("vscode://file/relative/root?windowId=_blank");
 });

@@ -33,7 +33,7 @@ test("the VS Code action falls back to the active container's cwd", async () => 
   await app.waitFor("text:alpha body");
   await app.press("id:open-vscode");
   await app.waitUntil(() => app.openedUrls().length > 0, { timeout: 5000 });
-  expect(app.openedUrls()[0]).toBe("vscode://file/tmp/alpha");
+  expect(app.openedUrls()[0]).toBe("vscode://file/tmp/alpha?windowId=_blank");
 });
 
 test("clicking a non-active container row switches the canvas", async () => {

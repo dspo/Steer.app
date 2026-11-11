@@ -16,18 +16,6 @@ test("the sidebar groups containers by explicit project membership", async () =>
   expect(app.count("id:new-project")).toBe(0);
 });
 
-test("a container moves to another project through its menu", async () => {
-  const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
-  await app.waitFor("text:alpha body");
-  await app.press("id:container-menu-c2");
-  await app.press("id:move-to-chats");
-  await app.waitUntil(() => {
-    const texts = app.texts();
-    return texts.indexOf("Beta") > texts.indexOf("聊天");
-  });
-  expect(app.texts()).toContain("Beta");
-});
-
 test("the sidebar filter reports no matches and clears", async () => {
   const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:Project One");
@@ -65,19 +53,6 @@ test("the Launcher starts a conversation and then shows its container", async ()
   expect(app.texts()).toContain("hello from launcher");
 });
 
-test("dragging a container row onto a project moves its membership", async () => {
-  const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
-  await app.waitFor("text:alpha body");
-  const before = app.texts();
-  expect(before.indexOf("Beta")).toBeGreaterThan(before.indexOf("Project Two"));
-  await app.drag("text:Beta", { x: 0, y: -70 });
-  await app.waitUntil(() => {
-    const texts = app.texts();
-    return texts.indexOf("Beta") < texts.indexOf("Project Two");
-  }, { timeout: 5000 });
-  expect(app.texts().indexOf("Beta")).toBeGreaterThan(app.texts().indexOf("Project One"));
-});
-
 test("the centered picker filters containers and switches the canvas", async () => {
   const app = await open("./fixtures/containers.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:alpha body");
@@ -96,7 +71,7 @@ test("the VS Code action opens the active project's primary root", async () => {
   await app.waitFor("text:alpha body");
   await app.press("id:open-vscode");
   await app.waitUntil(() => app.openedUrls().length > 0, { timeout: 5000 });
-  expect(app.openedUrls()[0]).toBe("vscode://file/tmp");
+  expect(app.openedUrls()[0]).toBe("vscode://file/tmp?windowId=_blank");
 });
 
 test("the sidebar toggles between project and recent grouping", async () => {

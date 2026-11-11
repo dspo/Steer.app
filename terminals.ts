@@ -50,6 +50,19 @@ export interface TerminalHandle {
 export const terminalInfo = signal<Record<string, TerminalInfo>>({});
 
 const handles = new Map<string, TerminalHandle>();
+
+/**
+ * What to do when a program ends on its own. The container store owns the
+ * layout, and it imports this module (not the other way), so it installs the
+ * handler: a TUI agent's exit closes its sheet instead of leaving a tab that
+ * only offers to restart what the user never asked to keep.
+ */
+let onProgramExit: ((sheetId: string) => void) | null = null;
+
+/** Installs (or clears) the handler a program's own exit calls. */
+export function setProgramExitHandler(handler: ((sheetId: string) => void) | null): void {
+  onProgramExit = handler;
+}
 const refs = new Map<string, { focus: () => void; text: () => Promise<string> }>();
 
 /** The sheet id of an external container's terminal. */
@@ -129,6 +142,7 @@ export function ensureTerminal(container: ContainerRecord): TerminalHandle {
       },
       (data) => append(handle, data),
       (exit) => {
+        const running = handle.info.running;
         handle.info = {
           ...handle.info,
           running: false,
@@ -136,6 +150,11 @@ export function ensureTerminal(container: ContainerRecord): TerminalHandle {
           exitSignal: exit.signal ?? null,
         };
         publish(handle);
+        // Only a program that was running and ended by itself: closing the
+        // sheet first sets `running` false, so a user's close is not echoed.
+        if (running && container.kind !== "Pi") {
+          onProgramExit?.(terminalSheetId(container.id));
+        }
       },
     );
     handle.pty = pty;

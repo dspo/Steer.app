@@ -3,8 +3,9 @@ import { expect, open, test } from "nsh/test";
 test("the roster lists runs and opens a read-only transcript", async () => {
   const app = await open("./fixtures/subagents.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:captain body");
-  await app.press("id:titlebar-tools");
-  await app.press("id:open-subagents");
+  // The roster opens on a run's start in the app; the fixture's own control
+  // stands in for that event here.
+  await app.press("id:fixture-open-roster");
   await app.waitFor("text:worker");
   expect(app.texts()).toContain("scout");
   expect(app.texts()).toContain("已交付");

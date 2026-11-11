@@ -93,7 +93,9 @@ export function vscodeTarget(): string | null {
 /** `vscode://file/{absolute path}`, each path segment URL-encoded. */
 export function vscodeUrl(path: string): string {
   const absolute = path.startsWith("/") ? path : `/${path}`;
-  return `vscode://file${absolute.split("/").map(encodeURIComponent).join("/")}`;
+  // `windowId=_blank` opens a new window: without it VS Code reuses (and so
+  // replaces) the window the user already has.
+  return `vscode://file${absolute.split("/").map(encodeURIComponent).join("/")}?windowId=_blank`;
 }
 
 /** What opening the editor did, for the status bar's one-line report. */

@@ -13,13 +13,10 @@ test("switching to a container with a conversation shows its transcript, not the
   await connect();
   const a = await request("container.create", { cwd: "/tmp/zu-hero-a" }, 120000);
   const aSession = String(a.session?.sessionId ?? a.container.sessions[0].sessionId);
-  await request("session.prompt", { sessionId: aSession, text: "Reply with exactly: hello A" }, 30000);
-  for (let waited = 0; waited < 120000; waited += 200) {
-    const snapshot = await request("state.snapshot", {}, 10000);
-    const open = (snapshot.openSessions ?? []).find((row: any) => row.sessionId === aSession);
-    if (open && !open.running) break;
-    await sleep(200);
-  }
+  // The user's own message is on disk as soon as the prompt is accepted, so
+  // the session is non-empty without waiting for (or paying for) a reply.
+  await request("session.prompt", { sessionId: aSession, text: "hello A" }, 30000);
+  await sleep(2000);
   const b = await request("container.create", { cwd: "/tmp/zu-hero-b" }, 120000);
   const bSession = String(b.session?.sessionId ?? b.container.sessions[0].sessionId);
 
@@ -36,7 +33,7 @@ test("switching to a container with a conversation shows its transcript, not the
   await app.waitUntil(() => app.texts().includes("zu-hero-b"), { timeout: 60000 });
 
   await app.press(`id:container-row-${a.container.id}`);
-  await app.waitUntil(() => app.texts().includes("hello A"), { timeout: 60000 });
+  await app.waitUntil(() => app.texts().includes("hello A"), { timeout: 30000 });
   expect(app.texts()).not.toContain(zhCN[K.launcher.title]);
 
   await app.press(`id:container-row-${b.container.id}`);
@@ -45,7 +42,7 @@ test("switching to a container with a conversation shows its transcript, not the
   expect(app.texts()).toContain(zhCN[K.launcher.title]);
 
   await app.press(`id:container-row-${a.container.id}`);
-  await app.waitUntil(() => app.texts().includes("hello A"), { timeout: 60000 });
+  await app.waitUntil(() => app.texts().includes("hello A"), { timeout: 30000 });
   expect(app.texts()).not.toContain(zhCN[K.launcher.title]);
   expect(aSession.length).toBeGreaterThan(0);
   expect(bSession.length).toBeGreaterThan(0);

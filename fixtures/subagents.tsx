@@ -1,7 +1,7 @@
-import { mount } from "nsh";
+import { mount, View } from "nsh";
 import { Workbench } from "../shell";
 import { activeContainerId, containers, layout, setContainerTransport, syncVisible } from "../containers";
-import { setSubagentTransport } from "../subagents";
+import { openSubagents, setSubagentTransport } from "../subagents";
 import { seedSession } from "../sessions";
 import { defaultLayoutForSessions } from "../dock";
 import { phase } from "../engine";
@@ -78,4 +78,22 @@ setContainerTransport(async (type: string, payload: any = {}) => {
   }
 });
 
-mount(Workbench);
+// The titlebar no longer carries a roster entry: the app opens it when a
+// run starts (`subagent.started`). The fixture needs a way in, so it draws
+// its own control over the workbench.
+function Fixture() {
+  return (
+    <View style={{ flex: 1 }}>
+      <Workbench />
+      <View
+        role="button"
+        testID="fixture-open-roster"
+        accessibilityLabel="Open the roster"
+        style={{ position: "absolute", right: 6, bottom: 6, width: 44, height: 44, zIndex: 10, backgroundColor: "#ff0000" }}
+        onPress={() => void openSubagents()}
+      />
+    </View>
+  );
+}
+
+mount(Fixture);

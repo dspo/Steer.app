@@ -39,6 +39,7 @@ import {
   reconcileTerminals,
   terminalSheetId,
   terminalTitle,
+  setProgramExitHandler,
 } from "./terminals";
 
 /**
@@ -370,6 +371,9 @@ export function openAuxSheet(kind: "subagents" | "stats" | "tasks" | "traces"): 
   syncVisible();
   scheduleSave();
 }
+
+// A TUI agent's process ending takes its sheet with it.
+setProgramExitHandler((sheetId) => closeSheet(sheetId));
 
 /** Closes one sheet: its panel leaves the layout (a sheet's own state decides
  * what else to drop). */

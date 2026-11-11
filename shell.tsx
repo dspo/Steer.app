@@ -3,6 +3,7 @@ import { DockArea, Input, Menu, MenuItem, MenuSeparator, type DockAreaLayout } f
 import { Window } from "nsh/desktop";
 import { connect, disconnect, lastError, phase, recovered, retry, type EnginePhase } from "./engine";
 import {
+  closeSheet,
   activeContainerId,
   archiveContainer,
   bindDock,
@@ -24,7 +25,6 @@ import {
   containersIn,
   launcherOpen,
   loadProjects,
-  moveContainer,
   openLauncher,
   orderedProjects,
   projectError,
@@ -37,11 +37,8 @@ import { externalKindLabel } from "./terminals";
 import { saveActiveEditor } from "./editors";
 import { openChangesSheet, openHistorySheet } from "./git";
 import { openProblemsSheet } from "./lsp-ui";
-import { UpdatesDialog } from "./updates-ui";
-import { openUpdates } from "./updates";
 import { K, t, toggleShellLocale } from "./i18n";
 import { UIHost, unsupportedMethods } from "./ui-host";
-import { openSubagents } from "./subagents";
 import { dropBrowserPages, openBrowserSheet } from "./browser";
 import {
   activeContainer,
@@ -144,35 +141,6 @@ function note(text: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Drag-to-project membership
-// ---------------------------------------------------------------------------
-
-const projectAnchors = new Map<string, any>();
-const projectTops = new Map<string, number>();
-const dragContainer = signal<string | null>(null);
-/** The row that actually moved (a press alone never commits a move). */
-const dragMoved = signal<string | null>(null);
-const dragOver = signal<string | null>(null);
-
-async function measureProjects(): Promise<void> {
-  for (const [id, ref] of projectAnchors) {
-    const measured = await ref?.measure();
-    if (measured) projectTops.set(id, measured.pagePosition.y);
-  }
-}
-
-function projectAt(pageY: number): string | null | undefined {
-  const entries = [...projectTops.entries()]
-    .filter(([, top]) => typeof top === "number")
-    .sort((a, b) => a[1] - b[1]);
-  let found: string | null | undefined;
-  for (const [id, top] of entries) {
-    if (pageY >= top - 8) found = id === "__chats" ? null : id;
-  }
-  return found;
-}
-
-/** A small count in the brand tint, as Steer shows project membership. */
 function CountBadge(props: { value: string }) {
   return (
     <View class="items-center justify-center rounded-full bg-brand-tint" style={{ minWidth: 18, height: 18, paddingHorizontal: 5 }}>
@@ -226,47 +194,11 @@ function revealContainer(container: any): void {
   if (current[key]) collapsedGroups.set({ ...current, [key]: false });
 }
 
-/** One container row, under its project; membership moves by menu or drag. */
-function ContainerRow(props: { container: any; draggable?: boolean }) {
+/** One container row, under its project. A container belongs to the project it
+ * was created under: there is no gesture that moves it. */
+function ContainerRow(props: { container: any }) {
   const container = () => props.container;
   const active = () => container().id === activeContainerId();
-  const draggable = () => props.draggable !== false;
-  // A press only arms the row; the drag state is set once the pointer has
-  // actually moved past the threshold, so releasing a plain click can never
-  // write a membership move. The press itself is the inner view's, so the
-  // pan responder never swallows it.
-  const pan = PanResponder.create({
-    onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: (_event, gesture) =>
-      Math.abs(gesture.dy) > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
-    onPanResponderGrant: () => {
-      dragMoved.set(null);
-      dragOver.set(null);
-    },
-    onPanResponderMove: (event, gesture) => {
-      if (Math.abs(gesture.dy) <= 8) return;
-      dragMoved.set(container().id);
-      dragContainer.set(container().id);
-      void measureProjects();
-      dragOver.set(projectAt(event.pageY) ?? null);
-    },
-    onPanResponderRelease: (event) => {
-      const id = container().id;
-      const moved = dragMoved() === id;
-      const target = projectAt(event.pageY);
-      dragMoved.set(null);
-      dragContainer.set(null);
-      dragOver.set(null);
-      // `undefined` is "outside every group"; a release with no real move is
-      // a click, not a membership gesture.
-      if (moved && target !== undefined) void moveContainer(id, target);
-    },
-    onPanResponderTerminate: () => {
-      dragMoved.set(null);
-      dragContainer.set(null);
-      dragOver.set(null);
-    },
-  });
   const press = () => {
     revealContainer(container());
     void switchContainer(container().id, true);
@@ -294,14 +226,9 @@ function ContainerRow(props: { container: any; draggable?: boolean }) {
         testID={`container-row-${container().id}`}
         accessibilityLabel={`Open container ${containerTitle(container())}`}
         accessibilityState={{ selected: active() }}
-        class={
-          dragMoved() === container().id
-            ? "flex-1 rounded-lg opacity-50"
-            : "flex-1 rounded-lg focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1 active:bg-accent/60"
-        }
+        class="flex-1 rounded-lg focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1 active:bg-accent/60"
         style={{ paddingVertical: 1, gap: 2 }}
         onPress={press}
-        {...(draggable() ? pan.panHandlers : {})}
       >
         <Text style={{ fontSize: 13, fontWeight: active() ? "600" : "400", color: token("foreground"), numberOfLines: 1 }}>
           {containerTitle(container())}
@@ -316,35 +243,6 @@ function ContainerRow(props: { container: any; draggable?: boolean }) {
         </View>
       </View>
       <View class="opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex-row items-center" style={{ ...motionStyle("fast") }}>
-        <Menu
-          trigger={
-            <View
-              role="button"
-              testID={`container-menu-${container().id}`}
-              accessibilityLabel={t(K.project.move)}
-              class="h-6 w-5 items-center justify-center rounded-lg hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-            >
-              <Glyph name="caret-down" size={11} tint={token("faint")} />
-            </View>
-          }
-          popupClass="rounded-xl border border-border bg-popover p-1"
-          popupStyle={{ boxShadow: shadowRaised() }}
-        >
-          <MenuItem testID="move-to-chats" class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => void moveContainer(container().id, null)}>
-            <Text class="text-[12px] text-foreground">{t(K.project.chats)}</Text>
-          </MenuItem>
-          <Each of={orderedProjects()} key={(project) => project.id}>
-            {(project) => (
-              <MenuItem
-                testID={`move-to-${project().id}`}
-                class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-                onSelect={() => void moveContainer(container().id, project().id)}
-              >
-                <Text class="text-[12px] text-foreground">{project().name}</Text>
-              </MenuItem>
-            )}
-          </Each>
-        </Menu>
         <View
           role="button"
           testID={`archive-${container().id}`}
@@ -375,13 +273,12 @@ function ProjectGroup(props: { projectId: string | null; name: string; onCreate:
   return (
     <View style={{ gap: 1, paddingBottom: 2 }}>
       <View
-        ref={(ref) => projectAnchors.set(key, ref)}
         role="button"
         testID={`project-header-${key}`}
         accessibilityLabel={props.name}
         accessibilityState={{ expanded: !collapsed() }}
         onPress={toggle}
-        class={dragOver() === (props.projectId ?? null) && dragContainer() ? "bg-brand-tint" : "group hover:bg-hover"}
+        class="group hover:bg-hover"
         style={{ flexDirection: "row", alignItems: "center", gap: 5, marginHorizontal: 8, paddingHorizontal: 4, height: 30, borderRadius: 8, ...motionStyle("fast") }}
       >
         <Glyph name={collapsed() ? "caret-right" : "caret-down"} size={10} tint={token("faint")} />
@@ -432,7 +329,7 @@ function RecentGroup() {
         when={rows().length === 0}
         else={
           <Each of={rows()} key={(row) => row.id}>
-            {(row) => <ContainerRow container={row()} draggable={false} />}
+            {(row) => <ContainerRow container={row()} />}
           </Each>
         }
       >
@@ -630,7 +527,7 @@ function Sidebar() {
           {(entry) => {
             const row = entry();
             if (row.kind === "section") return <SearchSection label={row.label} count={row.count} />;
-            if (row.kind === "container") return <ContainerRow container={row.container} draggable={false} />;
+            if (row.kind === "container") return <ContainerRow container={row.container} />;
             return <SessionSearchRow session={row.session} />;
           }}
         </List>
@@ -894,14 +791,7 @@ function TitleBar() {
           <MenuItem testID="open-problems" disabled={!hasContainer()} class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => openProblemsSheet()}>
             <Text class="text-[12px] text-foreground">{t(K.lsp.problems)}</Text>
           </MenuItem>
-          <MenuItem testID="open-subagents" class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={openSubagents}>
-            <Text class="text-[12px] text-foreground">{t(K.subagents.title)}</Text>
-          </MenuItem>
-          <MenuSeparator class="my-1 h-px bg-line" />
-          <MenuItem testID="updates" class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={openUpdates}>
-            <Text class="text-[12px] text-foreground">{t(K.updates.title)}</Text>
-          </MenuItem>
-          <MenuSeparator class="my-1 h-px bg-line" />
+
           <MenuItem testID="engine-refresh" class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => void refreshSessions()}>
             <Text class="text-[12px] text-foreground">{t(K.engine.refresh)}</Text>
           </MenuItem>
@@ -972,16 +862,18 @@ export function Workbench() {
               onLayoutChange={({ layout: next }) => setLayout(next)}
               onZoomChange={({ panel }) => setZoom(panel)}
               onPanelActiveChange={({ panel, active }) => onPanelActive(panel, active)}
-              groupClass="flex-1 bg-background"
+              groupClass="flex-1 bg-background overflow-hidden"
               tabBarClass="flex-row items-end gap-0.5 border-b border-line bg-inset px-2"
               tabBarStyle={{ height: 34 }}
               tabClass="group focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-1px] active:opacity-80"
-              contentClass="flex-1 bg-background"
+              contentClass="flex-1 bg-background overflow-hidden"
               handleClass="basis-px bg-line"
               dropIndicatorClass="rounded-lg border-2 border-brand bg-brand-tint"
               renderTab={(tab) => (
+                // Every tab is the same width: a strip whose tabs take their
+                // titles' width looks ragged, and the title truncates instead.
                 <View
-                  class={`relative h-8 flex-row items-center gap-1.5 rounded-lg px-2.5 ${tab.active ? "bg-card" : "hover:bg-hover"}`}
+                  class={`relative h-8 w-[148px] flex-row items-center gap-1.5 rounded-lg px-2.5 ${tab.active ? "bg-card" : "hover:bg-hover"}`}
                   style={{
                     borderRadius: 8,
                     backgroundColor: tab.active ? token("card") : "transparent",
@@ -991,11 +883,23 @@ export function Workbench() {
                 >
                   <Glyph name={sheetGlyph(tab.panel)} size={11.5} tint={tab.active ? token("foreground") : token("faint")} />
                   <Text
-                    class={`max-w-44 text-[12.5px] font-medium ${tab.active ? "text-foreground" : "text-muted-foreground"}`}
+                    class={`min-w-0 flex-1 text-[12.5px] font-medium ${tab.active ? "text-foreground" : "text-muted-foreground"}`}
                     style={{ numberOfLines: 1 }}
                   >
                     {sheetTitle(tab.panel)}
                   </Text>
+                  {/* Appears under the pointer, as Steer's tabs do. */}
+                  <If when={tab.closable}>
+                    <View
+                      role="button"
+                      testID={`tab-close-${tab.panel}`}
+                      accessibilityLabel={t(K.canvas.closeSheet, { name: sheetTitle(tab.panel) })}
+                      class="absolute right-1 top-1.5 size-5 items-center justify-center rounded-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-raised"
+                      onPress={() => void closeSheet(tab.panel)}
+                    >
+                      <Glyph name="close" size={10} tint={token("muted-foreground")} />
+                    </View>
+                  </If>
                   {tab.active ? (
                     <View class="absolute bottom-[-1px] left-2.5 right-2.5 h-0.5 rounded-full bg-primary" style={{ pointerEvents: "none" }} />
                   ) : null}
@@ -1014,7 +918,6 @@ export function Workbench() {
       </View>
       <UIHost />
       <ProjectDialog />
-      <UpdatesDialog />
     </View>
   );
 }

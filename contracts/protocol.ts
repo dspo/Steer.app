@@ -181,12 +181,7 @@ export const COMMANDS = {
     replay: "safe",
     note: "Renames a project or replaces its roots; container cwds are snapshots and do not move.",
   },
-  "project.setMembership": {
-    group: "project",
-    idempotent: true,
-    replay: "safe",
-    note: "Puts a container in a project, or in Chats (null); explicit, never inferred from cwd.",
-  },
+
   "container.list": {
     group: "container",
     idempotent: true,

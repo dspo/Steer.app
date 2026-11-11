@@ -170,6 +170,7 @@ export const K = {
     hidden: "app.terminal.hidden",
   },
   canvas: {
+    closeSheet: "app.canvas.closeSheet",
     emptyTitle: "app.canvas.emptyTitle",
     emptyNote: "app.canvas.emptyNote",
   },

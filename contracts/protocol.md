@@ -144,11 +144,9 @@ never moves a live container.
 | `project.list` | — | yes | safe | `{ projects, membership }` |
 | `project.create` | `{ name?, roots: [{ path, primary? }] }` | no | duplicate | `{ project, projects, membership }` |
 | `project.update` | `{ projectId, name?, roots? }` | yes | safe | `{ project, projects, membership }` |
-| `project.setMembership` | `{ containerId, projectId: string \| null }` | yes | safe | `{ container, projects, membership }` |
 
 `project.create` rejects zero roots, non-absolute paths, non-directories, and
 more than one primary. With no primary the first root becomes primary; with no
-name the primary's basename is followed. `project.setMembership` takes `null`
 for Chats.
 
 ### container.*

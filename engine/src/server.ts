@@ -417,7 +417,7 @@ function updateProject(project: ProjectRecord, payload: { name?: string; roots?:
   return project;
 }
 
-function setMembership(containerId: string, projectId: string | null): void {
+function setMembership(containerId: string, projectId: string | null | undefined): void {
   if (!findContainer(containerId)) throw new Error("container not found");
   if (projectId !== null && !findProject(projectId)) throw new Error("project not found");
   if (projectId === null) delete projectsFile.membership[containerId];
@@ -1218,21 +1218,6 @@ async function handle(ws: any, message: Envelope): Promise<void> {
         reply(ws, makeReply(id, message.type, projectsData(updated)));
       } catch (error: any) {
         reply(ws, makeErrorReply(id, message.type, String(error?.message ?? error), "project_update_failed"));
-      }
-      return;
-    }
-    case "project.setMembership": {
-      try {
-        const containerId = String(payload.containerId ?? "");
-        const projectId = payload.projectId === null ? null : String(payload.projectId ?? "");
-        setMembership(containerId, projectId);
-        reply(ws, makeReply(id, message.type, {
-          container: containerView(findContainer(containerId)!),
-          projects: projectsFile.projects,
-          membership: projectsFile.membership,
-        }));
-      } catch (error: any) {
-        reply(ws, makeErrorReply(id, message.type, String(error?.message ?? error), "membership_failed"));
       }
       return;
     }

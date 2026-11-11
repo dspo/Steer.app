@@ -62,34 +62,21 @@ test("a container created from a project snapshots the primary cwd", async () =>
   expect(containers.containers.find((row: any) => row.id === chatted.container.id)?.projectId ?? null).toBeNull();
 }, 60000);
 
-test("membership moves explicitly and survives a restart", async () => {
+test("a container keeps the project it was created under across a restart", async () => {
   const first = await request("project.list", {}, 10000);
   const project = first.projects[0];
-  const second = await request(
-    "project.create",
-    { name: "Second", roots: [{ path: ROOT_B, primary: true }] },
-    10000,
-  );
   const containers = await request("container.list", {}, 10000);
   const target = containers.containers.find((row: any) => row.projectId === project.id);
-
-  const moved = await request(
-    "project.setMembership",
-    { containerId: target.id, projectId: second.project.id },
-    10000,
-  );
-  expect(moved.container.projectId).toBe(second.project.id);
-  expect(moved.membership[target.id]).toBe(second.project.id);
+  expect(target).toBeDefined();
 
   await disconnect();
   await connect();
   await waitConnected();
   const after = await request("container.list", {}, 10000);
-  expect(after.containers.find((row: any) => row.id === target.id)?.projectId).toBe(second.project.id);
-
-  const chats = await request("project.setMembership", { containerId: target.id, projectId: null }, 10000);
-  expect(chats.container.projectId ?? null).toBeNull();
-  expect(chats.membership[target.id]).toBeUndefined();
+  expect(after.containers.find((row: any) => row.id === target.id)?.projectId).toBe(project.id);
+  // A container's project is a property fixed at creation: the wire has no
+  // command that changes it, and the sidebar has no gesture (see shell.tsx).
+  expect(after.containers.find((row: any) => row.id === target.id)?.projectId).toBe(project.id);
 }, 60000);
 
 test("leaves the shared runner clean", async () => {

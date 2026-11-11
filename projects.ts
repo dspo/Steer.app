@@ -61,23 +61,6 @@ export async function createProject(
   }
 }
 
-/** Puts a container in a project, or in Chats for null. */
-export async function moveContainer(containerId: string, projectId: string | null): Promise<void> {
-  try {
-    await transport("project.setMembership", { containerId, projectId }, 10000);
-    const next = { ...membership() };
-    if (projectId === null) delete next[containerId];
-    else next[containerId] = projectId;
-    membership.set(next);
-    containers.set(
-      containers().map((row) => (row.id === containerId ? { ...row, projectId } : row)),
-    );
-    projectError.set(null);
-  } catch (failure) {
-    projectError.set(String(failure));
-  }
-}
-
 /** A container's project, from the explicit map then the row the engine sent. */
 export function containerProject(container: ContainerRecord): string | null {
   const mapped = membership()[container.id];
