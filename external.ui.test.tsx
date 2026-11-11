@@ -68,7 +68,7 @@ test("the Hero opens an external terminal container without a composer", async (
   await app.waitFor(`label:${copy("未启动", "Stopped")}`, { timeout: 10000 });
 }, 60000);
 
-test("a terminal's own exit takes the last sheet, and the Hero brings it back", async () => {
+test("a terminal's own exit archives its container", async () => {
   const app = await open("./App.tsx", { network: "live", width: 1200, height: 800 });
   await app.waitFor(`label:${copy("运行中", "Running")}`, { timeout: 20000 });
   await app.waitFor("id:external-terminal");
@@ -76,15 +76,13 @@ test("a terminal's own exit takes the last sheet, and the Hero brings it back", 
   await app.waitUntil(() => app.enabled("id:external-terminal"), { timeout: 20000 });
   await app.press("id:external-terminal");
   await app.waitFor("id:terminal-view", { timeout: 20000 });
-  // The shell running in the PTY ends: the sheet goes with it, leaving the
-  // container with no sheet (nsh's tab × cannot close a group's last tab,
-  // but a program's exit is not the tab's ×).
+  // The shell running in the PTY ends: the sheet goes with it, and a
+  // container with no sheet left is not a place anymore (Q69) — the external
+  // container archives itself and the canvas lands on the scratch Hero.
   await app.type("id:terminal-view", "exit");
   await app.keyboard.press("enter");
-  await app.waitUntil(() => app.shows("id:empty-open-hero"), { timeout: 20000 });
+  await app.waitUntil(() => !app.shows("id:terminal-view"), { timeout: 20000 });
+  await app.waitFor("id:launcher-input", { timeout: 20000 });
   expect(app.shows("id:terminal-view")).toBe(false);
-  await app.press("id:empty-open-hero");
-  await app.waitFor("id:launcher-input");
-  expect(app.shows("id:empty-open-hero")).toBe(false);
 }, 60000);
 

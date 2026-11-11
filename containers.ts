@@ -1,4 +1,4 @@
-import { signal, untracked } from "nsh";
+import { LayoutAnimation, signal, untracked } from "nsh";
 import type { DockAreaRef } from "nsh/base";
 import { request } from "./engine";
 import type {
@@ -19,6 +19,7 @@ import {
   removeSheet,
   replaceSheet,
   sessionIdOfSheet,
+  sheetCount,
   sessionSheetId,
   visiblePanels,
   type DockAreaLayout,
@@ -419,6 +420,10 @@ export async function archiveContainer(id: string): Promise<void> {
     const data = (await transport("container.archive", { containerId: id }, 30000)) as ContainerListData;
     // The registry first, then the processes: a terminal sheet still mounted
     // for one frame must see its container archived and not restart a PTY.
+    // The removed row plays its exit before the sidebar drops it.
+    // The sidebar's rows animate the removal natively: the leaving row
+    // fades and the rows below slide up with it (DESIGN §3.8).
+    LayoutAnimation.configureNext(LayoutAnimation.create(180));
     containers.set(data.containers ?? []);
     // An external container is its process: archiving kills its PTY before
     // the canvas switches away. A Pi container's terminals (the Hero's shell
@@ -519,6 +524,10 @@ export function setLayout(next: DockAreaLayout): void {
   // through here, so a hidden container's shell keeps running.
   reconcileTerminals(next);
   scheduleSave();
+  // Q69: the last sheet gone leaves no place to work — including the Hero's
+  // own ×, which is why the last tab is closable at all. The archive moves
+  // the canvas to the next container (or scratch) itself.
+  if (containerId && sheetCount(next) === 0) void archiveContainer(containerId);
 }
 
 /** The zoom changed: remember it beside the layout (it is not in the tree). */

@@ -1,4 +1,4 @@
-import { keymap, List, PanResponder, Scroll, signal, Text, token, View } from "nsh";
+import { effect, keymap, List, PanResponder, Scroll, signal, Text, token, View } from "nsh";
 import { DockArea, Input, Menu, MenuItem, MenuSeparator, type DockAreaLayout } from "nsh/base";
 import { Window } from "nsh/desktop";
 import { containerTitle } from "./titles";
@@ -198,6 +198,37 @@ function revealContainer(container: any): void {
 
 /** One container row, under its project. A container belongs to the project it
  * was created under: there is no gesture that moves it. */
+
+/**
+/** A row's exit wrapper: one draw at full size, then the 180 ms collapse. */
+function ExitingRow(props: { container: any; onDone: () => void }) {
+  const leaving = signal(false);
+  effect(() => {
+    const start = setTimeout(() => leaving.set(true), 16);
+    return () => clearTimeout(start);
+  });
+  effect(() => {
+    if (!leaving()) return;
+    const done = setTimeout(props.onDone, 180);
+    return () => clearTimeout(done);
+  });
+  return (
+    <View
+      testID={`container-row-exiting-${props.container.id}`}
+      style={{
+        height: leaving() ? 0 : 32,
+        opacity: leaving() ? 0 : 1,
+        overflow: "hidden",
+        transitionProperty: "height, opacity",
+        transitionDuration: 180,
+        transitionTimingFunction: "ease-out",
+      }}
+    >
+      <ContainerRow container={props.container} />
+    </View>
+  );
+}
+
 function ContainerRow(props: { container: any }) {
   const container = () => props.container;
   const active = () => container().id === activeContainerId();
@@ -895,8 +926,10 @@ function Canvas() {
             >
               {sheetTitle(tab.panel)}
             </Text>
-            {/* Appears under the pointer, as Steer's tabs do. */}
-            <If when={tab.closable}>
+            {/* Appears under the pointer, as Steer's tabs do. Every tab is
+                closable — nsh hides a group's last ×, and closing the last
+                sheet is how a container with nothing left leaves (Q69). */}
+            <If when={true}>
               <View
                 role="button"
                 testID={`tab-close-${tab.panel}`}
