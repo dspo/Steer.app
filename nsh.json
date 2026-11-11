@@ -16,10 +16,10 @@
     },
     "titleBar": {
       "style": "hidden",
-      "height": 48,
+      "height": 40,
       "controlsOffset": {
         "x": 18,
-        "y": 17
+        "y": 13
       }
     },
     "closeOnPress": false
@@ -44,6 +44,11 @@
       ]
     },
     "notifications": true,
-    "statusBar": true
+    "statusBar": true,
+    "openUrl": {
+      "schemes": [
+        "vscode"
+      ]
+    }
   }
 }

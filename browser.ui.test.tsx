@@ -52,6 +52,7 @@ test("the top bar opens browser sheets, and the address bar normalizes a domain"
 
   // The sheet's address bar has one web view; opening a second browser sheet
   // gives it the next instance number.
+  await app.press("id:titlebar-tools");
   await app.press("id:open-browser");
   await app.waitUntil(() => pageDebug(app).includes("webview:pi:browser-fixture:2"));
   expect(app.count("id:browser-address")).toBe(1);
@@ -60,7 +61,8 @@ test("the top bar opens browser sheets, and the address bar normalizes a domain"
 
 test("the tab follows the page title, and a hidden sheet keeps its address", async () => {
   const app = await open("./fixtures/browser.tsx", { width: 1200, height: 800 });
-  await app.waitFor("id:open-browser");
+  await app.waitFor("id:titlebar-tools");
+  await app.press("id:titlebar-tools");
   await app.press("id:open-browser");
   await app.waitFor("id:browser-address");
   await address(app, "example.com");
@@ -78,6 +80,7 @@ test("the tab follows the page title, and a hidden sheet keeps its address", asy
   // Another browser sheet hides this one. The web view unmounts (no pause
   // prop exists) while the store keeps the address; showing it again puts
   // the address back in the bar.
+  await app.press("id:titlebar-tools");
   await app.press("id:open-browser");
   await app.waitUntil(() => pageDebug(app).includes("webview:pi:browser-fixture:2"));
   expect(app.value("id:browser-address")).toBe("");
@@ -111,7 +114,8 @@ test("the tab follows the page title, and a hidden sheet keeps its address", asy
 
 test("a container switch keeps the browser address and title", async () => {
   const app = await open("./fixtures/browser.tsx", { width: 1200, height: 800 });
-  await app.waitFor("id:open-browser");
+  await app.waitFor("id:titlebar-tools");
+  await app.press("id:titlebar-tools");
   await app.press("id:open-browser");
   await app.waitFor("id:browser-address");
   await address(app, "example.com");

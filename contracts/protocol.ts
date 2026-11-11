@@ -83,7 +83,7 @@ export const COMMANDS = {
     group: "session",
     idempotent: true,
     replay: "safe",
-    note: "A session's file, name, run state and custom entry types.",
+    note: "A session's file, name, run state, custom entry types, model, thinking level and context usage.",
   },
   "session.tools": {
     group: "session",
@@ -245,7 +245,10 @@ export const EVENTS = {
   "message.delta": { scope: "session", note: "A streamed text chunk of the assistant's message." },
   "message.complete": { scope: "session", note: "A finished message; the file is the authority." },
   "agent.state": { scope: "session", note: "A turn started (`running`) or settled (`idle`)." },
-  "session.info": { scope: "session", note: "The session's name or thinking level changed." },
+  "session.info": {
+    scope: "session",
+    note: "The session's name, model, thinking level or context usage changed.",
+  },
   "tool.start": { scope: "session", note: "A tool call started." },
   "tool.update": { scope: "session", note: "A tool call produced a partial result." },
   "tool.end": { scope: "session", note: "A tool call finished, successfully or not." },
@@ -609,11 +612,46 @@ export interface AgentStateData {
   state: "running" | "idle";
 }
 
+/** The model a session runs: what the composer names. */
+export interface SessionModelInfo {
+  provider: string;
+  id: string;
+  name: string;
+  /** The model's context window in tokens; absent when the model reports none. */
+  contextWindow?: number;
+  /** Whether the model accepts a thinking level. */
+  reasoning?: boolean;
+}
+
+/** pi's live estimate of the session's context use. */
+export interface SessionContextUsage {
+  /** Estimated tokens, or null right after compaction until the next reply. */
+  tokens: number | null;
+  contextWindow: number;
+  /** `tokens / contextWindow` as 0–100, or null when `tokens` is null. */
+  percent: number | null;
+}
+
+/** pi's selectable thinking levels; `off` means the model does not think. */
+export type SessionThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+
 export interface SessionInfoData {
   name?: string;
-  thinkingLevel?: string;
+  thinkingLevel?: SessionThinkingLevel;
   /** The session's file, once pi has written one. */
   path?: string;
+  /** Present when pi has a model selected. */
+  model?: SessionModelInfo;
+  /** Present when the model reports a context window. */
+  contextUsage?: SessionContextUsage;
+}
+
+/** The full `session.info` reply: file, run state and composer data. */
+export interface SessionInfoResult extends SessionInfoData {
+  sessionId: string;
+  path: string;
+  running: boolean;
+  customTypes: string[];
 }
 
 export interface ToolData {

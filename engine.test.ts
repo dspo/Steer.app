@@ -53,6 +53,112 @@ test("engine connects and lists pi sessions", async () => {
   expect(Array.isArray(sessions())).toBe(true);
 });
 
+test("the shell dials the port the sidecar published", async () => {
+  if (skip) return;
+  await freshEngine();
+  const port = Engine.port();
+  expect(port).toBeGreaterThan(0);
+  // An explicit ZU_PORT (tests, a deliberate fixed port) is honored; with
+  // ZU_PORT unset the port is the system-chosen one, never the old constant.
+  const requested = Number(process.env.ZU_PORT ?? 0);
+  if (requested > 0) expect(port).toBe(requested);
+  else expect(port).not.toBe(47823);
+  // The published port is the only port worth dialing: a raw handshake on it
+  // reports the same pid as the native process manager.
+  const welcome = await new Promise<any>((resolve, reject) => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+    const timer = setTimeout(() => reject(new Error("no welcome on the published port")), 5000);
+    ws.onopen = () => ws.send(JSON.stringify({ v: PROTOCOL_VERSION, type: "hello", token: Engine.token() }));
+    ws.onmessage = (event) => {
+      clearTimeout(timer);
+      const message = JSON.parse(String(event.data));
+      ws.close();
+      resolve(message);
+    };
+    ws.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error("the published port refused the socket"));
+    };
+  });
+  expect(welcome.type).toBe("welcome");
+  expect(welcome.payload.pid).toBe(Engine.pid());
+});
+
+test("a request issued while starting waits for the connection", async () => {
+  if (skip) return;
+  await disconnect();
+  expect(phase()).toBe("stopped");
+  // `connect` sets the phase synchronously before its first await, so this
+  // command is issued while the engine is still starting.
+  const connecting = connect();
+  expect(phase()).toBe("starting");
+  const [health] = await Promise.all([request("engine.health", {}, 30000), connecting]);
+  expect(phase()).toBe("connected");
+  expect(typeof health.generation).toBe("number");
+});
+
+test("a request issued during a reconnect waits for the engine", async () => {
+  if (skip) return;
+  await freshEngine();
+  const generation = info()?.generation ?? 0;
+  await Engine.kill();
+  await until("the supervisor to notice the dead engine", () => phase() !== "connected", 5000);
+  // No immediate "engine is not connected": the command queues until the
+  // supervised restart has connected again.
+  const health = await request("engine.health", {}, 45000);
+  expect(typeof health.generation).toBe("number");
+  expect(health.generation).toBeGreaterThan(generation);
+  expect(phase()).toBe("connected");
+});
+
+test("session.info carries the model, thinking level and context usage", async () => {
+  if (skip) return;
+  await freshEngine();
+  const created = await request("session.create", { cwd: "/tmp/zu-test" });
+  const data = await request("session.info", { sessionId: created.id });
+  expect(typeof data.model?.provider).toBe("string");
+  expect(String(data.model?.provider).length).toBeGreaterThan(0);
+  expect(String(data.model?.id).length).toBeGreaterThan(0);
+  expect(String(data.model?.name).length).toBeGreaterThan(0);
+  expect(typeof data.model?.contextWindow).toBe("number");
+  expect(data.model?.contextWindow).toBeGreaterThan(0);
+  expect(typeof data.thinkingLevel).toBe("string");
+  expect(data.contextUsage).toBeDefined();
+  expect(data.contextUsage.contextWindow).toBeGreaterThan(0);
+  const tokens = data.contextUsage.tokens;
+  const percent = data.contextUsage.percent;
+  expect(tokens === null || typeof tokens === "number").toBe(true);
+  expect(percent === null || typeof percent === "number").toBe(true);
+  if (typeof tokens === "number" && typeof percent === "number") {
+    expect(percent).toBeGreaterThanOrEqual(0);
+    expect(percent).toBeLessThanOrEqual(100);
+  }
+  await request("session.close", { sessionId: created.id });
+});
+
+test("a start with an unusable state directory fails cleanly", async () => {
+  if (skip) return;
+  await disconnect();
+  expect(Engine.status()).toBe("stopped");
+  // `/dev/null/zu` cannot be created: the native start returns an error
+  // before spawning, so the shell keeps no zombie, port or stale state.
+  Engine.setStateDir("/dev/null/zu");
+  try {
+    let message = "";
+    try {
+      await Engine.start();
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message.length).toBeGreaterThan(0);
+    expect(Engine.status()).toBe("stopped");
+    expect(Engine.port()).toBe(0);
+    expect(Engine.pid()).toBe(0);
+  } finally {
+    Engine.setStateDir("");
+  }
+});
+
 test("the welcome and snapshot carry the protocol and generation", async () => {
   if (skip) return;
   await freshEngine();

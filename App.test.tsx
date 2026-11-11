@@ -1,10 +1,24 @@
 import { expect, open, test } from "nsh/test";
-test("the shell shows the session list and engine controls", async () => {
+test("the shell is a Steer titlebar over the project sidebar, with the engine in the status bar", async () => {
   const app = await open("./App.tsx", { network: "live", width: 1200, height: 800 });
   expect(app.texts()).toContain("会话");
-  expect(app.texts()).toContain("全部会话");
-  // The top bar's refresh is icon-only; its accessible name carries the copy.
-  expect(app.count("label:刷新")).toBe(2);
+  expect(app.texts()).toContain("新建");
+  // The titlebar's own controls: sidebar toggle, centered picker, VS Code,
+  // tools overflow. No second row of engine buttons lives up there.
+  expect(app.count("id:sidebar-toggle")).toBe(1);
+  expect(app.count("id:session-picker")).toBe(1);
+  expect(app.count("id:open-vscode")).toBe(1);
+  expect(app.count("id:titlebar-tools")).toBe(1);
+  // The resting sidebar is Project → SessionContainer; the all-sessions list
+  // only appears while filtering.
+  expect(app.texts()).not.toContain("全部会话");
+  expect(app.count("id:session-list")).toBe(0);
+  // The sidebar toggle hides the whole left column (the titlebar stays).
+  await app.press("id:sidebar-toggle");
+  await app.waitUntil(() => app.count("id:new-container") === 0, { timeout: 5000 });
+  expect(app.count("id:new-container")).toBe(0);
+  await app.press("id:sidebar-toggle");
+  await app.waitUntil(() => app.count("id:new-container") === 1, { timeout: 5000 });
   // The engine starts in the background; any phase label is valid here.
   const texts = app.texts();
   const showsPhase = texts.some((text) =>
@@ -22,8 +36,8 @@ test("the shell speaks English when the user prefers it", async () => {
   // The locale is a signal: the shell redraws on the next frame.
   await app.waitUntil(() => app.texts().includes("Sessions"), { timeout: 5000 });
   expect(app.texts()).toContain("Sessions");
-  expect(app.texts()).toContain("All sessions");
-  expect(app.count("label:Refresh")).toBe(2);
+  expect(app.texts()).toContain("New");
+  expect(app.texts()).not.toContain("All sessions");
   await app.waitUntil(() => app.texts().includes("Running"), { timeout: 20000 });
   await app.press("id:engine-stop");
   await app.waitUntil(() => app.texts().includes("Stopped"), { timeout: 10000 });

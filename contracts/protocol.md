@@ -86,7 +86,7 @@ dropped after the first was matched).
 | `session.list` | — | yes | safe | `{ sessions: SessionMeta[] }` |
 | `session.create` | `{ cwd }` | no | duplicate | `SessionData` |
 | `session.open` | `{ path }` | yes (by path) | safe | `SessionData` |
-| `session.info` | `{ sessionId }` | yes | safe | `{ sessionId, path, name?, running, customTypes }` |
+| `session.info` | `{ sessionId }` | yes | safe | `{ sessionId, path, name?, running, customTypes, thinkingLevel, model?, contextUsage? }` |
 | `session.extensions` | `{ sessionId }` | yes | safe | `{ extensions, errors }` |
 | `session.tools` | `{ sessionId }` | yes | safe | `{ tools: string[] }` |
 | `session.prompt` | `{ sessionId, text }` | no | duplicate | `{ accepted: true }` |
@@ -98,6 +98,30 @@ dropped after the first was matched).
 `session.prompt` resolves as soon as pi accepts the turn; the turn's progress
 arrives as events. `session.steer` and `session.followUp` are allowed only
 while a turn runs and map to pi's `streamingBehavior`.
+
+`session.info` is the composer's data source, so it carries what the composer
+shows instead of making the shell ask pi separately:
+
+```ts
+{
+  sessionId, path, name?, running, customTypes,
+  thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max",
+  model?: { provider, id, name, contextWindow?, reasoning? },
+  contextUsage?: { tokens: number | null, contextWindow, percent: number | null }
+}
+```
+
+`SessionInfoResult` is the full reply; `SessionInfoData` is the optional
+composer part, so an event can carry just one changed field.
+
+`model` is present once pi has selected one; `contextWindow` is present when
+the model reports it. `contextUsage` is pi's live estimate
+(`getContextUsage()`), present when the model's context window is known;
+`tokens` and `percent` are null after compaction until the next reply. All
+three fields are additive: a shell that predates them simply ignores them.
+The engine also pushes `session.info` events with `{ thinkingLevel }` when the
+level changes, `{ model, thinkingLevel }` on a model change, and
+`{ contextUsage }` at each turn's end.
 
 ### project.*
 
@@ -229,7 +253,7 @@ All except `engine.*` carry `sessionId`.
 | `message.delta` | `{ delta }` | a streamed assistant text chunk |
 | `message.complete` | `{ role, text, at? }` | a finished, non-system message |
 | `agent.state` | `{ state: "running" \| "idle" }` | turn boundaries (`agent_settled`, not `agent_end`) |
-| `session.info` | `{ name?, thinkingLevel? }` | pi session metadata changed |
+| `session.info` | `{ name?, thinkingLevel?, model?, contextUsage? }` | pi session metadata changed (name, model, thinking level, context estimate) |
 | `tool.start` | `{ toolName, toolCallId }` | a tool call started |
 | `tool.update` | `{ toolName, toolCallId }` | a partial tool result arrived |
 | `tool.end` | `{ toolName, toolCallId, isError }` | a tool call finished |

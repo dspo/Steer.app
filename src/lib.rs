@@ -12,9 +12,11 @@
 
 use std::{
     io::Write,
+    net::TcpStream,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::Mutex,
+    time::{Duration, Instant},
 };
 
 use nsh_core::prelude::*;
@@ -33,14 +35,15 @@ pub use instance::{Instance, InstanceClaim};
 pub use lsp::{Lsp, LspExit, LspOptions};
 pub use pty::{Pty, PtyExit, PtyOptions};
 
-/// The sidecar's default loopback port; `ZU_PORT` overrides it for a second
-/// development instance and for tests that must not touch a running app.
-const ENGINE_PORT: u16 = 47823;
+/// The engine's default loopback port: 0 asks the system for a free one, so
+/// a development instance, a test run and the packaged app never collide.
+/// An explicit `ZU_PORT` (tests, a deliberate fixed port) still wins.
+const ENGINE_PORT: u16 = 0;
 
 fn engine_port() -> u16 {
     std::env::var("ZU_PORT")
         .ok()
-        .and_then(|port| port.parse().ok())
+        .and_then(|port| port.trim().parse().ok())
         .unwrap_or(ENGINE_PORT)
 }
 
@@ -73,23 +76,42 @@ pub struct Engine;
 
 #[module]
 impl Engine {
-    /// Starts the sidecar unless it is already running.
+    /// Starts the sidecar unless a healthy one is already running.
+    ///
+    /// A start is only successful once the child has published the port it
+    /// actually bound (an ephemeral one unless `ZU_PORT` names a fixed port).
+    /// A child that exits, or stays silent, before publishing is killed and
+    /// reaped here, so a failed start leaves no zombie and no stale `ENGINE`
+    /// state for the next attempt.
     pub async fn start() -> Result<(), String> {
         let mut guard = ENGINE.lock().map_err(|_| "engine lock poisoned".to_owned())?;
+        let dir = zu_dir()?;
+        let port_file = dir.join("engine.port");
         if let Some(state) = guard.as_mut() {
-            if state.child.try_wait().map_err(|e| e.to_string())?.is_none() {
-                return Ok(());
+            match state.child.try_wait() {
+                Ok(None) => {
+                    // Healthy means the process is up and reachable on the
+                    // port this state recorded; a port file from another
+                    // process (or a wedged sidecar) is mismatched state.
+                    if read_port(&port_file) == Some(state.port) || port_accepts(state.port) {
+                        return Ok(());
+                    }
+                }
+                Ok(Some(status)) => record_exit(Ok(status)),
+                Err(_) => {}
             }
+            let _ = state.child.kill();
+            record_exit(state.child.wait());
+            *guard = None;
         }
         let token = ensure_token()?;
         let path = engine_path().ok_or_else(|| {
             "engine sidecar not found (build it with `cd engine && bun run build`)".to_owned()
         })?;
-        let dir = zu_dir()?;
-        let port_file = dir.join("engine.port");
         let _ = std::fs::remove_file(&port_file);
         let log = std::fs::File::create(dir.join("engine.log")).map_err(|e| e.to_string())?;
         let stderr = log.try_clone().map_err(|e| e.to_string())?;
+        let requested = engine_port();
         let mut command = Command::new(&path);
         let extra = EXTRA_EXTENSIONS
             .lock()
@@ -104,8 +126,8 @@ impl Engine {
         if NO_EXTENSIONS.lock().map(|skip| *skip).unwrap_or(false) {
             command.env("ZU_NO_EXTENSIONS", "1");
         }
-        let child = command
-            .env("ZU_PORT", engine_port().to_string())
+        let mut child = command
+            .env("ZU_PORT", requested.to_string())
             .env("ZU_TOKEN", &token)
             .stdin(Stdio::null())
             .stdout(Stdio::from(log))
@@ -114,8 +136,18 @@ impl Engine {
             .map_err(|e| format!("cannot start {}: {e}", path.display()))?;
         // The sidecar binds and then writes the port it got (ZU_PORT=0 asks
         // the system for a free one). Wait for it so `port()` has an answer
-        // by the time `connect` asks.
-        let port = wait_for_port(&port_file, engine_port());
+        // by the time `connect` asks, and fail the start if the child dies.
+        let port = match await_engine_port(&mut child, &port_file, requested) {
+            Ok(port) => port,
+            Err(error) => {
+                let _ = child.kill();
+                record_exit(child.wait());
+                return Err(format!(
+                    "{error} — see {}",
+                    dir.join("engine.log").display()
+                ));
+            }
+        };
         *guard = Some(EngineState { child, port });
         Ok(())
     }
@@ -155,7 +187,12 @@ impl Engine {
         };
         match state.child.try_wait() {
             Ok(None) => state.child.id(),
-            _ => 0,
+            Ok(Some(status)) => {
+                record_exit(Ok(status));
+                *guard = None;
+                0
+            }
+            Err(_) => 0,
         }
     }
 
@@ -178,20 +215,58 @@ impl Engine {
         }
     }
 
-    /// The port the running sidecar bound; 0 before a start.
+    /// The port the running sidecar bound; 0 when it is not running. A dead
+    /// child is reaped here too, so a caller can never dial a stale port.
     pub fn port() -> u16 {
-        ENGINE
-            .lock()
-            .ok()
-            .and_then(|guard| guard.as_ref().map(|state| state.port))
-            .unwrap_or(0)
+        let Ok(mut guard) = ENGINE.lock() else {
+            return 0;
+        };
+        let Some(state) = guard.as_mut() else {
+            return 0;
+        };
+        match state.child.try_wait() {
+            Ok(None) => state.port,
+            Ok(Some(status)) => {
+                record_exit(Ok(status));
+                *guard = None;
+                0
+            }
+            Err(_) => 0,
+        }
     }
 
-    /// Whether the sidecar's loopback port is free. A bind that fails means
-    /// another process (another Zu, an orphaned sidecar) holds it, which the
-    /// shell shows as "the port is in use" instead of a bare timeout.
+    /// Whether the running sidecar is the process the shell is talking to:
+    /// same pid, same port, still alive. The socket handshake checks this
+    /// before declaring the engine connected; a mismatch means stale state
+    /// or a foreign process, and the shell then restarts the sidecar.
+    pub fn verify(pid: u32, port: u16) -> bool {
+        if pid == 0 || port == 0 {
+            return false;
+        }
+        let Ok(mut guard) = ENGINE.lock() else {
+            return false;
+        };
+        let Some(state) = guard.as_mut() else {
+            return false;
+        };
+        match state.child.try_wait() {
+            Ok(None) => state.child.id() == pid && state.port == port,
+            Ok(Some(status)) => {
+                record_exit(Ok(status));
+                *guard = None;
+                false
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// Whether the sidecar's loopback port is free. With the default
+    /// `ZU_PORT=0` the system always chooses a free port, so this reports
+    /// true; an explicit `ZU_PORT` is probed so the shell can say "the port
+    /// is in use" instead of showing a bare timeout.
     pub fn port_available() -> bool {
-        port_available_on(engine_port())
+        let requested = engine_port();
+        requested == 0 || port_available_on(requested)
     }
 
     /// The handshake token the sidecar expects; created on first use.
@@ -254,20 +329,59 @@ fn native(registry: &mut Registry) {
         .class::<Pty>();
 }
 
-/// Waits (briefly) for the sidecar to publish the port it bound; falls back
-/// to the requested one when the file never appears.
-fn wait_for_port(path: &std::path::Path, fallback: u16) -> u16 {
-    for _ in 0..50 {
-        if let Ok(text) = std::fs::read_to_string(path) {
-            if let Ok(port) = text.trim().parse::<u16>() {
-                if port != 0 {
-                    return port;
-                }
+/// The port published in `engine.port`, if it parses and is non-zero.
+fn read_port(path: &Path) -> Option<u16> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let port = text.trim().parse::<u16>().ok()?;
+    (port != 0).then_some(port)
+}
+
+/// Waits for the sidecar to publish the port it bound. The child is watched
+/// as well as the file: a process that exits before publishing fails the
+/// start immediately instead of leaving a 10 s timeout and a zombie behind.
+/// With an explicit `ZU_PORT` the requested port is the fallback when the
+/// state directory is read-only and the file can never appear.
+fn await_engine_port(child: &mut Child, path: &Path, requested: u16) -> Result<u16, String> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let code = status
+                    .code()
+                    .map(|code| code.to_string())
+                    .unwrap_or_else(|| "signal".to_owned());
+                return Err(format!(
+                    "the engine exited before it published a port (exit {code})"
+                ));
             }
+            Ok(None) => {}
+            Err(error) => return Err(format!("cannot check the engine process: {error}")),
         }
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        if let Some(port) = read_port(path) {
+            if requested == 0 || port == requested {
+                return Ok(port);
+            }
+            return Err(format!(
+                "the engine published port {port}, but ZU_PORT asked for {requested}"
+            ));
+        }
+        if Instant::now() >= deadline {
+            if requested != 0 {
+                return Ok(requested);
+            }
+            return Err("the engine did not publish a port within 10 s".to_owned());
+        }
+        std::thread::sleep(Duration::from_millis(25));
     }
-    fallback
+}
+
+/// Whether something accepts TCP connections on the sidecar's loopback port.
+fn port_accepts(port: u16) -> bool {
+    TcpStream::connect_timeout(
+        &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+        Duration::from_millis(250),
+    )
+    .is_ok()
 }
 
 /// Whether `port` can be bound on the sidecar's loopback address.
@@ -347,12 +461,24 @@ fn random_token() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::port_available_on;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::{await_engine_port, port_available_on, read_port};
+
+    /// A path this test owns; no other test writes the same name.
+    fn temp_port_file(name: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock after the epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("zu-port-{name}-{}-{nanos}", std::process::id()))
+    }
 
     /// The browser is UI-only, so its capability must stay the Q32 minimum:
-    /// any site in the web view, no trusted input, no external opener, and no
-    /// file or process grants. This test reads the declaration itself, so a
-    /// later capability edit that widens the UI's blast radius fails here.
+    /// any site in the web view, no trusted input, exactly one explicit
+    /// external scheme (the VS Code action), and no file or process grants.
+    /// This test reads the declaration itself, so a later capability edit
+    /// that widens the UI's blast radius fails here.
     #[test]
     fn a_port_held_by_another_process_is_not_available() {
         let listener =
@@ -360,6 +486,61 @@ mod tests {
         let port = listener.local_addr().expect("local address").port();
         assert!(!port_available_on(port), "a bound port is not free");
         drop(listener);
+    }
+
+    /// The process manager's failure path: a child that dies before writing
+    /// its port must fail the start at once, leaving no zombie and no port to
+    /// dial. `/bin/sh -c 'exit 7'` is the sidecar that crashed on boot.
+    #[test]
+    fn a_child_that_exits_before_the_port_fails_the_start() {
+        let path = temp_port_file("exit");
+        let mut child = std::process::Command::new("sh")
+            .arg("-c")
+            .arg("exit 7")
+            .spawn()
+            .expect("spawn a child that exits immediately");
+        let error = await_engine_port(&mut child, &path, 0).expect_err("a dead child must fail");
+        assert!(
+            error.contains("exited before it published a port"),
+            "the failure names the exit, not a timeout: {error}"
+        );
+        assert!(error.contains("exit 7"), "the exit status is reported: {error}");
+        assert!(
+            child.try_wait().expect("reap the child").is_some(),
+            "the failed child was reaped (no zombie)"
+        );
+    }
+
+    /// The published port is the authority: with `ZU_PORT=0` the host cannot
+    /// know the free port the system picked until the sidecar writes it.
+    #[test]
+    fn the_published_port_is_the_one_the_host_uses() {
+        let path = temp_port_file("published");
+        let mut child = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(r#"printf '%s' "$1" > "$2"; exec sleep 5"#)
+            .arg("sh")
+            .arg("54321")
+            .arg(&path)
+            .spawn()
+            .expect("spawn a child that publishes its port");
+        let port = await_engine_port(&mut child, &path, 0).expect("the published port");
+        assert_eq!(port, 54321);
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// A zero or malformed port is not a published port: the host must keep
+    /// waiting rather than dial 0.
+    #[test]
+    fn a_zero_or_malformed_port_is_not_a_published_port() {
+        let path = temp_port_file("invalid");
+        std::fs::write(&path, "0").expect("write a zero port");
+        assert_eq!(read_port(&path), None);
+        std::fs::write(&path, "not-a-port").expect("write garbage");
+        assert_eq!(read_port(&path), None);
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
@@ -378,9 +559,17 @@ mod tests {
             capabilities.pointer("/webview/input").is_none(),
             "trusted web input is never granted unless a feature needs it"
         );
-        assert!(
-            capabilities.get("openUrl").is_none(),
-            "M10 keeps links in the sheet; no external opener is granted"
+        assert_eq!(
+            capabilities.pointer("/openUrl/schemes"),
+            Some(&serde_json::json!(["vscode"])),
+            "only the VS Code action may open an external app"
+        );
+        assert_eq!(
+            capabilities
+                .get("openUrl")
+                .and_then(|open| open.as_object().map(|open| open.len())),
+            Some(1),
+            "no grants beyond the one scheme list"
         );
         assert_eq!(
             capabilities.get("notifications"),

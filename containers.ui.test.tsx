@@ -28,6 +28,28 @@ test("containers switch their layouts and throttle hidden sessions", async () =>
   expect(app.texts()).not.toContain("alpha body");
 });
 
+test("the VS Code action falls back to the active container's cwd", async () => {
+  const app = await open("./fixtures/containers.tsx", { width: 1200, height: 800 });
+  await app.waitFor("text:alpha body");
+  await app.press("id:open-vscode");
+  await app.waitUntil(() => app.openedUrls().length > 0, { timeout: 5000 });
+  expect(app.openedUrls()[0]).toBe("vscode://file/tmp/alpha");
+});
+
+test("clicking a non-active container row switches the canvas", async () => {
+  const app = await open("./fixtures/containers.tsx", { width: 1200, height: 800 });
+  await app.waitFor("text:alpha body");
+  expect(app.texts()).not.toContain("beta body");
+  // The row is a press, not a drag: the pan responder must not swallow it
+  // and must not write a membership move on release.
+  await app.press("id:container-row-c2");
+  await app.waitFor("text:beta body");
+  expect(app.texts()).toContain("beta body");
+  expect(app.texts()).not.toContain("alpha body");
+  // The active row's selected state follows the same switch.
+  expect(app.enabled("id:container-row-c2")).toBe(true);
+});
+
 test("a saved zoom is restored with its container", async () => {
   const app = await open("./fixtures/containers.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:alpha body");

@@ -12,7 +12,7 @@ let booted = false;
 function configureWindow(): void {
   try {
     Window.get("main")?.set({
-      titleBar: { style: "hidden", height: 48, controlsOffset: { x: 18, y: 17 } },
+      titleBar: { style: "hidden", height: 40, controlsOffset: { x: 18, y: 13 } },
     });
   } catch {
     // A platform or embedding app without a hidden title bar keeps the system's.

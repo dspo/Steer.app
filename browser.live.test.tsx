@@ -57,7 +57,8 @@ test(
       height: 800,
       network: "live",
     });
-    await app.waitFor("id:open-browser");
+    await app.waitFor("id:titlebar-tools");
+    await app.press("id:titlebar-tools");
     await app.press("id:open-browser");
     await app.waitFor("id:browser-address");
 

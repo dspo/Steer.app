@@ -85,7 +85,24 @@ export function containerProject(container: ContainerRecord): string | null {
   return container.projectId ?? null;
 }
 
-/** The live containers of one project (null: Chats). */
+/**
+ * The projects in the sidebar's order: the registry's `position` ascending
+ * (stable for equal positions), then `createdAt`, then the id. The list is
+ * never reordered by activity: creating a container must not shuffle the
+ * project groups under the pointer.
+ */
+export function orderedProjects(): ProjectRecord[] {
+  return projects()
+    .slice()
+    .sort(
+      (a, b) =>
+        a.position - b.position ||
+        a.createdAt - b.createdAt ||
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    );
+}
+
+/** The live containers of one project (null: Chats), newest activity first. */
 export function containersIn(projectId: string | null): ContainerRecord[] {
   return liveContainers().filter((container) => containerProject(container) === projectId);
 }

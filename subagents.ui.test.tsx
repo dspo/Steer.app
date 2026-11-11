@@ -3,6 +3,7 @@ import { expect, open, test } from "nsh/test";
 test("the roster lists runs and opens a read-only transcript", async () => {
   const app = await open("./fixtures/subagents.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:captain body");
+  await app.press("id:titlebar-tools");
   await app.press("id:open-subagents");
   await app.waitFor("text:worker");
   expect(app.texts()).toContain("scout");

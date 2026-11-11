@@ -49,8 +49,11 @@ import {
   type EventMessage,
   type EventType,
   type Reply,
+  type SessionContextUsage,
   type SessionExtensionsData,
+  type SessionInfoResult,
   type SessionMeta,
+  type SessionModelInfo,
   type StateSnapshot,
   type UIMethod,
   type UIResponsePayload,
@@ -71,7 +74,7 @@ import { PI_VERSION } from "./version";
 
 /** 0 lets the system pick one, so two hosts on a machine never collide;
  * the chosen port is published beside the state for the native module. */
-const PORT = Number(process.env.ZU_PORT ?? 47823);
+const PORT = Number(process.env.ZU_PORT ?? 0);
 const TOKEN = process.env.ZU_TOKEN ?? "";
 const AGENT_DIR = getAgentDir();
 const TRUST_YES = "Trust this folder";
@@ -202,6 +205,52 @@ function sessionData(rec: Rec) {
     containerId: rec.containerId,
     messages: (rec.session.state?.messages ?? []).map(plain),
     customTypes: customTypes(rec.manager),
+  };
+}
+
+/** The model the composer names: provider, ids and the window it has. */
+function modelData(rec: Rec): SessionModelInfo | undefined {
+  const model: any = rec.session.model;
+  if (!model) return undefined;
+  const contextWindow = Number(model.contextWindow ?? 0);
+  return {
+    provider: String(model.provider ?? ""),
+    id: String(model.id ?? ""),
+    name: String(model.name ?? model.id ?? ""),
+    ...(contextWindow > 0 ? { contextWindow } : {}),
+    reasoning: !!model.reasoning,
+  };
+}
+
+/** The session's live context gauge, when pi can estimate one. */
+function contextUsageData(rec: Rec): SessionContextUsage | undefined {
+  try {
+    const usage = rec.session.getContextUsage();
+    if (!usage) return undefined;
+    return {
+      tokens: typeof usage.tokens === "number" ? usage.tokens : null,
+      contextWindow: Number(usage.contextWindow ?? 0),
+      percent: typeof usage.percent === "number" ? usage.percent : null,
+    };
+  } catch {
+    // A session that is still booting or already disposed: no gauge yet.
+    return undefined;
+  }
+}
+
+/** `session.info`'s reply and its event's data (optional fields are left out). */
+function sessionInfo(rec: Rec): SessionInfoResult {
+  const model = modelData(rec);
+  const contextUsage = contextUsageData(rec);
+  return {
+    sessionId: rec.id,
+    path: rec.path,
+    name: rec.name,
+    running: rec.session.isStreaming,
+    customTypes: customTypes(rec.manager),
+    thinkingLevel: String(rec.session.thinkingLevel ?? "off"),
+    ...(model ? { model } : {}),
+    ...(contextUsage ? { contextUsage } : {}),
   };
 }
 
@@ -570,6 +619,10 @@ function subscribe(rec: Rec): void {
         notePath(rec);
         finishRun(rec);
         emit("agent.state", { state: "idle" }, sessionId);
+        // The context gauge moves with every turn; push it with the turn's
+        // end so an idle composer does not need to poll.
+        const contextUsage = contextUsageData(rec);
+        if (contextUsage) emit("session.info", { contextUsage }, sessionId);
         break;
       }
       case "agent_end":
@@ -633,6 +686,14 @@ function subscribe(rec: Rec): void {
       case "thinking_level_changed":
         emit("session.info", { thinkingLevel: event.level }, sessionId);
         break;
+      case "entry_appended": {
+        // A model change is a durable session entry (pi writes it before the
+        // model-select event); tell the composer so its name follows.
+        if (event.entry?.type !== "model_change") break;
+        const model = modelData(rec);
+        if (model) emit("session.info", { model, thinkingLevel: String(rec.session.thinkingLevel ?? "off") }, sessionId);
+        break;
+      }
       case "extension_error":
         emit("error", { message: String(event.error ?? "extension error") }, sessionId);
         break;
@@ -1238,16 +1299,7 @@ async function handle(ws: any, message: Envelope): Promise<void> {
     case "session.info": {
       const rec = await requireSession(ws, message, payload);
       if (!rec) return;
-      reply(
-        ws,
-        makeReply(id, message.type, {
-          sessionId: rec.id,
-          path: rec.path,
-          name: rec.name,
-          running: rec.session.isStreaming,
-          customTypes: customTypes(rec.manager),
-        }),
-      );
+      reply(ws, makeReply(id, message.type, sessionInfo(rec)));
       return;
     }
     case "session.extensions": {

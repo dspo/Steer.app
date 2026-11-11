@@ -35,7 +35,8 @@ test("the top bar opens Changes; staging and committing are real git", async () 
   await Fs.write(GIT_ROOT, file, "UI_BEFORE\n", null, null);
 
   const app = await open("./fixtures/git.tsx", { width: 1200, height: 800 });
-  await app.waitFor("id:open-changes");
+  await app.waitFor("id:titlebar-tools");
+  await app.press("id:titlebar-tools");
   await app.press("id:open-changes");
   // The sheet lists the real untracked file.
   const unstaged = `id:git-change-unstaged-${file}`;
@@ -75,6 +76,7 @@ test("the top bar opens Changes; staging and committing are real git", async () 
   expect(status.staged.map((row) => row.path)).not.toContain(file);
   expect(status.unstaged.map((row) => row.path)).not.toContain(file);
 
+  await app.press("id:titlebar-tools");
   await app.press("id:open-history");
   await app.waitFor("id:history-list");
   await app.waitUntil(() => app.texts().some((text) => text === message), { timeout: 10000 });
@@ -89,7 +91,8 @@ test("the worktree hunk is drawn by the real DiffView", async () => {
   await Fs.write(GIT_ROOT, file, "alpha\nBETA\ngamma\ndelta\n", null, null);
 
   const app = await open("./fixtures/git.tsx", { width: 1200, height: 800 });
-  await app.waitFor("id:open-changes");
+  await app.waitFor("id:titlebar-tools");
+  await app.press("id:titlebar-tools");
   await app.press("id:open-changes");
   await app.waitFor(`id:git-change-unstaged-${file}`);
   await app.press(`id:git-change-unstaged-${file}`);
@@ -138,6 +141,7 @@ test("the branch menu checks out; Changes, History and the open editor follow", 
   );
 
   // History: the branch menu checks out the feature branch.
+  await app.press("id:titlebar-tools");
   await app.press("id:open-history");
   await app.waitFor("id:history-branch");
   await app.press("id:history-branch");
@@ -153,6 +157,7 @@ test("the branch menu checks out; Changes, History and the open editor follow", 
 
   // Changes follows the checkout too: its header names the new branch and
   // the file is clean against it.
+  await app.press("id:titlebar-tools");
   await app.press("id:open-changes");
   await app.waitFor("id:git-branch");
   await app.waitUntil(() => app.texts().filter((text) => text === feature).length > 0, {

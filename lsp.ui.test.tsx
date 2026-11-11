@@ -64,7 +64,7 @@ test("the UI shows diagnostics, hover, definition, completion, Problems and a re
 
   const app = await open("./fixtures/lsp.tsx", { width: 1200, height: 800, platform: "macos" });
   try {
-    await app.waitFor("id:open-problems");
+    await app.waitFor("id:titlebar-tools");
     await app.waitFor("id:editor-view");
 
     // The controlled server initializes and opens the document; its
@@ -93,6 +93,7 @@ test("the UI shows diagnostics, hover, definition, completion, Problems and a re
     // Problems: the top bar entry lists the diagnostics, and its row opens
     // the file at the diagnostic's range. Revealing also focuses the editor,
     // so the keyboard steps below have a target.
+    await app.press("id:titlebar-tools");
     await app.press("id:open-problems");
     await app.waitFor("id:problems-title");
     await app.waitUntil(
@@ -136,6 +137,7 @@ test("the UI shows diagnostics, hover, definition, completion, Problems and a re
 
     // Restart: bring Problems back to the front (definition switched the
     // canvas to the target sheet), then its button starts a new process.
+    await app.press("id:titlebar-tools");
     await app.press("id:open-problems");
     await app.waitFor("id:problems-title");
     const before = app.texts().find((text) => text.startsWith("rust:ready")) ?? "";

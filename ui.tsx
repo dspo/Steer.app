@@ -30,7 +30,12 @@ export type GlyphName =
   | "stop"
   | "alert"
   | "commit"
-  | "minus";
+  | "minus"
+  | "sidebar"
+  | "more"
+  | "search"
+  | "sort"
+  | "code";
 
 type Draw = (c: CanvasRenderingContext2D) => void;
 
@@ -219,6 +224,35 @@ const glyphs: Record<GlyphName, Draw> = {
     arc(c, 10, 10, 3);
   },
   minus: (c) => line(c, [5, 10, 15, 10]),
+  // A window with its left column marked: the sidebar toggle.
+  sidebar: (c) => {
+    rect(c, 3.5, 4, 13, 12, 2);
+    line(c, [8, 4, 8, 16]);
+  },
+  // The overflow's three dots, filled.
+  more: (c) => {
+    for (const x of [5.5, 10, 14.5]) {
+      c.beginPath();
+      c.arc(x, 10, 1.15, 0, Math.PI * 2);
+      c.fill();
+    }
+  },
+  search: (c) => {
+    arc(c, 8.8, 8.8, 4.6);
+    line(c, [12.2, 12.2, 16.5, 16.5]);
+  },
+  // A sort ladder: three rows, longest first.
+  sort: (c) => {
+    line(c, [4, 6, 16, 6]);
+    line(c, [4, 10, 12, 10]);
+    line(c, [4, 14, 8, 14]);
+  },
+  // `</>`: the editor's own mark.
+  code: (c) => {
+    line(c, [7.5, 6.5, 3.5, 10, 7.5, 13.5]);
+    line(c, [12.5, 6.5, 16.5, 10, 12.5, 13.5]);
+    line(c, [11.5, 4.5, 8.5, 15.5]);
+  },
   alert: (c) => {
     c.beginPath();
     c.moveTo(10, 3.5);

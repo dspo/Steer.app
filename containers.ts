@@ -77,12 +77,27 @@ export function setContainerTransport(next: ContainerTransport | null): void {
   transport = next ?? request;
 }
 
-/** The rows the sidebar shows, newest activity first. */
-export function liveContainers(): ContainerRecord[] {
-  return containers()
+/**
+ * Live containers, newest activity first. The order is explicit and stable:
+ * `updatedAt` descending (the engine's stamp for the last activity), then
+ * `createdAt` descending for a tie, then the id ascending so two containers
+ * never swap places between renders.
+ */
+export function containersByRecency(rows: ContainerRecord[] = containers()): ContainerRecord[] {
+  return rows
     .filter((container) => !container.archived)
     .slice()
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+    .sort(
+      (a, b) =>
+        b.updatedAt - a.updatedAt ||
+        b.createdAt - a.createdAt ||
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    );
+}
+
+/** The rows the sidebar shows, newest activity first. */
+export function liveContainers(): ContainerRecord[] {
+  return containersByRecency();
 }
 
 /** A container's label: its captain's session title, an external TUI's
