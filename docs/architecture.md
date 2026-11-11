@@ -243,9 +243,12 @@ v1 最小集：`⌘W` 关闭 sheet、`⌘1-9` 切 sheet、`⌘K` 命令面板（
 ```ts
 { id: `pi:{sessionId}` | `external:{kindLower}:{uuid}`,
   kind: "Pi" | "Terminal" | "Claude" | "Codex" | "Copilot",
-  cwd, projectId }
-// 成员：captain（0 号）/ subagents（1 级，仅 Pi 型）/ resources（pty、webview）
+  cwd, projectId,
+  sessions: { sessionId, path, name }[] }   // Pi 型：一个容器可持多个 pi 会话
+// 成员：captain（0 号 = sessions[0]）/ subagents（1 级，仅 Pi 型）/ resources（pty、webview）
 ```
+
+**一个容器多个 pi 会话**是模型内建的，不是特例：`sessions[]` 是列表，布局里的每个 `session:{sessionId}` sheet 各自是一个会话，`switchContainer` 恢复的是这组 sheet 的布局。GUI 目前只开一个（创建容器时铸 0 号），入口留待后续：同一个 cwd 下再开一个会话，就是给容器追加一个 `sessions[]` 成员并加一个 sheet——不需要改模型、wire 或生命周期。子代理（1 级）与 captain（0 号）的区分仍按 `sessions[0]` 与 run 边判定。
 
 M3 落地的注册表记录（`registry.json` 的 `containers[]`）：
 

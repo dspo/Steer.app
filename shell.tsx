@@ -412,7 +412,7 @@ function SearchSection(props: { label: string; count: number }) {
 function Sidebar() {
   return (
     <View class="bg-sidebar border-r border-line" style={{ width: 232, flexShrink: 0 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingTop: 8, paddingBottom: 6, height: 40 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingTop: 8, paddingBottom: 6, height: 36 }}>
         <Text style={{ fontSize: 13, fontWeight: "700", color: token("foreground"), flexShrink: 0 }}>{t(K.sidebar.title)}</Text>
         <View style={{ flex: 1 }} />
         <View
@@ -564,7 +564,7 @@ function SessionPicker() {
           testID="session-picker"
           accessibilityLabel={t(K.titlebar.sessionPicker)}
           accessibilityState={{ expanded: pickerOpen(), hasPopup: true }}
-          class="h-full flex-row items-center gap-1.5 rounded-md border border-border bg-card px-2 hover:bg-hover active:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+          class="h-8 flex-row items-center gap-1.5 rounded-md border border-border bg-card px-2 hover:bg-hover active:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
           style={{ ...motionStyle("fast") }}
         >
           <Glyph name="folder" size={12} tint={token("muted-foreground")} />
