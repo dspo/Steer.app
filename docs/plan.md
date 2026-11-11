@@ -1,6 +1,10 @@
 # 计划
 
 > 唯一的工作指导文档。已完成的部分给证据位置；未做的按批次给出任务与验收。
+
+**当前进度（2026-11-11）**：`main` @ `6a0bcea`，门禁全绿（`nsh test` 220/220）。§2 的三批任务**均未动工**；
+下一个动作是 §2.1 的第 1 项（Hero sheet 化）。开工前读：本文件 §2 → [architecture.md](architecture.md)
+§4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 → [evidence/apis-verified.md](evidence/apis-verified.md)。
 > 架构见 [architecture.md](architecture.md)，视觉规格见 [DESIGN.md](DESIGN.md)，决策台账见 [decisions.md](decisions.md)。
 
 ## 1. 已完成（M0–M12，证据在 evidence/）
