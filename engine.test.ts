@@ -538,14 +538,17 @@ test("a steer reaches the running turn and the queue reports it", async () => {
   });
   try {
     await send("Count from 1 to 400, one number per line.");
-    for (let waited = 0; waited < 45000; waited += 50) {
+    // A live model's first token is the one wait this suite cannot make
+    // deterministic: under a loaded machine it can take a minute, and a
+    // tight budget turns that into a false failure (C5).
+    for (let waited = 0; waited < 90000; waited += 50) {
       if (streaming() && messages().some((message) => message.role === "assistant" && message.text.length > 0)) break;
       await sleep(50);
     }
     expect(streaming()).toBe(true);
     const reply = await request("session.steer", { sessionId: id, text: "Stop counting and reply with exactly: STEERED" });
     expect(reply.accepted).toBe(true);
-    for (let waited = 0; waited < 120000 && streaming(); waited += 200) await sleep(200);
+    for (let waited = 0; waited < 150000 && streaming(); waited += 200) await sleep(200);
     expect(streaming()).toBe(false);
     // Steering is delivered into the running turn: the transcript grows.
     expect(messages().filter((message) => message.role === "assistant").length).toBeGreaterThan(0);
@@ -556,4 +559,4 @@ test("a steer reaches the running turn and the queue reports it", async () => {
     stopListening();
     await stop();
   }
-}, 180000);
+}, 300000);

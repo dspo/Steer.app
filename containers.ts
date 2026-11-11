@@ -110,6 +110,18 @@ export function setContainerTransport(next: ContainerTransport | null): void {
 }
 
 /**
+ * How the scratch canvas's sheets move onto a container it mints. The
+ * browser store owns its page state and installs this (`browser.ts`);
+ * the container store only needs the new sheet ids to build the layout.
+ */
+let transferScratchSheets: ((containerId: string) => string[]) | null = null;
+
+/** Installs (or clears) the scratch-canvas sheet transfer. */
+export function setScratchSheetTransfer(next: ((containerId: string) => string[]) | null): void {
+  transferScratchSheets = next;
+}
+
+/**
  * Live containers, newest activity first. The order is explicit and stable:
  * `updatedAt` descending (the engine's stamp for the last activity), then
  * `createdAt` descending for a tie, then the id ascending so two containers
@@ -300,6 +312,7 @@ async function switchNow(id: string, ticket: number): Promise<void> {
 /** Creates a pi container in `cwd` (the active one's cwd when omitted). */
 export async function createContainer(cwd?: string, projectId?: string | null): Promise<string | null> {
   const ticket = takeCanvasTicket();
+  const fromScratch = activeContainerId() === null;
   await flushLayout();
   if (!ticketCurrent(ticket)) return null;
   stashScratch();
@@ -313,13 +326,19 @@ export async function createContainer(cwd?: string, projectId?: string | null): 
     const session = data?.session as SessionData | undefined;
     if (!container) throw new Error("container create returned nothing");
     if (session) adoptSession(session);
+    // The scratch canvas's browser pages belong to the container it mints:
+    // move them before the canvas switches, and leave the scratch one fresh.
+    const moved = fromScratch ? (transferScratchSheets?.(container.id) ?? []) : [];
+    if (fromScratch) scratchLayout.set(defaultScratchLayout());
     if (!ticketCurrent(ticket)) {
       // A newer intent owns the canvas; the container still exists.
       upsertContainer(container);
       return session ? session.id : null;
     }
     const sessionIds = container.sessions.map((row) => row.sessionId);
-    activateCanvas(container, defaultLayoutForSessions(sessionIds), null);
+    let next = defaultLayoutForSessions(sessionIds);
+    for (const sheetId of moved) next = appendSheet(next, sheetId);
+    activateCanvas(container, next, null);
     await flushLayout();
     if (session) {
       focusSession(session.id);
@@ -342,6 +361,7 @@ export async function createExternalContainer(
   projectId: string | null = null,
 ): Promise<string | null> {
   const ticket = takeCanvasTicket();
+  const fromScratch = activeContainerId() === null;
   await flushLayout();
   if (!ticketCurrent(ticket)) return null;
   stashScratch();
@@ -355,12 +375,17 @@ export async function createExternalContainer(
     const data = await transport("container.create", payload, 30000);
     const container = data?.container as ContainerRecord | undefined;
     if (!container) throw new Error("container create returned nothing");
+    // The scratch canvas's browser pages move with the container it mints.
+    const moved = fromScratch ? (transferScratchSheets?.(container.id) ?? []) : [];
+    if (fromScratch) scratchLayout.set(defaultScratchLayout());
     if (!ticketCurrent(ticket)) {
       // A newer intent owns the canvas; the container still exists.
       upsertContainer(container);
       return container.id;
     }
-    activateCanvas(container, defaultLayoutForContainer(container), null);
+    let next = defaultLayoutForContainer(container);
+    for (const sheetId of moved) next = appendSheet(next, sheetId);
+    activateCanvas(container, next, null);
     await flushLayout();
     containerError.set(null);
     return container.id;

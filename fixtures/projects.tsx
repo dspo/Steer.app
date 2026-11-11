@@ -1,8 +1,10 @@
-import { mount } from "nsh";
+import { mount, Text, View } from "nsh";
 import { Workbench } from "../shell";
 import { activeContainerId, containers, layout, setContainerTransport, syncVisible } from "../containers";
+import { browserPages } from "../browser";
+import { panelIds } from "../dock";
 import { phase } from "../engine";
-import { membership, projects, setProjectTransport } from "../projects";
+import { containerProject, membership, projects, setProjectTransport } from "../projects";
 import { seedSession } from "../sessions";
 import { defaultLayoutForSessions } from "../dock";
 import { setFolderPicker } from "../picker";
@@ -139,6 +141,30 @@ async function projectTransport(type: string, payload: any = {}): Promise<any> {
   }
 }
 
+/** The store read out loud: the canvas's sheets, the canvas itself, pages. */
+function Probe() {
+  const pages = () =>
+    Object.entries(browserPages())
+      .map(([id, page]) => `${id}=${page.url ?? ""}`)
+      .join("+");
+  const project = () => {
+    const row = containers().find((container) => container.id === activeContainerId());
+    return row ? containerProject(row) ?? "null" : "none";
+  };
+  return (
+    <Text testID="fixture-state" class="text-[10px] font-mono text-foreground">
+      {`panels=${panelIds(layout()).join(",")} active=${activeContainerId() ?? "scratch"} project=${project()} pages=${pages()}`}
+    </Text>
+  );
+}
+
 setContainerTransport(containerTransport);
 setProjectTransport(projectTransport);
-mount(Workbench);
+mount(() => (
+  <View class="flex-1" style={{ flexDirection: "column", minHeight: 0 }}>
+    <Probe />
+    <View class="flex-1" style={{ minHeight: 0 }}>
+      <Workbench />
+    </View>
+  </View>
+));

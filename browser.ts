@@ -1,6 +1,6 @@
 import { signal, WebView, type WebViewNavigation } from "nsh";
 import { appendSheet, panelIds, replaceSheet } from "./dock";
-import { activeContainerId, layout, setLayout } from "./containers";
+import { activeContainerId, layout, setLayout, setScratchSheetTransfer } from "./containers";
 import { K, t } from "./i18n";
 
 /**
@@ -80,6 +80,14 @@ export function browserSheetId(containerId: string, instance: number): string {
   return `webview:${containerId}:${instance}`;
 }
 
+/**
+ * The owner id the scratch canvas uses in browser sheet ids. The scratch
+ * canvas has no container row, so its pages need a stable owner of their
+ * own; they stay here until the Hero mints a container, then move with it
+ * (`transferScratchBrowserSheets`).
+ */
+export const SCRATCH_CANVAS = "scratch";
+
 /** A browser sheet id's container and instance, or null for another kind. */
 export function parseBrowserSheetId(id: string): { containerId: string; instance: number } | null {
   const prefix = "webview:";
@@ -107,21 +115,49 @@ export function browserSheetsOf(containerId: string, ids: string[] = panelIds(la
 }
 
 /**
- * Opens a browser sheet in a container: the next instance number, so a
- * container can hold several. `replace` is the Hero sheet the action came
- * from: the browser takes that tab's place instead of sitting beside it.
- * Returns the new sheet id, or null without a container.
+ * Opens a browser sheet on a canvas: a container's, or the scratch canvas's
+ * (no container yet). The next instance number, so a canvas can hold
+ * several. `replace` is the Hero sheet the action came from: the browser
+ * takes that tab's place instead of sitting beside it.
  */
 export function openBrowserSheet(
   containerId: string | null = activeContainerId(),
   replace?: string,
-): string | null {
-  if (!containerId) return null;
+): string {
+  const canvas = containerId ?? SCRATCH_CANVAS;
   const ids = [...panelIds(layout()), ...Object.keys(pages())];
-  const id = browserSheetId(containerId, nextBrowserInstance(containerId, ids));
+  const id = browserSheetId(canvas, nextBrowserInstance(canvas, ids));
   ensureBrowserPage(id);
   setLayout(replace ? replaceSheet(layout(), replace, id) : appendSheet(layout(), id));
   return id;
+}
+
+/**
+ * Moves the scratch canvas's browser sheets onto a just-minted container:
+ * the page state is re-keyed, so an open page survives the move, and the new
+ * sheet ids come back in layout order for the container's own layout. Called
+ * while the scratch canvas is still the active one.
+ */
+export function transferScratchBrowserSheets(containerId: string): string[] {
+  const ids = browserSheetsOf(SCRATCH_CANVAS);
+  if (ids.length === 0) return [];
+  const current = pages();
+  const next: Record<string, BrowserPageState> = {};
+  for (const [id, page] of Object.entries(current)) {
+    if (parseBrowserSheetId(id)?.containerId !== SCRATCH_CANVAS) next[id] = page;
+  }
+  const first = nextBrowserInstance(containerId, [
+    ...panelIds(layout()),
+    ...Object.keys(current),
+    ...Object.keys(next),
+  ]);
+  const moved = ids.map((id, index) => {
+    const target = browserSheetId(containerId, first + index);
+    next[target] = current[id] ?? { ...EMPTY_PAGE, messages: [] };
+    return target;
+  });
+  pages.set(next);
+  return moved;
 }
 
 /** Forgets every browser sheet of a container (archive). */
@@ -365,3 +401,8 @@ export function externalOpenUrl(data: string): string | null {
   }
   return null;
 }
+
+// A scratch canvas's pages belong to the container it mints; the container
+// store cannot import this module (it is the other way round), so the move is
+// installed here, once.
+setScratchSheetTransfer(transferScratchBrowserSheets);

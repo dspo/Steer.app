@@ -56,9 +56,11 @@ test("the scratch Hero's Pi and agent actions open their sheets", async () => {
   await app.waitFor("id:launcher-pi", { timeout: 20000 });
   await app.waitUntil(() => app.enabled("id:launcher-pi"), { timeout: 20000 });
 
-  // Pi: a Pi container's session sheet (an empty session is its hero).
+  // Pi: the native `pi` CLI, opened as a terminal of the container the
+  // scratch Hero mints (§2.1.1 F3). The Zu session is the composer's lane.
   await app.press("id:launcher-pi");
-  await app.waitUntil(() => app.shows("id:session-hero"), { timeout: 60000 });
+  await app.waitUntil(() => app.shows("id:terminal-view"), { timeout: 60000 });
+  expect(app.texts().some((text) => text.startsWith("Pi · "))).toBe(true);
   expect(app.shows("id:launcher-input")).toBe(false);
 
   // Each TUI action leaves the scratch canvas for its terminal sheet.

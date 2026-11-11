@@ -4,12 +4,14 @@
 
 **当前进度（2026-11-11）**：§2.1-1（`a58e0ad`）、§2.1-2（`bcd4004`）、§2.1.1 F1（`4293eb7`）已提交；
 §2.0 的 P0-1 / P0-2（模型注册与无模型界面）已完成，证据见 [evidence/s20-models.md](evidence/s20-models.md)；
-四条调整已并入（`b1f4937`）。门禁全绿（`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 241/241 ✓、
+四条调整已并入（`b1f4937`）。门禁全绿（`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 242/242 ✓、
 `script/bundle-mac.sh` ✓），证据见 [evidence/s1-hero-sheet.md](evidence/s1-hero-sheet.md)、
 [evidence/s21-2-switch-hydrate.md](evidence/s21-2-switch-hydrate.md)、
 [evidence/s21-1-hero-actions.md](evidence/s21-1-hero-actions.md)、
-[evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md) 与 `docs/evidence/ui-s2-*.png`。
-**下一个动作是 §2.1 的第 3 项（scratch 画布）**（F2/F3 已完成，证据 [evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)）。
+[evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)、
+[evidence/s21-3-scratch.md](evidence/s21-3-scratch.md) 与 `docs/evidence/ui-s2-*.png`。
+**下一个动作是 §2.1 的第 4 项（动作可用性矩阵 + DESIGN §4.1）**（第 3 项与 F2/F3 已完成，证据
+[evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)、[evidence/s21-3-scratch.md](evidence/s21-3-scratch.md)）。
 开工前读：本文件 §2 → [architecture.md](architecture.md) §4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 →
 [evidence/apis-verified.md](evidence/apis-verified.md)。
 > 架构见 [architecture.md](architecture.md)，视觉规格见 [DESIGN.md](DESIGN.md)，决策台账见 [decisions.md](decisions.md)。
@@ -22,7 +24,7 @@
 |---|---|---|---|
 | M-0 | P0 可用性：模型注册与无模型界面 | ✅ | §2.0 |
 | M-A | M0–M12 已交付 | ✅ | §1 |
-| M-B | Hero 与画布结构（S1 + S2） | 🔁 1–2 与 F1–F3 完成；第 3–7 项待做 | §2.1、§2.1.1 |
+| M-B | Hero 与画布结构（S1 + S2） | 🔁 1–3 与 F1–F3 完成；第 4–7 项待做 | §2.1、§2.1.1 |
 | M-C | 一体化外壳与组合（S3） | ⬜ | §2.2 |
 | M-D | 细节（图标、拖拽、字体） | ⬜ | §2.3 |
 | M-E | 独立修复 | ⏸ B2 挂起 | §2.4 |
@@ -105,10 +107,15 @@
 > composer 进入。证据 [evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)
 > （`hero-terminals.ui.test.tsx` 两条验收 + `terminals.test.ts`）；决策 [decisions.md](decisions.md) Q82。
 
+> **第 3 项已完成（2026-11-11）**：scratch 上可以开浏览器（`webview:scratch:{n}`，页面暂存），
+> 提交 composer 或选动作铸容器时页面重挂到该容器（`webview:{containerId}:{n}`）并随布局迁移，
+> scratch 布局随后重置为只有一个 Hero；动作的铸容器语义定为：Terminal/Claude/Codex/Copilot
+> 铸 external 容器，Pi 铸 Pi 容器后在其中开原生 `pi` TUI。证据
+> [evidence/s21-3-scratch.md](evidence/s21-3-scratch.md)；决策 [decisions.md](decisions.md) Q83。
+
 > **F1 已完成（2026-11-11，`4293eb7`）**：`replaceSheet()` 把目标 sheet 放进 Hero 的原槽位并移除 Hero；容器 Hero 的
-> 浏览器动作与 composer 提交都走它（“Pi”/会话动作暂时到 `showContainerSession`，F3 会改成原生 TUI）。
-> F2/F3 未动工：容器内的终端/TUI 动作仍会新建 SessionContainer，Pi 动作仍聚焦 Zu 会话。
-> 证据 [evidence/s21-1-hero-actions.md](evidence/s21-1-hero-actions.md)。
+> 浏览器、终端/TUI（F2）与 Pi（F3）动作、以及 composer 提交都走它。证据
+> [evidence/s21-1-hero-actions.md](evidence/s21-1-hero-actions.md)。
 
 > **§2.1-1 已完成（2026-11-11，`a58e0ad`）**：`home:{containerId}` / `home:scratch` 是 sheet 种类；`launcherOpen` 及其页面路径已删除；
 > 画布只有 sheet 树。每个可见组的标题栏右端有 `+`（nsh 0.4.0 没有尾部插槽，`+` 是 app 侧按布局几何画的覆盖层，

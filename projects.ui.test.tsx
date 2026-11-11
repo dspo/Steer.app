@@ -194,3 +194,65 @@ test("Enter sends, Cmd+Enter sends and an empty composer never starts", async ()
   await app.waitUntil(() => !app.texts().includes("开始你的对话"));
   expect(app.texts()).toContain("sent with command return");
 });
+
+/** The projects fixture's probe line, split into its fields. */
+function scratchState(app: { texts: () => string[] }): {
+  panels: string;
+  active: string;
+  project: string;
+  pages: string;
+} {
+  const line = app.texts().find((text) => text.startsWith("panels=")) ?? "";
+  const field = (name: string) => new RegExp(`${name}=([^ ]*)`).exec(line)?.[1] ?? "";
+  return {
+    panels: field("panels"),
+    active: field("active"),
+    project: field("project"),
+    pages: field("pages"),
+  };
+}
+
+test("the scratch canvas holds a browser page and moves it into the container it mints", async () => {
+  const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
+  await app.waitFor("text:alpha body");
+
+  // New → the scratch canvas's Hero; the project chip picks the target.
+  await app.press("id:new-container");
+  await app.waitFor("id:launcher-input");
+  await app.press("id:launcher-project");
+  await app.waitFor("id:launcher-project-p2");
+  await app.press("id:launcher-project-p2");
+
+  // The browser works before a container exists: its page is staged on the
+  // scratch canvas (and the Hero's tab, being consumed, is gone).
+  await app.press("id:launcher-browser");
+  await app.waitFor("id:browser-address");
+  await app.type("id:browser-address", "example.org");
+  await app.submit("id:browser-address");
+  await app.waitUntil(() => scratchState(app).pages.includes("webview:scratch:1=https://example.org"), {
+    timeout: 10000,
+  });
+
+  // Leave scratch and come back: an unsubmitted page is still there.
+  await app.press("id:container-row-c1");
+  await app.waitFor("text:alpha body");
+  await app.press("id:new-container");
+  await app.waitFor("id:launcher-input");
+  expect(scratchState(app).panels).toContain("webview:scratch:1");
+  expect(scratchState(app).active).toBe("scratch");
+
+  // Submit: the Hero mints a container in the chosen project, and the page
+  // moves with it — re-keyed to the container, address intact.
+  await app.press("id:launcher-project");
+  await app.waitFor("id:launcher-project-p2");
+  await app.press("id:launcher-project-p2");
+  await app.type("id:launcher-input", "mint from scratch");
+  await app.submit("id:launcher-input");
+  await app.waitUntil(() => scratchState(app).active === "c3", { timeout: 10000 });
+  const state = scratchState(app);
+  expect(state.panels).toContain("webview:c3:1");
+  expect(state.panels).not.toContain("webview:scratch:");
+  expect(state.pages).toContain("webview:c3:1=https://example.org");
+  // The container belongs to Project Two: the picked chip is the mint's target.
+  expect(state.project).toBe("p2");
+}, 60000);

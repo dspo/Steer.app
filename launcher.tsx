@@ -13,6 +13,7 @@ import {
   startFromScratch,
 } from "./projects";
 import {
+  activeContainerId,
   containers,
   containersLoaded,
   createContainer,
@@ -124,8 +125,9 @@ export function HeroSheet(props: { id: string }) {
     }
     busy.set(kind);
     try {
+      // The scratch canvas mints a real container for the action; its
+      // canvas takes over (the terminal sheet is that container's).
       const created = await createExternalContainer(kind, projectOf());
-      // The new container's canvas takes over; the Hero stays its tab.
       if (created) await loadProjects();
     } finally {
       busy.set(null);
@@ -143,9 +145,15 @@ export function HeroSheet(props: { id: string }) {
     }
     busy.set("pi");
     try {
+      // The scratch canvas has no container to host the TUI: mint the Pi
+      // container first (F3's boundary), then open `pi` inside it.
       const target = piTarget();
       const created = await createContainer(target.cwd, target.projectId);
-      if (created) await loadProjects();
+      if (created) {
+        await loadProjects();
+        const id = activeContainerId();
+        if (id) openTerminalSheet(id, "Pi");
+      }
     } finally {
       busy.set(null);
     }
@@ -156,10 +164,11 @@ export function HeroSheet(props: { id: string }) {
     return projects().find((project) => project.id === id)?.name ?? t(K.project.title);
   };
   const hint = () => keymap.label("mod+enter");
-  const canBrowse = () => containerId() !== null;
+  // A browser works on either canvas: on the scratch one its page is held
+  // there until the Hero mints a container, then it moves with it.
   const browse = () => {
     // The browser takes the Hero's tab: acting on the Hero consumes it.
-    if (canBrowse()) openBrowserSheet(containerId(), props.id);
+    openBrowserSheet(containerId(), props.id);
   };
   // A stale `home:{id}` (its container archived) has nothing to start.
   if (!scratch() && !container()) {
@@ -234,6 +243,7 @@ export function HeroSheet(props: { id: string }) {
                     <Each of={projects()} key={(project) => project.id}>
                       {(project) => (
                         <MenuItem
+                          testID={`launcher-project-${project().id}`}
                           class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
                           onSelect={() => heroProjectId.set(project().id)}
                         >
@@ -278,7 +288,7 @@ export function HeroSheet(props: { id: string }) {
               testID="launcher-browser"
               label={t(K.browser.open)}
               glyph="globe"
-              disabled={starting() || !canBrowse()}
+              disabled={starting()}
               onPress={browse}
             />
           </View>
