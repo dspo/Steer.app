@@ -67,11 +67,11 @@ motionStyle()   // 用户在系统里减少动态效果时返回 {}
 | 隐藏标题栏 | 48 | 交通灯由系统画；内容区自带安全区 |
 | 侧栏 | 232pt | Steer 在 1100pt 下为 232；先前 248 是同一比例的 1200pt 估算 |
 | 侧栏顶部 | 系统安全区 + 28pt 拖拽条 | 标题行中心约 77pt（Steer 约 81） |
-| 顶栏 | 48pt | 容器标题 + 项目/路径 + 引擎控件 |
+| 顶栏 | 40pt（2026-11-11 返工） | 侧栏开关 + 居中 SessionContainer picker + VS Code + 工具 overflow；引擎状态在底栏 |
 | 页签条 | 34pt | `bg-inset`；活动页签 32pt 白 pill + 2pt primary 下划线 |
 | 状态条 | 24pt | 计数在左，错误/引擎信息/提示在右，错误可收缩 |
 | 侧栏行 | 高约 47pt（两行），左右 8pt 边距，半径 10 | 选中为白卡 + `shadowCard()` |
-| Composer 卡 | 半径 12，内边距 10/8/6，输入 ≥52，footer 30 | 外沿左右 12、上下 8–10 |
+| Composer | 无卡片；一条 hairline 上方，输入 14/21，footer 模型·上下文 + 发送/停止/排队/引导/打断 chip | 2026-11-11 返工 |
 | Launcher 卡 | 560 × auto，半径 12，内边距 20 | 软阴影，居中于 `inset` 底 |
 | 对话框 | 480 / 440 宽，半径 12，内边距 20 | `m-auto` 居中（M6 修复了贴左上角） |
 
@@ -171,15 +171,15 @@ selected/dark/900 断点；过渡中间帧与 streaming/menu/dialog 动画需在
 并排看仍能看出、但不属于 M6 范围（不加功能、不改数据面）：
 
 - **内容结构**：Steer 是单文档卡 + 顶部一条标签；Zu 保留 `DockArea` 的面板/页签/拖拽与
-  48pt 引擎顶栏，因此 chrome 更高、横向分割更多。
+  40pt 顶栏，因此 chrome 更高、横向分割更多。
 - **窗口标题栏（运行时限制）**：M6 已把 `nsh.json` 的 `titleBar` 设为 `hidden`，并在启动时用
   `Window.set({ titleBar: { style: "hidden", height: 48, … } })` 再设一次；但当前 nsh 0.4.0
   的发布运行时不实现隐藏标题栏（`titleBar().height` 仍为 0，窗口仍显示系统标题条）。因此
   侧栏顶部用反应式 `titleBar().height + 8`：现在回退为 8pt，未来运行时支持后自动变成 56pt。
   这是 M6 与 Steer 最明显的结构性差异，不是样式遗漏。
-- **侧栏行**：Steer 行内有模型/时间 chip 和分组的第二层信息；Zu 只有路径、会话数、消息数、
-  相对时间。
-- **Composer**：Steer 的 footer 有模型/权限 chip；Zu 只有快捷键提示 + 圆形发送。
+- **侧栏行**：Steer 行内有 short-id/状态/时间三行；Zu 仍是标题 + 路径/会话数的两行。
+- **Composer**：Steer 还有权限 chip 与语音入口；Zu 按本次验收要求移除了这些，只保留
+  model·id·thinking、context、发送/停止/排队/引导/打断。
 - **动效**：Steer 有共享的滑动选择条和更长的过渡；Zu 目前是逐项颜色过渡（本里程碑的
   约束），菜单/对话框沿用 NSH 运行时的进出。
 - **窗口材质**：Steer 的侧栏/卡片在高光下有更细的边界；Zu 用纯色 + hairline，未引入

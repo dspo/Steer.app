@@ -134,12 +134,14 @@
 
 **验收**：并排截图评审通过（间距、字号、颜色、圆角、过渡在肉眼不可辨的范围内）；交互反馈（hover/active/拖拽/页签滑动）与 Steer 一致；`nsh test` 与打包冒烟仍绿。
 
-> **2026-11-11 目视验收：未通过。** 逐条返工清单见 [目视验收.md](目视验收.md)：
+> **2026-11-11 目视验收：首轮未通过，已按清单返工（见下）。** 原始返工清单见 [目视验收.md](目视验收.md)：
 > ① 顶栏控件未对标 Steer（应为侧栏开关／最近 sessions 下拉／VS Code 打开／新 panel，而非 gear/语言/phase）；
 > ② 侧栏缺「新建／切换分组／搜索」，Project→SessionContainer 两级与排序未对齐；
 > ③ 点击容器行未切换内容视图——**已修**（容器标题取自 session id 前缀，两个容器同名，看起来没动；现按「会话名 → 目录末段」命名，并有真实引擎的切换测试）；
 > ④ 容器起始页未像素级参照 Steer；
 > ⑤ 对话渲染未复用 gallery 的 AI Chat，Composer 仍是独立气泡（应为横线分隔，去项目目录/访问模式/语音，留 model/上下文/发送/引导/排队/打断）。
+>
+> **返工状态（`92c82e0` + `e6f5b9e`）**：① 40pt Steer 顶栏（侧栏开关 / 居中 360pt 最近 SessionContainer 搜索下拉 / VS Code `vscode://file` / 工具 overflow；引擎状态移到 26pt 底栏）；② 侧栏「新建 / Project↔Recent 分组 / 搜索」，Project→SessionContainer 两级、项目 position 与容器 recency 排序；③ 容器 press 强制 `switchContainer`，`containers.ui.test` 真实点两个容器验证画布切换；④ 空会话 Hero + 内联 composer；⑤ gallery 式 Markdown/用户气泡/工具行 + 无卡片 Composer（仅一条 hairline，model·id·thinking + context，发送/停止/排队/引导/打断，Enter idle 发送 / running 排队）。证据 `docs/evidence/ui1-*.png`、`ui5-*.png`。仍未验证：真实模型回合、引擎 `session.info`/steer/followUp 真 wire、长历史虚拟化。
 
 ## 10. M7 — 终端与 agent TUI（细节开始）· 实现完成，验收未全过
 
