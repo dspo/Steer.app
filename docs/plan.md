@@ -2,16 +2,31 @@
 
 > 唯一的工作指导文档。已完成的部分给证据位置；未做的按批次给出任务与验收。
 
-**当前进度（2026-11-11）**：§2.1 第 1 项（Hero sheet 化）已提交（`a58e0ad`）；第 2 项（修 A1/B3）已完成，
-工作树未提交。门禁全绿（`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 233/233 ✓、
+**当前进度（2026-11-11）**：§2.1-1（`a58e0ad`）、§2.1-2（`bcd4004`）、§2.1.1 F1（`4293eb7`）已提交；
+四条调整已并入（`b1f4937`）。门禁全绿（`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 235/235 ✓、
 `script/bundle-mac.sh` ✓），证据见 [evidence/s1-hero-sheet.md](evidence/s1-hero-sheet.md)、
-[evidence/s21-2-switch-hydrate.md](evidence/s21-2-switch-hydrate.md) 与 `docs/evidence/ui-s2-*.png`。
-§2.1 剩下的 3–7 项、§2.1.1 的 F2–F3、§2.2–§2.3 与 §5 未动工。**下一个动作是 §2.0 P0-1（模型注册）**，
-随后 P0-2、F2/F3，再进第 3 项（scratch 画布）。2026-11-11 的四条调整已并入：移除顶栏 picker（§2.2-10）、
-模型问题升为 P0（§2.0）、Composer 斜杆操作（§2.2-11a）、代码仓库整洁化（§5）。
+[evidence/s21-2-switch-hydrate.md](evidence/s21-2-switch-hydrate.md)、
+[evidence/s21-1-hero-actions.md](evidence/s21-1-hero-actions.md) 与 `docs/evidence/ui-s2-*.png`。
+**下一个动作是 §2.0 P0-1（模型注册）**，随后 P0-2、F2/F3，再进第 3 项（scratch 画布）。
 开工前读：本文件 §2 → [architecture.md](architecture.md) §4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 →
 [evidence/apis-verified.md](evidence/apis-verified.md)。
 > 架构见 [architecture.md](architecture.md)，视觉规格见 [DESIGN.md](DESIGN.md)，决策台账见 [decisions.md](decisions.md)。
+
+## 0. 里程碑索引
+
+任务列表的**权威来源是本文件**；对话或别处的列表都是它的派生视图，不另存副本。委托时引用里程碑与任务号即可。
+
+| 里程碑 | 内容 | 状态 | 章节 |
+|---|---|---|---|
+| M-0 | P0 可用性：模型注册与无模型界面 | ⬜ 下一个 | §2.0 |
+| M-A | M0–M12 已交付 | ✅ | §1 |
+| M-B | Hero 与画布结构（S1 + S2） | 🔁 1–3 完成；F2/F3 与第 3–7 项待做 | §2.1、§2.1.1 |
+| M-C | 一体化外壳与组合（S3） | ⬜ | §2.2 |
+| M-D | 细节（图标、拖拽、字体） | ⬜ | §2.3 |
+| M-E | 独立修复 | ⏸ B2 挂起 | §2.4 |
+| M-F | 代码仓库整洁化（并行轨道） | ⬜ | §5 |
+
+
 
 ## 1. 已完成（M0–M12，证据在 evidence/）
 
