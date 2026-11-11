@@ -13,7 +13,9 @@ let booted = false;
 function configureWindow(): void {
   try {
     Window.get("main")?.set({
-      titleBar: { style: "hidden", height: 40, controlsOffset: { x: 18, y: 13 } },
+      // The lights keep their native proportion (12pt diameter, 8pt apart):
+      // left edge 16, vertically centered in the 40pt bar (DESIGN §3).
+      titleBar: { style: "hidden", height: 40, controlsOffset: { x: 16, y: 14 } },
     });
   } catch {
     // A platform or embedding app without a hidden title bar keeps the system's.

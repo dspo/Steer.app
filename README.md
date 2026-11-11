@@ -10,7 +10,7 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 终端、编辑器、Git、浏览器、LSP、常驻与更新）。Casing II：**§2.1-1（`a58e0ad`）、§2.1-2（`bcd4004`）、
 §2.1.1 F1（`4293eb7`）已提交**；**§2.0 的 P0-1/P0-2 已完成**（引擎级模型注册表、无模型界面），
 **§2.1.1 F2/F3 已完成**（容器内终端资源、原生 Pi TUI），**§2.1-3 已完成**（scratch 画布的页面与铸容器）、**§2.1-4 已完成**（动作可用性矩阵）、**§2.1-5 已完成**（容器标题 S2）、**§2.1-6 已完成**（语言跟随系统）、**§2.1-7 已完成**（无 sheet 自动归档）；
-**§2.1 全部完成**；§2.2 的第 8 项（一体化外壳 S3）、第 9 项（侧栏可拖拽 + `settings.*`）、第 10 项（移除顶栏 picker）、第 11 项（composer 仅交互）与 11a（pi 斜杆命令映射）已完成；12–13 待做。
+**§2.1 全部完成**；§2.2 全部完成（S3 外壳、侧栏拖拽 + `settings.*`、移除 picker、composer 仅交互与 11a 斜杆命令、红绿灯、Chrome 页签宽度）。
 门禁：`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 252/252 ✓、`script/bundle-mac.sh` ✓。证据见
 [docs/evidence/s1-hero-sheet.md](docs/evidence/s1-hero-sheet.md)、
 [docs/evidence/s21-2-switch-hydrate.md](docs/evidence/s21-2-switch-hydrate.md)、
@@ -26,8 +26,9 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 [docs/evidence/s22-9-sidebar-drag.md](docs/evidence/s22-9-sidebar-drag.md)、
 [docs/evidence/s22-10-remove-picker.md](docs/evidence/s22-10-remove-picker.md)、
 [docs/evidence/s22-11-composer.md](docs/evidence/s22-11-composer.md)、
-[docs/evidence/s22-11a-slash.md](docs/evidence/s22-11a-slash.md) 与 `docs/evidence/ui-s2-*.png`。
-下一项是 [§2.2 第 12 项（红绿灯）](docs/plan.md)。2026-11-11 的计划调整：移除顶栏 picker、模型问题升为 P0、
+[docs/evidence/s22-11a-slash.md](docs/evidence/s22-11a-slash.md)、
+[docs/evidence/s22-12-13-chrome.md](docs/evidence/s22-12-13-chrome.md) 与 `docs/evidence/ui-s2-*.png`。
+下一项是 [§2.3 第 14 项（品牌图标）](docs/plan.md)。2026-11-11 的计划调整：移除顶栏 picker、模型问题升为 P0、
 Composer 接入 pi 斜杆操作、新增代码仓库整洁化并行轨道（[plan §5](docs/plan.md)）。
 
 ## 文档

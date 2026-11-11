@@ -775,16 +775,15 @@ function Canvas() {
         handleClass="basis-px bg-line"
         dropIndicatorClass="rounded-lg border-2 border-brand bg-brand-tint"
         renderTab={(tab) => (
-          // Every tab is the same width: a strip whose tabs take their
-          // titles' width looks ragged, and the title truncates instead.
+          // Chrome-style widths (DESIGN §3.2): 72–240, squeezed evenly when
+          // the panel narrows or tabs multiply; the title truncates.
           <View
             class={`relative h-8 flex-row items-center gap-1.5 rounded-lg px-2.5 ${tab.active ? "bg-card" : "hover:bg-hover"}`}
             style={{
-              width: 144,
-              minWidth: 144,
-              maxWidth: 144,
+              minWidth: 72,
+              maxWidth: 240,
               flexGrow: 0,
-              flexShrink: 0,
+              flexShrink: 1,
               borderRadius: 8,
               backgroundColor: tab.active ? token("card") : "transparent",
               boxShadow: tab.active ? shadowCard() : "none",
