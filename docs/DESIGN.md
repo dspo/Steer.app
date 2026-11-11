@@ -57,26 +57,90 @@ motionStyle()   // 用户在系统里减少动态效果时返回 {}
 3pt 轨道、圆角 thumb、`scrolling` 模式、120ms 进出、900ms 停顿；减少动态效果时由运行时
 跳过动画。
 
-## 3. 外壳几何
+## 3. 外壳几何（Casing II 目标）
 
-在 1100 × 800 与 900 × 600 两个尺寸实测（macOS 开发宿主，2× 截图）：
+**目标形态**：窗口一层 `sidebar` 底色，顶栏与侧栏**同材质、无分隔线**，内容区是内嵌的白色圆角卡片——即 ZCode 截图的样子，而不是"三条独立栏各自带边框"。
 
-| 区域 | 值 | 说明 |
-|---|---|---|
-| 窗口 | 默认 1200 × 800，最小 900 × 600 | `nsh.json` |
-| 隐藏标题栏 | 48 | 交通灯由系统画；内容区自带安全区 |
-| 侧栏 | 232pt | Steer 在 1100pt 下为 232；先前 248 是同一比例的 1200pt 估算 |
-| 侧栏顶部 | 系统安全区 + 28pt 拖拽条 | 标题行中心约 77pt（Steer 约 81） |
-| 顶栏 | 40pt（2026-11-11 返工） | 侧栏开关 + 居中 SessionContainer picker + VS Code + 工具 overflow；引擎状态在底栏 |
-| 页签条 | 34pt | `bg-inset`；活动页签 32pt 白 pill + 2pt primary 下划线 |
-| 状态条 | 24pt | 计数在左，错误/引擎信息/提示在右，错误可收缩 |
-| 侧栏行 | 高约 47pt（两行），左右 8pt 边距，半径 10 | 选中为白卡 + `shadowCard()` |
-| Composer | 无卡片；一条 hairline 上方，输入 14/21，footer 模型·上下文 + 发送/停止/排队/引导/打断 chip | 2026-11-11 返工 |
-| Launcher 卡 | 560 × auto，半径 12，内边距 20 | 软阴影，居中于 `inset` 底 |
-| 对话框 | 480 / 440 宽，半径 12，内边距 20 | `m-auto` 居中（M6 修复了贴左上角） |
+| 区域 | 值 |
+|---|---|
+| 窗口 | 默认 1200×800，最小 900×600 |
+| 窗口底 | 全窗 `sidebar`（顶栏、侧栏、卡片四周的空隙都是它） |
+| 顶栏 | 40pt，**无底部分隔线**；左：侧栏开关；中：picker（360pt）；右：VS Code、工具 overflow |
+| 侧栏 | 232pt（可拖拽 200–360），**无右边框**；与卡片之间约 10pt 间距 |
+| 内容卡片 | `card` 白底，radius 14，四周 8–10pt；卡片是唯一的"内容容器" |
+| 卡片内页签条 | 34pt，`card` 底 + 底部 hairline（与内容分隔） |
+| Composer | 卡片内，左右 24、底部 16，**无独立底色** |
+| 红绿灯 | 直径 12、间距 8、左边距 16、与顶栏垂直居中 |
 
-对齐脊线：侧栏内容左边 14 / 行文字 17；顶栏左 16、右 12；画布内容左 16；状态条左 16、
-右 12。页签条与内容共享左 8 + tab padding 10。
+对齐脊线：卡片内左边 24、右边 24；侧栏内容左边 14 / 行文字 17；顶栏左 16、右 12。
+
+### 3.1 内容卡片
+
+一张卡片包住该容器的整个画布：页签条在卡片顶部，panels 与 composer 在卡片内。卡片本身 `overflow: hidden` + radius，panels 的分割线只画在卡片内部。切容器时卡片内容整体替换，窗口其余部分不动。
+
+### 3.2 页签（Chrome 式）
+
+| 项 | 值 |
+|---|---|
+| 宽度 | `maxWidth 240`、`minWidth 72`、`flexShrink 1`、`flexGrow 0`：panel 变窄或页签增多时**均匀挤压**，标题截断 |
+| 高度 | 32pt，die 圆角 8 |
+| 活动态 | `card` 底 + `shadowCard` + 底部 2pt `primary` 指示器 |
+| 关闭控件 | 右侧 18pt 热区，`opacity 0` → hover 1，图标 `close` 10pt |
+| 新增页签 | 页签条最右常驻 `+`，在该 panel 打开 `home:{containerId}`（Hero） |
+
+### 3.3 顶栏 picker 三态
+
+| 状态 | 视觉 |
+|---|---|
+| 常态 | 纯文本标题：12.5pt、`foreground`、左右各 12pt 内边距；无边框、无背景（就是顶栏底色） |
+| hover | 背景 `inset`、`inset 0 1px 2px rgba(0,0,0,0.08)` 内阴影、radius 6 —— 像顶栏上挖出的凹槽 |
+| 展开 | 下拉面板上边与凹槽下沿贴合（无 4pt 间隙），panel 圆角 10 + `shadowRaised` |
+
+下拉内容：搜索框、最近会话（标题 + 项目名 + 时间），点选切换容器。宽度与 picker 同宽（360pt）。
+
+### 3.4 字体
+
+| 范围 | 字体 |
+|---|---|
+| sheet 内容（会话正文、编辑器、终端、Diff） | **Lilex**：`Lilex-Light.ttf`(300) + `Lilex-Medium.ttf`(500)，注册为同一 family；正文 400 就近取 300，加粗 600+ 就近取 500 |
+| 轮廓（顶栏、侧栏、页签、按钮、对话框） | 系统字体（不变） |
+
+文件放 `assets/fonts/`，import 后按 family 名使用；nsh 在首帧前注册，无闪烁。
+
+### 3.5 工具行图标
+
+Hero 的两排动作使用各 CLI 的品牌图标（24pt 光学尺寸）：
+
+| 动作 | 图标来源 |
+|---|---|
+| 终端 | 现有 `terminal` 线稿 |
+| 浏览器 | 现有 `globe` |
+| Claude Code | `manox-app/crates/agent-ui/assets/icons/claude.svg` |
+| Codex | 同上 `codex.svg` |
+| GitHub Copilot | 同上 `githubcopilot.svg` |
+| Pi | `pi-coding-agent.svg` |
+
+图标以 `tint` 注入（单色渲染），两种外观下都保持对比度；不引入彩色品牌色，避免与 2026-Light 冲突。
+
+### 3.6 Composer
+
+| 项 | 值 |
+|---|---|
+| 分割线 | 只与 composer 同宽（卡片内 24pt 边距之间），**不铺满 panel** |
+| 布局 | 输入框一行；下一行右侧：`模型 · thinking`、`context%`、主按钮 |
+| 主按钮 | idle：↑ 发送（`primary` 圆钮 32pt）；streaming：■ 停止（同位置、`destructive`） |
+| 排队/引导/打断 | 输入框右上 `⋯` 菜单；**仅交互，不接线** |
+| 移除 | 项目目录、访问模式、语音（保持移除） |
+
+### 3.7 拖拽页签
+
+- 拖起：源页签立即变占位（`opacity 0.35`，无背景与指示器）；
+- 幽灵：页签形状（同宽 240、同圆角、带图标与标题），`scale 1.02`、`opacity 0.92`、`shadowRaised`；
+- 落位：`DockDropIndicator.index` 非空时，在该位置画 2pt `brand` 竖线（高 22、圆角 1）；落到组内容区用现有块状指示；落到边缘用现有分栏指示。
+
+### 3.8 归档动效
+
+容器无 sheet 时：侧栏行高度 32→0、`opacity` 1→0（180ms ease-out），同组其余行用 `LayoutAnimation` 上移；随后画布切换到相邻容器（或 scratch）。
 
 ## 4. 表面语言
 
@@ -166,25 +230,9 @@ selected/dark/900 断点；过渡中间帧与 streaming/menu/dialog 动画需在
 8. **动效只到颜色/透明度。** `fast` 120ms、`medium` 180ms；不加页面转场、不加列表波浪、
    不加常驻呼吸点。`motionStyle()` 统一处理减少动态效果。
 
-## 8. 与 Steer 的剩余差异
+## 8. Casing II 的验收
 
-并排看仍能看出、但不属于 M6 范围（不加功能、不改数据面）：
-
-- **内容结构**：Steer 是单文档卡 + 顶部一条标签；Zu 保留 `DockArea` 的面板/页签/拖拽与
-  40pt 顶栏，因此 chrome 更高、横向分割更多。
-- **窗口标题栏（运行时限制）**：M6 已把 `nsh.json` 的 `titleBar` 设为 `hidden`，并在启动时用
-  `Window.set({ titleBar: { style: "hidden", height: 48, … } })` 再设一次；但当前 nsh 0.4.0
-  的发布运行时不实现隐藏标题栏（`titleBar().height` 仍为 0，窗口仍显示系统标题条）。因此
-  侧栏顶部用反应式 `titleBar().height + 8`：现在回退为 8pt，未来运行时支持后自动变成 56pt。
-  这是 M6 与 Steer 最明显的结构性差异，不是样式遗漏。
-- **侧栏行**：Steer 行内有 short-id/状态/时间三行；Zu 仍是标题 + 路径/会话数的两行。
-- **Composer**：Steer 还有权限 chip 与语音入口；Zu 按本次验收要求移除了这些，只保留
-  model·id·thinking、context、发送/停止/排队/引导/打断。
-- **动效**：Steer 有共享的滑动选择条和更长的过渡；Zu 目前是逐项颜色过渡（本里程碑的
-  约束），菜单/对话框沿用 NSH 运行时的进出。
-- **窗口材质**：Steer 的侧栏/卡片在高光下有更细的边界；Zu 用纯色 + hairline，未引入
-  material/glass。
-
+与 ZCode 截图并排：底色、圆角、间距、字号、页签挤压、picker 凹槽、composer 右对齐在肉眼不可辨的范围内；拖拽页签时能看到"正在拖什么"与"会落在哪儿"；容器无 sheet 时侧栏行有退场动效。
 
 ## 9. M8 文件、编辑器与 Diff（表面与动效）
 

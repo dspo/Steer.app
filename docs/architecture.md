@@ -167,22 +167,26 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 
 ### 4.1 分工
 
-**轮廓与内嵌对象分离**：壳（项目侧栏、顶栏、页签条、状态条）零领域状态；画布是受控的 `nsh/base DockArea`。**常驻的外壳**归 `lifecycle.ts`（claim/启动决策/退出）与 `lifecycle-ui.tsx`（托盘、关窗、应用菜单）；`App.tsx` 只按 `primary`/**`duplicate`**/headless 三态选 `Workbench` 还是第二实例提示。
+**轮廓与内嵌对象分离**：壳（项目侧栏、顶栏、页签条）零领域状态；画布是受控的 `nsh/base DockArea`。**外壳是一层的**：窗口底为 `sidebar` 色，顶栏与侧栏同材质、无分隔线，内容区是内嵌的圆角卡片（`design.md` §2）。**常驻的外壳**归 `lifecycle.ts`（claim/启动决策/退出）与 `lifecycle-ui.tsx`（托盘、关窗、应用菜单）；`App.tsx` 只按 `primary`/**`duplicate`**/headless 三态选 `Workbench` 还是第二实例提示。
 
 ### 4.2 panel 与 sheet
 
 - **panel** 是带页签条的容器，可任意多个，可拖手调宽、拖拽停靠重排、zoom。
 - **sheet** 是页签内容：Pi 会话（含 subagents/后台任务/轨迹/统计等派生视图）、终端、各 agent TUI（Claude/Codex/Copilot）、webview、编辑器、Diff。
 - sheet 可跨 panel 拖拽（移动语义），**状态不丢**（`renderPanel` 按 key 渲染一次）。
-- **单容器画布、单窗口**：侧栏一行 = 一个容器 = 一组面板的入口；切换行 = stash 当前布局 + restore 目标布局。多窗口不在设计中。M4 的侧栏按 Project → 容器分组，无归属容器落 Chats；「全部会话」用虚拟化 `List` 放在底部，打开会话即归入当前容器。
+- **画布 = 一个容器，或一个临时画布**：侧栏一行 = 一个容器 = 一组面板的入口；切换行 = stash 当前布局 + restore 目标布局。多窗口不在设计中。M4 的侧栏按 Project → 容器分组，无归属容器落 Chats；「全部会话」用虚拟化 `List` 放在底部，打开会话即归入当前容器。
+- **没有"页面状态"**：Hero 也是 sheet（`home:{containerId}` 容器内、`home:scratch` 临时画布），画布永远只渲染 sheet 树。旧的 `launcherOpen` 页面布尔已删除——它与容器状态是两份真相，正是"切容器停在起始页"这类错位的来源。
+- **scratch 画布**：kind `Scratch`，无 cwd、无进程、不进注册表、不持久化。它是"未发生任何行为的画布"：Hero 带项目 chip，提交 composer 或选一个动作后铸真实容器并切换；scratch 里开的浏览器 sheet 随容器迁移，未提交则暂存（只保留一份 scratch）。
+- **每个 panel 的 tab bar 最右有常驻 `+`**，在该 panel 打开 `home:{containerId}`（已存在则激活）。
 
 ### 4.3 布局与状态
 
 - 布局是**纯数据**：app 持有 `DockAreaLayout`，`onLayoutChange` 回报整份新布局传回。
-- **sheet 身份 = 稳定 id**（`kind:instance`，如 `session:{sessionId}`、`terminal:{containerId}`、`files:{containerId}`、`editor:{containerId}:{base64url path}`、`diff:{containerId}:{base64url old~new}`、`webview:{containerId}:{n}`、`problems:{containerId}`）；布局树只存 id，内容由 `sheets.tsx` 注册表解析。编辑器的未保存文本存在 `editors.ts` 的 store 里（不随 sheet 卸载丢失），M8 起布局 stash/restore 与容器切换都能恢复同一个文件。浏览器页的 URL/标题/loading/error/消息日志存在 `browser.ts` 的 store（内存态）：切容器或隐藏页签后保留，重挂载时按 URL 重新加载；页面运行时状态（滚动、表单、SPA 内存）会丢。应用重启只恢复 `webview:*` 页签 id，store 为空，因此是新标签页（§5.5）。
+- **sheet 身份 = 稳定 id**（`kind:instance`，如 `home:{containerId}`、`home:scratch`、`session:{sessionId}`、`terminal:{containerId}`、`files:{containerId}`、`editor:{containerId}:{base64url path}`、`diff:{containerId}:{base64url old~new}`、`webview:{containerId}:{n}`、`problems:{containerId}`）；布局树只存 id，内容由 `sheets.tsx` 注册表解析。编辑器的未保存文本存在 `editors.ts` 的 store 里（不随 sheet 卸载丢失），M8 起布局 stash/restore 与容器切换都能恢复同一个文件。浏览器页的 URL/标题/loading/error/消息日志存在 `browser.ts` 的 store（内存态）：切容器或隐藏页签后保留，重挂载时按 URL 重新加载；页面运行时状态（滚动、表单、SPA 内存）会丢。应用重启只恢复 `webview:*` 页签 id，store 为空，因此是新标签页（§5.5）。
 - **按容器 stash**：`layouts/{containerId}.json`；zoom **不在 `DockAreaLayout` 里**（它是内部 signal + `onZoomChange` 事件），要单独存，恢复后用 ref 的 `groupOf`/`toggleZoom` 灌回。`onLayoutChange` 高频，debounce 后保存；切容器前先 flush，恢复时先离开现有 zoom 再按 panel id 找 group 灌回。布局与 zoom 的读写经 `layout.get/put`，UI 仍不持文件系统。
-- **启动恢复上次活跃容器**；恢复时**静默移除**指向已死资源的 sheet。
-- **canvas 空态 = Launcher**（项目 chip + composer + agent 动作行）。Launcher 的「浏览器」与顶栏 `open-browser` 都在当前容器打开一个 browser sheet；每容器的实例号递增（`n`），可同时开多个。
+- **启动恢复上次活跃容器**；恢复时**静默移除**指向已死资源的 sheet，并对同 id 的重复 sheet 去重（旧布局可能带重复）。
+- **容器标题 = 存活的最早创建 sheet 的标题**：容器记 `sheetOrder`（创建序，append；关闭时移除；拖 tab 不改），每个 sheet kind 提供动态标题——session 取会话名（`appendSessionInfo` 可改）、terminal 取 OSC 标题、webview 取页面 title、其余固定。
+- **canvas 空态 = 该容器的 Hero sheet**（项目 chip + composer + 动作行）。容器里没有任何 sheet 时自动归档（§5.4）。Hero 的「浏览器」与顶栏 `open-browser` 都在当前容器打开一个 browser sheet；每容器的实例号递增（`n`），可同时开多个。
 - **浏览器降级**：nsh 的 `WebView` 没有 pause prop，因此非可见 browser sheet 不用「暂停」：`BrowserBody` 读 `visiblePanels()`，不可见时卸载 `WebView`（显示占位文案），再次可见时按 store 的 URL 重挂载。这是唯一诚实的实现，不声称存在 pause API。
 
 ### 4.4 键盘与焦点
@@ -242,11 +246,14 @@ v1 最小集：`⌘W` 关闭 sheet、`⌘1-9` 切 sheet、`⌘K` 命令面板（
 
 ```ts
 { id: `pi:{sessionId}` | `external:{kindLower}:{uuid}`,
-  kind: "Pi" | "Terminal" | "Claude" | "Codex" | "Copilot",
+  kind: "Pi" | "Terminal" | "Claude" | "Codex" | "Copilot" | "Scratch",
   cwd, projectId,
-  sessions: { sessionId, path, name }[] }   // Pi 型：一个容器可持多个 pi 会话
+  sessions: { sessionId, path, name }[],   // Pi 型：一个容器可持多个 pi 会话
+  sheetOrder: string[] }                   // 创建序，决定标题，拖 tab 不改
 // 成员：captain（0 号 = sessions[0]）/ subagents（1 级，仅 Pi 型）/ resources（pty、webview）
 ```
+
+**Scratch 不是容器**：它没有 id 之外的任何属性，不进注册表、不持久化；它的唯一 sheet 是 `home:scratch`，提交后铸真实容器并切换（`sheetOrder` 随迁移）。
 
 **一个容器多个 pi 会话**是模型内建的，不是特例：`sessions[]` 是列表，布局里的每个 `session:{sessionId}` sheet 各自是一个会话，`switchContainer` 恢复的是这组 sheet 的布局。GUI 目前只开一个（创建容器时铸 0 号），入口留待后续：同一个 cwd 下再开一个会话，就是给容器追加一个 `sessions[]` 成员并加一个 sheet——不需要改模型、wire 或生命周期。子代理（1 级）与 captain（0 号）的区分仍按 `sessions[0]` 与 run 边判定。
 
@@ -269,6 +276,7 @@ M3 落地的注册表记录（`registry.json` 的 `containers[]`）：
 - **alive()**：Pi 型读注册表 archived 位；external 型读 PTY 存活。翻转 ⇒ teardown：回收资源 → 级联归档子会话 → 摘行 → 剪 membership（external）。
 - **settle ≠ 死**：容器只有 idle/running；settle 留册可续跑。
 - **stop** = 杀容器全部活跃 run；**archive** = 容器死亡（有活跃子代理/后台任务先确认）。M3 的 `container.archive` 是唯一 teardown：abort/dispose 容器内引擎会话、丢 runs、把 `activeContainerId` 移到最近的活容器；记录、会话文件与布局保留，unarchive 原样恢复。
+- **无 sheet 即自动归档**（Q69）：容器的 `sheetCount` 归零时，先切到相邻容器（下一行优先，其次上一行，都没有则进 scratch），再 archive；侧栏行做 180ms 退场（高度 + 透明度）。Hero 也是 sheet，因此"关掉最后一个 tab"= 关掉包括 Hero 在内的全部 sheet。
 - **fork** = 新容器只复制 0 号前缀，不带成员与资源。
 - **外部容器即进程**：进程 exit 即死、即摘行；关闭容器 = kill。v1 由 shell 在 `container.archive` 成功后显式 `closeTerminal`（PTY 不持久，重启后按布局新开），engine 只存 `archived` 位；PTY 的存活不由 engine 轮询。
 - **外部改动复活**：归档容器的 captain 文件被 pi CLI 继续后，下次启动对账复活并提示。
@@ -337,7 +345,8 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 | 编辑器 | nsh `Editor` + 自研 LSP 客户端（Rust） | 组件齐备，LSP 是唯一缺口 |
 | Diff | nsh `DiffView`（split/unified、hunk 操作） | 无需自研 |
 | Git | shell out `git`（不引入 libgit2） | 零依赖、与 pi 工具行为一致 |
-| 语言 | zh-CN 第一 + en fallback，类型化键表（`i18n.ts` + `locales/*.ts`） | nsh 0.4.0 运行时尚未导出 `nsh/i18n` 与 `localeSettings`，键表契约改为纯 TS（Q39），parity 由 `nsh test` 覆盖 |
+| 语言 | **跟随系统** `locale()`：`zh*` → zh-CN，其余 → en；类型化键表（`i18n.ts` + `locales/*.ts`） | 无 UI 入口（Q71）；nsh 提供 `locale()`，键表 parity 由 `nsh test` 覆盖 |
+| 字体 | **仅 sheet 内容**用 Lilex：`Lilex-Light`(300) + `Lilex-Medium`(500) 同 family，nsh 就近取字面（400→300、600+→500）；轮廓保持系统字体 | nsh `fonts.md` 的就近匹配（Q72）；文件放 `assets/fonts/` |
 | nsh | `Cargo.toml` 的 `nsh-core`/`nsh-base` **git pin `506b5392`（版本 0.4.0）** + `Cargo.lock`；CLI 用 checkout 构建 | 发布版 0.4.0 没有 `nsh/base Terminal`（`term` 在发布后进 checkout），M7 必须用 checkout；nsh 比 pi 更不稳定，升级需跑 `nsh check`/`nsh test` + 终端与 DockArea 冒烟 |
 
 ## 7. 实现状态（2026-11-11）
@@ -354,7 +363,7 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 - **M9 完成**：`src/git.rs`（`zu/git`：`status/diff/log/branches/stage/unstage/commit/checkout/createBranch/init/setIdentity`；porcelain v2 `-z` 解析、根必须为仓库顶层、路径越界拒绝、2 MiB 补丁上限、无 shell/无网络/无全局 git 配置、命令失败带 `exit`/`stderr`、缺身份 `ERR_GIT_IDENTITY`）；`git.ts` 按容器持 status/log/branches 与动作状态；`git-ui.tsx` 的 Changes sheet（`changes:{containerId}`：staged/工作区/未跟踪/冲突分组、单文件与全部 stage/unstage、`DiffView` 的 `patch` 模式显示真实 `git diff`、提交行、身份对话框、未初始化仓库态）与 History sheet（`history:{containerId}`：真实 log、分支菜单 checkout、新建分支对话框）；顶栏 `open-changes`/`open-history`；checkout 后重读两表并 reload 该容器中没有未保存改动的编辑器。`git.test.ts`（7 条，测试自建真实临时仓库）与 `git.ui.test.tsx`（3 条，真实 `Workbench`）覆盖「改文件 → Changes 显示 → stage → 提交（`git log` 验证）→ 切分支」，M8 的「看一次 git diff」由此补齐。门禁 122/122。
 - **M10 实现完成，验收达成一半**：`browser.ts`（每 sheet 的 URL/标题/loading/canGoBack/canGoForward/error/页面消息日志；地址规范化；`webview:{containerId}:{n}` 的实例分配；`WebView.available()` 探测）与 `browser-ui.tsx`（一个 `WebView` + 地址栏 + 后退/前进/刷新/停止 + loading 轨道/文字 + 页签标题 + 错误码面板 + 默认页 + 仅 UI 的页面消息日志）；顶栏 `open-browser`、Launcher「浏览器」；`nsh.json` 只加 `webview.hosts: ["*"]`。真实 macOS 宿主加载 `example.com`/IANA 文档页/DuckDuckGo Lite 搜索并跑通后退/前进（标题 `Example Domain` → `Example Domains` → `native shell at DuckDuckGo`）；headless 没有 web view，默认测试只覆盖状态机。门禁 130/130（`ZU_PORT=47834`；+7 TS、+1 Rust）。**未达成**：`target=_blank`/`window.open` 在 nsh 0.4.0 无打开回调，未授予 `openUrl`，所以「外部打开」没有实现；页内链接点击与页内搜索框输入未自动化。证据见 [evidence/m10-browser.md](evidence/m10-browser.md)。
 - **M11 实现完成，验收达成（Rust 真实、TS/Go 未实跑）**：`src/lsp.rs`（`Lsp` class：argv/显式 cwd/无 shell、进程组、`Content-Length` 有界帧、reader/writer/stderr/waiter 四线程、`Callback::post`、`Drop`/`stop` 双保险、coded errors；命令解析保留 rustup symlink）与 `lsp.ts`（每容器/语言族一个客户端；`rust-analyzer`、`typescript-language-server --stdio`、`gopls`；全文同步；初始化/文档同步/诊断/hover/definition/completion；请求 id、超时、取消与陈旧丢弃；URI↔path、根内过滤；服务端请求应答；`$/progress`）。`files.tsx` 的 Editor 接 `diagnostics`、`onHover`/`onHoverEnd`（`Overlay` + `TextView` 卡片）、`onDefinitionRequest`（F12/Mod-click/悬停下划线，打开目标 sheet 并 `revealPosition`，导航后聚焦）、`onCompletionRequest`/`presentCompletions`（Ctrl+Space 也可触发）；`lsp-ui.tsx` 的 Problems sheet（`problems:{containerId}`）按严重度/文件/行列出打开文件的诊断、点击打开并 reveal、显示 server 状态/索引进度/错误与重启；顶栏 `open-problems`；归档容器 `stopLspContainer`。真实 `rust-analyzer 1.99.1`：initialize 42 ms、diagnostics 697 ms（`E0308 expected i32, found &'static str`）、hover（`pub fn add(left: i32, right: i32) -> i32`）、definition（`src/lib.rs`，selection `0:7–0:10`）、completion（`value: i32`、`add: fn(i32, i32) -> i32`）。headless UI（真实 `Workbench` + 真实 `zu/lsp` + 受控 fake server）验证诊断/Problems/reveal/F12/补全/重启。门禁 141/141（104 TS + 37 Rust，`ZU_PORT=47835`）。**未达成**：TS/Go 只用映射未用真实 server 验收；headless 无法驱动 Editor 内部 rows 的 hover 指针路径（UI 测试只渲染同一个 `HoverCard`）；诊断仅打开文件；无全工作区索引；重启/归档不恢复 server。
-- **M12 实现完成，桌面端到端未验证**：`src/instance.rs` 的 `Instance`（状态目录锁、`hard_link` 独占创建、pid 判活、死锁回收、同进程幂等；6 条 Rust 测试）、`instance.ts`、`lifecycle.ts`（桌面 claim 后决定 boot；`duplicate` 不 boot）、`lifecycle-ui.tsx`（`LifecycleHost`：close→hide、托盘 Show/Hide/Updates/Quit、应用菜单含 Edit roles 与 Window `⌘0`/Close；`AlreadyRunning` 提示）、`notifications.ts`（隐藏/失焦才通知、per-session id 替换、5 s 正文去重、权限只问一次、按开恢复窗口并按 id 打开）、`updates.ts`/`updates-ui.tsx`（dev/未配置/可检查三态，check→progress→ready→install，`canInstall:false` 只给 URL，resolved install 保持“installing”）、`Engine.portAvailable()` 与「端口被占用」文案、`nsh.json` 的 `notifications: true` 与 `closeOnPress:false`、`script/bundle-mac.sh` 的 Helpers 断言与可选更新归档。headless 真窗口模型验证关窗隐藏/`⌘0` 恢复/再次隐藏；`⌘Q` handler 释放 claim 有测试。**未验证**：托盘点击、真实通知投递、第二进程实拦、真实 updater 安装；见 roadmap M12 台账与 evidence。
+- **M12 实现完成，桌面端到端未验证**：`src/instance.rs` 的 `Instance`（状态目录锁、`hard_link` 独占创建、pid 判活、死锁回收、同进程幂等；6 条 Rust 测试）、`instance.ts`、`lifecycle.ts`（桌面 claim 后决定 boot；`duplicate` 不 boot）、`lifecycle-ui.tsx`（`LifecycleHost`：close→hide、托盘 Show/Hide/Updates/Quit、应用菜单含 Edit roles 与 Window `⌘0`/Close；`AlreadyRunning` 提示）、`notifications.ts`（隐藏/失焦才通知、per-session id 替换、5 s 正文去重、权限只问一次、按开恢复窗口并按 id 打开）、`updates.ts`/`updates-ui.tsx`（dev/未配置/可检查三态，check→progress→ready→install，`canInstall:false` 只给 URL，resolved install 保持“installing”）、`Engine.portAvailable()` 与「端口被占用」文案、`nsh.json` 的 `notifications: true` 与 `closeOnPress:false`、`script/bundle-mac.sh` 的 Helpers 断言与可选更新归档。headless 真窗口模型验证关窗隐藏/`⌘0` 恢复/再次隐藏；`⌘Q` handler 释放 claim 有测试。**未验证**：托盘点击、真实通知投递、第二进程实拦、真实 updater 安装；见 [evidence/m12-lifecycle.md](evidence/m12-lifecycle.md)。
 - **外部审计**：2026-11-10 的一轮事实审计与架构评审，成立的 P0/P1 已并入本文；其中「alt screen 污染 scrollback」一条被证伪并撤回（`push_scrollback` 有 `primary.is_some()` 守卫），教训记在 [evidence/terminal-emulator.md](evidence/terminal-emulator.md)。审计材料已随收敛删除。
 - **已知问题**：开发期热更新（`nsh run` 的 hot reload）在 TSX 变更后报 `nsh hot: no module zu/native`——native module 在 hot bundle 期间不可解析。重启 app 即可；不影响运行期。正式打包不受影响（无 hot reload）。另：headless 测试运行器没有帧循环，`requestAnimationFrame` 不跑，流式批 flush 因此用 `setTimeout(16)`。
 - **打包**：`script/bundle-mac.sh`——`nsh package` 出 `.app`，sidecar 拷进 `Contents/Helpers`，嵌套 ad-hoc 签名，`hdiutil` 出 dmg（134 MB app / 53 MB dmg）。打包后 app 优先用包内 sidecar（仓库的构建不能遮蔽它）。
@@ -380,5 +389,5 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 ## 9. 文档
 
 - [decisions.md](decisions.md)：Q1–Q57 决策台账（问题 → 裁决 → 落点 → 理由）。
-- [roadmap.md](roadmap.md)：产品目标与里程碑。
+- [plan.md](plan.md)：已完成的工作与下一批任务（唯一的执行指导）。
 - [evidence/](evidence/)：spike 实测、可行性分析、终端仿真核对比、决策过程记录。

@@ -69,7 +69,6 @@
 | Q52 | 名册与 note | 名册 sheet（`subagents:{containerId}`）从 `subagent.list` 投影 live+settled；选中走只读 `subagent.transcript`；派发/交付同时写 captain 的 `zu.dispatch`/`zu.delivery` custom entry 与 `subagent.note` 事件，转录显示 note 行 | `subagents.ts`、`sheets.tsx`、`sessions.ts`；arch §5.6 |
 | Q45 | Project 的存储与校验 | `projects.json` v1（projects/membership）；只由用户显式创建；多根、恰一 primary；绝对路径且必须是目录；名称未自定义时跟随 primary basename；容器 cwd 是创建时的 primary 快照，改根不移动活容器 | `engine/src/store.ts`、`engine/src/server.ts`；arch §5.2 |
 | Q46 | Launcher 的顺序 | **先 composer 后容器**：空画布或「＋」进入 Launcher，项目 chip 选目标（从项目行进入则锁定），提交才 `container.create` + `session.prompt` | `launcher.tsx`、`projects.ts`；arch §4.2 |
-| Q47 | 归属的移动方式 | membership 显式；侧栏容器行提供项目菜单与拖行（PanResponder 量项目头位置，落下按 pageY 选组），二者走同一 `project.setMembership` | `shell.tsx`、`projects.ts`；arch §5.2 |
 | Q48 | 660+ 会话的列表 | 全部会话用虚拟化 `List`（只挂视口附近的行）；引擎 `session.list` 先用会话目录的最大 mtime 做水位，水位不变直接回缓存，变了才 `listAll`；上限扩到 2000 | `shell.tsx`、`engine/src/server.ts`；arch §3.3 |
 | Q44 | 侧栏的过渡形态 | M3 在容器行下保留 M1 的「全部会话」，让无主会话可打开/归入容器；M4 再改为 Project → 分组的两层聚合。容器行提供 archive 动作，但不做归档管理页（Q34） | `shell.tsx`、`containers.ts`；arch §4.2 |
 | Q39 | i18n 运行时 | nsh 0.4.0 发布运行时未导出 `nsh/i18n`/`localeSettings`（checkout 有、发布版没有），**键表落为纯 TS**（`i18n.ts` + `locales/*.ts`，`%{name}` 插值），zh-CN 为源语言、en 为 fallback；`nsh test` 的 parity 用例保证两表与 `K` 集合同构 | `i18n.ts`、`locales/`、`i18n.test.ts` |
@@ -87,7 +86,7 @@
 | # | 问题 | 裁决 | 落点 |
 |---|---|---|---|
 | Q56 | 编辑器的文件访问与保存语义 | **`zu/fs` 是唯一文件面，UI 不开 `capabilities.fs`**。每次调用显式传工作区根（active container cwd），Rust 侧 canonicalize 后拒绝 `..`、根外绝对路径与越界 symlink；读上限 2 MiB、目录上限 1000 项；保存写同目录临时文件再 `rename`，保留 mode 与 UTF-8 BOM；`write` 接收 `expected {mtimeMs,size}`，不符即 `ERR_FS_STALE`（附当前版本），编辑器转只读直到 reload；保存后 `read` 回读校验；所有错误带 `code`；`mkdir` 只允许根内一级创建 | `src/fs.rs`、`fs.ts`、`editors.ts`；arch §3.6 |
-| Q57 | M8 的 Diff 做到哪一步 | **M8 只做两文件 `DiffView`**（文件树行/对话框选两个真实路径，稳定 sheet id `diff:{containerId}:{old~new}`），**不做工作区 git diff**；M9 的 `zu/git` 提供 `status`/`diff` 后，Changes 面板用 `git diff` 驱动。文件树保留为通用入口，不把「两文件对比」伪装成 git diff | `files.tsx`、`editors.ts`、roadmap M8/M9；arch §3.6 |
+| Q57 | M8 的 Diff 做到哪一步 | **M8 只做两文件 `DiffView`**（文件树行/对话框选两个真实路径，稳定 sheet id `diff:{containerId}:{old~new}`），**不做工作区 git diff**；M9 的 `zu/git` 提供 `status`/`diff` 后，Changes 面板用 `git diff` 驱动。文件树保留为通用入口，不把「两文件对比」伪装成 git diff | `files.tsx`、`editors.ts`；arch §3.6 |
 
 ## Git（M9）
 
@@ -119,8 +118,26 @@
 | Q66 | 关窗、托盘、应用菜单与通知策略 | **关窗 = 收起**：`window.closeOnPress: false` + `LifecycleHost` 的 `closePress` → `hide()`，engine/PTY/turn 不 teardown；托盘 Show/Hide + 主键显示聚焦；应用菜单保留 Edit roles，Window 菜单给 Show `⌘0`（headless 可验证的恢复路径）与 Close，Quit 用自定义项（`quitApp`：先释放 claim 再 `Application.quit()`），不用 `role: "quit"`（role 绕过 release；系统级退出留下的死 pid 锁由下次启动回收）。**通知只在主窗口不在前台时发**（可见但失焦也发；聚焦不发），turn settle 只认 running→idle 边沿（快照补 running、断线清空，所以重连中断不计完成），子代理 settle 另发。id 按 session/run，系统替换；相同正文 5 s 去重；权限第一次需要时问一次，拒绝后不再弹。按通知 → 关闭该条 + 显示聚焦窗口 + 按 id 排队（最多 20 次）等 engine/registry 就绪后打开会话 sheet / 子代理名册，冷启动成立。headless/无能力 no-op，不抛错。**未真机验证**：真实系统横幅/点击与托盘点击（用户 app 不能重启，开发运行不是 signed bundle） | `lifecycle-ui.tsx`、`notifications.ts`、`nsh.json`、`App.tsx`、`i18n.ts`；arch §4.6 |
 | Q67 | 自更新接到哪、没有源时说什么 | **不伪造更新源**：本仓库没有 `nsh.json` 的 `"updater"`、公钥和 release，所以不写；`updates.ts` 先区分 **development / 未配置 updater / 可检查**，再走 check → available(version/notes/`canInstall`) → download（真实进度）→ ready → install & restart。**安装成功会退出进程**，promise resolve 只可能是“还没退出”，UI 保持「正在安装」，不显示“已安装”；失败显示错误并保持原状。`canInstall: false` 只显示 URL（没有 `openUrl` 能力，不偷偷加）。没有 updater 时 `checkForUpdate()` 在 dev 返回 null，**不当“已是最新”**。发布时写 GitHub 或自托管 `updater`（`nsh keygen` 的公钥；私钥只在发布机/CI），并用 `nsh update-manifest`；**更新包必须含 `Contents/Helpers`**，`script/bundle-mac.sh` 断言三个文件都在，`NSH_UPDATE_ARCHIVE=1` 打出整个 `.app` 的 tar.gz。**端到端安装不可测**：无真实 release，只以 fake service 的状态机测试 + 真实 UI 状态测试为证据 | `updates.ts`、`updates-ui.tsx`、`nsh.json`、`script/bundle-mac.sh`；arch §3.7；evidence/m12-lifecycle.md |
 
+## 轮廓与 Hero sheet（Casing II）
+
+| # | 问题 | 裁决 | 落点 |
+|---|---|---|---|
+| Q68 | 页面状态 vs 画布状态 | **Hero 变 sheet**：`home:{containerId}` / `home:scratch`，删除 `launcherOpen`；画布永远只渲染 sheet 树 | arch §4.2 |
+| Q69 | 容器何时回收 | **无 sheet 即自动归档**（Hero 计入）：切到相邻容器 → archive → 侧栏 180ms 退场 | arch §5.4、Q80 |
+| Q70 | 容器标题 | **存活的最早创建 sheet 的标题**（`sheetOrder` 创建序，拖 tab 不改）；session/terminal/webview 各自动态 | arch §4.3 |
+| Q71 | 界面语言 | **跟随系统** `locale()`：`zh*` → zh-CN，其余 → en；删除切换按钮，设置页留后续 | arch §4.6 |
+| Q72 | 字体 | **仅 sheet 内容**用 Lilex（`Lilex-Light` 300 + `Lilex-Medium` 500，同 family，就近取字面）；轮廓保持系统字体 | arch §6、design §3.4 |
+| Q73 | 外壳 | **一体化**：窗口一层 `sidebar` 底，顶栏与侧栏同材质无分隔；内容区是内嵌白色圆角卡片（radius 14，四周 8–10pt） | arch §4.1、design §2 |
+| Q74 | tab 宽度 | **Chrome 式**：`maxWidth 240`、`minWidth 72`、`flexShrink 1`、`flexGrow 0`，panel 变窄/增多时均匀挤压 | design §3.2 |
+| Q75 | 顶栏 picker | **三态**：常态纯文本标题（无框无底）／hover 凹槽（`bg-inset` + inset 阴影 + radius 6）／展开下拉从凹槽下沿接出；宽 360pt | design §3.3 |
+| Q76 | 工具行图标 | 用各 CLI **品牌图标**：Claude/Codex/Copilot 取自 manox-app 的 `assets/icons/*.svg`；Pi 用 `pi-coding-agent.svg`；注入 tint 适配两外观 | design §3.5 |
+| Q77 | composer | **对齐 Steer（仅交互）**：分割线只与 composer 同宽；模型/thinking/context 右对齐；idle=↑发送、streaming=■停止（同位置）；排队/引导/打断收进 `⋯` 菜单，**不接线** | design §3.6 |
+| Q78 | 拖拽 tab | **抽象物 + 落位指示**：源 tab 变占位，幽灵为 tab 形状跟随指针；用 `DockDropIndicator.index` 在两 tab 间画 2pt brand 竖线 | design §3.7 |
+| Q79 | scratch 画布 | **临时画布**：kind `Scratch`，无 cwd/进程/注册表/持久化；Hero 带项目 chip；提交后铸真实容器并迁移 sheet；未提交则暂存 | arch §4.2 |
+| Q80 | 归档动效 | 侧栏行高度 + 透明度 180ms 退场，同组其余行平滑上移 | design §3.8 |
+
 ## 决策编号说明
 
-- Q1–Q67 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（Q56/§3.6 的 `zu/fs`）、git 执行与根/路径边界（Q58/§3.6 的 `zu/git`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）、浏览器的能力/链接策略与非可见降级（Q61/Q62/§4.3）、LSP 的传输/全文同步/语言映射（Q64/§3.6）、单实例锁与关窗/托盘/通知策略（Q65/Q66/§4.6）、更新源缺失时的诚实状态与发布配置（Q67/§3.7）。
+- Q1–Q80 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（Q56/§3.6 的 `zu/fs`）、git 执行与根/路径边界（Q58/§3.6 的 `zu/git`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）、浏览器的能力/链接策略与非可见降级（Q61/Q62/§4.3）、LSP 的传输/全文同步/语言映射（Q64/§3.6）、单实例锁与关窗/托盘/通知策略（Q65/Q66/§4.6）、更新源缺失时的诚实状态与发布配置（Q67/§3.7）。
 - 原 engine/ui/domain 三份文档里的 E/U 编号已废弃，统一并入本表。
-- 条件性里程碑（M-tty / M-arch / M-web）的触发条件见 [roadmap.md](roadmap.md) §17。
+- 已完成的和下一批工作见 [plan.md](plan.md)；条件性里程碑（M-tty / M-arch / M-web）的触发条件也记在那里。

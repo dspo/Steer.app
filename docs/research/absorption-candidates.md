@@ -239,7 +239,7 @@ D7 的 `stop` 语义值得原文抄："stop = 杀容器全部活跃 run（用户
 
 `PLAN-PROJECTS-AND-NEW-ENTRY.md:219-270`：三个提交手势（composer / agent 动作行 / 终端）都经唯一 `create_container`；**composer 发送时容器尚不存在**——文本先暂存，容器 attach 回调后 flush，失败退款；⌘N 幂等（空容器不重复铸）。
 
-**Zu 现状**：`§4.3` 只写"空态 = Launcher"，`roadmap M4` 写"先 composer 后容器"，但没有"发送失败/容器未就绪"的时序与失败腿。manox 的答案：文本暂存 Launcher，`create_container` → `attach_thread` 完成回调是**唯一可靠 flush 点**；失败腿（session 已存在 / 创建被拒）把暂存文本**还回 Launcher**，不吞掉（`:251-252,319-320`）。这是 M4 最容易漏的一段。
+**Zu 现状**：`§4.3` 只写"空态 = Launcher"，[plan.md](../plan.md) 的 M4 一节写"先 composer 后容器"，但没有"发送失败/容器未就绪"的时序与失败腿。manox 的答案：文本暂存 Launcher，`create_container` → `attach_thread` 完成回调是**唯一可靠 flush 点**；失败腿（session 已存在 / 创建被拒）把暂存文本**还回 Launcher**，不吞掉（`:251-252,319-320`）。这是 M4 最容易漏的一段。
 
 #### A8 打包与签名：嵌套二进制的规则（M11 的硬知识）
 
@@ -276,7 +276,7 @@ D7 的 `stop` 语义值得原文抄："stop = 杀容器全部活跃 run（用户
 - **一个必需检查 `checks_pass`**（`AGENTS.md:161`）：先 guards（fmt + chat crate 依赖不变量 + chrome 边界不变量），再两条并行 verify（linux/macOS）；**打包腿只在 main/tag/`ci:package` 标签/改到打包面时启用**——"冷 release 构建不该躺在每个 PR 的必经路上"。
 - **截图从真实渲染出**：`crates/steer-agent-chrome-ui/tests/visual.rs` + `CHROME_SHOT=/tmp/x.png`（`AGENTS.md:104-114`）——"UI 静态图从真实渲染出，不要另画一套"。
 - **i18n**（`AGENTS.md:143-153`）：Fluent、zh-CN primary + en fallback、**parity 单测**、只译 app chrome、**runtime 传入值一律原样渲染（禁止二次本地化）**、模型面向字符串只在引擎仓维护。
-- **Zu 落点**：M0 立 `checks_pass`（`nsh check` + `nsh test` + engine 冒烟 + 边界脚本 + i18n parity）；`roadmap §2 门禁`目前只有前两项。
+- **Zu 落点**：M0 立 `checks_pass`（`nsh check` + `nsh test` + engine 冒烟 + 边界脚本 + i18n parity）；[plan.md](../plan.md) §4 的门禁目前只有前两项。
 
 #### A12 派生状态阶梯与"宿主 rank"
 
@@ -343,7 +343,7 @@ D7 的 `stop` 语义值得原文抄："stop = 杀容器全部活跃 run（用户
 | 19 | post-package：嵌套先签、外层不带 `--deep`、entitlements 分离、ditto/verify、公证 | M11、`§3.7` | manox A8 | 中 |
 | 20 | 更新策略/状态机；验证整树替换包含 Helpers | M10 | manox A9 | 低 |
 | 21 | 壳单写者/不镜像派生事实/命令先于 notify；边界脚本 | `§4.1`、`§4.3` | manox A10 | 低 |
-| 22 | CI：`checks_pass`、真实渲染出图、i18n parity | M0、`roadmap §2` | manox A11 | 低 |
+| 22 | CI：`checks_pass`、真实渲染出图、i18n parity | M0、[plan.md](../plan.md) §4 | manox A11 | 低 |
 | 23 | 派生状态阶梯 + 宿主 rank | `§5.1`、M2 | manox A12 | 低 |
 | 24 | agent 显示语义分层 + 代码面 A/B 契约 | `§4.2`、M1 | manox A13 | 低 |
 | 25 | M-tty 成本重估（3.5k 行 + Zig/CI + 手写 FFI） | Q29、`roadmap §15` | manox B | 低 |
