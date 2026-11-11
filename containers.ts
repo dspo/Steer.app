@@ -88,14 +88,20 @@ export function liveContainers(): ContainerRecord[] {
 /** A container's label: its captain's session title, an external TUI's
  * terminal title, else the kind and cwd. */
 export function containerTitle(container: ContainerRecord): string {
+  const folder = container.cwd.split("/").filter(Boolean).slice(-1)[0] ?? "";
+  // A container is a place to work, so its own name wins over its captain's:
+  // a fresh session has no name, and two unnamed containers would read as the
+  // same id prefix — pressing the other one looked like nothing happened.
   const captain = container.sessions[0];
-  if (captain) return sessionTitle(captain.sessionId);
+  const named = captain ? sessionTitle(captain.sessionId) : "";
+  const namedIsTitle = named && named !== captain?.sessionId?.slice(0, 8);
+  if (namedIsTitle) return named;
   if (container.kind !== "Pi") {
     const title = terminalTitle(container.id);
     if (title) return title;
     return externalKindLabel(container.kind);
   }
-  return container.cwd.split("/").filter(Boolean).slice(-2).join("/") || container.id;
+  return folder || container.id.slice(0, 8);
 }
 
 /** The canvas of a new or not-yet-stashed container: a terminal for an

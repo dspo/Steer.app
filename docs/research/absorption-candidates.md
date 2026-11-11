@@ -2,7 +2,7 @@
 
 > 2026-11-10。目的：把两个同源项目"已经付过学费"的设计，映射到 Zu 的决策台账（Q1–Q31）、架构章节与里程碑，给出"抄什么 / 怎么改 / 不抄什么"。
 > 方法：只读源码与设计文档；每条给 `path:line`；判定按 Zu 的现有决策，而不是泛泛比较。子代理的调研已逐条复核，标「未核实」的不作事实引用。
-> 同日的另外两份文档：[事实审计](../review/fact-audit.md)、[架构评审](../review/architecture-review.md)。
+> 同日的两份审计已随文档收敛删除；其中成立的 P0/P1 已并入 [architecture.md](../architecture.md)，被证伪的一条记在 [terminal-emulator.md](../evidence/terminal-emulator.md)。
 
 ## 0. 一句话
 

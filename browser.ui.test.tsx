@@ -120,9 +120,9 @@ test("a container switch keeps the browser address and title", async () => {
 
   // The other container has no browser sheet; switching back restores the
   // first container's layout and the UI store's page state.
-  await app.press("Open container tmp/zu-browser-2");
+  await app.press("Open container zu-browser-2");
   await app.waitUntil(() => !app.shows("id:browser-address"));
-  await app.press("Open container tmp/zu-browser");
+  await app.press("Open container zu-browser");
   await app.waitFor("id:browser-address");
   expect(app.value("id:browser-address")).toBe("https://example.com/");
   expect(app.texts()).toContain("Example Domain");
