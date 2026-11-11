@@ -85,6 +85,7 @@ export const K = {
     title: "app.sidebar.title",
     new: "app.sidebar.new",
     grouping: "app.sidebar.grouping",
+    resize: "app.sidebar.resize",
     search: "app.sidebar.search",
     searchPlaceholder: "app.sidebar.searchPlaceholder",
     clear: "app.sidebar.clear",

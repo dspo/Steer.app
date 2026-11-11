@@ -67,10 +67,12 @@ import {
   readLayout,
   readProjects,
   readRegistry,
+  readSettings,
   stateDir,
   writeLayout,
   writeProjects,
   writeRegistry,
+  writeSettings,
   type ProjectsFile,
   type Registry,
 } from "./store";
@@ -1336,6 +1338,24 @@ async function handle(ws: any, message: Envelope): Promise<void> {
       }
       const zoom = payload.zoom === null || typeof payload.zoom === "string" ? payload.zoom : null;
       reply(ws, makeReply(id, message.type, writeLayout(containerId, layout, zoom)));
+      return;
+    }
+    case "settings.get": {
+      reply(ws, makeReply(id, message.type, readSettings()));
+      return;
+    }
+    case "settings.put": {
+      const patch: Record<string, unknown> = {};
+      if (payload.sidebarWidth !== undefined) {
+        const width = Number(payload.sidebarWidth);
+        // The shell clamps too; the file never holds an unusable number.
+        if (!Number.isFinite(width)) {
+          reply(ws, makeErrorReply(id, message.type, "sidebarWidth must be a number", "bad_payload"));
+          return;
+        }
+        patch.sidebarWidth = Math.min(360, Math.max(200, Math.round(width)));
+      }
+      reply(ws, makeReply(id, message.type, writeSettings(patch)));
       return;
     }
     case "state.snapshot": {

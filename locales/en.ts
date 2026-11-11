@@ -17,6 +17,7 @@ export const en: Record<string, string> = {
   "app.sidebar.title": "Sessions",
   "app.sidebar.new": "New",
   "app.sidebar.grouping": "Group by",
+  "app.sidebar.resize": "Drag to resize the sidebar",
   "app.sidebar.search": "Search conversations",
   "app.sidebar.searchPlaceholder": "Search containers, sessions and projects",
   "app.sidebar.clear": "Clear search",

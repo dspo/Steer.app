@@ -14,8 +14,8 @@
 [evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)、
 [evidence/s21-6-system-locale.md](evidence/s21-6-system-locale.md)、
 [evidence/s21-7-auto-archive.md](evidence/s21-7-auto-archive.md) 与 `docs/evidence/ui-s2-*.png`。
-**下一个动作是 §2.2 的第 9 项（侧栏可拖拽）**（第 8 项已完成，证据
-[evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)、[evidence/s21-3-scratch.md](evidence/s21-3-scratch.md)、[evidence/s21-4-action-matrix.md](evidence/s21-4-action-matrix.md)、[evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)、[evidence/s21-6-system-locale.md](evidence/s21-6-system-locale.md)、[evidence/s21-7-auto-archive.md](evidence/s21-7-auto-archive.md)、[evidence/s22-8-shell.md](evidence/s22-8-shell.md)）。
+**下一个动作是 §2.2 的第 10 项（移除顶栏 picker）**（8、9 两项已完成，证据
+[evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)、[evidence/s21-3-scratch.md](evidence/s21-3-scratch.md)、[evidence/s21-4-action-matrix.md](evidence/s21-4-action-matrix.md)、[evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)、[evidence/s21-6-system-locale.md](evidence/s21-6-system-locale.md)、[evidence/s21-7-auto-archive.md](evidence/s21-7-auto-archive.md)、[evidence/s22-8-shell.md](evidence/s22-8-shell.md)、[evidence/s22-9-sidebar-drag.md](evidence/s22-9-sidebar-drag.md)）。
 开工前读：本文件 §2 → [architecture.md](architecture.md) §4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 →
 [evidence/apis-verified.md](evidence/apis-verified.md)。
 > 架构见 [architecture.md](architecture.md)，视觉规格见 [DESIGN.md](DESIGN.md)，决策台账见 [decisions.md](decisions.md)。
@@ -29,7 +29,7 @@
 | M-0 | P0 可用性：模型注册与无模型界面 | ✅ | §2.0 |
 | M-A | M0–M12 已交付 | ✅ | §1 |
 | M-B | Hero 与画布结构（S1 + S2） | ✅ 1–7 与 F1–F3 全部完成 | §2.1、§2.1.1 |
-| M-C | 一体化外壳与组合（S3） | 🔁 第 8 项完成；9–13 待做 | §2.2 |
+| M-C | 一体化外壳与组合（S3） | 🔁 8–9 完成；10–13 待做 | §2.2 |
 | M-D | 细节（图标、拖拽、字体） | ⬜ | §2.3 |
 | M-E | 独立修复 | ⏸ B2 挂起 | §2.4 |
 | M-F | 代码仓库整洁化（并行轨道） | ⬜ | §5 |
@@ -145,6 +145,13 @@
 > 活动页签靠 shadowCard + primary 下划线区分）；composer 在卡内左右 24、底部 16。`TabBarPlus` 的测量基准
 > 移到卡片，`+` 几何不受边距影响。截图 `docs/evidence/ui-s2-scratch-hero.png` 已用新壳重拍。
 > 证据 [evidence/s22-8-shell.md](evidence/s22-8-shell.md)。
+
+> **第 9 项已完成（2026-11-12）**：侧栏与卡片间的 10pt 沟槽里有 4pt 拖拽手柄
+> （`PanResponder`），宽度钳 200–360、拖拽即时生效；新协议命令
+> `settings.get`/`settings.put`（`settings` 组）把它持久化到 `zu/settings.json`
+> （引擎侧钳宽、合并写、原子落盘），`bootShell` 启动读回。证据
+> [evidence/s22-9-sidebar-drag.md](evidence/s22-9-sidebar-drag.md)（`settings.test.ts`
+> 含 live 引擎的读写用例）。
 
 > **F1 已完成（2026-11-11，`4293eb7`）**：`replaceSheet()` 把目标 sheet 放进 Hero 的原槽位并移除 Hero；容器 Hero 的
 > 浏览器、终端/TUI（F2）与 Pi（F3）动作、以及 composer 提交都走它。证据

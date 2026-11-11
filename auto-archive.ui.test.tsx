@@ -9,6 +9,8 @@ import { expect, open, test } from "nsh/test";
 test("closing a container's last sheets archives it, with the row's exit", async () => {
   const app = await open("./fixtures/auto-archive.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:only body");
+  // The 4pt drag handle lives in the gutter between the sidebar and the card.
+  expect(app.shows("id:sidebar-handle")).toBe(true);
 
   // The × on each tab: the session's, then the Hero's — the last tab of a
   // group is closable too, which is what makes this path reachable.

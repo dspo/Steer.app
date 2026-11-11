@@ -144,6 +144,11 @@ signed in), `no_models` (signed in, no chat model listed) or `unavailable`
 reports no `model` in `session.info`: pi's "unknown/unknown" placeholder is
 never sent as a choice.
 
+`settings.*` is the shell's window furniture, deliberately not a container
+or a layout: the sidebar's width lives in `zu/settings.json` beside them, so
+a drag survives a restart. Writes merge over the file, so keys a newer build
+knows are never lost by an older one.
+
 ### project.*
 
 A project is user-created: one or more absolute roots, exactly one primary.
@@ -201,6 +206,8 @@ or `null` (DockArea keeps zoom outside its layout tree).
 |---|---|---|---|---|
 | `layout.get` | `{ containerId }` | yes | safe | `{ containerId, layout: null }` when none |
 | `layout.put` | `{ containerId, layout, zoom }` | yes | safe | the stored record; last write wins |
+| `settings.get` | — | yes | safe | `zu/settings.json`'s object (`{ v, sidebarWidth? }`); a missing file is an empty one |
+| `settings.put` | `{ sidebarWidth? }` | yes | safe | the merged object; unknown keys survive, `sidebarWidth` is clamped to 200–360 |
 
 ### subagent.*
 

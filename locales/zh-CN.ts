@@ -17,6 +17,7 @@ export const zhCN: Record<string, string> = {
   "app.sidebar.title": "会话",
   "app.sidebar.new": "新建",
   "app.sidebar.grouping": "分组方式",
+  "app.sidebar.resize": "拖拽调整侧栏宽度",
   "app.sidebar.search": "搜索对话",
   "app.sidebar.searchPlaceholder": "搜索容器、会话或项目",
   "app.sidebar.clear": "清除搜索",

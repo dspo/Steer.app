@@ -183,3 +183,37 @@ export function readProjects(): ProjectsFile {
 export function writeProjects(projects: ProjectsFile): void {
   atomicWrite(projectsPath(), projects);
 }
+
+/** The shell's own settings (`settings.json`): window furniture that is not
+ * a container, a project or a layout. Additive: unknown keys survive a
+ * write, so a newer build's settings are not lost by an older one. */
+export interface SettingsFile {
+  v: number;
+  /** The sidebar's width in points (the shell clamps it). */
+  sidebarWidth?: number;
+  [key: string]: unknown;
+}
+
+export function settingsPath(): string {
+  return join(stateDir(), "settings.json");
+}
+
+/** A missing file is an empty settings object; anything unreadable too. */
+export function readSettings(): SettingsFile {
+  const raw = readJson(settingsPath());
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { v: REGISTRY_VERSION };
+  const value = raw as Record<string, unknown>;
+  const settings: SettingsFile = { v: REGISTRY_VERSION, ...value };
+  settings.v = typeof value.v === "number" ? value.v : REGISTRY_VERSION;
+  if (value.sidebarWidth !== undefined && typeof value.sidebarWidth !== "number") {
+    delete settings.sidebarWidth;
+  }
+  return settings;
+}
+
+/** Merges `patch` over the file and writes it atomically. */
+export function writeSettings(patch: Record<string, unknown>): SettingsFile {
+  const settings = { ...readSettings(), ...patch };
+  atomicWrite(settingsPath(), settings);
+  return settings;
+}

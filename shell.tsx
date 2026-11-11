@@ -1,7 +1,8 @@
-import { effect, keymap, List, PanResponder, Scroll, signal, Text, token, View } from "nsh";
+import { keymap, List, PanResponder, Scroll, signal, Text, token, View } from "nsh";
 import { DockArea, Input, Menu, MenuItem, MenuSeparator, type DockAreaLayout } from "nsh/base";
 import { Window } from "nsh/desktop";
 import { containerTitle } from "./titles";
+import { loadSettings, setSidebarWidth, sidebarWidth, SIDEBAR_DEFAULT_WIDTH } from "./settings";
 import { connect, disconnect, lastError, phase, recovered, retry, type EnginePhase } from "./engine";
 import {
   closeSheet,
@@ -72,6 +73,7 @@ export async function bootShell(): Promise<void> {
   if (phase() === "connected") {
     await loadContainers();
     await loadProjects();
+    await loadSettings();
   }
 }
 
@@ -198,37 +200,6 @@ function revealContainer(container: any): void {
 
 /** One container row, under its project. A container belongs to the project it
  * was created under: there is no gesture that moves it. */
-
-/**
-/** A row's exit wrapper: one draw at full size, then the 180 ms collapse. */
-function ExitingRow(props: { container: any; onDone: () => void }) {
-  const leaving = signal(false);
-  effect(() => {
-    const start = setTimeout(() => leaving.set(true), 16);
-    return () => clearTimeout(start);
-  });
-  effect(() => {
-    if (!leaving()) return;
-    const done = setTimeout(props.onDone, 180);
-    return () => clearTimeout(done);
-  });
-  return (
-    <View
-      testID={`container-row-exiting-${props.container.id}`}
-      style={{
-        height: leaving() ? 0 : 32,
-        opacity: leaving() ? 0 : 1,
-        overflow: "hidden",
-        transitionProperty: "height, opacity",
-        transitionDuration: 180,
-        transitionTimingFunction: "ease-out",
-      }}
-    >
-      <ContainerRow container={props.container} />
-    </View>
-  );
-}
-
 function ContainerRow(props: { container: any }) {
   const container = () => props.container;
   const active = () => container().id === activeContainerId();
@@ -442,9 +413,34 @@ function SearchSection(props: { label: string; count: number }) {
 }
 
 /** The sidebar: header actions, the filter, and project → container. */
+/**
+ * The 4pt hot zone on the sidebar's right edge: dragging sets the width
+ * (clamped 200–360) at once and persists it to `zu/settings.json` on the
+ * engine, so a restart opens at the width the user left.
+ */
+function SidebarHandle() {
+  const startWidth = signal(SIDEBAR_DEFAULT_WIDTH);
+  const pan = PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onPanResponderGrant: () => startWidth.set(sidebarWidth()),
+    onPanResponderMove: (_event, gesture) =>
+      setSidebarWidth(startWidth() + (gesture?.dx ?? 0)),
+    onPanResponderRelease: () => setSidebarWidth(sidebarWidth()),
+  });
+  return (
+    <View
+      testID="sidebar-handle"
+      accessibilityLabel={t(K.sidebar.resize)}
+      {...pan.panHandlers}
+      class="h-full w-4 items-center justify-center hover:bg-line"
+      style={{ width: 4, borderRadius: 2, marginHorizontal: -2, ...motionStyle("fast") }}
+    />
+  );
+}
+
 function Sidebar() {
   return (
-    <View class="bg-sidebar" style={{ width: 232, flexShrink: 0 }}>
+    <View class="bg-sidebar" style={{ width: sidebarWidth(), flexShrink: 0 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingTop: 8, paddingBottom: 6, height: 36 }}>
         <Text style={{ fontSize: 13, fontWeight: "700", color: token("foreground"), flexShrink: 0 }}>{t(K.sidebar.title)}</Text>
         <View style={{ flex: 1 }} />
@@ -891,11 +887,11 @@ function Canvas() {
         minHeight: 0,
         position: "relative",
         borderRadius: 14,
-        // 8–10pt of the window's `sidebar` showing on all sides (DESIGN §3).
+        // 8–10pt of the window's `sidebar` showing on all sides (DESIGN §3);
+        // the left gap is the gutter the sidebar handle lives in.
         marginTop: 8,
         marginRight: 10,
         marginBottom: 10,
-        marginLeft: 10,
       }}
       onLayout={({ bounds }) => {
         const { width, height } = bounds.size;
@@ -1011,6 +1007,13 @@ export function Workbench() {
         <If when={sidebarVisible()}>
           <Sidebar />
         </If>
+        {/* The 10pt gutter between the sidebar and the card carries the
+            4pt drag handle (DESIGN §3: 200–360, persisted). */}
+        <View style={{ width: 10, flexShrink: 0, flexDirection: "row", justifyContent: "center" }}>
+          <If when={sidebarVisible()}>
+            <SidebarHandle />
+          </If>
+        </View>
         <Canvas />
       </View>
       <UIHost />

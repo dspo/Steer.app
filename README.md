@@ -10,7 +10,7 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 终端、编辑器、Git、浏览器、LSP、常驻与更新）。Casing II：**§2.1-1（`a58e0ad`）、§2.1-2（`bcd4004`）、
 §2.1.1 F1（`4293eb7`）已提交**；**§2.0 的 P0-1/P0-2 已完成**（引擎级模型注册表、无模型界面），
 **§2.1.1 F2/F3 已完成**（容器内终端资源、原生 Pi TUI），**§2.1-3 已完成**（scratch 画布的页面与铸容器）、**§2.1-4 已完成**（动作可用性矩阵）、**§2.1-5 已完成**（容器标题 S2）、**§2.1-6 已完成**（语言跟随系统）、**§2.1-7 已完成**（无 sheet 自动归档）；
-**§2.1 全部完成**；§2.2 的第 8 项（一体化外壳 S3）已完成，9–13 待做。
+**§2.1 全部完成**；§2.2 的第 8 项（一体化外壳 S3）与第 9 项（侧栏可拖拽 + `settings.*`）已完成，10–13 待做。
 门禁：`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 252/252 ✓、`script/bundle-mac.sh` ✓。证据见
 [docs/evidence/s1-hero-sheet.md](docs/evidence/s1-hero-sheet.md)、
 [docs/evidence/s21-2-switch-hydrate.md](docs/evidence/s21-2-switch-hydrate.md)、
@@ -22,8 +22,9 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 [docs/evidence/s21-5-container-title.md](docs/evidence/s21-5-container-title.md)、
 [docs/evidence/s21-6-system-locale.md](docs/evidence/s21-6-system-locale.md)、
 [docs/evidence/s21-7-auto-archive.md](docs/evidence/s21-7-auto-archive.md)、
-[docs/evidence/s22-8-shell.md](docs/evidence/s22-8-shell.md) 与 `docs/evidence/ui-s2-*.png`。
-下一项是 [§2.2 第 9 项（侧栏可拖拽）](docs/plan.md)。2026-11-11 的计划调整：移除顶栏 picker、模型问题升为 P0、
+[docs/evidence/s22-8-shell.md](docs/evidence/s22-8-shell.md)、
+[docs/evidence/s22-9-sidebar-drag.md](docs/evidence/s22-9-sidebar-drag.md) 与 `docs/evidence/ui-s2-*.png`。
+下一项是 [§2.2 第 10 项（移除顶栏 picker）](docs/plan.md)。2026-11-11 的计划调整：移除顶栏 picker、模型问题升为 P0、
 Composer 接入 pi 斜杆操作、新增代码仓库整洁化并行轨道（[plan §5](docs/plan.md)）。
 
 ## 文档
@@ -80,7 +81,7 @@ Composer 接入 pi 斜杆操作、新增代码仓库整洁化并行轨道（[pla
 | `src/git.rs` | The native `zu/git` module: porcelain v2 status, patch diffs, log, branches, stage/unstage, commit, checkout; root and path policy, coded errors |
 | `ui.tsx` | Canvas glyphs、`Logo`、`Dot`/`Chip`/`SectionTitle`、motion/阴影 token、`applyScrollbarTheme` |
 | `theme.json` | Design tokens (shadcn-style, light + dark) via `nsh.json` `"theme"` |
-| Tests | `App.test.tsx`、`containers.test.ts`、`containers.ui.test.tsx`、`dock.test.ts`、`dock-move.test.tsx`、`contracts.test.ts`、`i18n.test.ts`、`many-sessions.test.tsx`、`projects.test.ts`、`projects.ui.test.tsx`、`subagents.test.ts`、`subagents.ui.test.tsx`、`ui-host.test.tsx`、`external.test.ts`、`external.ui.test.tsx`、`pty.test.ts`、`terminal.ui.test.tsx`、`terminal.claude.test.tsx`、`engine.test.ts`（live）、`fs.test.ts`、`file-tree.test.ts`、`files.ui.test.tsx`、`git.test.ts`、`git.ui.test.tsx`、`browser.test.ts`、`browser.ui.test.tsx`、`browser.live.test.tsx`、`lsp.test.ts`（真实 rust-analyzer）、`lsp.ui.test.tsx`（受控 LSP + 真实 Workbench）、`notifications.test.ts`、`updates.test.ts`、`updates.ui.test.tsx`、`lifecycle.test.ts`、`lifecycle.ui.test.tsx`、`lifecycle.window.test.tsx`、`lifecycle.quit.test.tsx`、`lifecycle.app.test.tsx`、`tab-plus.test.ts`、`models.ui.test.tsx`、`terminals.test.ts`、`titles.test.ts`、`locale.ui.test.tsx`、`hero-terminals.ui.test.tsx`、`auto-archive.ui.test.tsx`、`startup.test.tsx`（`nsh test` 计 252/252，含 44 条 Rust 单测） |
+| Tests | `App.test.tsx`、`containers.test.ts`、`containers.ui.test.tsx`、`dock.test.ts`、`dock-move.test.tsx`、`contracts.test.ts`、`i18n.test.ts`、`many-sessions.test.tsx`、`projects.test.ts`、`projects.ui.test.tsx`、`subagents.test.ts`、`subagents.ui.test.tsx`、`ui-host.test.tsx`、`external.test.ts`、`external.ui.test.tsx`、`pty.test.ts`、`terminal.ui.test.tsx`、`terminal.claude.test.tsx`、`engine.test.ts`（live）、`fs.test.ts`、`file-tree.test.ts`、`files.ui.test.tsx`、`git.test.ts`、`git.ui.test.tsx`、`browser.test.ts`、`browser.ui.test.tsx`、`browser.live.test.tsx`、`lsp.test.ts`（真实 rust-analyzer）、`lsp.ui.test.tsx`（受控 LSP + 真实 Workbench）、`notifications.test.ts`、`updates.test.ts`、`updates.ui.test.tsx`、`lifecycle.test.ts`、`lifecycle.ui.test.tsx`、`lifecycle.window.test.tsx`、`lifecycle.quit.test.tsx`、`lifecycle.app.test.tsx`、`tab-plus.test.ts`、`models.ui.test.tsx`、`terminals.test.ts`、`titles.test.ts`、`locale.ui.test.tsx`、`hero-terminals.ui.test.tsx`、`auto-archive.ui.test.tsx`、`settings.test.ts`、`startup.test.tsx`（`nsh test` 计 256/256，含 44 条 Rust 单测） |
 
 交互全部来自 `nsh/base DockArea`：拖 sheet 到另一 panel（移动且状态不丢）、拖到组边缘分栏、拖手缩放、`×` 关闭、Zoom、<600pt compact。
 唯一的例外是每组标题栏右端的 `+`：0.4.0 的 tab bar 没有尾部插槽，`tab-plus.tsx` 按布局几何把它画成覆盖层（见

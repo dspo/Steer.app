@@ -22,7 +22,16 @@
 /** The protocol this build speaks. Bump it only for an incompatible change. */
 export const PROTOCOL_VERSION = 1;
 
-export type CommandGroup = "engine" | "session" | "subagent" | "state" | "container" | "project" | "layout" | "ui";
+export type CommandGroup =
+  | "engine"
+  | "session"
+  | "subagent"
+  | "state"
+  | "container"
+  | "project"
+  | "layout"
+  | "settings"
+  | "ui";
 
 /**
  * What replaying the same command envelope means:
@@ -229,6 +238,18 @@ export const COMMANDS = {
     idempotent: true,
     replay: "safe",
     note: "Replaces a container's view stash; last write wins.",
+  },
+  "settings.get": {
+    group: "settings",
+    idempotent: true,
+    replay: "safe",
+    note: "The shell's own settings (window furniture; `zu/settings.json`).",
+  },
+  "settings.put": {
+    group: "settings",
+    idempotent: true,
+    replay: "safe",
+    note: "Merges the payload over the settings file; unknown keys survive.",
   },
   "state.snapshot": {
     group: "state",
@@ -677,6 +698,16 @@ export interface SessionSetModelPayload {
   sessionId: string;
   provider: string;
   id: string;
+}
+
+/** The shell's window furniture (`zu/settings.json`); additive by key. */
+export interface SettingsData {
+  sidebarWidth?: number;
+  [key: string]: unknown;
+}
+
+export interface SettingsPutPayload {
+  sidebarWidth?: number;
 }
 
 /** pi's live estimate of the session's context use. */
