@@ -5,10 +5,10 @@ import {
   containerError,
   layout,
   loadContainers,
+  openHomeSheet,
   setContainerTransport,
 } from "../containers";
 import { phase } from "../engine";
-import { openLauncher } from "../projects";
 import { error as sessionError } from "../sessions";
 import {
   applyBrowserNavigation,
@@ -170,7 +170,7 @@ function BrowserFixture() {
     <View class="flex-1 bg-background" style={{ flexDirection: "column" }}>
       <Workbench />
       <View class="flex-row items-center gap-1.5 px-3" style={{ height: 24 }}>
-        <FixtureButton id="open-launcher" label="launcher" onPress={() => openLauncher(null)} />
+        <FixtureButton id="open-hero" label="hero" onPress={() => openHomeSheet()} />
         <FixtureButton id="seed-nav" label="seed nav" onPress={seedNavigation} />
         <FixtureButton id="seed-error" label="seed error" onPress={seedError} />
         <FixtureButton id="seed-message" label="seed message" onPress={seedMessage} />

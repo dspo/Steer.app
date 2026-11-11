@@ -174,6 +174,8 @@ export const K = {
     closeSheet: "app.canvas.closeSheet",
     emptyTitle: "app.canvas.emptyTitle",
     emptyNote: "app.canvas.emptyNote",
+    openHero: "app.canvas.openHero",
+    scratch: "app.canvas.scratch",
   },
   status: {
     unsupported: "app.status.unsupported",
@@ -377,6 +379,8 @@ export const K = {
     problemsNote: "app.sheet.problems.note",
     sessionTitle: "app.sheet.session.title",
     sessionNote: "app.sheet.session.note",
+    homeTitle: "app.sheet.home.title",
+    homeNote: "app.sheet.home.note",
     terminalTitle: "app.sheet.terminal.title",
     terminalNote: "app.sheet.terminal.note",
     claudeTitle: "app.sheet.claude.title",

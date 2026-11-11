@@ -18,10 +18,10 @@ async function address(app: { type: (selector: string, text: string) => Promise<
 
 test("the top bar opens browser sheets, and the address bar normalizes a domain", async () => {
   const app = await open("./fixtures/browser.tsx", { width: 1200, height: 800 });
-  await app.waitFor("id:open-launcher");
-  // The Launcher's Browser action is an entry too: it opens the sheet in the
-  // active container and closes the Launcher.
-  await app.press("id:open-launcher");
+  await app.waitFor("id:open-hero");
+  // The Hero's Browser action is an entry too: it opens the sheet in the
+  // active container and becomes a tab beside it.
+  await app.press("id:open-hero");
   await app.waitFor("id:launcher-browser");
   await app.press("id:launcher-browser");
   await app.waitFor("id:browser-address");

@@ -177,7 +177,11 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 - **画布 = 一个容器，或一个临时画布**：侧栏一行 = 一个容器 = 一组面板的入口；切换行 = stash 当前布局 + restore 目标布局。多窗口不在设计中。M4 的侧栏按 Project → 容器分组，无归属容器落 Chats；「全部会话」用虚拟化 `List` 放在底部，打开会话即归入当前容器。
 - **没有"页面状态"**：Hero 也是 sheet（`home:{containerId}` 容器内、`home:scratch` 临时画布），画布永远只渲染 sheet 树。旧的 `launcherOpen` 页面布尔已删除——它与容器状态是两份真相，正是"切容器停在起始页"这类错位的来源。
 - **scratch 画布**：kind `Scratch`，无 cwd、无进程、不进注册表、不持久化。它是"未发生任何行为的画布"：Hero 带项目 chip，提交 composer 或选一个动作后铸真实容器并切换；scratch 里开的浏览器 sheet 随容器迁移，未提交则暂存（只保留一份 scratch）。
-- **每个 panel 的 tab bar 最右有常驻 `+`**，在该 panel 打开 `home:{containerId}`（已存在则激活）。
+- **每个 panel 的 tab bar 最右有常驻 `+`**，在该 panel 打开 `home:{containerId}`（已存在则激活）。nsh 0.4.0 的 tab bar 没有尾部插槽
+  （`tab_group` 只渲染 tabs），所以 `+` 是 app 侧的覆盖层（`tab-plus.tsx`）：由布局树算出每个可见组的矩形（split 的 `sizes`、
+  1pt handle、最后一个可见子节点取剩余），把 20pt 的 ghost 按钮放在组标题栏右端；zoom 只画被 zoom 的组，宽度 <600pt（compact）
+  只画显示中的组。tab bar 用 `paddingRight: 30` 预留这条带，tab 不会压在按钮下。本仓库不打开 dock；带 dock 的布局不画 `+`
+  （中心区坐标会偏，宁缺不错）。
 
 ### 4.3 布局与状态
 

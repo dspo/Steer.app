@@ -1,5 +1,14 @@
 import { expect, open, test } from "nsh/test";
 
+/** Writes the picture when the run draws the app (`nsh test --target macos`). */
+async function shot(app: { screenshot: (path?: string | null) => Promise<Uint8Array> }, name: string): Promise<void> {
+  try {
+    await app.screenshot(`docs/evidence/${name}.png`);
+  } catch {
+    // Headless: nothing is drawn, and nothing is broken.
+  }
+}
+
 test("the sidebar groups containers by explicit project membership", async () => {
   const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:alpha body");
@@ -28,20 +37,26 @@ test("the sidebar filter reports no matches and clears", async () => {
   expect(app.texts()).toContain("Project One");
 });
 
-test("a project header's + opens the launcher without collapsing the group", async () => {
+test("a project header's + opens the Hero without collapsing the group", async () => {
   const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:alpha body");
   await app.press("id:new-container-p1");
   await app.waitFor("text:开始你的对话");
+  await app.waitFor("id:tab-plus-home:scratch");
+  expect(app.texts()).toContain("开始");
   // Alpha is p1's only container; a collapsed group would hide it.
   expect(app.shows("text:Alpha")).toBe(true);
 });
 
-test("the Launcher starts a conversation and then shows its container", async () => {
+test("the Hero starts a conversation and then shows its container", async () => {
   const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:alpha body");
   await app.press("id:new-container");
   await app.waitFor("text:开始你的对话");
+  // New is the scratch canvas, and its Hero is a tab of that canvas (the
+  // tab bar's own `+` is the proof the tree is there, not a page).
+  await app.waitFor("id:tab-plus-home:scratch");
+  expect(app.texts()).toContain("开始");
   await app.type("id:launcher-input", "hello from launcher");
   // Enter sends; there is no Start button.
   expect(app.count("id:launcher-send")).toBe(0);
@@ -51,6 +66,24 @@ test("the Launcher starts a conversation and then shows its container", async ()
   await app.waitUntil(() => !app.texts().includes("开始你的对话"));
   expect(app.texts()).toContain("Chat");
   expect(app.texts()).toContain("hello from launcher");
+});
+
+test("New reaches the scratch canvas from a container, by button and by Cmd+N", async () => {
+  const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
+  await app.waitFor("text:alpha body");
+  await app.press("id:new-container");
+  await app.waitFor("id:launcher-input");
+  await app.waitFor("id:tab-plus-home:scratch");
+  // Asking again keeps one Hero sheet on the canvas.
+  await app.press("id:new-container");
+  expect(app.count("id:launcher-input")).toBe(1);
+  // Leaving scratch and coming back keeps the same scratch canvas.
+  await app.press("id:container-row-c1");
+  await app.waitFor("text:alpha body");
+  await app.keyboard.press("mod+n");
+  await app.waitFor("id:launcher-input");
+  await app.waitFor("id:tab-plus-home:scratch");
+  await shot(app, "ui-s2-scratch-hero");
 });
 
 test("the centered picker filters containers and switches the canvas", async () => {
@@ -86,10 +119,10 @@ test("the sidebar toggles between project and recent grouping", async () => {
   expect(app.texts()).toContain("Project One");
 });
 
-test("the start page's project menu creates a project from Finder-picked roots", async () => {
+test("the Hero's project menu creates a project from Finder-picked roots", async () => {
   const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:alpha body");
-  // Creation is reached from the Launcher's project chip, not the sidebar.
+  // Creation is reached from the Hero's project chip, not the sidebar.
   await app.press("id:new-container");
   await app.waitFor("text:开始你的对话");
   await app.press("id:launcher-project");
@@ -121,7 +154,7 @@ test("the start page's project menu creates a project from Finder-picked roots",
   expect(app.texts()).toContain("Two Roots");
 });
 
-test("the start page's tools are two left-aligned rows with plain labels", async () => {
+test("the Hero's tools are two left-aligned rows with plain labels", async () => {
   const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:alpha body");
   await app.press("id:new-container");

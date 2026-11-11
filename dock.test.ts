@@ -1,9 +1,12 @@
 import { expect, test } from "nsh/test";
 import {
+  SCRATCH_SHEET,
   activePanelIds,
   appendSheet,
   defaultLayoutForSessions,
   hasSheet,
+  homeSheetContainer,
+  homeSheetId,
   layoutSessions,
   sheetCount,
   pruneLayout,
@@ -55,4 +58,16 @@ test("opening the same auxiliary sheet twice keeps one tab", () => {
   const twice = appendSheet(once, "subagents:c1");
   expect(sheetCount(twice)).toBe(sheetCount(once));
   expect(twice.center.type === "tabs" && twice.center.panels.filter((p: string) => p === "subagents:c1").length).toBe(1);
+});
+
+test("a Hero sheet belongs to its container, or to the scratch canvas", () => {
+  expect(homeSheetId("c1")).toBe("home:c1");
+  expect(homeSheetId(null)).toBe(SCRATCH_SHEET);
+  expect(homeSheetContainer("home:c1")).toBe("c1");
+  expect(homeSheetContainer(SCRATCH_SHEET)).toBeNull();
+  // A Hero is a sheet like any other: it appends once and activates after.
+  const once = appendSheet(defaultLayoutForSessions(["s1"]), "home:c1");
+  const again = appendSheet(once, "home:c1");
+  expect(sheetCount(again)).toBe(2);
+  expect(activePanelIds(again)).toEqual(["home:c1"]);
 });

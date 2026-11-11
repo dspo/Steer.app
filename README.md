@@ -6,10 +6,12 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 终端、各 agent TUI、webview、编辑器、diff、LSP Problems）。logo 为 Steer 的 `<->` 构型加载祖冲之密率
 （上 355、下 113）。
 
-**当前状态（as of 2026-11-11，`61d6bb6` 之后）**：M0–M12 已交付（地基、对话、契约与监督、容器与面板、
-项目与 Launcher、子代理、轮廓、终端、编辑器、Git、浏览器、LSP、常驻与更新）。门禁：`nsh check` ✓、
-`cargo check --all-targets` ✓、`nsh test` 220/220 ✓、`script/bundle-mac.sh` ✓。下一批工作是
-**Casing II 与 Hero sheet**，见 [docs/plan.md](docs/plan.md)。
+**当前状态（as of 2026-11-11）**：M0–M12 已交付（地基、对话、契约与监督、容器与面板、项目与 Launcher、子代理、轮廓、
+终端、编辑器、Git、浏览器、LSP、常驻与更新）。Casing II 的 **§2.1-1（Hero sheet 化）已完成，工作树未提交**：
+`home:{containerId}` / `home:scratch` 是 sheet 种类，`launcherOpen` 已删除，每个可见组的 tab bar 右端有常驻 `+`。
+门禁：`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 231/231 ✓、`script/bundle-mac.sh` ✓。证据见
+[docs/evidence/s1-hero-sheet.md](docs/evidence/s1-hero-sheet.md) 与 `docs/evidence/ui-s2-*.png`；下一项是
+[§2.1-2（修 A1/B3）](docs/plan.md)。
 
 ## 文档
 
@@ -39,12 +41,13 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 | `engine.ts` | The shell's connection, supervised reconnect, snapshot/Ui request plumbing |
 | `ui-host.tsx` | Extension UI host: dialogs, toast stack, status lines, window title |
 | `i18n.ts`, `locales/` | zh-CN/en key tables and the parity test's key list |
-| `containers.ts` | Container store: create/switch/archive, layout stash + zoom restore, sidebar projection |
-| `projects.ts` | Project store: `projects.json` projection, explicit membership, project dialog state |
+| `containers.ts` | Container store: create/switch/archive, the scratch canvas (in-memory layout), layout stash + zoom restore, the Hero's open/submit paths, sidebar projection |
+| `projects.ts` | Project store: `projects.json` projection, explicit membership, the Hero's project target |
 | `subagents.ts` | Subagent roster store: runs, selection, read-only transcript, note/auto-open wiring |
-| `launcher.tsx` | The Hero sheet (start page): project chip, composer, the two tool rows and the project creation dialog |
-| `dock.ts` | Layout data and pure edits: stable session sheet ids, append/activate/prune, visible-panel set |
-| `sheets.tsx` | The sheet registry: kinds, tab titles and glyphs; `session`/`terminal`/`files`/`editor`/`diff`/`changes`/`history` have real bodies, the rest mock |
+| `launcher.tsx` | The Hero sheet (`home:{containerId}` / `home:scratch`): project chip, composer, the two tool rows and the project creation dialog |
+| `tab-plus.tsx` | The `+` at each tab bar's right edge (nsh's `DockArea` has no trailing slot): group rectangles from the layout tree and the overlay button |
+| `dock.ts` | Layout data and pure edits: stable session and Hero sheet ids, append/activate/prune, visible-panel set |
+| `sheets.tsx` | The sheet registry: kinds, tab titles and glyphs; `home`/`session`/`terminal`/`files`/`editor`/`diff`/`changes`/`history` have real bodies, the rest mock |
 | `fs.ts` | The typed face of `zu/fs`: entries, versions, failure codes, canonical workspace root |
 | `editors.ts` | Editor documents by stable sheet id, save (`stat` → `write` → read-back), stale conflict, reload, Mod+S target |
 | `files.tsx` | The real Files sheet (lazy tree, compare dialog), Editor sheet (find/replace bar, conflict/read-only states) and two-file Diff sheet |
@@ -64,9 +67,11 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 | `src/git.rs` | The native `zu/git` module: porcelain v2 status, patch diffs, log, branches, stage/unstage, commit, checkout; root and path policy, coded errors |
 | `ui.tsx` | Canvas glyphs、`Logo`、`Dot`/`Chip`/`SectionTitle`、motion/阴影 token、`applyScrollbarTheme` |
 | `theme.json` | Design tokens (shadcn-style, light + dark) via `nsh.json` `"theme"` |
-| Tests | `App.test.tsx`、`containers.test.ts`、`containers.ui.test.tsx`、`dock.test.ts`、`dock-move.test.tsx`、`contracts.test.ts`、`i18n.test.ts`、`many-sessions.test.tsx`、`projects.test.ts`、`projects.ui.test.tsx`、`subagents.test.ts`、`subagents.ui.test.tsx`、`ui-host.test.tsx`、`external.test.ts`、`external.ui.test.tsx`、`pty.test.ts`、`terminal.ui.test.tsx`、`terminal.claude.test.tsx`、`engine.test.ts`（live）、`fs.test.ts`、`file-tree.test.ts`、`files.ui.test.tsx`、`git.test.ts`、`git.ui.test.tsx`、`browser.test.ts`、`browser.ui.test.tsx`、`browser.live.test.tsx`、`lsp.test.ts`（真实 rust-analyzer）、`lsp.ui.test.tsx`（受控 LSP + 真实 Workbench）、`notifications.test.ts`、`updates.test.ts`、`updates.ui.test.tsx`、`lifecycle.test.ts`、`lifecycle.ui.test.tsx`、`lifecycle.window.test.tsx`、`lifecycle.quit.test.tsx`、`lifecycle.app.test.tsx`（`nsh test` 计 220/220，含 44 条 Rust 单测） |
+| Tests | `App.test.tsx`、`containers.test.ts`、`containers.ui.test.tsx`、`dock.test.ts`、`dock-move.test.tsx`、`contracts.test.ts`、`i18n.test.ts`、`many-sessions.test.tsx`、`projects.test.ts`、`projects.ui.test.tsx`、`subagents.test.ts`、`subagents.ui.test.tsx`、`ui-host.test.tsx`、`external.test.ts`、`external.ui.test.tsx`、`pty.test.ts`、`terminal.ui.test.tsx`、`terminal.claude.test.tsx`、`engine.test.ts`（live）、`fs.test.ts`、`file-tree.test.ts`、`files.ui.test.tsx`、`git.test.ts`、`git.ui.test.tsx`、`browser.test.ts`、`browser.ui.test.tsx`、`browser.live.test.tsx`、`lsp.test.ts`（真实 rust-analyzer）、`lsp.ui.test.tsx`（受控 LSP + 真实 Workbench）、`notifications.test.ts`、`updates.test.ts`、`updates.ui.test.tsx`、`lifecycle.test.ts`、`lifecycle.ui.test.tsx`、`lifecycle.window.test.tsx`、`lifecycle.quit.test.tsx`、`lifecycle.app.test.tsx`、`tab-plus.test.ts`（`nsh test` 计 231/231，含 44 条 Rust 单测） |
 
 交互全部来自 `nsh/base DockArea`：拖 sheet 到另一 panel（移动且状态不丢）、拖到组边缘分栏、拖手缩放、`×` 关闭、Zoom、<600pt compact。
+唯一的例外是每组标题栏右端的 `+`：0.4.0 的 tab bar 没有尾部插槽，`tab-plus.tsx` 按布局几何把它画成覆盖层（见
+[docs/evidence/s1-hero-sheet.md](docs/evidence/s1-hero-sheet.md)）。
 
 ## Run it
 

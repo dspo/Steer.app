@@ -88,6 +88,10 @@ motionStyle()   // 用户在系统里减少动态效果时返回 {}
 | 关闭控件 | 右侧 18pt 热区，`opacity 0` → hover 1，图标 `close` 10pt |
 | 新增页签 | 页签条最右常驻 `+`，在该 panel 打开 `home:{containerId}`（Hero） |
 
+`+` 是 20pt 的 ghost 按钮（图标 11pt、`muted-foreground`），垂直居中于组标题栏，标题栏右侧留 30pt
+给它——tab 只挤压到这条带之前。nsh 0.4.0 的 tab bar 没有尾部插槽，它由 app 覆盖层画在每组右端
+（[architecture.md](architecture.md) §4.2）。
+
 ### 3.3 顶栏 picker 三态
 
 | 状态 | 视觉 |

@@ -184,7 +184,10 @@ const glyphs: Record<GlyphName, Draw> = {
       line(c, [10 + Math.cos(a) * 6.5, 10 + Math.sin(a) * 6.5, 10 + Math.cos(a) * 8.5, 10 + Math.sin(a) * 8.5]);
     }
   },
-  plus: (c) => line(c, [10, 5, 10, 15]),
+  plus: (c) => {
+    line(c, [10, 5, 10, 15]);
+    line(c, [5, 10, 15, 10]);
+  },
   send: (c) => line(c, [5, 11, 10, 6, 15, 11]),
   file: (c) => {
     line(c, [5, 3, 12, 3, 15.5, 6.5, 15.5, 17, 5, 17, 5, 3]);

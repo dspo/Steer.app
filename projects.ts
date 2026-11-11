@@ -3,14 +3,14 @@ import { request } from "./engine";
 import type { ContainerRecord, ProjectRecord, ProjectsData } from "./contracts/protocol";
 import { activeCwd, send } from "./sessions";
 import {
-  containers,
   createContainer,
   liveContainers,
+  openScratch,
 } from "./containers";
 
 /**
- * Projects and the Launcher. A project owns one or more roots with exactly
- * one primary; a container's cwd is the primary's snapshot at creation, so
+ * Projects and the Hero. A project owns one or more roots with exactly one
+ * primary; a container's cwd is the primary's snapshot at creation, so
  * editing roots never moves a live container. Membership is explicit: a
  * container absent from the map is in Chats.
  */
@@ -27,13 +27,11 @@ export function setProjectTransport(next: ProjectTransport | null): void {
   transport = next ?? request;
 }
 
-/** The Launcher is up (empty canvas, or after a "+"). */
-export const launcherOpen = signal(false);
 /** The project the next conversation starts in; null is Chats. */
-export const launcherProjectId = signal<string | null>(null);
+export const heroProjectId = signal<string | null>(null);
 /** Opened from a project row: the target cannot be changed in this pass. */
-export const launcherLocked = signal(false);
-export const launcherStarting = signal(false);
+export const heroLocked = signal(false);
+export const heroStarting = signal(false);
 
 export async function loadProjects(): Promise<void> {
   try {
@@ -90,39 +88,42 @@ export function containersIn(projectId: string | null): ContainerRecord[] {
   return liveContainers().filter((container) => containerProject(container) === projectId);
 }
 
-/** Opens the Launcher, optionally locked to a project row's target. */
-export function openLauncher(projectId: string | null, locked = false): void {
-  launcherProjectId.set(projectId);
-  launcherLocked.set(locked);
-  launcherOpen.set(true);
-}
-
-export function closeLauncher(): void {
-  launcherOpen.set(false);
-  launcherLocked.set(false);
-  launcherStarting.set(false);
+/** Opens the scratch canvas' Hero, optionally locked to a project row's
+ * target. The hero is a sheet of that canvas, not a page state. */
+export function openHero(projectId: string | null, locked = false): void {
+  heroProjectId.set(projectId);
+  heroLocked.set(locked);
+  void openScratch();
 }
 
 /**
- * Starts the first conversation of a container from the Launcher. With a
+ * Starts the first conversation of a new container from a Hero. With a
  * project the engine snapshots the primary cwd; without one it is Chats and
- * the previous cwd (or the engine's) is used.
+ * the previous cwd (or the engine's) is used. A Hero inside an external
+ * (terminal/TUI) container passes its own cwd and project: a Pi session
+ * cannot live there, so the conversation gets a Pi container in the same
+ * workspace.
  */
-export async function startFromLauncher(text: string): Promise<void> {
+export async function startFromScratch(
+  text: string,
+  target: { cwd?: string; projectId?: string | null } = {},
+): Promise<boolean> {
   const prompt = text.trim();
-  if (!prompt || launcherStarting()) return;
-  launcherStarting.set(true);
+  if (!prompt || heroStarting()) return false;
+  heroStarting.set(true);
   try {
-    const projectId = launcherProjectId();
-    const sessionId = await createContainer(projectId === null ? activeCwd() || undefined : undefined, projectId);
-    if (!sessionId) return;
+    const projectId = target.projectId === undefined ? heroProjectId() : target.projectId;
+    const cwd = target.cwd ?? (projectId === null ? activeCwd() || undefined : undefined);
+    const sessionId = await createContainer(cwd, projectId);
+    if (!sessionId) return false;
     await loadProjects();
-    closeLauncher();
     await send(prompt, sessionId);
+    return true;
   } catch (failure) {
     projectError.set(String(failure));
+    return false;
   } finally {
-    launcherStarting.set(false);
+    heroStarting.set(false);
   }
 }
 

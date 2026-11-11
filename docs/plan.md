@@ -2,9 +2,12 @@
 
 > 唯一的工作指导文档。已完成的部分给证据位置；未做的按批次给出任务与验收。
 
-**当前进度（2026-11-11）**：`main` @ `6a0bcea`，门禁全绿（`nsh test` 220/220）。§2 的三批任务**均未动工**；
-下一个动作是 §2.1 的第 1 项（Hero sheet 化）。开工前读：本文件 §2 → [architecture.md](architecture.md)
-§4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 → [evidence/apis-verified.md](evidence/apis-verified.md)。
+**当前进度（2026-11-11）**：§2.1 第 1 项（Hero sheet 化）已完成，工作树未提交。门禁全绿（`nsh check` ✓、
+`cargo check --all-targets` ✓、`nsh test` 231/231 ✓、`script/bundle-mac.sh` ✓），证据见
+[evidence/s1-hero-sheet.md](evidence/s1-hero-sheet.md) 与 `docs/evidence/ui-s2-*.png`。
+§2.1 剩下的 2–7 项未动工；下一个动作是第 2 项（修 A1/B3）。
+开工前读：本文件 §2 → [architecture.md](architecture.md) §4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 →
+[evidence/apis-verified.md](evidence/apis-verified.md)。
 > 架构见 [architecture.md](architecture.md)，视觉规格见 [DESIGN.md](DESIGN.md)，决策台账见 [decisions.md](decisions.md)。
 
 ## 1. 已完成（M0–M12，证据在 evidence/）
@@ -46,6 +49,12 @@
 | 5 | 容器标题（S2） | `sheetOrder` + 每 kind 的 `title()`：session=会话名（`appendSessionInfo` 可改）/terminal=OSC 标题/webview=页面 title/其余固定 | 关闭第一个 sheet 后第二个顶上来；Claude Code 改终端标题时容器标题跟着变 |
 | 6 | 语言跟随系统 | 删语言按钮；启动读 `locale()`：`zh*`→zh-CN，其余→en | 系统中文显示中文，非中文显示英文 |
 | 7 | 无 tab 自动归档（含 Hero） | 容器 `sheetCount === 0` → 切到相邻容器 → archive → 侧栏行 180ms 退场（高度+透明度） | 关掉包括 Hero 在内的全部 sheet 后容器消失且引擎侧 archived |
+
+> **§2.1-1 已完成（2026-11-11）**：`home:{containerId}` / `home:scratch` 是 sheet 种类；`launcherOpen` 及其页面路径已删除；
+> 画布只有 sheet 树。每个可见组的标题栏右端有 `+`（nsh 0.4.0 没有尾部插槽，`+` 是 app 侧按布局几何画的覆盖层，
+> 见 [evidence/s1-hero-sheet.md](evidence/s1-hero-sheet.md)）。nsh 的 tab × 关不掉组里最后一个 tab，但零 sheet 仍可达：
+> 终端/TUI 进程自己退出会关掉它的 sheet。第 7 项需要 shell 侧的关闭路径来处理不是进程的 sheet（最后一个 Hero、
+> 最后一个 Pi 会话），并在零 sheet 时切走归档。
 
 ### 2.2 第 2 批：外壳与组合（S3）
 

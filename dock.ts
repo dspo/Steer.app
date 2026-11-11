@@ -22,6 +22,20 @@ export function sessionSheetId(sessionId: string): string {
   return `session:${sessionId}`;
 }
 
+/** The scratch canvas's Hero sheet: the one sheet no container owns. */
+export const SCRATCH_SHEET = "home:scratch";
+
+/** A canvas's Hero sheet: the container's start page, or the scratch one. */
+export function homeSheetId(containerId: string | null): string {
+  return containerId ? `home:${containerId}` : SCRATCH_SHEET;
+}
+
+/** The container a Hero sheet belongs to, or `null` for the scratch canvas. */
+export function homeSheetContainer(id: string): string | null {
+  if (id === SCRATCH_SHEET) return null;
+  return id.startsWith("home:") ? id.slice("home:".length) : null;
+}
+
 /** The pi session a sheet id names, or `null` for another kind. */
 export function sessionIdOfSheet(id: string): string | null {
   return id.startsWith("session:") ? id.slice("session:".length) : null;

@@ -1,5 +1,15 @@
 import { expect, open, test } from "nsh/test";
 
+/** Writes the picture when the run draws the app (`nsh test --target macos`);
+ * a headless run draws nothing, so it is a no-op there. */
+async function shot(app: { screenshot: (path?: string | null) => Promise<Uint8Array> }, name: string): Promise<void> {
+  try {
+    await app.screenshot(`docs/evidence/${name}.png`);
+  } catch {
+    // Headless: nothing is drawn, and nothing is broken.
+  }
+}
+
 test("containers switch their layouts and throttle hidden sessions", async () => {
   const app = await open("./fixtures/containers.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:alpha body");
@@ -26,6 +36,19 @@ test("containers switch their layouts and throttle hidden sessions", async () =>
   await app.waitFor("text:gamma body");
   expect(app.texts()).toContain("gamma body");
   expect(app.texts()).not.toContain("alpha body");
+});
+
+test("a container's Hero starts its captain session instead of a new container", async () => {
+  const app = await open("./fixtures/containers.tsx", { width: 1200, height: 800 });
+  await app.waitFor("text:alpha body");
+  await app.press("id:tab-plus-session:s1");
+  await app.waitFor("id:launcher-input");
+  await app.type("id:launcher-input", "hello in container");
+  await app.submit("id:launcher-input");
+  // The message joined the container's own transcript: a minted container
+  // would have shown an empty session instead of Alpha's history.
+  await app.waitUntil(() => app.texts().includes("hello in container"));
+  expect(app.texts()).toContain("alpha body");
 });
 
 test("the VS Code action falls back to the active container's cwd", async () => {
@@ -58,6 +81,30 @@ test("a saved zoom is restored with its container", async () => {
   await app.waitFor("text:gamma body");
   expect(app.texts()).toContain("gamma body");
   expect(app.texts()).not.toContain("alpha body");
+});
+
+test("the tab bar's + opens the Hero as a sheet in that group", async () => {
+  const app = await open("./fixtures/containers.tsx", { width: 1200, height: 800 });
+  await app.waitFor("text:alpha body");
+  // c1's group holds Alpha and Gamma; the + is the group's Hero entry.
+  await app.press("id:tab-plus-session:s1");
+  await app.waitFor("id:launcher-input");
+  // The Hero is a tab of the canvas, not a page beside it.
+  expect(app.count("id:tab-close-home:c1")).toBe(1);
+  expect(app.texts()).toContain("开始");
+  await shot(app, "ui-s2-hero-sheet");
+  // Asking again activates the one tab instead of adding a second.
+  await app.press("id:tab-plus-session:s1");
+  expect(app.count("id:tab-close-home:c1")).toBe(1);
+  expect(app.count("id:launcher-input")).toBe(1);
+  // Closing it leaves the conversation; the + brings it back.
+  await app.press("id:tab-close-home:c1");
+  await app.waitFor("text:gamma body");
+  expect(app.count("id:launcher-input")).toBe(0);
+  expect(app.shows("id:tab-close-home:c1")).toBe(false);
+  await app.press("id:tab-plus-session:s1");
+  await app.waitFor("id:launcher-input");
+  expect(app.count("id:tab-close-home:c1")).toBe(1);
 });
 
 test("archiving removes a container from the sidebar but keeps the data", async () => {

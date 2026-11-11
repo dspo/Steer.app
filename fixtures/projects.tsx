@@ -51,6 +51,8 @@ const records: any[] = [
 let projectList: any[] = [projectOne, projectTwo];
 let membershipMap: Record<string, string | null> = { c1: "p1", c2: "p2" };
 let active = "c1";
+/** Layouts written by the store (switching a container reads them back). */
+const layouts: Record<string, { layout: any; zoom: string | null }> = {};
 
 projects.set([projectOne, projectTwo] as any);
 containers.set(records);
@@ -62,6 +64,17 @@ phase.set("connected");
 
 async function containerTransport(type: string, payload: any = {}): Promise<any> {
   switch (type) {
+    case "container.list":
+      return { containers: records, activeContainerId: active };
+    case "container.show": {
+      active = payload.containerId;
+      return { container: records.find((row) => row.id === payload.containerId) };
+    }
+    case "layout.get":
+      return {
+        containerId: payload.containerId,
+        ...(layouts[payload.containerId] ?? { layout: null, zoom: null }),
+      };
     case "container.create": {
       const id = `c${records.length + 1}`;
       const sessionId = `s${records.length + 1}`;
@@ -84,6 +97,7 @@ async function containerTransport(type: string, payload: any = {}): Promise<any>
       };
     }
     case "layout.put":
+      layouts[payload.containerId] = { layout: payload.layout, zoom: payload.zoom };
       return { containerId: payload.containerId, layout: payload.layout, zoom: payload.zoom };
     default:
       throw new Error(`project fixture container transport: ${type}`);

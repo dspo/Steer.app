@@ -15,21 +15,22 @@ import {
   loadContainers,
   onPanelActive,
   openFilesSheet,
+  openHomeSheet,
   openPath,
   setLayout,
   setZoom,
   switchContainer,
+  zoomedPanel,
 } from "./containers";
 import {
   containerProject,
   containersIn,
-  launcherOpen,
   loadProjects,
-  openLauncher,
+  openHero,
   orderedProjects,
   projectError,
 } from "./projects";
-import { Launcher, ProjectDialog } from "./launcher";
+import { ProjectDialog } from "./launcher";
 import { panelIds } from "./dock";
 import { error as sessionError, refreshSessions, sessions } from "./sessions";
 import { SheetBody, sheetGlyph, sheetTitle } from "./sheets";
@@ -51,6 +52,7 @@ import {
   sessionMatches,
 } from "./titlebar";
 import { Chip, Dot, Glyph, type GlyphName, motionStyle, shadowCard, shadowRaised } from "./ui";
+import { TabBarPlus } from "./tab-plus";
 
 /**
  * Zu's shell: the titlebar, the project/container sidebar, the canvas and the
@@ -421,7 +423,7 @@ function Sidebar() {
           accessibilityLabel={t(K.container.create)}
           class="h-7 flex-row items-center gap-1 rounded-lg border border-line bg-card px-2 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
           style={{ ...motionStyle("fast") }}
-          onPress={() => openLauncher(null)}
+          onPress={() => openHero(null)}
         >
           <Glyph name="plus" size={10} tint={token("foreground")} />
           <Text class="text-[11px] font-medium text-foreground">{t(K.sidebar.new)}</Text>
@@ -493,14 +495,14 @@ function Sidebar() {
                     <ProjectGroup
                       projectId={project().id}
                       name={project().name}
-                      onCreate={() => openLauncher(project().id, true)}
+                      onCreate={() => openHero(project().id, true)}
                     />
                   )}
                 </Each>
                 <ProjectGroup
                   projectId={null}
                   name={t(K.project.chats)}
-                  onCreate={() => openLauncher(null, true)}
+                  onCreate={() => openHero(null, true)}
                 />
               </View>
             </If>
@@ -539,10 +541,11 @@ function Sidebar() {
 /** The window-centered session picker: trigger + a searchable recent list. */
 function SessionPicker() {
   const active = () => activeContainer();
-  const title = () => (active() ? containerTitle(active()!) : t(K.titlebar.sessionPicker));
+  // The scratch canvas has no container; the picker still opens the list.
+  const title = () => (active() ? containerTitle(active()!) : t(K.launcher.title));
   const meta = () => {
     const container = active();
-    if (!container) return t(K.titlebar.noSession);
+    if (!container) return t(K.canvas.scratch);
     const project = containerProjectName(container);
     return project ? `${project} · ${shortPath(container.cwd)}` : shortPath(container.cwd);
   };
@@ -835,13 +838,122 @@ function terminalPanels(): Array<{ id: string; closable: boolean }> {
     .map((id) => ({ id, closable: false }));
 }
 
+/**
+ * The canvas: the sheet tree and nothing else. Every surface here is a sheet
+ * — a container's conversation, terminal, browser, Hero, or the scratch
+ * canvas's Hero — so there is no page state to fall out of step with the
+ * tabs. The `+` overlay sits above each group's tab bar.
+ */
+function Canvas() {
+  const size = signal({ width: 0, height: 0 });
+  const measured = () => size();
+  return (
+    <View
+      class="flex-1 bg-background"
+      style={{ flexDirection: "column", minWidth: 0, minHeight: 0, position: "relative" }}
+      onLayout={({ bounds }) => {
+        const { width, height } = bounds.size;
+        if (measured().width !== width || measured().height !== height) size.set({ width, height });
+      }}
+    >
+      <DockArea
+        ref={(ref) => bindDock(ref)}
+        class="flex-1"
+        layout={layout()}
+        panels={terminalPanels()}
+        onLayoutChange={({ layout: next }) => setLayout(next)}
+        onZoomChange={({ panel }) => setZoom(panel)}
+        onPanelActiveChange={({ panel, active }) => onPanelActive(panel, active)}
+        groupClass="flex-1 bg-background overflow-hidden"
+        tabBarClass="flex-row items-end gap-0.5 border-b border-line bg-inset px-2"
+        // The right strip is the `+`'s: a tab never ends under the overlay.
+        tabBarStyle={{ height: 34, paddingRight: 30 }}
+        tabClass="group focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-1px] active:opacity-80"
+        contentClass="flex-1 bg-background overflow-hidden"
+        handleClass="basis-px bg-line"
+        dropIndicatorClass="rounded-lg border-2 border-brand bg-brand-tint"
+        renderTab={(tab) => (
+          // Every tab is the same width: a strip whose tabs take their
+          // titles' width looks ragged, and the title truncates instead.
+          <View
+            class={`relative h-8 flex-row items-center gap-1.5 rounded-lg px-2.5 ${tab.active ? "bg-card" : "hover:bg-hover"}`}
+            style={{
+              width: 144,
+              minWidth: 144,
+              maxWidth: 144,
+              flexGrow: 0,
+              flexShrink: 0,
+              borderRadius: 8,
+              backgroundColor: tab.active ? token("card") : "transparent",
+              boxShadow: tab.active ? shadowCard() : "none",
+              ...motionStyle("medium"),
+            }}
+          >
+            <Glyph name={sheetGlyph(tab.panel)} size={11.5} tint={tab.active ? token("foreground") : token("faint")} />
+            <Text
+              class={`min-w-0 flex-1 text-[12.5px] font-medium ${tab.active ? "text-foreground" : "text-muted-foreground"}`}
+              style={{ numberOfLines: 1 }}
+            >
+              {sheetTitle(tab.panel)}
+            </Text>
+            {/* Appears under the pointer, as Steer's tabs do. */}
+            <If when={tab.closable}>
+              <View
+                role="button"
+                testID={`tab-close-${tab.panel}`}
+                accessibilityLabel={t(K.canvas.closeSheet, { name: sheetTitle(tab.panel) })}
+                class="absolute right-1 top-1.5 size-5 items-center justify-center rounded-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-raised"
+                onPress={() => void closeSheet(tab.panel)}
+              >
+                <Glyph name="close" size={10} tint={token("muted-foreground")} />
+              </View>
+            </If>
+            {tab.active ? (
+              <View class="absolute bottom-[-1px] left-2.5 right-2.5 h-0.5 rounded-full bg-primary" style={{ pointerEvents: "none" }} />
+            ) : null}
+          </View>
+        )}
+        renderPanel={(panel) => <SheetBody id={panel.id} />}
+        renderEmpty={() => (
+          // A canvas with no sheet: the Hero is one click away, and it is a
+          // sheet like any other (closing it leaves this state).
+          <View class="flex-1 items-center justify-center gap-2 bg-background">
+            <Text class="text-sm font-semibold text-foreground">{t(K.canvas.emptyTitle)}</Text>
+            <Text class="text-xs text-muted-foreground">{t(K.canvas.emptyNote)}</Text>
+            <View
+              role="button"
+              testID="empty-open-hero"
+              accessibilityLabel={t(K.canvas.openHero)}
+              class="mt-1 h-7 flex-row items-center gap-1.5 rounded-lg border border-line bg-card px-2.5 hover:bg-hover active:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+              style={{ ...motionStyle("fast") }}
+              onPress={() => openHomeSheet()}
+            >
+              <Glyph name="plus" size={10} tint={token("foreground")} />
+              <Text class="text-[11.5px] font-medium text-foreground">{t(K.canvas.openHero)}</Text>
+            </View>
+          </View>
+        )}
+      />
+      <TabBarPlus
+        layout={layout()}
+        width={measured().width}
+        height={measured().height}
+        zoomed={zoomedPanel()}
+        onOpen={(anchor) => openHomeSheet(anchor)}
+      />
+    </View>
+  );
+}
+
 /** The workbench: titlebar · sidebar + canvas (no boot side effects). */
 export function Workbench() {
   // The app's Mod+S saves the editor sheet on screen; a binding made while a
   // component renders goes with the component, and the workbench lives as
   // long as the app.
   keymap.bind("mod+s", () => saveActiveEditor());
-  const empty = () => launcherOpen() || activeContainerId() === null;
+  // New is a scratch canvas wherever the user is; the sidebar's button and
+  // a project row's `+` reach the same canvas.
+  keymap.bind("mod+n", () => openHero(null));
   return (
     <View class="flex-1 bg-background" style={{ flexDirection: "column", minHeight: 0 }}>
       <TitleBar />
@@ -849,77 +961,7 @@ export function Workbench() {
         <If when={sidebarVisible()}>
           <Sidebar />
         </If>
-        <View class="flex-1 bg-background" style={{ flexDirection: "column", minWidth: 0, minHeight: 0 }}>
-          <If when={empty()}>
-            <Launcher />
-          </If>
-          <If when={!empty()}>
-            <DockArea
-              ref={(ref) => bindDock(ref)}
-              class="flex-1"
-              layout={layout()}
-              panels={terminalPanels()}
-              onLayoutChange={({ layout: next }) => setLayout(next)}
-              onZoomChange={({ panel }) => setZoom(panel)}
-              onPanelActiveChange={({ panel, active }) => onPanelActive(panel, active)}
-              groupClass="flex-1 bg-background overflow-hidden"
-              tabBarClass="flex-row items-end gap-0.5 border-b border-line bg-inset px-2"
-              tabBarStyle={{ height: 34 }}
-              tabClass="group focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-1px] active:opacity-80"
-              contentClass="flex-1 bg-background overflow-hidden"
-              handleClass="basis-px bg-line"
-              dropIndicatorClass="rounded-lg border-2 border-brand bg-brand-tint"
-              renderTab={(tab) => (
-                // Every tab is the same width: a strip whose tabs take their
-                // titles' width looks ragged, and the title truncates instead.
-                <View
-                  class={`relative h-8 flex-row items-center gap-1.5 rounded-lg px-2.5 ${tab.active ? "bg-card" : "hover:bg-hover"}`}
-                  style={{
-                    width: 144,
-                    minWidth: 144,
-                    maxWidth: 144,
-                    flexGrow: 0,
-                    flexShrink: 0,
-                    borderRadius: 8,
-                    backgroundColor: tab.active ? token("card") : "transparent",
-                    boxShadow: tab.active ? shadowCard() : "none",
-                    ...motionStyle("medium"),
-                  }}
-                >
-                  <Glyph name={sheetGlyph(tab.panel)} size={11.5} tint={tab.active ? token("foreground") : token("faint")} />
-                  <Text
-                    class={`min-w-0 flex-1 text-[12.5px] font-medium ${tab.active ? "text-foreground" : "text-muted-foreground"}`}
-                    style={{ numberOfLines: 1 }}
-                  >
-                    {sheetTitle(tab.panel)}
-                  </Text>
-                  {/* Appears under the pointer, as Steer's tabs do. */}
-                  <If when={tab.closable}>
-                    <View
-                      role="button"
-                      testID={`tab-close-${tab.panel}`}
-                      accessibilityLabel={t(K.canvas.closeSheet, { name: sheetTitle(tab.panel) })}
-                      class="absolute right-1 top-1.5 size-5 items-center justify-center rounded-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-raised"
-                      onPress={() => void closeSheet(tab.panel)}
-                    >
-                      <Glyph name="close" size={10} tint={token("muted-foreground")} />
-                    </View>
-                  </If>
-                  {tab.active ? (
-                    <View class="absolute bottom-[-1px] left-2.5 right-2.5 h-0.5 rounded-full bg-primary" style={{ pointerEvents: "none" }} />
-                  ) : null}
-                </View>
-              )}
-              renderPanel={(panel) => <SheetBody id={panel.id} />}
-              renderEmpty={() => (
-                <View class="flex-1 items-center justify-center gap-1 bg-background">
-                  <Text class="text-sm font-semibold text-foreground">{t(K.canvas.emptyTitle)}</Text>
-                  <Text class="text-xs text-muted-foreground">{t(K.canvas.emptyNote)}</Text>
-                </View>
-              )}
-            />
-          </If>
-        </View>
+        <Canvas />
       </View>
       <UIHost />
       <ProjectDialog />

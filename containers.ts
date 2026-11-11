@@ -8,9 +8,11 @@ import type {
   SessionData,
 } from "./contracts/protocol";
 import {
+  SCRATCH_SHEET,
   activePanelIds,
   appendSheet,
   defaultLayoutForSessions,
+  homeSheetId,
   layoutSessions,
   panelIds,
   pruneLayout,
@@ -26,6 +28,7 @@ import {
   focusSession,
   openSession,
   refreshSessions,
+  send,
   sessions,
   sessionTitle,
   viewFor,
@@ -47,6 +50,11 @@ import {
  * view stash. Switching rows saves the current DockArea layout through the
  * engine, then restores the target's layout, zoom and session transcripts.
  *
+ * The canvas is always a sheet tree: a container's stashed layout, or the
+ * scratch canvas (`activeContainerId === null`) whose layout lives in memory
+ * only. `home:{containerId}` / `home:scratch` are the Hero sheets; there is
+ * no page state beside the tree.
+ *
  * The engine owns the registry and the layout files; this store is the
  * shell's projection. A sheet id is `session:{sessionId}` and is stable
  * across drags, so `renderPanel` keeps its state while the layout moves.
@@ -54,10 +62,12 @@ import {
 
 /** Every container, archived ones included (the sidebar filters). */
 export const containers = signal<ContainerRecord[]>([]);
-/** The container whose canvas is shown, or null for an empty canvas. */
+/** The container whose canvas is shown; `null` is the scratch canvas. */
 export const activeContainerId = signal<string | null>(null);
-/** The active container's DockArea layout. */
+/** The active canvas's DockArea layout. */
 export const layout = signal<DockAreaLayout>(defaultLayoutForSessions([]));
+/** The scratch canvas's layout: in memory only, like the canvas itself. */
+const scratchLayout = signal<DockAreaLayout>(defaultScratchLayout());
 /** The zoomed panel's id, or null (DockArea keeps zoom outside the layout). */
 export const zoomedPanel = signal<string | null>(null);
 /** The last container/layout failure, shown in the status line. */
@@ -129,6 +139,43 @@ export function defaultLayoutForContainer(container: ContainerRecord): DockAreaL
   return defaultLayoutForSessions(container.sessions.map((session) => session.sessionId));
 }
 
+/** The scratch canvas before anything happens on it: its Hero sheet. */
+function defaultScratchLayout(): DockAreaLayout {
+  return { center: { type: "tabs", panels: [SCRATCH_SHEET], activeIndex: 0 } };
+}
+
+/** The Hero sheet added to (or activated in) a scratch layout. */
+function withScratchHero(current: DockAreaLayout): DockAreaLayout {
+  return appendSheet(current, SCRATCH_SHEET);
+}
+
+/** Remembers the scratch canvas as it is before the canvas leaves it. */
+function stashScratch(): void {
+  if (activeContainerId() === null) scratchLayout.set(layout());
+}
+
+/** Shows the scratch canvas as it was left (an emptied one stays empty). */
+function showScratch(): void {
+  activeContainerId.set(null);
+  savedFor = null;
+  layout.set(scratchLayout());
+  zoomedPanel.set(null);
+  syncVisible();
+}
+
+/**
+ * "New": shows the scratch canvas with its Hero sheet, opening the Hero
+ * again if it was closed. An unsubmitted scratch (its browser sheets, later)
+ * is what the canvas comes back to.
+ */
+export async function openScratch(): Promise<void> {
+  if (activeContainerId() !== null) await flushLayout();
+  const base = activeContainerId() === null ? layout() : scratchLayout();
+  scratchLayout.set(withScratchHero(base));
+  showScratch();
+  containerError.set(null);
+}
+
 /** Whether the active container can hold a pi session. */
 function isPiContainer(id: string | null): boolean {
   if (!id) return false;
@@ -153,11 +200,9 @@ export async function loadContainers(): Promise<void> {
     if (id) {
       await switchContainer(id, true);
     } else {
-      activeContainerId.set(null);
-      savedFor = null;
-      layout.set(defaultLayoutForSessions([]));
-      zoomedPanel.set(null);
-      visiblePanels.set([]);
+      // Nothing to show: the scratch canvas (its Hero sheet) is the start.
+      scratchLayout.set(withScratchHero(scratchLayout()));
+      showScratch();
     }
   } catch (failure) {
     containerError.set(String(failure));
@@ -173,6 +218,7 @@ export async function loadContainers(): Promise<void> {
 export async function switchContainer(id: string, force = false): Promise<void> {
   if (!force && activeContainerId() === id && savedFor === id) return;
   await flushLayout();
+  stashScratch();
   try {
     const data = await transport("container.show", { containerId: id }, 10000);
     const container = data?.container as ContainerRecord;
@@ -199,6 +245,7 @@ export async function switchContainer(id: string, force = false): Promise<void> 
 /** Creates a pi container in `cwd` (the active one's cwd when omitted). */
 export async function createContainer(cwd?: string, projectId?: string | null): Promise<string | null> {
   await flushLayout();
+  stashScratch();
   try {
     const payload: Record<string, unknown> = {};
     const target = cwd ?? activeCwd() ?? undefined;
@@ -238,6 +285,7 @@ export async function createExternalContainer(
   projectId: string | null = null,
 ): Promise<string | null> {
   await flushLayout();
+  stashScratch();
   try {
     const payload: Record<string, unknown> = { kind, projectId };
     // Chats: start where the active container works (an external one has a
@@ -279,10 +327,10 @@ export async function archiveContainer(id: string): Promise<void> {
       const next = data.activeContainerId;
       if (next) await switchContainer(next, true);
       else {
-        activeContainerId.set(null);
-        layout.set(defaultLayoutForSessions([]));
-        zoomedPanel.set(null);
-        visiblePanels.set([]);
+        // The last container left: the scratch canvas is where the shell
+        // goes, as it does at a first launch with no registry rows.
+        scratchLayout.set(withScratchHero(scratchLayout()));
+        showScratch();
       }
     }
     containerError.set(null);
@@ -316,8 +364,7 @@ export async function openPath(path: string): Promise<void> {
     if (session) {
       const id = sessionSheetId(session.sessionId);
       if (!layoutSessions(layout()).includes(session.sessionId)) {
-        layout.set(appendSheet(layout(), id));
-        syncVisible();
+        setLayout(appendSheet(layout(), id));
         await flushLayout();
       }
       focusSession(session.sessionId);
@@ -341,8 +388,7 @@ export async function openPath(path: string): Promise<void> {
     if (session) {
       adoptSession(session);
       const id = sessionSheetId(session.id);
-      layout.set(appendSheet(layout(), id));
-      syncVisible();
+      setLayout(appendSheet(layout(), id));
       await flushLayout();
       focusSession(session.id);
     }
@@ -354,6 +400,8 @@ export async function openPath(path: string): Promise<void> {
 /** The DockArea layout changed: keep the tree, the visible set and the stash. */
 export function setLayout(next: DockAreaLayout): void {
   layout.set(next);
+  // The scratch canvas has no layout file; its tree lives in memory.
+  if (activeContainerId() === null) scratchLayout.set(next);
   syncVisible();
   // Closing a terminal tab closes its PTY; switching containers does not go
   // through here, so a hidden container's shell keeps running.
@@ -367,9 +415,49 @@ export function openAuxSheet(kind: "subagents" | "stats" | "tasks" | "traces"): 
   const container = activeContainerId();
   if (!isPiContainer(container)) return;
   const id = `${kind}:${container}`;
-  layout.set(appendSheet(layout(), id));
-  syncVisible();
-  scheduleSave();
+  setLayout(appendSheet(layout(), id));
+}
+
+/**
+ * Opens the active canvas's Hero sheet (`home:{containerId}` /
+ * `home:scratch`) in the group holding `prefer`, or as a new tab. A Hero is
+ * one sheet per canvas: asking again activates the one already open.
+ */
+export function openHomeSheet(prefer?: string | null): void {
+  const id = homeSheetId(activeContainerId());
+  const next = appendSheet(layout(), id, prefer ?? undefined);
+  setLayout(next);
+}
+
+/**
+ * Shows a container's captain session (the Hero's "Pi" action): the sheet
+ * opens beside `prefer` if it is not in the layout, and its transcript loads.
+ */
+export async function showContainerSession(containerId: string, prefer?: string): Promise<void> {
+  const container = containers().find((row) => row.id === containerId);
+  const captain = container?.sessions[0];
+  if (!container || !captain) return;
+  if (activeContainerId() !== container.id) await switchContainer(container.id);
+  setLayout(appendSheet(layout(), sessionSheetId(captain.sessionId), prefer));
+  await hydrateSession(captain.sessionId, container);
+}
+
+/**
+ * Sends a Hero's first message in a container: the container's captain
+ * session sheet comes forward, its transcript opens, then the prompt goes.
+ */
+export async function startInContainer(
+  containerId: string,
+  text: string,
+  heroSheetId?: string,
+): Promise<boolean> {
+  const prompt = text.trim();
+  const container = containers().find((row) => row.id === containerId);
+  const captain = container?.sessions[0];
+  if (!prompt || !container || !captain) return false;
+  await showContainerSession(containerId, heroSheetId);
+  await send(prompt, captain.sessionId);
+  return true;
 }
 
 // A TUI agent's process ending takes its sheet with it.
@@ -387,9 +475,7 @@ export function closeSheet(id: string): void {
 export function openFilesSheet(containerId: string | null = activeContainerId()): void {
   if (!containerId) return;
   const id = `files:${containerId}`;
-  layout.set(appendSheet(layout(), id));
-  syncVisible();
-  scheduleSave();
+  setLayout(appendSheet(layout(), id));
 }
 
 export function setZoom(panel: string | null): void {
@@ -412,7 +498,8 @@ export function onPanelActive(panel: string, active: boolean): void {
   void hydrateSession(sessionId);
 }
 
-/** Writes the active container's layout now (switch, create, app close). */
+/** Writes the active container's layout now (switch, create, app close).
+ * The scratch canvas has no layout file: nothing to write. */
 export async function flushLayout(): Promise<void> {
   clearTimeout(saveTimer);
   saveTimer = null;

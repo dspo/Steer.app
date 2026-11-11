@@ -2,23 +2,25 @@ import { effect, keymap, signal, Text, token, View } from "nsh";
 import { Dialog, Input, Menu, MenuItem, MenuSeparator } from "nsh/base";
 import { K, t } from "./i18n";
 import {
-  closeLauncher,
+  containerProject,
   createProject,
-  launcherLocked,
-  launcherProjectId,
-  launcherStarting,
+  heroLocked,
+  heroProjectId,
+  heroStarting,
   loadProjects,
   projectError,
   projects,
-  startFromLauncher,
+  startFromScratch,
 } from "./projects";
 import {
-  activeContainerId,
   containers,
   containersLoaded,
   createContainer,
   createExternalContainer,
+  showContainerSession,
+  startInContainer,
 } from "./containers";
+import { homeSheetContainer } from "./dock";
 import { openBrowserSheet } from "./browser";
 import type { ContainerKind, ProjectRecord } from "./contracts/protocol";
 import { Glyph, motionStyle, shadowDialog, shadowRaised, type GlyphName } from "./ui";
@@ -32,9 +34,10 @@ import {
 } from "./project-roots";
 
 /**
- * The Launcher: composer first, container second. It shows on an empty
- * canvas and after a "+", optionally locked to the project row that opened
- * it. The project chip changes the target unless locked.
+ * The Hero sheet: the canvas's start page (`home:{containerId}` inside a
+ * container, `home:scratch` on the scratch canvas), composer first and
+ * container second. In a container it starts the conversation in that
+ * container; on the scratch canvas it mints one in the chosen project.
  */
 
 const AGENT_ACTIONS: Array<{ kind: Exclude<ContainerKind, "Pi">; key: keyof typeof K.external; glyph: GlyphName }> = [
@@ -50,21 +53,47 @@ const EXTERNAL_GLYPH: Record<Exclude<ContainerKind, "Pi">, GlyphName> = {
   Copilot: "branch",
 };
 
-export function Launcher() {
+/**
+ * A canvas's Hero. `home:scratch` has no container: its project chip picks
+ * the project the first message will create a container in. A container's
+ * Hero is that container's start page — its chip shows where the container
+ * lives, and the composer goes to the container's captain session.
+ */
+export function HeroSheet(props: { id: string }) {
   const draft = signal("");
   const focused = signal(false);
-  const externalStarting = signal<string | null>(null);
-  const piStarting = signal(false);
+  const busy = signal<string | null>(null);
+  const containerId = () => homeSheetContainer(props.id);
+  const container = () => containers().find((row) => row.id === containerId());
+  const scratch = () => containerId() === null;
+  // Only a Pi container can host a Pi session; a terminal/TUI container's
+  // Hero starts the conversation in a new Pi container instead.
+  const hostsPi = () => !scratch() && container()?.kind === "Pi";
+  // The scratch Hero's chip is the page's target; a container's is a fact.
+  const locked = () => (scratch() ? heroLocked() : true);
+  const projectOf = () => {
+    if (scratch()) return heroProjectId();
+    const record = container();
+    return record ? containerProject(record) : null;
+  };
+  /** Where a new Pi container goes: the Hero's project, and its cwd when the
+   * Hero is a container's (the scratch one lets the engine choose). */
+  const piTarget = () => (scratch() ? { projectId: heroProjectId() } : { cwd: container()!.cwd, projectId: projectOf() });
+  const starting = () => busy() !== null || heroStarting();
   // A registry whose first load is still in flight must not be raced by a
   // create (the load's empty-state reset would win). A store that already
   // holds rows is past that point; fixtures seed it directly.
-  const readyToCreate = () => containersLoaded() || containers().length > 0;
-  const canStart = () => draft().trim().length > 0 && !launcherStarting() && readyToCreate();
+  const readyToCreate = () => !scratch() || containersLoaded() || containers().length > 0;
+  const canStart = () => draft().trim().length > 0 && !starting() && readyToCreate();
   const submit = () => {
     if (!canStart()) return;
     const text = draft();
+    const id = containerId();
     draft.set("");
-    void startFromLauncher(text);
+    busy.set("send");
+    const done = () => busy.set(null);
+    if (id && hostsPi()) void startInContainer(id, text, props.id).finally(done);
+    else void startFromScratch(text, scratch() ? undefined : piTarget()).finally(done);
   };
   // Cmd+Enter is the explicit send lane; Return (and Shift+Return for a line
   // break) already belongs to the Input. The binding follows the focused
@@ -74,38 +103,51 @@ export function Launcher() {
     return keymap.bind("mod+enter", () => submit(), { when: "always" });
   });
   const startExternal = async (kind: Exclude<ContainerKind, "Pi">) => {
-    if (externalStarting() || !readyToCreate()) return;
-    externalStarting.set(kind);
+    if (busy() || !readyToCreate()) return;
+    busy.set(kind);
     try {
-      const id = await createExternalContainer(kind, launcherProjectId());
-      if (id) {
-        await loadProjects();
-        closeLauncher();
-      }
+      const id = await createExternalContainer(kind, projectOf());
+      // The new container's canvas takes over; the Hero stays its tab.
+      if (id) await loadProjects();
     } finally {
-      externalStarting.set(null);
+      busy.set(null);
     }
   };
   const startPi = async () => {
-    if (piStarting() || !readyToCreate()) return;
-    piStarting.set(true);
+    if (busy() || !readyToCreate()) return;
+    const id = containerId();
+    if (id && hostsPi()) {
+      // Inside a Pi container, Pi is its captain session: bring that sheet up.
+      await showContainerSession(id, props.id);
+      return;
+    }
+    busy.set("pi");
     try {
-      const id = await createContainer(undefined, launcherProjectId());
-      if (id) {
-        await loadProjects();
-        closeLauncher();
-      }
+      const target = piTarget();
+      const created = await createContainer(target.cwd, target.projectId);
+      if (created) await loadProjects();
     } finally {
-      piStarting.set(false);
+      busy.set(null);
     }
   };
-  const selected = () => launcherProjectId();
   const selectedName = () => {
-    const id = selected();
+    const id = projectOf();
     if (id === null) return t(K.project.chats);
     return projects().find((project) => project.id === id)?.name ?? t(K.project.title);
   };
   const hint = () => keymap.label("mod+enter");
+  const canBrowse = () => containerId() !== null;
+  const browse = () => {
+    if (canBrowse()) openBrowserSheet(containerId());
+  };
+  // A stale `home:{id}` (its container archived) has nothing to start.
+  if (!scratch() && !container()) {
+    return (
+      <View class="flex-1 items-center justify-center bg-background" style={{ paddingHorizontal: 32 }}>
+        <Text class="text-[12px] text-muted-foreground">{t(K.container.empty)}</Text>
+      </View>
+    );
+  }
   return (
     <View class="flex-1 items-center justify-center bg-background" style={{ paddingHorizontal: 32, paddingVertical: 32 }}>
       <View style={{ width: "100%", maxWidth: 720, gap: 18 }}>
@@ -145,7 +187,7 @@ export function Launcher() {
             <View class="flex-row items-center gap-1.5">
               <Text class="text-[10.5px] font-medium text-faint">{t(K.launcher.project)}</Text>
               <If
-                when={launcherLocked()}
+                when={locked()}
                 else={
                   <Menu
                     trigger={
@@ -165,14 +207,14 @@ export function Launcher() {
                     popupClass="rounded-xl border border-border bg-popover p-1"
                     popupStyle={{ boxShadow: shadowRaised() }}
                   >
-                    <MenuItem class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => launcherProjectId.set(null)}>
+                    <MenuItem class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => heroProjectId.set(null)}>
                       <Text class="text-[12px] text-foreground">{t(K.project.chats)}</Text>
                     </MenuItem>
                     <Each of={projects()} key={(project) => project.id}>
                       {(project) => (
                         <MenuItem
                           class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-                          onSelect={() => launcherProjectId.set(project().id)}
+                          onSelect={() => heroProjectId.set(project().id)}
                         >
                           <Text class="text-[12px] text-foreground">{project().name}</Text>
                         </MenuItem>
@@ -182,7 +224,7 @@ export function Launcher() {
                     <MenuItem
                       testID="launcher-new-project"
                       class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-                      onSelect={() => openProjectDialog((project) => launcherProjectId.set(project.id))}
+                      onSelect={() => openProjectDialog((project) => heroProjectId.set(project.id))}
                     >
                       <Text class="text-[12px] text-foreground">{t(K.project.create)}</Text>
                     </MenuItem>
@@ -194,7 +236,7 @@ export function Launcher() {
             </View>
             <View style={{ flex: 1 }} />
             <Text class="text-[10px] text-faint" testID="launcher-hint">
-              {launcherStarting() ? t(K.launcher.starting) : t(K.launcher.hint, { shortcut: hint() })}
+              {starting() ? t(K.launcher.starting) : t(K.launcher.hint, { shortcut: hint() })}
             </Text>
           </View>
         </View>
@@ -207,18 +249,16 @@ export function Launcher() {
               testID="external-terminal"
               label={t(K.external.terminal)}
               glyph={EXTERNAL_GLYPH.Terminal}
-              disabled={externalStarting() !== null || !readyToCreate()}
-              busy={externalStarting() === "Terminal"}
+              disabled={starting() || !readyToCreate()}
+              busy={busy() === "Terminal"}
               onPress={() => void startExternal("Terminal")}
             />
             <LauncherTool
               testID="launcher-browser"
               label={t(K.browser.open)}
               glyph="globe"
-              disabled={activeContainerId() === null}
-              onPress={() => {
-                if (openBrowserSheet()) closeLauncher();
-              }}
+              disabled={starting() || !canBrowse()}
+              onPress={browse}
             />
           </View>
           <View class="flex-row flex-wrap items-center gap-4">
@@ -230,8 +270,8 @@ export function Launcher() {
                     testID={`external-${value.kind.toLowerCase()}`}
                     label={t(K.external[value.key])}
                     glyph={value.glyph}
-                    disabled={externalStarting() !== null || piStarting() || !readyToCreate()}
-                    busy={externalStarting() === value.kind}
+                    disabled={starting() || !readyToCreate()}
+                    busy={busy() === value.kind}
                     onPress={() => void startExternal(value.kind)}
                   />
                 );
@@ -241,8 +281,8 @@ export function Launcher() {
               testID="launcher-pi"
               label={t(K.external.pi)}
               glyph="pi"
-              disabled={piStarting() || externalStarting() !== null || !readyToCreate()}
-              busy={piStarting()}
+              disabled={starting() || !readyToCreate()}
+              busy={busy() === "pi"}
               onPress={() => void startPi()}
             />
           </View>

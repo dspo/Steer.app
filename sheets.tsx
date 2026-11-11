@@ -17,6 +17,7 @@ import {
   terminalTitle,
 } from "./terminals";
 import { K, t } from "./i18n";
+import { HeroSheet } from "./launcher";
 import { Chip, Dot, Glyph, type GlyphName } from "./ui";
 import { DiffBody, EditorBody, FilesBody } from "./files";
 import { browserTabTitle } from "./browser";
@@ -39,6 +40,7 @@ type TintToken = "brand" | "warn" | "up" | "info" | "muted-foreground" | "primar
  */
 
 export type SheetKind =
+  | "home"
   | "session"
   | "terminal"
   | "claude"
@@ -67,6 +69,7 @@ interface SheetSpec {
 }
 
 const SPECS: Record<SheetKind, SheetSpec> = {
+  home: { title: K.sheet.homeTitle, glyph: "pi", tint: "brand", note: K.sheet.homeNote },
   session: { title: K.sheet.sessionTitle, glyph: "chat", tint: "brand", note: K.sheet.sessionNote },
   terminal: { title: K.sheet.terminalTitle, glyph: "terminal", tint: "muted-foreground", note: K.sheet.terminalNote },
   claude: { title: K.sheet.claudeTitle, glyph: "terminal", tint: "warn", note: K.sheet.claudeNote },
@@ -95,6 +98,8 @@ export function sheetParts(id: string): { kind: SheetKind; instance: string } {
 /** A sheet's tab title, by id. */
 export function sheetTitle(id: string): string {
   const { kind, instance } = sheetParts(id);
+  // Every Hero tab reads the same: the start page, not a place.
+  if (kind === "home") return t(K.sheet.homeTitle);
   if (kind === "session") {
     return instance ? sessionTitle(instance) : t(K.sheet.sessionTitle);
   }
@@ -163,6 +168,7 @@ export function SheetBody(props: { id: string }) {
   const taps = signal(0);
   const { kind, instance } = sheetParts(props.id);
   const spec = SPECS[kind];
+  if (kind === "home") return <HeroSheet id={props.id} />;
   if (kind === "session") return <SessionBody id={instance || "pending"} sheetId={props.id} />;
   if (kind === "subagents") return <SubagentsBody containerId={instance} />;
   if (kind === "terminal") return <TerminalBody containerId={instance} />;
