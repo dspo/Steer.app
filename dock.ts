@@ -189,6 +189,35 @@ export function pruneLayout(layout: DockAreaLayout, validSessions: string[]): Do
   return next;
 }
 
+/**
+ * Puts `to` where `from` was, in `from`'s group and at its slot, and shows
+ * it: a Hero's action replaces the Hero tab instead of leaving it beside
+ * the target. `to` is one sheet everywhere, so an open instance elsewhere
+ * is moved (removed there first). Without `from` (it was closed), `to` is
+ * appended and shown as usual.
+ */
+export function replaceSheet(layout: DockAreaLayout, from: string, to: string): DockAreaLayout {
+  if (from === to) return activateSheet(layout, to);
+  const base = hasSheet(layout, to) ? removeSheet(layout, to) : layout;
+  let replaced = false;
+  const walk = (node: DockNode): void => {
+    if (node.type !== "tabs") {
+      node.children.forEach(walk);
+      return;
+    }
+    const at = node.panels.indexOf(from);
+    if (at < 0) return;
+    node.panels = node.panels.map((panel) => (panel === from ? to : panel));
+    node.activeIndex = at;
+    replaced = true;
+  };
+  walk(base.center);
+  for (const dock of [base.left, base.right, base.bottom]) {
+    if (dock) walk(dock.layout);
+  }
+  return replaced ? { ...base } : appendSheet(base, to);
+}
+
 /** The number of sheets the layout holds (open docks and not). */
 export function sheetCount(layout: DockAreaLayout): number {
   return panelIds(layout).length;

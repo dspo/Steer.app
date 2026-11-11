@@ -6,8 +6,8 @@
 工作树未提交。门禁全绿（`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 233/233 ✓、
 `script/bundle-mac.sh` ✓），证据见 [evidence/s1-hero-sheet.md](evidence/s1-hero-sheet.md)、
 [evidence/s21-2-switch-hydrate.md](evidence/s21-2-switch-hydrate.md) 与 `docs/evidence/ui-s2-*.png`。
-§2.1 剩下的 3–7 项与 §2.1.1 的 F1–F3（验收反馈）未动工；下一个动作是 §2.1.1 F1（Hero 就地替换），
-随后 F2/F3，再进第 3 项（scratch 画布）。
+§2.1 剩下的 3–7 项与 §2.1.1 的 F2–F3 未动工；下一个动作是 F2（容器内的终端/TUI 资源），
+随后 F3，再进第 3 项（scratch 画布）。
 开工前读：本文件 §2 → [architecture.md](architecture.md) §4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 →
 [evidence/apis-verified.md](evidence/apis-verified.md)。
 > 架构见 [architecture.md](architecture.md)，视觉规格见 [DESIGN.md](DESIGN.md)，决策台账见 [decisions.md](decisions.md)。
@@ -63,6 +63,11 @@
 | F3 | Pi TUI 与 Zu 会话分离 | Hero 的 Pi 动作 = 原生 `pi` CLI 的 TUI，开成 F2 的终端资源；Zu 会话仍由 composer / `session:{sessionId}` sheet 承担，且 Hero 的 Pi 动作不聚焦已打开的会话。scratch 的 Hero 先按第 3 项铸容器，再在容器内开 TUI。 | Pi 容器 Hero 点 Pi：出现原生 pi TUI 的终端 tab，Zu 会话 sheet 不变；用 composer 才进入 Zu 会话 |
 
 **边界**：F2 只管**容器 Hero**。scratch 没有容器，动作仍按第 3 项先铸容器；"侧栏/Launcher 直接拉起的终端 = 独立 external 容器"（architecture §5.3）对 scratch 仍成立，铸哪种容器在第 3 项定稿。
+
+> **F1 已完成（2026-11-11，未提交）**：`replaceSheet()` 把目标 sheet 放进 Hero 的原槽位并移除 Hero；容器 Hero 的
+> 浏览器动作与 composer 提交都走它（“Pi”/会话动作暂时到 `showContainerSession`，F3 会改成原生 TUI）。
+> F2/F3 未动工：容器内的终端/TUI 动作仍会新建 SessionContainer，Pi 动作仍聚焦 Zu 会话。
+> 证据 [evidence/s21-1-hero-actions.md](evidence/s21-1-hero-actions.md)。
 
 > **§2.1-1 已完成（2026-11-11，`a58e0ad`）**：`home:{containerId}` / `home:scratch` 是 sheet 种类；`launcherOpen` 及其页面路径已删除；
 > 画布只有 sheet 树。每个可见组的标题栏右端有 `+`（nsh 0.4.0 没有尾部插槽，`+` 是 app 侧按布局几何画的覆盖层，

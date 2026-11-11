@@ -49,6 +49,9 @@ test("a container's Hero starts its captain session instead of a new container",
   // would have shown an empty session instead of Alpha's history.
   await app.waitUntil(() => app.texts().includes("hello in container"));
   expect(app.texts()).toContain("alpha body");
+  // The composer's target took the Hero's tab; the Hero is not left beside it.
+  expect(app.shows("id:launcher-input")).toBe(false);
+  expect(app.shows("id:tab-close-home:c1")).toBe(false);
 });
 
 test("the VS Code action falls back to the active container's cwd", async () => {
@@ -105,6 +108,23 @@ test("the tab bar's + opens the Hero as a sheet in that group", async () => {
   await app.press("id:tab-plus-session:s1");
   await app.waitFor("id:launcher-input");
   expect(app.count("id:tab-close-home:c1")).toBe(1);
+});
+
+test("a container Hero's action takes the Hero's tab", async () => {
+  const app = await open("./fixtures/containers.tsx", { width: 1200, height: 800 });
+  await app.waitFor("text:alpha body");
+  await app.press("id:tab-plus-session:s1");
+  await app.waitFor("id:launcher-input");
+  // The browser replaces the Hero in its slot: no Hero tab stays behind.
+  await app.press("id:launcher-browser");
+  await app.waitFor("id:browser-address");
+  expect(app.count("id:launcher-input")).toBe(0);
+  expect(app.shows("id:tab-close-home:c1")).toBe(false);
+  expect(app.count("id:tab-close-webview:c1:1")).toBe(1);
+  // Closing the target does not bring the Hero back; the + opens a new one.
+  await app.press("id:tab-close-webview:c1:1");
+  await app.waitFor("text:gamma body");
+  expect(app.count("id:launcher-input")).toBe(0);
 });
 
 test("archiving removes a container from the sidebar but keeps the data", async () => {

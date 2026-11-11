@@ -17,6 +17,7 @@ import {
   panelIds,
   pruneLayout,
   removeSheet,
+  replaceSheet,
   sessionIdOfSheet,
   sessionSheetId,
   visiblePanels,
@@ -488,15 +489,19 @@ export function openHomeSheet(prefer?: string | null): void {
 }
 
 /**
- * Shows a container's captain session (the Hero's "Pi" action): the sheet
- * opens beside `prefer` if it is not in the layout, and its transcript loads.
+ * Shows a container's captain session (the Hero's "Pi" action and its
+ * composer): the sheet replaces the Hero when `fromSheet` is it, else it
+ * opens beside `prefer`; its transcript loads.
  */
-export async function showContainerSession(containerId: string, prefer?: string): Promise<void> {
+export async function showContainerSession(containerId: string, fromSheet?: string): Promise<void> {
   const container = containers().find((row) => row.id === containerId);
   const captain = container?.sessions[0];
   if (!container || !captain) return;
   if (activeContainerId() !== container.id) await switchContainer(container.id);
-  setLayout(appendSheet(layout(), sessionSheetId(captain.sessionId), prefer));
+  const sheetId = sessionSheetId(captain.sessionId);
+  setLayout(
+    fromSheet ? replaceSheet(layout(), fromSheet, sheetId) : appendSheet(layout(), sheetId),
+  );
   await hydrateSession(captain.sessionId, container);
 }
 

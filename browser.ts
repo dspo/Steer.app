@@ -1,5 +1,5 @@
 import { signal, WebView, type WebViewNavigation } from "nsh";
-import { appendSheet, panelIds } from "./dock";
+import { appendSheet, panelIds, replaceSheet } from "./dock";
 import { activeContainerId, layout, setLayout } from "./containers";
 import { K, t } from "./i18n";
 
@@ -108,15 +108,19 @@ export function browserSheetsOf(containerId: string, ids: string[] = panelIds(la
 
 /**
  * Opens a browser sheet in a container: the next instance number, so a
- * container can hold several. Returns the new sheet id, or null without a
- * container.
+ * container can hold several. `replace` is the Hero sheet the action came
+ * from: the browser takes that tab's place instead of sitting beside it.
+ * Returns the new sheet id, or null without a container.
  */
-export function openBrowserSheet(containerId: string | null = activeContainerId()): string | null {
+export function openBrowserSheet(
+  containerId: string | null = activeContainerId(),
+  replace?: string,
+): string | null {
   if (!containerId) return null;
   const ids = [...panelIds(layout()), ...Object.keys(pages())];
   const id = browserSheetId(containerId, nextBrowserInstance(containerId, ids));
   ensureBrowserPage(id);
-  setLayout(appendSheet(layout(), id));
+  setLayout(replace ? replaceSheet(layout(), replace, id) : appendSheet(layout(), id));
   return id;
 }
 

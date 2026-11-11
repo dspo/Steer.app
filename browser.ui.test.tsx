@@ -26,6 +26,8 @@ test("the top bar opens browser sheets, and the address bar normalizes a domain"
   await app.press("id:launcher-browser");
   await app.waitFor("id:browser-address");
   expect(app.shows("id:launcher-browser")).toBe(false);
+  // The browser took the Hero's tab; the Hero is gone, not beside it.
+  expect(app.count("id:launcher-input")).toBe(0);
 
   // The default page says what may load and where page messages go.
   expect(app.count("id:browser-empty")).toBe(1);

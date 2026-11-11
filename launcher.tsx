@@ -138,7 +138,8 @@ export function HeroSheet(props: { id: string }) {
   const hint = () => keymap.label("mod+enter");
   const canBrowse = () => containerId() !== null;
   const browse = () => {
-    if (canBrowse()) openBrowserSheet(containerId());
+    // The browser takes the Hero's tab: acting on the Hero consumes it.
+    if (canBrowse()) openBrowserSheet(containerId(), props.id);
   };
   // A stale `home:{id}` (its container archived) has nothing to start.
   if (!scratch() && !container()) {

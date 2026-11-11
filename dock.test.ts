@@ -8,6 +8,8 @@ import {
   homeSheetContainer,
   homeSheetId,
   layoutSessions,
+  panelIds,
+  replaceSheet,
   sheetCount,
   pruneLayout,
   sessionIdOfSheet,
@@ -58,6 +60,34 @@ test("opening the same auxiliary sheet twice keeps one tab", () => {
   const twice = appendSheet(once, "subagents:c1");
   expect(sheetCount(twice)).toBe(sheetCount(once));
   expect(twice.center.type === "tabs" && twice.center.panels.filter((p: string) => p === "subagents:c1").length).toBe(1);
+});
+
+test("a Hero action replaces the Hero's own tab in place", () => {
+  const base = appendSheet(defaultLayoutForSessions(["s1"]), "home:c1");
+  expect(panelIds(base)).toEqual(["session:s1", "home:c1"]);
+  const next = replaceSheet(base, "home:c1", "webview:c1:1");
+  // The Hero is gone (not beside the target), and the browser is shown.
+  expect(panelIds(next)).toEqual(["session:s1", "webview:c1:1"]);
+  expect(activePanelIds(next)).toEqual(["webview:c1:1"]);
+  // A target already open in another group moves into the Hero's slot: a
+  // sheet is one instance, and the action's tab is where the Hero was.
+  const split = {
+    center: {
+      type: "split" as const,
+      axis: "horizontal" as const,
+      children: [
+        { type: "tabs" as const, panels: ["session:s1", "home:c1"], activeIndex: 1 },
+        { type: "tabs" as const, panels: ["session:s2"], activeIndex: 0 },
+      ],
+    },
+  };
+  const moved = replaceSheet(split, "home:c1", "session:s2");
+  expect(panelIds(moved)).toEqual(["session:s1", "session:s2"]);
+  expect(activePanelIds(moved)).toEqual(["session:s2"]);
+  // Without the Hero (it was closed), the target still opens.
+  const reopened = replaceSheet(defaultLayoutForSessions(["s1"]), "home:c1", "webview:c1:2");
+  expect(panelIds(reopened)).toEqual(["session:s1", "webview:c1:2"]);
+  expect(activePanelIds(reopened)).toEqual(["webview:c1:2"]);
 });
 
 test("a Hero sheet belongs to its container, or to the scratch canvas", () => {

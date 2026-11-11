@@ -1,4 +1,4 @@
-import { mount, Text, View } from "nsh";
+import { mount, Storage, Text, View } from "nsh";
 import { Workbench } from "../shell";
 import {
   activeContainerId,
@@ -70,13 +70,21 @@ async function transport(type: string, payload: any = {}): Promise<any> {
 
 setContainerTransport(transport);
 
-void loadContainers().then(() => {
-  activeContainerId.set(GIT_CONTAINER);
-  phase.set("connected");
-  sessionError.set(null);
-  containerError.set(null);
-  mount(GitFixture);
-});
+// The test names its own repository (a fresh root per run) in the app's
+// storage, so the file tree never inherits an earlier run's files; the
+// checked-in path is only the fallback for a run that names none.
+void Storage.getItem("zu-m9-root")
+  .then((root) => {
+    if (root) records[0].cwd = root;
+    return loadContainers();
+  })
+  .then(() => {
+    activeContainerId.set(GIT_CONTAINER);
+    phase.set("connected");
+    sessionError.set(null);
+    containerError.set(null);
+    mount(GitFixture);
+  });
 
 function GitFixture() {
   return (

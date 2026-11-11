@@ -1,7 +1,6 @@
 import { expect, open, test } from "nsh/test";
 import { Fs, Git } from "zu/native";
 import { fileRowTestId } from "./file-tree";
-import { GIT_ROOT } from "./fixtures/m9-paths";
 
 // M9's acceptance, through the real Workbench: the top bar opens Changes,
 // a real changed file is staged and committed there, and the test reads the
@@ -11,6 +10,9 @@ import { GIT_ROOT } from "./fixtures/m9-paths";
 // editor follow.
 
 const TAG = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+/** This run's repository: a fresh root, so no earlier run's files appear. */
+const ROOT = `/tmp/zu-m9-git-fixture-${TAG}`;
+const OPEN = { storage: { "zu-m9-root": ROOT }, width: 1200, height: 800 };
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -23,18 +25,26 @@ async function until(what: string, condition: () => Promise<boolean> | boolean, 
 }
 
 async function makeRepo(): Promise<void> {
-  await Fs.mkdir("/tmp", "zu-m9-git-fixture");
-  await Git.init(GIT_ROOT);
-  await Git.setIdentity(GIT_ROOT, "Zu Test", "zu@example.test");
+  await Fs.mkdir("/tmp", `zu-m9-git-fixture-${TAG}`);
+  await Git.init(ROOT);
+  await Git.setIdentity(ROOT, "Zu Test", "zu@example.test");
+  // The fixture root outlives a run (`/tmp`), and every run adds files. A
+  // clean start keeps the Changes sheet to this run's file, so a row is
+  // never pushed under the commit line by an earlier run's leftovers.
+  const before = await Git.status(ROOT);
+  if (!before.clean) {
+    await Git.stage(ROOT, []);
+    await Git.commit(ROOT, `fixture reset ${TAG}`);
+  }
 }
 
 test("the top bar opens Changes; staging and committing are real git", async () => {
   await makeRepo();
   const file = `ui-${TAG}.txt`;
   const message = `ui commit ${TAG}`;
-  await Fs.write(GIT_ROOT, file, "UI_BEFORE\n", null, null);
+  await Fs.write(ROOT, file, "UI_BEFORE\n", null, null);
 
-  const app = await open("./fixtures/git.tsx", { width: 1200, height: 800 });
+  const app = await open("./fixtures/git.tsx", OPEN);
   await app.waitFor("id:titlebar-tools");
   await app.press("id:titlebar-tools");
   await app.press("id:open-changes");
@@ -50,7 +60,7 @@ test("the top bar opens Changes; staging and committing are real git", async () 
     () => app.texts().some((text) => text.includes("已暂存 1 个文件")),
     { timeout: 10000 },
   );
-  expect((await Git.status(GIT_ROOT)).staged.map((row) => row.path)).toContain(file);
+  expect((await Git.status(ROOT)).staged.map((row) => row.path)).toContain(file);
 
   // The staged patch is `git diff --cached`, drawn by the same DiffView.
   await app.press(`id:git-change-staged-${file}`);
@@ -63,16 +73,16 @@ test("the top bar opens Changes; staging and committing are real git", async () 
   await app.type("id:git-message", message);
   await app.press("id:git-commit");
   await until("the commit to appear in git log", async () =>
-    (await Git.log(GIT_ROOT, 5)).some((commit) => commit.subject === message),
+    (await Git.log(ROOT, 5)).some((commit) => commit.subject === message),
   );
 
   // git's answer is the authority: the commit names the test's author, the
   // file is no longer staged, and the log row appears in the History sheet.
-  const log = await Git.log(GIT_ROOT, 5);
+  const log = await Git.log(ROOT, 5);
   const committed = log.find((commit) => commit.subject === message);
   expect(committed).toBeDefined();
   expect(committed?.author).toBe("Zu Test");
-  const status = await Git.status(GIT_ROOT);
+  const status = await Git.status(ROOT);
   expect(status.staged.map((row) => row.path)).not.toContain(file);
   expect(status.unstaged.map((row) => row.path)).not.toContain(file);
 
@@ -85,12 +95,12 @@ test("the top bar opens Changes; staging and committing are real git", async () 
 test("the worktree hunk is drawn by the real DiffView", async () => {
   await makeRepo();
   const file = `hunk-${TAG}.txt`;
-  await Fs.write(GIT_ROOT, file, "alpha\nbeta\ngamma\n", null, null);
-  await Git.stage(GIT_ROOT, [file]);
-  await Git.commit(GIT_ROOT, `baseline ${TAG}`);
-  await Fs.write(GIT_ROOT, file, "alpha\nBETA\ngamma\ndelta\n", null, null);
+  await Fs.write(ROOT, file, "alpha\nbeta\ngamma\n", null, null);
+  await Git.stage(ROOT, [file]);
+  await Git.commit(ROOT, `baseline ${TAG}`);
+  await Fs.write(ROOT, file, "alpha\nBETA\ngamma\ndelta\n", null, null);
 
-  const app = await open("./fixtures/git.tsx", { width: 1200, height: 800 });
+  const app = await open("./fixtures/git.tsx", OPEN);
   await app.waitFor("id:titlebar-tools");
   await app.press("id:titlebar-tools");
   await app.press("id:open-changes");
@@ -119,18 +129,18 @@ test("the branch menu checks out; Changes, History and the open editor follow", 
   await makeRepo();
   const file = `branch-${TAG}.txt`;
   const feature = `feature-${TAG}`;
-  await Fs.write(GIT_ROOT, file, "BASE\n", null, null);
-  await Git.stage(GIT_ROOT, [file]);
-  await Git.commit(GIT_ROOT, `base ${TAG}`);
-  const base = (await Git.status(GIT_ROOT)).branch;
-  await Git.createBranch(GIT_ROOT, feature);
-  await Fs.write(GIT_ROOT, file, "FEATURE\n", null, null);
-  await Git.stage(GIT_ROOT, [file]);
-  await Git.commit(GIT_ROOT, `feature ${TAG}`);
-  await Git.checkout(GIT_ROOT, base);
-  expect((await Fs.read(GIT_ROOT, file)).text).toBe("BASE\n");
+  await Fs.write(ROOT, file, "BASE\n", null, null);
+  await Git.stage(ROOT, [file]);
+  await Git.commit(ROOT, `base ${TAG}`);
+  const base = (await Git.status(ROOT)).branch;
+  await Git.createBranch(ROOT, feature);
+  await Fs.write(ROOT, file, "FEATURE\n", null, null);
+  await Git.stage(ROOT, [file]);
+  await Git.commit(ROOT, `feature ${TAG}`);
+  await Git.checkout(ROOT, base);
+  expect((await Fs.read(ROOT, file)).text).toBe("BASE\n");
 
-  const app = await open("./fixtures/git.tsx", { width: 1200, height: 800 });
+  const app = await open("./fixtures/git.tsx", OPEN);
   // The editor opens the base branch's version.
   await app.waitFor(`id:${fileRowTestId(file)}`);
   await app.press(`id:${fileRowTestId(file)}`);
@@ -147,7 +157,7 @@ test("the branch menu checks out; Changes, History and the open editor follow", 
   await app.press("id:history-branch");
   await app.waitFor(`id:history-checkout-${feature}`);
   await app.press(`id:history-checkout-${feature}`);
-  await until("the checkout to reach git", async () => (await Git.status(GIT_ROOT)).branch === feature);
+  await until("the checkout to reach git", async () => (await Git.status(ROOT)).branch === feature);
 
   // The clean editor reloaded the checked-out file from disk.
   await app.waitUntil(
