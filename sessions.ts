@@ -156,17 +156,20 @@ function patchModels(id: string, next: SessionModelsState): void {
 }
 
 /**
- * Loads a session's available models. A ready cache is reused until `force`;
- * a load already in flight is shared, so opening the menu twice costs one
- * request.
+ * Loads a session's available models. A ready list with providers is reused
+ * until `force`; a load already in flight is shared, so opening the menu
+ * twice costs one request. `force` asks pi's auth checks again, and an empty
+ * answer is never cached: once the user configures a provider, the next open
+ * (or retry) finds it without a restart.
  */
 export async function loadSessionModels(id: string, force = false): Promise<void> {
   if (!id) return;
   const current = sessionModels()[id];
-  if (!force && (current?.status === "ready" || current?.status === "loading")) return;
+  const reusable = current?.status === "ready" && (current.data?.providers.length ?? 0) > 0;
+  if (!force && (reusable || current?.status === "loading")) return;
   patchModels(id, { status: "loading" });
   try {
-    const data = (await modelRequest("session.models", { sessionId: id }, 30000)) as SessionModelsData;
+    const data = (await modelRequest("session.models", { sessionId: id, refresh: force }, 30000)) as SessionModelsData;
     patchModels(id, { status: "ready", data });
     applySessionInfo(id, data);
   } catch (failure) {

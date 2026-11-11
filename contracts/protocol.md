@@ -89,7 +89,7 @@ dropped after the first was matched).
 | `session.info` | `{ sessionId }` | yes | safe | `{ sessionId, path, name?, running, customTypes, thinkingLevel, model?, contextUsage? }` |
 | `session.extensions` | `{ sessionId }` | yes | safe | `{ extensions, errors }` |
 | `session.tools` | `{ sessionId }` | yes | safe | `{ tools: string[] }` |
-| `session.models` | `{ sessionId }` | yes | safe | `{ providers: [{ id, name, models: [{ provider, id, name, contextWindow?, reasoning }] }], current?, thinkingLevel? }` |
+| `session.models` | `{ sessionId, refresh? }` | yes | safe | `{ providers: [{ id, name, models: [{ provider, id, name, contextWindow?, reasoning }] }], current?, thinkingLevel?, reason? }` |
 | `session.setModel` | `{ sessionId, provider, id }` | no | duplicate | `SessionInfoResult`; an unknown or unauthenticated model errors |
 | `session.prompt` | `{ sessionId, text }` | no | duplicate | `{ accepted: true }` |
 | `session.steer` | `{ sessionId, text }` | no | duplicate | `{ accepted: true }`; an idle session errors |
@@ -125,11 +125,24 @@ The engine also pushes `session.info` events with `{ thinkingLevel }` when the
 level changes, `{ model, thinkingLevel }` on a model change, and
 `{ contextUsage }` at each turn's end.
 
-`session.models` reads pi's model runtime (`session.modelRuntime`): every
-available chat model with credentials, grouped by provider. It is additive;
-`session.setModel` resolves the model in the same runtime, calls pi's
-`session.setModel(model)` and replies with the same `SessionInfoResult` shape
-`session.info` returns, so the picker can fold the new model in place.
+`session.models` reads pi's model registry: every available chat model with
+credentials, grouped by provider. The registry is one `ModelRuntime` the
+engine creates at startup and hands to every session, so a new session's list
+is the CLI's own (`pi --list-models`), not a per-session side effect. A reply
+without `refresh` comes from the registry's snapshot (the startup pass paid
+for it); `refresh: true` asks pi's auth checks again, so a login lands without
+a restart. An empty snapshot always asks. It is additive;
+`session.setModel` resolves the model in the same registry, calls pi's
+`session.setModel(model)` and replies with the same `SessionInfoResult`
+shape `session.info` returns, so the picker can fold the new model in place.
+
+When `providers` is empty the reply carries `reason: { code, message? }` so
+the shell explains the state instead of showing an empty menu:
+`no_catalog` (pi found no providers), `no_credentials` (providers, none
+signed in), `no_models` (signed in, no chat model listed) or `unavailable`
+(asking pi failed; `message` is pi's text). A session with no usable model
+reports no `model` in `session.info`: pi's "unknown/unknown" placeholder is
+never sent as a choice.
 
 ### project.*
 

@@ -43,3 +43,33 @@ test("the conversation composer carries the same model menu", async () => {
   expect(app.texts()).toContain("qwen3.8-plus");
   expect(app.shows("id:session-transcript")).toBe(true);
 });
+
+test("no models is an explained composer, not a dead one", async () => {
+  const app = await open("./fixtures/chat-no-model.tsx", { width: 1200, height: 800 });
+  // The composer names the cause and keeps its input; the send waits.
+  await app.waitFor("id:session-no-model");
+  expect(app.texts()).toContain("pi 里没有已登录的 provider。先运行 `pi` 登录（或在 ~/.pi/agent/models.json 里添加 provider），然后重试。");
+  expect(app.count("id:session-input")).toBe(1);
+  await app.type("id:session-input", "hold this thought");
+  expect(app.enabled("id:session-send")).toBe(false);
+
+  // The menu shows the same reason instead of an empty list.
+  await app.press("id:model-picker");
+  await app.waitFor("id:model-reason");
+  expect(app.texts().some((text) => text.includes("没有已登录的 provider"))).toBe(true);
+  expect(app.count("id:model-provider-bailian")).toBe(0);
+  await app.press("id:model-picker");
+
+  // Retrying after the provider is configured recovers without a restart:
+  // the hint goes, the menu lists the provider, and a pick reaches the row.
+  await app.press("id:session-no-model-retry");
+  await app.waitUntil(() => !app.shows("id:session-no-model"), { timeout: 5000 });
+  expect(app.shows("id:session-input")).toBe(true);
+  await app.press("id:model-picker");
+  await app.waitFor("id:model-provider-bailian");
+  await app.press("id:model-provider-bailian");
+  await app.waitFor("id:model-bailian-qwen3.8-flash");
+  await app.press("id:model-bailian-qwen3.8-flash");
+  await app.waitUntil(() => app.texts().includes("qwen3.8-flash"), { timeout: 5000 });
+  expect(app.texts()).toContain("qwen3.8-flash");
+});

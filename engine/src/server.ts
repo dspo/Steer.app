@@ -21,6 +21,7 @@ import {
   DefaultResourceLoader,
   getAgentDir,
   hasTrustRequiringProjectResources,
+  ModelRuntime,
   ProjectTrustStore,
   SessionManager,
   SettingsManager,
@@ -57,6 +58,7 @@ import {
   type SessionModelOption,
   type SessionModelProvider,
   type SessionModelsData,
+  type SessionModelsReason,
   type StateSnapshot,
   type UIMethod,
   type UIResponsePayload,
@@ -153,6 +155,18 @@ const extraExtensionPaths = (process.env.ZU_EXTENSION_PATHS ?? "")
   .map((path) => path.trim())
   .filter(Boolean);
 
+/**
+ * The process's one model registry, created here rather than as a side
+ * effect of the first session: `pi --list-models` and every session's
+ * picker then read the same catalog, and a failed load is reported (the
+ * shell says why) instead of turning into an empty list. Sessions await
+ * this promise; a failure falls back to pi's per-session default.
+ */
+const modelRegistry: Promise<ModelRuntime | undefined> = ModelRuntime.create().catch((error: any) => {
+  console.warn(`[zu] model registry unavailable: ${String(error?.message ?? error)}`);
+  return undefined;
+});
+
 function send(ws: any, msg: unknown): void {
   try {
     ws.send(JSON.stringify(msg));
@@ -215,10 +229,15 @@ function sessionData(rec: Rec) {
 function modelData(rec: Rec): SessionModelInfo | undefined {
   const model: any = rec.session.model;
   if (!model) return undefined;
+  const provider = String(model.provider ?? "");
+  const id = String(model.id ?? "");
+  // With no usable model pi keeps a placeholder; the composer must not name
+  // it as a choice. An absent `model` is what the shell's no-model state is.
+  if (!provider || provider === "unknown" || !id || id === "unknown") return undefined;
   const contextWindow = Number(model.contextWindow ?? 0);
   return {
-    provider: String(model.provider ?? ""),
-    id: String(model.id ?? ""),
+    provider,
+    id,
     name: String(model.name ?? model.id ?? ""),
     ...(contextWindow > 0 ? { contextWindow } : {}),
     reasoning: !!model.reasoning,
@@ -257,18 +276,36 @@ function sessionInfo(rec: Rec): SessionInfoResult {
   };
 }
 
+/**
+ * Why the picker has nothing to list. `no_catalog`: pi found no providers at
+ * all; `no_credentials`: providers exist but none has auth; `no_models`: auth
+ * exists but no chat model is listed; `unavailable`: asking pi failed.
+ */
+function modelsReason(runtime: ModelRuntime, failure?: string): SessionModelsReason {
+  if (failure) return { code: "unavailable", message: failure };
+  const providers = runtime.getProviders();
+  if (providers.length === 0) return { code: "no_catalog" };
+  if (!providers.some((provider) => runtime.hasConfiguredAuth(provider.id))) return { code: "no_credentials" };
+  return { code: "no_models" };
+}
+
 /** The two-level model picker's data: providers, their models, the current one. */
-async function modelsData(rec: Rec): Promise<SessionModelsData> {
-  const runtime: any = rec.session.modelRuntime;
-  const groups = new Map<string, SessionModelProvider>();
+async function modelsData(rec: Rec, refresh: boolean): Promise<SessionModelsData> {
+  const runtime = rec.session.modelRuntime;
   let available: any[] = [];
+  let failure: string | undefined;
   try {
-    available = Array.isArray(runtime?.getAvailable) ? [...(await runtime.getAvailable())] : [];
-  } catch {
-    // No credentials or a failed catalog refresh: the picker shows nothing
-    // rather than inventing choices, and the current model still names itself.
-    available = [];
+    // The registry's snapshot is what the startup pass (or the last retry)
+    // paid for; `refresh` asks pi's auth checks again, which is how signing
+    // in lands without a restart. An empty snapshot always asks, so a machine
+    // that gains its first credential recovers on the next open.
+    const snapshot = runtime.getAvailableSnapshot();
+    available = [...(refresh || snapshot.length === 0 ? await runtime.getAvailable() : snapshot)];
+  } catch (error: any) {
+    // A failed read is a reason in the reply, never a silent empty menu.
+    failure = String(error?.message ?? error);
   }
+  const groups = new Map<string, SessionModelProvider>();
   for (const model of available) {
     // `getAvailable` is chat models; skip anything a newer pi adds.
     if (model?.type && model.type !== "chat") continue;
@@ -276,7 +313,7 @@ async function modelsData(rec: Rec): Promise<SessionModelsData> {
     if (!providerId || !model.id) continue;
     let group = groups.get(providerId);
     if (!group) {
-      const provider = runtime?.getProvider?.(providerId);
+      const provider = runtime.getProvider(providerId);
       group = { id: providerId, name: String(provider?.name ?? providerId), models: [] };
       groups.set(providerId, group);
     }
@@ -297,10 +334,12 @@ async function modelsData(rec: Rec): Promise<SessionModelsData> {
     }))
     .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   const current = modelData(rec);
+  const thinkingLevel = String(rec.session.thinkingLevel ?? "off") as SessionModelsData["thinkingLevel"];
   return {
     providers,
     ...(current ? { current } : {}),
-    thinkingLevel: String(rec.session.thinkingLevel ?? "off") as SessionModelsData["thinkingLevel"],
+    thinkingLevel,
+    ...(providers.length === 0 ? { reason: modelsReason(runtime, failure) } : {}),
   };
 }
 
@@ -817,6 +856,9 @@ async function makeRecord(manager: SessionManager, ws: any, cwd: string): Promis
     settingsManager,
     resourceLoader,
     cwd,
+    // The shared registry, awaited: the session's model, its picker and the
+    // CLI all come from one catalog.
+    modelRuntime: await modelRegistry,
   });
   const storedPath = manager.getSessionFile() ?? "";
   const rec: Rec = {
@@ -1358,7 +1400,7 @@ async function handle(ws: any, message: Envelope): Promise<void> {
       const rec = await requireSession(ws, message, payload);
       if (!rec) return;
       try {
-        reply(ws, makeReply(id, message.type, await modelsData(rec)));
+        reply(ws, makeReply(id, message.type, await modelsData(rec, payload.refresh === true)));
       } catch (error: any) {
         reply(ws, makeErrorReply(id, message.type, String(error?.message ?? error), "models_failed"));
       }

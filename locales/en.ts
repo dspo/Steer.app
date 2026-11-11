@@ -357,4 +357,10 @@ export const en: Record<string, string> = {
   "app.session.modelsLoading": "Reading models\u2026",
   "app.session.modelsEmpty": "No models are available.",
   "app.session.modelsError": "Models could not be read: %{error}",
+  "app.session.modelsNoCredentials":
+    "pi has providers but none is signed in. Run `pi` once and log in (or add a provider to ~/.pi/agent/models.json), then try again.",
+  "app.session.modelsNoCatalog":
+    "pi found no model catalog. Check ~/.pi/agent/models.json, then try again.",
+  "app.session.modelsNoChat":
+    "A provider is signed in but lists no chat model. Check its entry in ~/.pi/agent/models.json, then try again.",
 };

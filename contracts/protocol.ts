@@ -646,11 +646,31 @@ export interface SessionModelProvider {
   models: SessionModelOption[];
 }
 
+/**
+ * Why `session.models` has no providers. The picker says this instead of an
+ * empty list, so "no models" carries a cause the user can act on.
+ */
+export type SessionModelsReasonCode = "no_catalog" | "no_credentials" | "no_models" | "unavailable";
+
+export interface SessionModelsReason {
+  code: SessionModelsReasonCode;
+  /** pi's own text, for `unavailable`; absent for the other codes. */
+  message?: string;
+}
+
 /** The `session.models` reply: grouped choices plus the session's current one. */
 export interface SessionModelsData {
   providers: SessionModelProvider[];
   current?: SessionModelInfo;
   thinkingLevel?: SessionThinkingLevel;
+  /** Present exactly when `providers` is empty. */
+  reason?: SessionModelsReason;
+}
+
+/** `session.models` asks for the registry's snapshot; `refresh` asks pi again. */
+export interface SessionModelsPayload {
+  sessionId: string;
+  refresh?: boolean;
 }
 
 export interface SessionSetModelPayload {

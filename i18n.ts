@@ -202,6 +202,9 @@ export const K = {
     modelsLoading: "app.session.modelsLoading",
     modelsEmpty: "app.session.modelsEmpty",
     modelsError: "app.session.modelsError",
+    modelsNoCredentials: "app.session.modelsNoCredentials",
+    modelsNoCatalog: "app.session.modelsNoCatalog",
+    modelsNoChat: "app.session.modelsNoChat",
   },
   dialog: {
     confirm: "app.dialog.confirm",

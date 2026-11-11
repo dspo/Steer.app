@@ -179,19 +179,36 @@ test("a session lists its models and can switch one", async () => {
   const info = await request("session.info", { sessionId: data.id }, 30000);
   const models = await request("session.models", { sessionId: data.id }, 60000);
   expect(Array.isArray(models.providers)).toBe(true);
+  // The regression this guards: an engine whose registry never loaded
+  // answered with an empty list and no reason.
+  expect(models.providers.length).toBeGreaterThan(0);
+  expect(models.reason).toBeUndefined();
+  let listed = 0;
   for (const provider of models.providers) {
     expect(typeof provider.id).toBe("string");
     expect(typeof provider.name).toBe("string");
     expect(provider.models.length).toBeGreaterThan(0);
+    listed += provider.models.length;
     for (const model of provider.models) {
       expect(model.provider).toBe(provider.id);
       expect(typeof model.id).toBe("string");
       expect(typeof model.reasoning).toBe("boolean");
     }
   }
-  // A switch to the model the session already has is a real, accepted set.
+  expect(listed).toBeGreaterThan(0);
+  // A retry asks pi's auth checks again and finds the same catalog.
+  const refreshed = await request("session.models", { sessionId: data.id, refresh: true }, 60000);
+  expect(refreshed.providers.length).toBe(models.providers.length);
+  // A switch to the model the session already has is a real, accepted set,
+  // and the model the composer names is one of the list's rows.
   const current = info.model ?? models.current;
   if (current) {
+    const named = models.providers as Array<{ models: Array<{ provider: string; id: string }> }>;
+    expect(
+      named.some((provider) =>
+        provider.models.some((model) => model.provider === current.provider && model.id === current.id),
+      ),
+    ).toBe(true);
     const changed = await request(
       "session.setModel",
       { sessionId: data.id, provider: current.provider, id: current.id },
@@ -206,6 +223,30 @@ test("a session lists its models and can switch one", async () => {
     request("session.setModel", { sessionId: data.id, provider: "no-such-provider", id: "no-such-model" }, 30000),
   ).rejects.toThrow("unknown model");
   await request("session.close", { sessionId: data.id }, 30000);
+});
+
+test("with no credentials the model list says why it is empty", async () => {
+  if (skip) return;
+  // An empty pi home: pi's own provider catalog is there, its credentials
+  // are not. The picker must get a reason, not a silent empty list.
+  const agentDir = `/tmp/zu-no-models-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  Engine.setAgentDir(agentDir);
+  try {
+    await freshEngine();
+    const data = await request("session.create", { cwd: "/tmp" }, 120000);
+    const models = await request("session.models", { sessionId: data.id }, 60000);
+    expect(models.providers).toEqual([]);
+    expect(models.reason?.code).toBe("no_credentials");
+    // pi keeps a placeholder model when nothing is available; the composer
+    // reads its absence, not a model named "unknown".
+    const info = await request("session.info", { sessionId: data.id }, 30000);
+    expect(info.model).toBeUndefined();
+    await request("session.close", { sessionId: data.id }, 30000);
+  } finally {
+    Engine.setAgentDir("");
+    // The user's own registry is what the rest of the suite expects.
+    await freshEngine();
+  }
 });
 
 test("a prompt streams into the transcript", async () => {

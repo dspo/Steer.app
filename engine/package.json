@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "bun run src/server.ts",
     "build": "bun run check-version && bun build --compile --target=bun-darwin-arm64 src/server.ts --outfile dist/pi-engine && cp node_modules/@silvia-odwyer/photon-node/photon_rs_bg.wasm dist/ && cp node_modules/quickjs-wasi/quickjs.wasm dist/",
-    "check-version": "bun scripts/check-version.mjs"
+    "check-version": "bun scripts/check-version.mjs",
+    "models:parity": "bun run scripts/models-parity.mjs"
   }
 }

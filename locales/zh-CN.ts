@@ -357,4 +357,8 @@ export const zhCN: Record<string, string> = {
   "app.session.modelsLoading": "正在读取模型…",
   "app.session.modelsEmpty": "没有可用的模型。",
   "app.session.modelsError": "模型读取失败：%{error}",
+  "app.session.modelsNoCredentials":
+    "pi 里没有已登录的 provider。先运行 `pi` 登录（或在 ~/.pi/agent/models.json 里添加 provider），然后重试。",
+  "app.session.modelsNoCatalog": "pi 没有找到模型目录。检查 ~/.pi/agent/models.json 后重试。",
+  "app.session.modelsNoChat": "provider 已登录但没有列出可用的对话模型。检查 ~/.pi/agent/models.json 里的条目后重试。",
 };

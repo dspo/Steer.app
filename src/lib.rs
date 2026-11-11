@@ -72,6 +72,11 @@ static STATE_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 /// container registry); a packaged app always loads them.
 static NO_EXTENSIONS: Mutex<bool> = Mutex::new(false);
 
+/// pi's home for the sidecar (`~/.pi/agent` unless a test points it
+/// elsewhere): credentials and `models.json`. The model list a session
+/// reports comes from here, so an empty directory is the no-models state.
+static AGENT_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
+
 /// The engine sidecar: start, stop, and where to reach it.
 #[module]
 pub struct Engine;
@@ -127,6 +132,9 @@ impl Engine {
         }
         if NO_EXTENSIONS.lock().map(|skip| *skip).unwrap_or(false) {
             command.env("ZU_NO_EXTENSIONS", "1");
+        }
+        if let Some(dir) = AGENT_DIR.lock().ok().and_then(|dir| dir.clone()) {
+            command.env("PI_CODING_AGENT_DIR", dir);
         }
         let mut child = command
             .env("ZU_PORT", requested.to_string())
@@ -308,6 +316,19 @@ impl Engine {
     pub fn set_no_extensions(skip: bool) {
         if let Ok(mut flag) = NO_EXTENSIONS.lock() {
             *flag = skip;
+        }
+    }
+
+    /// Points pi's home for the next start at `path`; an empty string
+    /// restores `~/.pi/agent`. Tests use it to reach the no-models state
+    /// without touching the user's credentials.
+    pub fn set_agent_dir(path: String) {
+        if let Ok(mut dir) = AGENT_DIR.lock() {
+            *dir = if path.trim().is_empty() {
+                None
+            } else {
+                Some(PathBuf::from(path.trim()))
+            };
         }
     }
 

@@ -3,11 +3,12 @@
 > 唯一的工作指导文档。已完成的部分给证据位置；未做的按批次给出任务与验收。
 
 **当前进度（2026-11-11）**：§2.1-1（`a58e0ad`）、§2.1-2（`bcd4004`）、§2.1.1 F1（`4293eb7`）已提交；
-四条调整已并入（`b1f4937`）。门禁全绿（`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 235/235 ✓、
+§2.0 的 P0-1 / P0-2（模型注册与无模型界面）已完成，证据见 [evidence/s20-models.md](evidence/s20-models.md)；
+四条调整已并入（`b1f4937`）。门禁全绿（`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 237/237 ✓、
 `script/bundle-mac.sh` ✓），证据见 [evidence/s1-hero-sheet.md](evidence/s1-hero-sheet.md)、
 [evidence/s21-2-switch-hydrate.md](evidence/s21-2-switch-hydrate.md)、
 [evidence/s21-1-hero-actions.md](evidence/s21-1-hero-actions.md) 与 `docs/evidence/ui-s2-*.png`。
-**下一个动作是 §2.0 P0-1（模型注册）**，随后 P0-2、F2/F3，再进第 3 项（scratch 画布）。
+**下一个动作是 §2.1.1 的 F2（容器内终端/TUI 资源）**，随后 F3（原生 Pi TUI），再进第 3 项（scratch 画布）。
 开工前读：本文件 §2 → [architecture.md](architecture.md) §4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 →
 [evidence/apis-verified.md](evidence/apis-verified.md)。
 > 架构见 [architecture.md](architecture.md)，视觉规格见 [DESIGN.md](DESIGN.md)，决策台账见 [decisions.md](decisions.md)。
@@ -18,7 +19,7 @@
 
 | 里程碑 | 内容 | 状态 | 章节 |
 |---|---|---|---|
-| M-0 | P0 可用性：模型注册与无模型界面 | ⬜ 下一个 | §2.0 |
+| M-0 | P0 可用性：模型注册与无模型界面 | ✅ | §2.0 |
 | M-A | M0–M12 已交付 | ✅ | §1 |
 | M-B | Hero 与画布结构（S1 + S2） | 🔁 1–3 完成；F2/F3 与第 3–7 项待做 | §2.1、§2.1.1 |
 | M-C | 一体化外壳与组合（S3） | ⬜ | §2.2 |
@@ -64,6 +65,14 @@
 |---|---|---|---|
 | P0-1 | 会话没有可用模型（原 §2.4-17） | `modelsData` 的 registry 可能没加载 pi CLI 的 models（`~/.pi/agent/models.json` + 认证）。先对比 `pi --list-models` 与 `session.models`，找出是引擎没初始化 registry、过滤掉了 provider，还是 UI 没展示；在引擎启动/会话创建前显式初始化 model registry，不靠副作用。 | 同一台机器上新会话列出的模型与 `pi --list-models` 一致；默认模型能直接发消息；`session.models` 的空/错有引擎测试 |
 | P0-2 | 无模型时的界面 | 没有可用模型时，composer 不只把发送禁用掉：显示一句可操作的说明（例如配置 pi 的 provider/登录），并保留输入；模型菜单显示真实原因，不静默空列表。 | 无模型状态有明确文案与入口；有模型后无需重启即恢复；一条 UI 测试 |
+
+> **P0-1 / P0-2 已完成（2026-11-11）**：根因是 `modelsData` 用 `Array.isArray(runtime.getAvailable)` 做守卫
+> （方法永远不是数组），引擎从不问 pi，静默返回空列表。现在引擎在启动时显式创建一个共用的 `ModelRuntime`
+> 并交给每个会话；空列表必带 `reason`（catalog/凭证/模型/失败），pi 的 `unknown/unknown` 占位模型不再发出去；
+> `session.models` 默认读 snapshot，`refresh: true` 才重做 auth 检查。composer 在无模型时保留输入、停住发送、
+> 给说明与重试，菜单显示同一原因。验收：`cd engine && bun run models:parity` 打印 `67 / 67`、`the two lists are equal`；
+> `engine.test.ts` 用空 pi home 断言 `no_credentials`；`models.ui.test.tsx` 覆盖无模型说明、菜单原因与重试恢复。
+> 证据与门禁见 [evidence/s20-models.md](evidence/s20-models.md)，决策 [decisions.md](decisions.md) Q81。
 
 ### 2.1 第 1 批：结构性（S1 + S2）
 

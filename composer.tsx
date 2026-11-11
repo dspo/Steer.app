@@ -1,6 +1,7 @@
-import { Scroll, signal, Text, token, View } from "nsh";
+import { effect, Scroll, signal, Text, token, View } from "nsh";
 import { Input, Menu, MenuItem, Submenu } from "nsh/base";
 import { K, t } from "./i18n";
+import type { SessionModelsReason } from "./contracts/protocol";
 import {
   chooseSessionModel,
   followUp,
@@ -115,6 +116,24 @@ export function ComposerChip(props: {
  * `session.info` back in. The menu stays open on an error so the reason is
  * readable, and closes itself on success.
  */
+
+/** Why an empty list is empty: the engine's code, in the user's words. */
+export function modelsReasonText(reason: SessionModelsReason | undefined, error?: string): string {
+  if (error) return t(K.session.modelsError, { error });
+  switch (reason?.code) {
+    case "no_credentials":
+      return t(K.session.modelsNoCredentials);
+    case "no_catalog":
+      return t(K.session.modelsNoCatalog);
+    case "no_models":
+      return t(K.session.modelsNoChat);
+    case "unavailable":
+      return t(K.session.modelsError, { error: reason.message ?? "" });
+    default:
+      return t(K.session.modelsEmpty);
+  }
+}
+
 export function ModelPicker(props: { sessionId: string }) {
   const open = signal(false);
   const view = () => viewFor(props.sessionId);
@@ -195,7 +214,16 @@ export function ModelPicker(props: { sessionId: string }) {
           </MenuItem>
         </If>
         <If when={state()?.status === "ready" && providers().length === 0}>
-          <Text class="px-2 py-2 text-[11.5px] text-faint">{t(K.session.modelsEmpty)}</Text>
+          <Text testID="model-reason" class="px-2 py-2 text-[11.5px] leading-[16px] text-faint">
+            {modelsReasonText(state()?.data?.reason)}
+          </Text>
+          <MenuItem
+            testID="model-retry"
+            class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+            onSelect={() => void loadSessionModels(props.sessionId, true)}
+          >
+            <Text class="text-[12px] text-foreground">{t(K.engine.retry)}</Text>
+          </MenuItem>
         </If>
         <Each of={providers()} key={(provider) => provider.id}>
           {(provider) => (
@@ -257,7 +285,18 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean }) 
   const draft = signal("");
   const view = () => viewFor(props.sessionId);
   const streaming = () => view()?.streaming ?? false;
-  const canSubmit = () => draft().trim().length > 0 && !!view();
+  const models = () => sessionModels()[props.sessionId];
+  /** The engine's answer that this machine has no models to name. */
+  const modelsUnavailable = () => !!models()?.data?.reason;
+  const canSubmit = () => draft().trim().length > 0 && !!view() && !modelsUnavailable();
+  // One ask per composer, so the empty state knows its cause without the
+  // user opening the menu. A retry (here or in the menu) is the way back.
+  let asked = false;
+  effect(() => {
+    if (asked) return;
+    asked = true;
+    void loadSessionModels(props.sessionId);
+  });
   const take = () => {
     const text = draft();
     draft.set("");
@@ -281,6 +320,23 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean }) 
   const context = () => contextLine(view()?.contextUsage);
   return (
     <View style={{ width: "100%", maxWidth: 820, alignSelf: "center", gap: 6 }}>
+      {/* No models is not a dead composer: the input stays, the send waits,
+          and the line names the cause with a retry of its own. */}
+      <If when={modelsUnavailable()}>
+        <View testID="session-no-model" class="flex-row items-start gap-1.5">
+          <View style={{ paddingTop: 2 }}>
+            <Glyph name="alert" size={10} tint={token("faint")} />
+          </View>
+          <Text class="text-[11px] leading-[16px] text-faint" style={{ flex: 1 }}>
+            {modelsReasonText(models()?.data?.reason)}
+          </Text>
+          <ComposerChip
+            testID="session-no-model-retry"
+            label={t(K.engine.retry)}
+            onPress={() => void loadSessionModels(props.sessionId, true)}
+          />
+        </View>
+      </If>
       <Input
         testID="session-input"
         value={draft()}
