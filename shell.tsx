@@ -774,6 +774,28 @@ function Canvas() {
         contentClass="flex-1 bg-background overflow-hidden"
         handleClass="basis-px bg-line"
         dropIndicatorClass="rounded-lg border-2 border-brand bg-brand-tint"
+        renderDragPreview={(tab) => (
+          // The ghost: a tab's shape that follows the pointer (DESIGN §3.7) —
+          // card, shadow, its own icon and title.
+          <View
+            class="h-8 flex-row items-center gap-1.5 rounded-lg px-2.5 bg-card"
+            style={{ width: 144, boxShadow: shadowCard() }}
+          >
+            <Glyph name={sheetGlyph(tab.panel)} size={11.5} tint={token("foreground")} />
+            <Text class="text-[12.5px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
+              {sheetTitle(tab.panel)}
+            </Text>
+          </View>
+        )}
+        renderDropIndicator={(indicator) =>
+          // On a tab bar slot the drop lands between two tabs: a 2pt brand
+          // line (DESIGN §3.7). Group splits and edges keep the block look.
+          indicator.index !== null && indicator.side === null ? (
+            <View class="bg-brand" style={{ width: 2, height: 22, borderRadius: 1 }} />
+          ) : (
+            <View class="rounded-lg border-2 border-brand bg-brand-tint" style={{ flexGrow: 1 }} />
+          )
+        }
         renderTab={(tab) => (
           // Chrome-style widths (DESIGN §3.2): 72–240, squeezed evenly when
           // the panel narrows or tabs multiply; the title truncates.

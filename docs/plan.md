@@ -14,8 +14,8 @@
 [evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)、
 [evidence/s21-6-system-locale.md](evidence/s21-6-system-locale.md)、
 [evidence/s21-7-auto-archive.md](evidence/s21-7-auto-archive.md) 与 `docs/evidence/ui-s2-*.png`。
-**下一个动作是 §2.3 的第 15 项（拖拽 tab 的抽象物）**（第 14 项已完成，证据
-[evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)、[evidence/s21-3-scratch.md](evidence/s21-3-scratch.md)、[evidence/s21-4-action-matrix.md](evidence/s21-4-action-matrix.md)、[evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)、[evidence/s21-6-system-locale.md](evidence/s21-6-system-locale.md)、[evidence/s21-7-auto-archive.md](evidence/s21-7-auto-archive.md)、[evidence/s22-8-shell.md](evidence/s22-8-shell.md)、[evidence/s22-9-sidebar-drag.md](evidence/s22-9-sidebar-drag.md)、[evidence/s22-10-remove-picker.md](evidence/s22-10-remove-picker.md)、[evidence/s22-11-composer.md](evidence/s22-11-composer.md)、[evidence/s22-11a-slash.md](evidence/s22-11a-slash.md)、[evidence/s22-12-13-chrome.md](evidence/s22-12-13-chrome.md)、[evidence/s23-14-brand-icons.md](evidence/s23-14-brand-icons.md)）。
+**下一个动作是 §2.3 的第 16 项（Lilex 字体）**（14、15 两项已完成，证据
+[evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)、[evidence/s21-3-scratch.md](evidence/s21-3-scratch.md)、[evidence/s21-4-action-matrix.md](evidence/s21-4-action-matrix.md)、[evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)、[evidence/s21-6-system-locale.md](evidence/s21-6-system-locale.md)、[evidence/s21-7-auto-archive.md](evidence/s21-7-auto-archive.md)、[evidence/s22-8-shell.md](evidence/s22-8-shell.md)、[evidence/s22-9-sidebar-drag.md](evidence/s22-9-sidebar-drag.md)、[evidence/s22-10-remove-picker.md](evidence/s22-10-remove-picker.md)、[evidence/s22-11-composer.md](evidence/s22-11-composer.md)、[evidence/s22-11a-slash.md](evidence/s22-11a-slash.md)、[evidence/s22-12-13-chrome.md](evidence/s22-12-13-chrome.md)、[evidence/s23-14-brand-icons.md](evidence/s23-14-brand-icons.md)、[evidence/s23-15-drag-ghost.md](evidence/s23-15-drag-ghost.md)）。
 开工前读：本文件 §2 → [architecture.md](architecture.md) §4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 →
 [evidence/apis-verified.md](evidence/apis-verified.md)。
 > 架构见 [architecture.md](architecture.md)，视觉规格见 [DESIGN.md](DESIGN.md)，决策台账见 [decisions.md](decisions.md)。
@@ -30,7 +30,7 @@
 | M-A | M0–M12 已交付 | ✅ | §1 |
 | M-B | Hero 与画布结构（S1 + S2） | ✅ 1–7 与 F1–F3 全部完成 | §2.1、§2.1.1 |
 | M-C | 一体化外壳与组合（S3） | ✅ 8–13 全部完成 | §2.2 |
-| M-D | 细节（图标、拖拽、字体） | 🔁 第 14 项完成；15–16 待做 | §2.3 |
+| M-D | 细节（图标、拖拽、字体） | 🔁 14–15 完成；16 待做 | §2.3 |
 | M-E | 独立修复 | ⏸ B2 挂起 | §2.4 |
 | M-F | 代码仓库整洁化（并行轨道） | ⬜ | §5 |
 
@@ -178,6 +178,12 @@
 > claude/codex/githubcopilot + pi 自己的标，各自 viewBox 与 fill-rule，纯色 tint），
 > Hero 第二排工具行换用。截图 `ui-s23-14-brand-icons.png`。
 > 证据 [evidence/s23-14-brand-icons.md](evidence/s23-14-brand-icons.md)。
+
+> **第 15 项已完成（2026-11-12）**：`renderDragPreview` 画幽灵（tab 形状、144 宽、卡底 + 阴影 +
+> 自己的图标标题，跟随指针）；`renderDropIndicator` 在页签槽位画 2pt brand 竖线、组分割/边缘
+> 保留块状指示。"源 tab 变占位（opacity 0.35）"需要 nsh 的 DockTab 暴露 dragging 标志（0.4.0 没有），
+> 按 Q54 的升级规则单独成批，见证据的"已知边界"。
+> 证据 [evidence/s23-15-drag-ghost.md](evidence/s23-15-drag-ghost.md)。
 
 > **F1 已完成（2026-11-11，`4293eb7`）**：`replaceSheet()` 把目标 sheet 放进 Hero 的原槽位并移除 Hero；容器 Hero 的
 > 浏览器、终端/TUI（F2）与 Pi（F3）动作、以及 composer 提交都走它。证据
