@@ -3,6 +3,7 @@ import { Window } from "nsh/desktop";
 import { Workbench } from "./shell";
 import { AlreadyRunning, LifecycleHost } from "./lifecycle-ui";
 import { lifecycleMode, startLifecycle } from "./lifecycle";
+import { followSystemLocale } from "./i18n";
 import { applyScrollbarTheme } from "./ui";
 
 /** The app: claim the state directory, boot the engine once, then render the workbench. */
@@ -22,6 +23,8 @@ function configureWindow(): void {
 function App() {
   if (!booted) {
     booted = true;
+    // The language follows the system's, read once before the first draw.
+    followSystemLocale();
     // Claim the state directory (desktop only) and boot the engine unless
     // another live Zu owns it; the second instance renders a notice instead.
     startLifecycle();

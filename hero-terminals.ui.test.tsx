@@ -38,6 +38,8 @@ test("a container's Hero opens its terminals inside that container", async () =>
 
   // Archiving the container takes both PTYs with it. The row is named by its
   // earliest sheet (S2): the shell terminal that replaced the Hero.
+  // The fixture mounts the shell without the app's startup, so its copy
+  // is the source language (zh-CN) on every machine.
   await app.press("label:归档容器 终端 · tmp");
   await app.waitUntil(() => stateOf(app).pty === 0, { timeout: 20000 });
   expect(stateOf(app).containers).toBe(0);

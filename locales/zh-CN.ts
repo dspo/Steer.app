@@ -342,7 +342,6 @@ export const zhCN: Record<string, string> = {
   "app.sheet.changes.note": "暂存、工作区与真实 git diff",
   "app.sheet.history.title": "历史",
   "app.sheet.history.note": "提交日志与分支切换",
-  "app.titlebar.language": "语言",
   "app.project.pickFolder": "选择文件夹…",
   "app.project.pickPrompt": "选择项目根目录",
   "app.project.pickFailed": "无法选择文件夹：%{error}",

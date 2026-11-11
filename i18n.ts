@@ -1,18 +1,17 @@
-import { signal } from "nsh";
+import { locale as systemLocale, signal } from "nsh";
 import { en } from "./locales/en";
 import { zhCN } from "./locales/zh-CN";
 
 /**
  * The shell's copy, in one key table per language. `zh-CN` is the source
- * language and the default; `en` is the fallback and the status bar's
- * language button switches this run to it. A persisted choice, and following
- * the system's language list, belong to M6.
+ * language; the shell follows the system's language at startup (Q71) —
+ * `zh*` draws Chinese, anything else English — and there is no in-app
+ * switch to disagree with it.
  *
- * The table is plain TS rather than pi/nsh's translation runtime: the
- * released nsh 0.4.0 test runtime does not expose `nsh/i18n` yet (the
- * checkout does), and the shell needs its copy testable in `nsh test`. The
- * key contract is unchanged: every shell string is a key, and the parity
- * test walks `K` to prove both languages have all of them.
+ * The table is plain TS rather than pi/nsh's translation runtime: the shell
+ * needs its copy testable in `nsh test`, and the two languages are the only
+ * ones it ships. The key contract is unchanged: every shell string is a key,
+ * and the parity test walks `K` to prove both languages have all of them.
  */
 export type ShellLocale = "zh-CN" | "en";
 
@@ -22,22 +21,23 @@ const TABLES: Record<ShellLocale, Record<string, string>> = {
 };
 
 /**
- * The language the shell is drawing. Chinese is the source language, so it
- * is the default; the status bar's language button switches to English for
- * this run. (A persisted, in-app language setting belongs to M6. nsh
- * 0.4.0's runtime does not expose `localeSettings` yet, so reading the
- * system list is not an option today; the key contract is unaffected.)
+ * The system's BCP 47 tag as the shell's language: `zh*` is Chinese, any
+ * other tag English. The two languages the shell ships are all it has.
+ */
+export function localeToShellLocale(tag: string): ShellLocale {
+  return tag.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
+}
+
+/**
+ * The language the shell is drawing, from the system's at startup. A change
+ * of the system's language mid-run is not followed — a restart picks it up —
+ * so the shell never switches languages under the user's pointer.
  */
 const shellLanguage = signal<ShellLocale>("zh-CN");
 
-/** Shows the shell in `locale`; `t` reads this reactively. */
-export function setShellLocale(locale: ShellLocale): void {
-  shellLanguage.set(locale);
-}
-
-/** Switches between the two languages the shell ships. */
-export function toggleShellLocale(): void {
-  shellLanguage.set(shellLocale() === "zh-CN" ? "en" : "zh-CN");
+/** Reads the system's language once (the app calls it before its first draw). */
+export function followSystemLocale(): void {
+  shellLanguage.set(localeToShellLocale(systemLocale()));
 }
 
 /** The language the shell is drawing. */
@@ -105,7 +105,6 @@ export const K = {
     openFailed: "app.titlebar.openFailed",
     noFolder: "app.titlebar.noFolder",
     more: "app.titlebar.more",
-    language: "app.titlebar.language",
   },
   project: {
     title: "app.project.title",

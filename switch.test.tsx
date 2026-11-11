@@ -2,6 +2,7 @@ import { expect, open, test } from "nsh/test";
 import { Engine } from "zu/native";
 import { connect, request } from "./engine";
 
+
 // A state directory of this run: the user's registry is never touched.
 Engine.setStateDir(`/tmp/zu-switch-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
 Engine.setNoExtensions(true);

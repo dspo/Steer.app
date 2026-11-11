@@ -38,7 +38,7 @@ import { externalKindLabel } from "./terminals";
 import { saveActiveEditor } from "./editors";
 import { openChangesSheet, openHistorySheet } from "./git";
 import { openProblemsSheet } from "./lsp-ui";
-import { K, t, toggleShellLocale } from "./i18n";
+import { K, t } from "./i18n";
 import { UIHost, unsupportedMethods } from "./ui-host";
 import { dropBrowserPages, openBrowserSheet } from "./browser";
 import {
@@ -63,7 +63,7 @@ import { TabBarPlus } from "./tab-plus";
  * session picker, and "open the active project in VS Code" + the tools
  * overflow. There is no bottom status bar: a compact inline indicator carries
  * an engine state only while it is not the normal connected state, and the
- * overflow holds the engine and language controls.
+ * overflow holds the engine controls.
  */
 
 /** Boots the engine and loads the registry; the app calls it once. */
@@ -819,9 +819,6 @@ function TitleBar() {
               <Text class="text-[12px] text-muted-foreground">{t(K.status.unsupported, { count: unsupportedMethods().length })}</Text>
             </MenuItem>
           </If>
-          <MenuItem testID="language" class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={toggleShellLocale}>
-            <Text class="text-[12px] text-foreground">{t(K.titlebar.language)}</Text>
-          </MenuItem>
         </Menu>
         <View style={{ width: 10 }} />
       </View>

@@ -4,16 +4,17 @@
 
 **当前进度（2026-11-11）**：§2.1-1（`a58e0ad`）、§2.1-2（`bcd4004`）、§2.1.1 F1（`4293eb7`）已提交；
 §2.0 的 P0-1 / P0-2（模型注册与无模型界面）已完成，证据见 [evidence/s20-models.md](evidence/s20-models.md)；
-四条调整已并入（`b1f4937`）。门禁全绿（`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 249/249 ✓、
+四条调整已并入（`b1f4937`）。门禁全绿（`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 250/250 ✓、
 `script/bundle-mac.sh` ✓），证据见 [evidence/s1-hero-sheet.md](evidence/s1-hero-sheet.md)、
 [evidence/s21-2-switch-hydrate.md](evidence/s21-2-switch-hydrate.md)、
 [evidence/s21-1-hero-actions.md](evidence/s21-1-hero-actions.md)、
 [evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)、
 [evidence/s21-3-scratch.md](evidence/s21-3-scratch.md)、
 [evidence/s21-4-action-matrix.md](evidence/s21-4-action-matrix.md)、
-[evidence/s21-5-container-title.md](evidence/s21-5-container-title.md) 与 `docs/evidence/ui-s2-*.png`。
-**下一个动作是 §2.1 的第 6 项（语言跟随系统）**（第 3、4、5 项与 F2/F3 已完成，证据
-[evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)、[evidence/s21-3-scratch.md](evidence/s21-3-scratch.md)、[evidence/s21-4-action-matrix.md](evidence/s21-4-action-matrix.md)、[evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)）。
+[evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)、
+[evidence/s21-6-system-locale.md](evidence/s21-6-system-locale.md) 与 `docs/evidence/ui-s2-*.png`。
+**下一个动作是 §2.1 的第 7 项（无 sheet 自动归档）**（第 3–6 项与 F2/F3 已完成，证据
+[evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)、[evidence/s21-3-scratch.md](evidence/s21-3-scratch.md)、[evidence/s21-4-action-matrix.md](evidence/s21-4-action-matrix.md)、[evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)、[evidence/s21-6-system-locale.md](evidence/s21-6-system-locale.md)）。
 开工前读：本文件 §2 → [architecture.md](architecture.md) §4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 →
 [evidence/apis-verified.md](evidence/apis-verified.md)。
 > 架构见 [architecture.md](architecture.md)，视觉规格见 [DESIGN.md](DESIGN.md)，决策台账见 [decisions.md](decisions.md)。
@@ -26,7 +27,7 @@
 |---|---|---|---|
 | M-0 | P0 可用性：模型注册与无模型界面 | ✅ | §2.0 |
 | M-A | M0–M12 已交付 | ✅ | §1 |
-| M-B | Hero 与画布结构（S1 + S2） | 🔁 1–5 与 F1–F3 完成；第 6–7 项待做 | §2.1、§2.1.1 |
+| M-B | Hero 与画布结构（S1 + S2） | 🔁 1–6 与 F1–F3 完成；第 7 项待做 | §2.1、§2.1.1 |
 | M-C | 一体化外壳与组合（S3） | ⬜ | §2.2 |
 | M-D | 细节（图标、拖拽、字体） | ⬜ | §2.3 |
 | M-E | 独立修复 | ⏸ B2 挂起 | §2.4 |
@@ -124,6 +125,11 @@
 > 标题取存活的最早创建 sheet 的 `title()`——session=会话名（未命名的新会话不参与）、terminal=OSC 标题、
 > webview=页面 title、其余固定；Hero 不参与命名，无可命名 sheet 时回退 captain 名/终端标题/目录。
 > 证据 [evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)（`titles.test.ts`）。
+
+> **第 6 项已完成（2026-11-12）**：语言按钮删除；`App` 首帧前 `followSystemLocale()` 读 nsh 的
+> `locale()`，`localeToShellLocale` 做 `zh*→zh-CN`、其余→en（运行中不跟随）。映射有单测，
+> 两种系统语言各有 fixture 级 UI 测试；打开真 App 的用例改为用 `copy(zh,en)` 断言壳正在画的文案。
+> 证据 [evidence/s21-6-system-locale.md](evidence/s21-6-system-locale.md)。
 
 > **F1 已完成（2026-11-11，`4293eb7`）**：`replaceSheet()` 把目标 sheet 放进 Hero 的原槽位并移除 Hero；容器 Hero 的
 > 浏览器、终端/TUI（F2）与 Pi（F3）动作、以及 composer 提交都走它。证据

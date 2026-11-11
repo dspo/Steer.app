@@ -1,6 +1,8 @@
 import { afterAll, beforeEach, expect, open, test } from "nsh/test";
 import { Engine } from "zu/native";
 import { connect, request } from "./engine";
+import { copy } from "./copy";
+
 
 // §2.1-2's acceptance: the app opens on the registry's active container and
 // draws its conversation without a click, and the scratch Hero's actions
@@ -56,7 +58,7 @@ test("the scratch Hero's Pi and agent actions open their sheets", async () => {
   await connect();
   const made = await request("project.create", { name: "S21", roots: [{ path: "/tmp", primary: true }] }, 20000);
   const app = await open("./App.tsx", { network: "live", width: 1280, height: 800 });
-  await app.waitFor("label:运行中", { timeout: 20000 });
+  await app.waitFor(`label:${copy("运行中", "Running")}`, { timeout: 20000 });
   await app.waitFor("id:launcher-pi", { timeout: 20000 });
   await app.press("id:launcher-project");
   await app.waitFor(`id:launcher-project-${made.project.id}`, { timeout: 20000 });

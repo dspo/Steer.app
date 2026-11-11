@@ -1,8 +1,9 @@
 import { expect, open, test } from "nsh/test";
 import { Engine } from "zu/native";
 import { connect, request } from "./engine";
-import { K } from "./i18n";
-import { zhCN } from "./locales/zh-CN";
+import { copy, shellCopyLocale } from "./copy";
+import { K, t } from "./i18n";
+
 
 Engine.setStateDir(`/tmp/zu-hero-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
 Engine.setNoExtensions(true);
@@ -37,16 +38,16 @@ test("switching to a container with a conversation shows its transcript, not the
   await app.press(`id:container-row-${a.container.id}`);
   await app.waitFor("id:session-transcript", { timeout: 30000 });
   expect(app.texts()).toContain("hello A");
-  expect(app.texts()).not.toContain(zhCN[K.launcher.title]);
+  expect(app.texts()).not.toContain(t(K.launcher.title, { locale: shellCopyLocale() }));
 
   await app.press(`id:container-row-${b.container.id}`);
   await app.waitFor("id:session-hero", { timeout: 30000 });
   // B is empty: its start page is correct there.
-  expect(app.texts()).toContain(zhCN[K.launcher.title]);
+  expect(app.texts()).toContain(t(K.launcher.title, { locale: shellCopyLocale() }));
 
   await app.press(`id:container-row-${a.container.id}`);
   await app.waitFor("id:session-transcript", { timeout: 30000 });
-  expect(app.texts()).not.toContain(zhCN[K.launcher.title]);
+  expect(app.texts()).not.toContain(t(K.launcher.title, { locale: shellCopyLocale() }));
   expect(aSession.length).toBeGreaterThan(0);
   expect(bSession.length).toBeGreaterThan(0);
 }, 240000);

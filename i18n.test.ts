@@ -1,5 +1,5 @@
 import { expect, test } from "nsh/test";
-import { K, SHELL_KEYS, t } from "./i18n";
+import { K, localeToShellLocale, SHELL_KEYS, t } from "./i18n";
 import { en } from "./locales/en";
 import { zhCN } from "./locales/zh-CN";
 
@@ -34,4 +34,16 @@ test("the table fills arguments and falls back", () => {
   expect(t("app.not.a.key", { locale: "en" })).toBe("app.not.a.key");
   // A language tag picks the base language.
   expect(t(K.sidebar.title, { locale: "zh-Hant-TW" })).toBe(zhCN[K.sidebar.title]);
+});
+
+test("the system's language tag picks the shell's language", () => {
+  // Q71: zh* is Chinese, everything else English — including tags that only
+  // partly match, and regions.
+  expect(localeToShellLocale("zh")).toBe("zh-CN");
+  expect(localeToShellLocale("zh-Hant-TW")).toBe("zh-CN");
+  expect(localeToShellLocale("zh-CN")).toBe("zh-CN");
+  expect(localeToShellLocale("en-US")).toBe("en");
+  expect(localeToShellLocale("en")).toBe("en");
+  expect(localeToShellLocale("fr")).toBe("en");
+  expect(localeToShellLocale("DE-de")).toBe("en");
 });

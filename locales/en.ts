@@ -342,7 +342,6 @@ export const en: Record<string, string> = {
   "app.sheet.changes.note": "Staged, working tree and a real git diff",
   "app.sheet.history.title": "History",
   "app.sheet.history.note": "Commit log and branch switching",
-  "app.titlebar.language": "Language",
   "app.project.pickFolder": "Choose a folder\u2026",
   "app.project.pickPrompt": "Choose a project root folder",
   "app.project.pickFailed": "Could not choose a folder: %{error}",
