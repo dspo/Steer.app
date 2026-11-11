@@ -42,7 +42,7 @@ test("a project header's + opens the launcher without collapsing the group", asy
   const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:alpha body");
   await app.press("id:new-container-p1");
-  await app.waitFor("text:开始一个对话");
+  await app.waitFor("text:开始你的对话");
   // Alpha is p1's only container; a collapsed group would hide it.
   expect(app.shows("text:Alpha")).toBe(true);
 });
@@ -51,10 +51,10 @@ test("the Launcher starts a conversation and then shows its container", async ()
   const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:alpha body");
   await app.press("id:new-container");
-  await app.waitFor("text:开始一个对话");
+  await app.waitFor("text:开始你的对话");
   await app.type("id:launcher-input", "hello from launcher");
   await app.press("id:launcher-send");
-  await app.waitUntil(() => !app.texts().includes("开始一个对话"));
+  await app.waitUntil(() => !app.texts().includes("开始你的对话"));
   expect(app.texts()).toContain("Chat");
   expect(app.texts()).toContain("hello from launcher");
 });

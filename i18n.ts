@@ -181,11 +181,15 @@ export const K = {
   session: {
     running: "app.session.running",
     placeholder: "app.session.placeholder",
-    composerHint: "app.session.composerHint",
+    placeholderStreaming: "app.session.placeholderStreaming",
     stop: "app.session.stop",
     send: "app.session.send",
+    queue: "app.session.queue",
+    steer: "app.session.steer",
+    interrupt: "app.session.interrupt",
+    contextUsage: "app.session.contextUsage",
     interrupted: "app.session.interrupted",
-    degraded: "app.session.degraded",
+    error: "app.session.error",
     hidden: "app.session.hidden",
   },
   dialog: {

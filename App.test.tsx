@@ -49,7 +49,7 @@ test("a conversation renders history, tool lines and prose", async () => {
   expect(texts).toContain("fold the extension channel");
   expect(texts).toContain("read done");
   expect(texts).toContain("the projection keys rows by message id");
-  // The composer keeps its calm footer hint and its circular send.
-  expect(texts).toContain("Return 发送 · Shift+Return 换行");
+  // The settled composer is one accent send; the running lane is absent.
   expect(app.count("id:session-send")).toBe(1);
+  expect(app.shows("id:session-stop")).toBe(false);
 });

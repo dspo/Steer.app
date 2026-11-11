@@ -17,7 +17,8 @@ import {
 import { activeContainerId, containers, containersLoaded, createExternalContainer } from "./containers";
 import { openBrowserSheet } from "./browser";
 import type { ContainerKind } from "./contracts/protocol";
-import { Chip, Glyph, motionStyle, shadowDialog, shadowRaised } from "./ui";
+import { ComposerChip } from "./composer";
+import { Glyph, motionStyle, shadowDialog, shadowRaised } from "./ui";
 
 /**
  * The Launcher: composer first, container second. It shows on an empty
@@ -66,83 +67,95 @@ export function Launcher() {
     return projects().find((project) => project.id === id)?.name ?? t(K.project.title);
   };
   return (
-    <View class="flex-1 items-center justify-center bg-inset" style={{ padding: 32 }}>
-      <View
-        class="gap-4 rounded-xl border border-border bg-card"
-        style={{ width: 560, padding: 20, boxShadow: shadowRaised() }}
-      >
-        <View style={{ gap: 2 }}>
-          <Text class="text-[15px] font-semibold text-foreground">{t(K.launcher.title)}</Text>
-          <Text class="text-[12px] text-muted-foreground">{t(K.launcher.subtitle)}</Text>
-        </View>
+    <View class="flex-1 items-center justify-center bg-background" style={{ paddingHorizontal: 32, paddingVertical: 32 }}>
+      <View style={{ width: "100%", maxWidth: 720, gap: 18 }}>
+        <Text class="text-[15px] font-bold text-foreground" style={{ textAlign: "center" }}>
+          {t(K.launcher.title)}
+        </Text>
 
-        <View class="flex-row items-center gap-2">
-          <Text class="text-[11px] font-medium text-faint">{t(K.launcher.project)}</Text>
-          <If
-            when={launcherLocked()}
-            else={
-              <Menu
-                trigger={
-                  <View
-                    role="button"
-                    testID="launcher-project"
-                    accessibilityLabel={t(K.launcher.project)}
-                    class="rounded-lg border border-line px-2 py-1 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+        {/* The same bare composer as an empty session's hero: no card, no
+            shadow, no bubble around the input. */}
+        <View style={{ gap: 6 }}>
+          <Input
+            testID="launcher-input"
+            value={draft()}
+            onChange={({ value }) => draft.set(value)}
+            multiline
+            submitBehavior="submit"
+            autoFocus
+            placeholder={t(K.launcher.placeholder)}
+            onSubmit={submit}
+            style={{
+              minHeight: 72,
+              paddingHorizontal: 2,
+              paddingVertical: 4,
+              fontSize: 14,
+              lineHeight: 21,
+              color: token("foreground"),
+              placeholderColor: token("faint"),
+              caretColor: token("primary"),
+              selectionColor: token("brand"),
+              backgroundColor: "transparent",
+              borderWidth: 0,
+            }}
+          />
+          <View class="flex-row items-center gap-2 border-t border-line" style={{ paddingTop: 8 }}>
+            <View class="flex-row items-center gap-1.5">
+              <Text class="text-[10.5px] font-medium text-faint">{t(K.launcher.project)}</Text>
+              <If
+                when={launcherLocked()}
+                else={
+                  <Menu
+                    trigger={
+                      <View
+                        role="button"
+                        testID="launcher-project"
+                        accessibilityLabel={t(K.launcher.project)}
+                        class="h-6 flex-row items-center gap-1 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+                        style={{ ...motionStyle("fast") }}
+                      >
+                        <Text class="text-[11px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
+                          {selectedName()}
+                        </Text>
+                        <Glyph name="caret-down" size={9} tint={token("faint")} />
+                      </View>
+                    }
+                    popupClass="rounded-xl border border-border bg-popover p-1"
+                    popupStyle={{ boxShadow: shadowRaised() }}
                   >
-                    <Chip label={selectedName()} tint={token("foreground")} />
-                  </View>
-                }
-                popupClass="rounded-xl border border-border bg-popover p-1"
-                popupStyle={{ boxShadow: shadowRaised() }}
-              >
-                <MenuItem class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => launcherProjectId.set(null)}>
-                  <Text class="text-[12px] text-foreground">{t(K.project.chats)}</Text>
-                </MenuItem>
-                <Each of={projects()} key={(project) => project.id}>
-                  {(project) => (
-                    <MenuItem
-                      class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-                      onSelect={() => launcherProjectId.set(project().id)}
-                    >
-                      <Text class="text-[12px] text-foreground">{project().name}</Text>
+                    <MenuItem class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => launcherProjectId.set(null)}>
+                      <Text class="text-[12px] text-foreground">{t(K.project.chats)}</Text>
                     </MenuItem>
-                  )}
-                </Each>
-              </Menu>
-            }
-          >
-            <Chip label={selectedName()} tint={token("foreground")} />
-          </If>
-          <View style={{ flex: 1 }} />
-          <Text class="text-[10.5px] text-faint">
-            {launcherLocked() ? t(K.launcher.subtitle) : ""}
-          </Text>
+                    <Each of={projects()} key={(project) => project.id}>
+                      {(project) => (
+                        <MenuItem
+                          class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+                          onSelect={() => launcherProjectId.set(project().id)}
+                        >
+                          <Text class="text-[12px] text-foreground">{project().name}</Text>
+                        </MenuItem>
+                      )}
+                    </Each>
+                  </Menu>
+                }
+              >
+                <Text class="text-[11px] font-medium text-muted-foreground">{selectedName()}</Text>
+              </If>
+            </View>
+            <View style={{ flex: 1 }} />
+            <ComposerChip
+              testID="launcher-send"
+              label={launcherStarting() ? t(K.launcher.starting) : t(K.launcher.start)}
+              glyph="send"
+              primary
+              disabled={!canStart()}
+              onPress={submit}
+            />
+          </View>
         </View>
 
-        <Input
-          testID="launcher-input"
-          value={draft()}
-          onChange={({ value }) => draft.set(value)}
-          multiline
-          autoFocus
-          placeholder={t(K.launcher.placeholder)}
-          onSubmit={submit}
-          style={{
-            minHeight: 120,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            fontSize: 13,
-            lineHeight: 20,
-            color: token("foreground"),
-            placeholderColor: token("faint"),
-            borderWidth: 1,
-            borderColor: token("border"),
-            borderRadius: 10,
-            backgroundColor: token("background"),
-            caretColor: token("primary"),
-          }}
-        />
-
+        {/* Project selection, external terminals and the browser stay one
+            gesture away, below the hero rather than in a card around it. */}
         <View class="flex-row items-center gap-1.5">
           <Text class="text-[10.5px] font-medium text-faint">{t(K.launcher.terminals)}</Text>
           <Each of={EXTERNAL_ACTIONS} key={(action) => action.kind}>
@@ -157,32 +170,28 @@ export function Launcher() {
                   accessibilityLabel={t(K.external.open, { kind: label })}
                   class={
                     externalStarting() || !readyToCreate()
-                      ? "h-7 flex-row items-center gap-1.5 rounded-lg border border-line bg-background px-2.5 opacity-50"
-                      : "h-7 flex-row items-center gap-1.5 rounded-lg border border-line bg-background px-2.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+                      ? "h-6 flex-row items-center gap-1 rounded-md px-1.5 opacity-40"
+                      : "h-6 flex-row items-center gap-1 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
                   }
                   style={{ ...motionStyle("fast") }}
                   disabled={externalStarting() !== null || !readyToCreate()}
                   onPress={() => void startExternal(value.kind)}
                 >
-                  <Glyph name="terminal" size={11} tint={token("muted-foreground")} />
-                  <Text class="text-[11px] font-medium text-foreground">{busy() ? "…" : label}</Text>
+                  <Glyph name="terminal" size={10} tint={token("faint")} />
+                  <Text class="text-[11px] font-medium text-muted-foreground">{busy() ? "…" : label}</Text>
                 </View>
               );
             }}
           </Each>
-        </View>
-        <Text class="text-[10px] text-faint" style={{ numberOfLines: 2 }}>{t(K.external.hint)}</Text>
-
-        <View class="flex-row items-center gap-1.5">
-          <Text class="text-[10.5px] font-medium text-faint">{t(K.browser.view)}</Text>
+          <View style={{ flex: 1 }} />
           <View
             role="button"
             testID="launcher-browser"
             accessibilityLabel={t(K.browser.open)}
             class={
               activeContainerId() === null
-                ? "h-7 flex-row items-center gap-1.5 rounded-lg border border-line bg-background px-2.5 opacity-50"
-                : "h-7 flex-row items-center gap-1.5 rounded-lg border border-line bg-background px-2.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+                ? "h-6 flex-row items-center gap-1 rounded-md px-1.5 opacity-40"
+                : "h-6 flex-row items-center gap-1 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
             }
             style={{ ...motionStyle("fast") }}
             disabled={activeContainerId() === null}
@@ -191,39 +200,16 @@ export function Launcher() {
               if (openBrowserSheet()) closeLauncher();
             }}
           >
-            <Glyph name="globe" size={11} tint={token("muted-foreground")} />
-            <Text class="text-[11px] font-medium text-foreground">{t(K.browser.open)}</Text>
+            <Glyph name="globe" size={10} tint={token("faint")} />
+            <Text class="text-[11px] font-medium text-muted-foreground">{t(K.browser.open)}</Text>
           </View>
         </View>
 
-        <View class="flex-row items-center gap-2">
-          <View class="rounded-full border border-line px-2 py-0.5">
-            <Text class="text-[11px] font-medium text-muted-foreground">pi</Text>
-          </View>
-          <View style={{ flex: 1 }} />
-          <If when={!!projectError()}>
-            <Text class="text-[11px] text-destructive" style={{ numberOfLines: 1 }}>
-              {projectError() ?? ""}
-            </Text>
-          </If>
-          <View
-            role="button"
-            testID="launcher-send"
-            accessibilityLabel={launcherStarting() ? t(K.launcher.starting) : t(K.launcher.start)}
-            class={
-              canStart()
-                ? "h-8 flex-row items-center gap-1.5 rounded-lg bg-primary px-3 hover:bg-primary/90 active:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
-                : "h-8 flex-row items-center gap-1.5 rounded-lg bg-muted px-3"
-            }
-            style={{ ...motionStyle("fast") }}
-            onPress={submit}
-          >
-            <Text class={canStart() ? "text-[12px] font-medium text-primary-foreground" : "text-[12px] font-medium text-faint"}>
-              {launcherStarting() ? t(K.launcher.starting) : t(K.launcher.start)}
-            </Text>
-            <Glyph name="send" size={12} tint={canStart() ? token("primary-foreground") : token("faint")} />
-          </View>
-        </View>
+        <If when={!!projectError()}>
+          <Text class="text-center text-[11px] text-destructive" style={{ numberOfLines: 2 }}>
+            {projectError() ?? ""}
+          </Text>
+        </If>
       </View>
     </View>
   );

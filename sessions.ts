@@ -1,6 +1,13 @@
 import { batch, computed, signal } from "nsh";
 import { onDisconnect, onEngineEvent, onSnapshot, request } from "./engine";
-import type { SessionData, StateSnapshot } from "./contracts/protocol";
+import type {
+  SessionContextUsage,
+  SessionData,
+  SessionInfoData,
+  SessionModelInfo,
+  SessionThinkingLevel,
+  StateSnapshot,
+} from "./contracts/protocol";
 
 /**
  * The session store, keyed by pi session id. M3 can show several sessions at
@@ -45,6 +52,12 @@ export type SessionView = {
   streaming: boolean;
   interrupted: boolean;
   loaded: boolean;
+  /** The model the session runs, from `session.info`. */
+  model?: SessionModelInfo;
+  /** pi's thinking level; `off` means the model does not think. */
+  thinkingLevel?: SessionThinkingLevel;
+  /** pi's live context gauge, from `session.info`. */
+  contextUsage?: SessionContextUsage;
   error?: string;
 };
 
@@ -85,6 +98,35 @@ function blankView(id: string, patch: Partial<SessionView> = {}): SessionView {
 function patchView(id: string, patch: Partial<SessionView>): void {
   const current = views()[id] ?? blankView(id);
   views.set({ ...views(), [id]: { ...current, ...patch } });
+}
+
+/**
+ * Folds a (possibly partial) `session.info` payload into a view. Events carry
+ * one changed field at a time (a model switch, a thinking level, the context
+ * gauge after a turn); the reply carries them all. An absent field leaves the
+ * view's value alone.
+ */
+export function applySessionInfo(id: string, data: SessionInfoData | null | undefined): void {
+  if (!data) return;
+  const patch: Partial<SessionView> = {};
+  if (typeof data.path === "string" && data.path) patch.path = data.path;
+  if (typeof data.name === "string" && data.name) patch.name = data.name;
+  if (data.model && typeof data.model === "object") patch.model = data.model;
+  if (typeof data.thinkingLevel === "string") patch.thinkingLevel = data.thinkingLevel;
+  if (data.contextUsage && typeof data.contextUsage === "object") patch.contextUsage = data.contextUsage;
+  if (Object.keys(patch).length > 0) patchView(id, patch);
+}
+
+/** Asks the engine for a session's composer data and folds it into the view. */
+export async function refreshSessionInfo(id: string): Promise<void> {
+  if (!id) return;
+  try {
+    const data = await request("session.info", { sessionId: id }, 30000);
+    applySessionInfo(id, data as SessionInfoData);
+  } catch {
+    // The session's sheet still renders its transcript; the next event or a
+    // later reopen supplies the composer's data.
+  }
 }
 
 /** The view of `id`, if the shell has seen it. */
@@ -214,11 +256,8 @@ onEngineEvent((event) => {
     }
     case "session.info": {
       if (!id) return;
-      const data = (event.data ?? {}) as any;
-      patchView(id, {
-        ...(data.path ? { path: String(data.path) } : {}),
-        ...(data.name ? { name: String(data.name) } : {}),
-      });
+      const data = (event.data ?? {}) as SessionInfoData;
+      applySessionInfo(id, data);
       if (data.name) {
         sessions.set(
           sessions().map((row) => (row.id === id ? { ...row, name: String(data.name) } : row)),
@@ -298,6 +337,7 @@ async function reconcile(state: StateSnapshot): Promise<void> {
             ...(wasStreaming ? { interrupted: true } : {}),
           });
         });
+        void refreshSessionInfo(String(data?.id ?? id));
       } catch (failure) {
         patchView(id, { streaming: false, interrupted: true, error: String(failure) });
       }
@@ -336,6 +376,10 @@ export function adoptSession(data: SessionData): SessionView {
     loaded: true,
   });
   patchView(id, view);
+  // The reply names the file and transcript; the model, thinking level and
+  // context gauge are the composer's and come from `session.info`, merged
+  // when it lands.
+  void refreshSessionInfo(id);
   return view;
 }
 
@@ -378,18 +422,94 @@ export async function createSession(cwd: string): Promise<string> {
   return view.id;
 }
 
-/** Sends a prompt to `sessionId` (the active session by default). */
-export async function send(text: string, sessionId?: string): Promise<void> {
-  const id = sessionId ?? activeId();
-  const trimmed = text.trim();
+/**
+ * Adds the user's own row before the engine answers. The transcript is the
+ * user's view of the turn until the reply lands; a failed request keeps the
+ * row (the text is not silently lost) and shows the error quietly.
+ */
+function optimisticUser(id: string, text: string): void {
   const view = viewFor(id);
-  if (!id || !trimmed || !view || view.streaming) return;
+  if (!view) return;
   patchView(id, {
-    messages: [...view.messages, { role: "user", text: trimmed }],
+    messages: [...view.messages, { role: "user", text }],
     streaming: true,
     interrupted: false,
     error: undefined,
   });
+}
+
+/**
+ * Sends a prompt to `sessionId` (the active session by default). A prompt
+ * while a turn runs is a follow-up (the queue lane), never a second turn.
+ */
+export async function send(text: string, sessionId?: string): Promise<void> {
+  const id = sessionId ?? activeId();
+  const trimmed = text.trim();
+  const view = viewFor(id);
+  if (!id || !trimmed || !view) return;
+  if (view.streaming) return followUp(trimmed, id);
+  optimisticUser(id, trimmed);
+  try {
+    await request("session.prompt", { sessionId: id, text: trimmed });
+  } catch (failure) {
+    patchView(id, { streaming: false, error: String(failure) });
+  }
+}
+
+/**
+ * Queues `text` behind the running turn (`session.followUp`): the engine
+ * sends it once the turn settles. Idle degrades to a prompt, so a stale
+ * streaming edge cannot strand the message.
+ */
+export async function followUp(text: string, sessionId?: string): Promise<void> {
+  const id = sessionId ?? activeId();
+  const trimmed = text.trim();
+  const view = viewFor(id);
+  if (!id || !trimmed || !view) return;
+  if (!view.streaming) return send(trimmed, id);
+  optimisticUser(id, trimmed);
+  try {
+    await request("session.followUp", { sessionId: id, text: trimmed });
+  } catch (failure) {
+    patchView(id, { error: String(failure) });
+  }
+}
+
+/**
+ * Injects `text` into the running turn (`session.steer`): the engine hands it
+ * to the model at its next safe point. Idle degrades to a prompt.
+ */
+export async function steer(text: string, sessionId?: string): Promise<void> {
+  const id = sessionId ?? activeId();
+  const trimmed = text.trim();
+  const view = viewFor(id);
+  if (!id || !trimmed || !view) return;
+  if (!view.streaming) return send(trimmed, id);
+  optimisticUser(id, trimmed);
+  try {
+    await request("session.steer", { sessionId: id, text: trimmed });
+  } catch (failure) {
+    patchView(id, { error: String(failure) });
+  }
+}
+
+/**
+ * Interrupts the running turn and prompts with `text` immediately. The abort
+ * is best-effort: the prompt is the part the user asked for, and the engine
+ * accepts it after the cancel either way.
+ */
+export async function interrupt(text: string, sessionId?: string): Promise<void> {
+  const id = sessionId ?? activeId();
+  const trimmed = text.trim();
+  const view = viewFor(id);
+  if (!id || !trimmed || !view) return;
+  if (!view.streaming) return send(trimmed, id);
+  optimisticUser(id, trimmed);
+  try {
+    await request("session.abort", { sessionId: id }, 30000);
+  } catch {
+    // The prompt below reports the real failure; an abort race is not one.
+  }
   try {
     await request("session.prompt", { sessionId: id, text: trimmed });
   } catch (failure) {
