@@ -17,7 +17,7 @@ Engine.setStateDir(STATE_DIR);
 test("hiding the window keeps the engine running", async () => {
   const app = await open("./App.tsx", { network: "live", platform: "macos", width: 1200, height: 800 });
   try {
-    await app.waitUntil(() => app.texts().includes("运行中"), { timeout: 30000 });
+    await app.waitFor("label:运行中", { timeout: 30000 });
     expect(Engine.status()).toBe("running");
     const win = app.window("main");
 
@@ -31,11 +31,12 @@ test("hiding the window keeps the engine running", async () => {
     expect(Engine.status()).toBe("running");
 
     await app.keyboard.press("mod+0");
-    await app.waitUntil(() => win.state()?.visible === true && app.texts().includes("运行中"));
+    await app.waitUntil(() => win.state()?.visible === true && app.shows("label:运行中"));
 
     // Stop through the shell so its watchdog knows this is intentional.
+    await app.press("id:titlebar-tools");
     await app.press("id:engine-stop");
-    await app.waitUntil(() => app.texts().includes("未启动"));
+    await app.waitFor("label:未启动");
     expect(Engine.status()).toBe("stopped");
   } finally {
     Instance.release();

@@ -39,6 +39,18 @@ test("container and layout commands carry their replay meanings", () => {
   expect(COMMANDS["container.attachSession"].group).toBe("container");
 });
 
+test("the model commands are additive session commands", () => {
+  expect(COMMANDS["session.models"].group).toBe("session");
+  expect(COMMANDS["session.models"].replay).toBe("safe");
+  expect(COMMANDS["session.setModel"].group).toBe("session");
+  expect(COMMANDS["session.setModel"].idempotent).toBe(false);
+  expect(COMMANDS["session.setModel"].replay).toBe("duplicate");
+  // The pre-existing session commands are still all there.
+  for (const name of ["session.info", "session.tools", "session.prompt", "session.abort"]) {
+    expect(isCommandType(name)).toBe(true);
+  }
+});
+
 test("the event list aligns with pi's session events", () => {
   for (const name of [
     "message.delta",

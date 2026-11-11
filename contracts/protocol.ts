@@ -91,6 +91,18 @@ export const COMMANDS = {
     replay: "safe",
     note: "The tools registered in a session, including the dispatch tool on a captain.",
   },
+  "session.models": {
+    group: "session",
+    idempotent: true,
+    replay: "safe",
+    note: "The providers and models the session can switch to, with its current model and thinking level.",
+  },
+  "session.setModel": {
+    group: "session",
+    idempotent: false,
+    replay: "duplicate",
+    note: "Switches the session's model; pi validates auth and records the change in the transcript.",
+  },
   "subagent.list": {
     group: "subagent",
     idempotent: true,
@@ -621,6 +633,35 @@ export interface SessionModelInfo {
   contextWindow?: number;
   /** Whether the model accepts a thinking level. */
   reasoning?: boolean;
+}
+
+/** One switchable model, as the two-level picker lists it. */
+export interface SessionModelOption {
+  provider: string;
+  id: string;
+  name: string;
+  contextWindow?: number;
+  reasoning: boolean;
+}
+
+/** A provider and its models, in the picker's first level. */
+export interface SessionModelProvider {
+  id: string;
+  name: string;
+  models: SessionModelOption[];
+}
+
+/** The `session.models` reply: grouped choices plus the session's current one. */
+export interface SessionModelsData {
+  providers: SessionModelProvider[];
+  current?: SessionModelInfo;
+  thinkingLevel?: SessionThinkingLevel;
+}
+
+export interface SessionSetModelPayload {
+  sessionId: string;
+  provider: string;
+  id: string;
 }
 
 /** pi's live estimate of the session's context use. */

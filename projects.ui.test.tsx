@@ -12,6 +12,8 @@ test("the sidebar groups containers by explicit project membership", async () =>
   expect(chats).toBeGreaterThan(two);
   expect(texts).toContain("Alpha");
   expect(texts).toContain("Beta");
+  // Project creation lives on the start page, not in the sidebar.
+  expect(app.count("id:new-project")).toBe(0);
 });
 
 test("a container moves to another project through its menu", async () => {
@@ -53,7 +55,11 @@ test("the Launcher starts a conversation and then shows its container", async ()
   await app.press("id:new-container");
   await app.waitFor("text:开始你的对话");
   await app.type("id:launcher-input", "hello from launcher");
-  await app.press("id:launcher-send");
+  // Enter sends; there is no Start button.
+  expect(app.count("id:launcher-send")).toBe(0);
+  expect(app.texts().some((text) => text.includes("Shift+Enter 换行"))).toBe(true);
+  expect(app.count("id:launcher-hint")).toBe(1);
+  await app.submit("id:launcher-input");
   await app.waitUntil(() => !app.texts().includes("开始你的对话"));
   expect(app.texts()).toContain("Chat");
   expect(app.texts()).toContain("hello from launcher");
@@ -105,15 +111,78 @@ test("the sidebar toggles between project and recent grouping", async () => {
   expect(app.texts()).toContain("Project One");
 });
 
-test("the project dialog creates a two-root project", async () => {
+test("the start page's project menu creates a project from Finder-picked roots", async () => {
   const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:alpha body");
-  await app.press("id:new-project");
+  // Creation is reached from the Launcher's project chip, not the sidebar.
+  await app.press("id:new-container");
+  await app.waitFor("text:开始你的对话");
+  await app.press("id:launcher-project");
+  await app.press("id:launcher-new-project");
   await app.waitFor("text:新建项目");
+  // No roots yet: the dialog cannot create, and there is no free-form field.
+  expect(app.enabled("id:project-create")).toBe(false);
+  expect(app.count("id:project-roots")).toBe(0);
   await app.type("id:project-name", "Two Roots");
-  await app.clear("id:project-roots");
-  await app.type("id:project-roots", "/tmp\n* /Users/chenzhongrun/projects/dspo/nsh-pi");
+  await app.press("id:project-add-root");
+  await app.waitFor("id:project-root-0");
+  // The first chosen folder is primary.
+  expect(app.count("id:project-root-primary-0")).toBe(0);
+  await app.press("id:project-add-root");
+  await app.waitFor("id:project-root-1");
+  // The second is not primary; setting it primary moves the badge, and
+  // removing it leaves the first root primary.
+  expect(app.count("id:project-root-primary-1")).toBe(1);
+  await app.press("id:project-root-primary-1");
+  await app.waitFor("id:project-root-primary-0");
+  expect(app.count("id:project-root-primary-1")).toBe(0);
+  await app.press("id:project-root-remove-1");
+  expect(app.count("id:project-root-1")).toBe(0);
+  expect(app.count("id:project-root-0")).toBe(1);
+  await app.press("id:project-add-root");
+  await app.waitFor("id:project-root-1");
   await app.press("id:project-create");
   await app.waitUntil(() => app.texts().includes("Two Roots"));
   expect(app.texts()).toContain("Two Roots");
+});
+
+test("the start page's tools are two left-aligned rows with plain labels", async () => {
+  const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
+  await app.waitFor("text:alpha body");
+  await app.press("id:new-container");
+  await app.waitFor("text:开始你的对话");
+  for (const id of [
+    "external-terminal",
+    "launcher-browser",
+    "external-claude",
+    "external-codex",
+    "external-copilot",
+    "launcher-pi",
+  ]) {
+    expect(app.count(`id:${id}`)).toBe(1);
+  }
+  const texts = app.texts();
+  // Row 1: terminal, browser. Row 2: the agents, with no heading or suffix.
+  expect(texts.indexOf("终端")).toBeLessThan(texts.indexOf("浏览器"));
+  expect(texts.indexOf("Claude Code")).toBeLessThan(texts.indexOf("Codex"));
+  expect(texts.indexOf("Codex")).toBeLessThan(texts.indexOf("GitHub Copilot"));
+  expect(texts.indexOf("GitHub Copilot")).toBeLessThan(texts.indexOf("Pi"));
+  expect(texts).not.toContain("外部终端");
+  expect(texts.some((text) => text.includes("TUI"))).toBe(false);
+});
+
+test("Enter sends, Cmd+Enter sends and an empty composer never starts", async () => {
+  const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
+  await app.waitFor("text:alpha body");
+  await app.press("id:new-container");
+  await app.waitFor("text:开始你的对话");
+  // Return on an empty draft does nothing.
+  await app.submit("id:launcher-input");
+  await app.wait(100);
+  expect(app.shows("text:开始你的对话")).toBe(true);
+  // Cmd+Enter is the explicit lane; the focused composer binds it.
+  await app.type("id:launcher-input", "sent with command return");
+  await app.keyboard.press("mod+enter");
+  await app.waitUntil(() => !app.texts().includes("开始你的对话"));
+  expect(app.texts()).toContain("sent with command return");
 });

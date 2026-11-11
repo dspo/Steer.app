@@ -89,6 +89,8 @@ dropped after the first was matched).
 | `session.info` | `{ sessionId }` | yes | safe | `{ sessionId, path, name?, running, customTypes, thinkingLevel, model?, contextUsage? }` |
 | `session.extensions` | `{ sessionId }` | yes | safe | `{ extensions, errors }` |
 | `session.tools` | `{ sessionId }` | yes | safe | `{ tools: string[] }` |
+| `session.models` | `{ sessionId }` | yes | safe | `{ providers: [{ id, name, models: [{ provider, id, name, contextWindow?, reasoning }] }], current?, thinkingLevel? }` |
+| `session.setModel` | `{ sessionId, provider, id }` | no | duplicate | `SessionInfoResult`; an unknown or unauthenticated model errors |
 | `session.prompt` | `{ sessionId, text }` | no | duplicate | `{ accepted: true }` |
 | `session.steer` | `{ sessionId, text }` | no | duplicate | `{ accepted: true }`; an idle session errors |
 | `session.followUp` | `{ sessionId, text }` | no | duplicate | `{ accepted: true }`; an idle session errors |
@@ -122,6 +124,12 @@ three fields are additive: a shell that predates them simply ignores them.
 The engine also pushes `session.info` events with `{ thinkingLevel }` when the
 level changes, `{ model, thinkingLevel }` on a model change, and
 `{ contextUsage }` at each turn's end.
+
+`session.models` reads pi's model runtime (`session.modelRuntime`): every
+available chat model with credentials, grouped by provider. It is additive;
+`session.setModel` resolves the model in the same runtime, calls pi's
+`session.setModel(model)` and replies with the same `SessionInfoResult` shape
+`session.info` returns, so the picker can fold the new model in place.
 
 ### project.*
 

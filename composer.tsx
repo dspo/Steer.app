@@ -1,8 +1,18 @@
-import { signal, Text, token, View } from "nsh";
-import { Input } from "nsh/base";
+import { Scroll, signal, Text, token, View } from "nsh";
+import { Input, Menu, MenuItem, Submenu } from "nsh/base";
 import { K, t } from "./i18n";
-import { followUp, interrupt, send, steer, stop, viewFor } from "./sessions";
-import { Glyph, motionStyle, type GlyphName } from "./ui";
+import {
+  chooseSessionModel,
+  followUp,
+  interrupt,
+  loadSessionModels,
+  send,
+  sessionModels,
+  steer,
+  stop,
+  viewFor,
+} from "./sessions";
+import { Glyph, motionStyle, shadowRaised, type GlyphName } from "./ui";
 
 /**
  * The composer: a bare, borderless input over one footer row. The message
@@ -98,6 +108,150 @@ export function ComposerChip(props: {
   );
 }
 
+/**
+ * The model picker: the composer's `provider · id · thinking` trigger opens a
+ * two-level menu (providers, then their models). The current model carries
+ * the checkmark; choosing one switches the session and folds the reply's
+ * `session.info` back in. The menu stays open on an error so the reason is
+ * readable, and closes itself on success.
+ */
+export function ModelPicker(props: { sessionId: string }) {
+  const open = signal(false);
+  const view = () => viewFor(props.sessionId);
+  const state = () => sessionModels()[props.sessionId];
+  const providers = () => state()?.data?.providers ?? [];
+  const current = () => view()?.model ?? state()?.data?.current;
+  const thinking = () => view()?.thinkingLevel ?? state()?.data?.thinkingLevel;
+  const currentKey = () => (current() ? `${current()!.provider}/${current()!.id}` : "");
+  const label = () => {
+    const model = current();
+    if (!model) return t(K.session.model);
+    const level = thinking();
+    return [model.provider, model.id || model.name, level && level !== "off" ? level : null]
+      .filter(Boolean)
+      .join(" · ");
+  };
+  const choose = async (provider: string, id: string) => {
+    if (await chooseSessionModel(props.sessionId, provider, id)) open.set(false);
+  };
+  return (
+    <Menu
+      open={open()}
+      onOpenChange={({ open: next }) => {
+        open.set(next);
+        if (next) void loadSessionModels(props.sessionId);
+      }}
+      align="start"
+      offset={6}
+      popupClass="rounded-xl border border-border bg-popover p-1"
+      popupStyle={{ width: 310, maxHeight: 420, boxShadow: shadowRaised() }}
+      trigger={
+        <View
+          role="button"
+          testID="model-picker"
+          accessibilityLabel={label()}
+          accessibilityState={{ expanded: open(), hasPopup: true }}
+          class="h-6 min-w-0 flex-row items-center gap-1 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+          style={{ ...motionStyle("fast") }}
+        >
+          <If
+            when={!!current()}
+            else={
+              <Text class="min-w-0 text-[11px] text-muted-foreground" style={{ numberOfLines: 1 }}>
+                {t(K.session.model)}
+              </Text>
+            }
+          >
+            <Text class="text-[11px] text-muted-foreground" style={{ numberOfLines: 1 }}>
+              {current()!.provider}
+            </Text>
+            <Text class="text-[11px] text-faint">·</Text>
+            <Text class="min-w-0 text-[11px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
+              {current()!.id || current()!.name}
+            </Text>
+            <If when={!!thinking() && thinking() !== "off"}>
+              <Text class="text-[11px] text-faint">·</Text>
+              <Text class="text-[11px] text-muted-foreground">{thinking()}</Text>
+            </If>
+          </If>
+          <Glyph name="caret-down" size={8} tint={token("faint")} />
+        </View>
+      }
+    >
+      <Scroll style={{ maxHeight: 380 }} contentStyle={{ gap: 1 }}>
+        <If when={state()?.status === "loading"}>
+          <Text class="px-2 py-2 text-[11.5px] text-faint">{t(K.session.modelsLoading)}</Text>
+        </If>
+        <If when={state()?.status === "error"}>
+          <Text class="px-2 py-1.5 text-[11px] text-destructive" style={{ numberOfLines: 2 }}>
+            {t(K.session.modelsError, { error: state()?.error ?? "" })}
+          </Text>
+          <MenuItem
+            testID="model-retry"
+            class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+            onSelect={() => void loadSessionModels(props.sessionId, true)}
+          >
+            <Text class="text-[12px] text-foreground">{t(K.engine.retry)}</Text>
+          </MenuItem>
+        </If>
+        <If when={state()?.status === "ready" && providers().length === 0}>
+          <Text class="px-2 py-2 text-[11.5px] text-faint">{t(K.session.modelsEmpty)}</Text>
+        </If>
+        <Each of={providers()} key={(provider) => provider.id}>
+          {(provider) => (
+            <Submenu
+              trigger={
+                <View
+                  role="button"
+                  testID={`model-provider-${provider().id}`}
+                  accessibilityLabel={provider().name}
+                  class="flex-row items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+                  style={{ ...motionStyle("fast") }}
+                >
+                  <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+                    <Text class="text-[12px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
+                      {provider().name}
+                    </Text>
+                    <Text class="text-[10px] text-faint" style={{ numberOfLines: 1 }}>
+                      {provider().id}
+                    </Text>
+                  </View>
+                  <Glyph name="chevron-right" size={10} tint={token("faint")} />
+                </View>
+              }
+            >
+              <Each of={provider().models} key={(model) => `${model.provider}/${model.id}`}>
+                {(model) => (
+                  <MenuItem
+                    testID={`model-${model().provider}-${model().id}`}
+                    checked={currentKey() === `${model().provider}/${model().id}`}
+                    role="menuitemradio"
+                    closeOnSelect={false}
+                    indicator={<Glyph name="check" size={11} tint={token("brand")} />}
+                    indicatorClass="opacity-0 checked:opacity-100"
+                    class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+                    onSelect={() => void choose(model().provider, model().id)}
+                  >
+                    <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+                      <Text class="text-[12px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
+                        {model().name}
+                      </Text>
+                      <Text class="text-[10px] text-faint" style={{ numberOfLines: 1 }}>
+                        {model().id}
+                        {model().contextWindow ? ` · ${formatTokens(model().contextWindow!)}` : ""}
+                      </Text>
+                    </View>
+                  </MenuItem>
+                )}
+              </Each>
+            </Submenu>
+          )}
+        </Each>
+      </Scroll>
+    </Menu>
+  );
+}
+
 /** The session composer: input and footer, without the surrounding lane. */
 export function ChatComposer(props: { sessionId: string; autofocus?: boolean }) {
   const draft = signal("");
@@ -152,27 +306,7 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean }) 
       />
       <View class="flex-row items-center gap-2">
         <View class="min-w-0 flex-row items-center gap-1" style={{ flex: 1 }}>
-          <If when={view()?.model}>
-            {(model) => (
-              <>
-                <Text class="text-[11px] text-muted-foreground" style={{ numberOfLines: 1 }}>
-                  {model().provider}
-                </Text>
-                <Text class="text-[11px] text-faint">·</Text>
-                <Text class="min-w-0 text-[11px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
-                  {model().id || model().name}
-                </Text>
-                <If when={view()?.thinkingLevel}>
-                  {(level) => (
-                    <>
-                      <Text class="text-[11px] text-faint">·</Text>
-                      <Text class="text-[11px] text-muted-foreground">{level()}</Text>
-                    </>
-                  )}
-                </If>
-              </>
-            )}
-          </If>
+          <ModelPicker sessionId={props.sessionId} />
           <If when={!!context()}>
             <>
               <If when={!!view()?.model}>

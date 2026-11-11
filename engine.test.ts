@@ -172,6 +172,42 @@ test("the welcome and snapshot carry the protocol and generation", async () => {
   expect(snap.activeContainerId === null || typeof snap.activeContainerId === "string").toBe(true);
 });
 
+test("a session lists its models and can switch one", async () => {
+  if (skip) return;
+  await freshEngine();
+  const data = await request("session.create", { cwd: "/tmp" }, 120000);
+  const info = await request("session.info", { sessionId: data.id }, 30000);
+  const models = await request("session.models", { sessionId: data.id }, 60000);
+  expect(Array.isArray(models.providers)).toBe(true);
+  for (const provider of models.providers) {
+    expect(typeof provider.id).toBe("string");
+    expect(typeof provider.name).toBe("string");
+    expect(provider.models.length).toBeGreaterThan(0);
+    for (const model of provider.models) {
+      expect(model.provider).toBe(provider.id);
+      expect(typeof model.id).toBe("string");
+      expect(typeof model.reasoning).toBe("boolean");
+    }
+  }
+  // A switch to the model the session already has is a real, accepted set.
+  const current = info.model ?? models.current;
+  if (current) {
+    const changed = await request(
+      "session.setModel",
+      { sessionId: data.id, provider: current.provider, id: current.id },
+      60000,
+    );
+    expect(changed.model.provider).toBe(current.provider);
+    expect(changed.model.id).toBe(current.id);
+    expect(typeof changed.running).toBe("boolean");
+  }
+  // An unknown model is refused rather than guessed.
+  await expect(
+    request("session.setModel", { sessionId: data.id, provider: "no-such-provider", id: "no-such-model" }, 30000),
+  ).rejects.toThrow("unknown model");
+  await request("session.close", { sessionId: data.id }, 30000);
+});
+
 test("a prompt streams into the transcript", async () => {
   if (skip) return;
   await connect();

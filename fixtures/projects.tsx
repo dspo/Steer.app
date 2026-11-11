@@ -5,6 +5,13 @@ import { phase } from "../engine";
 import { membership, projects, setProjectTransport } from "../projects";
 import { seedSession } from "../sessions";
 import { defaultLayoutForSessions } from "../dock";
+import { setFolderPicker } from "../picker";
+
+// Headless tests never launch Finder: the picker answers with the next
+// folder in this list, so the dialog's add/remove/primary flow is real.
+const pickedFolders = ["/tmp/zu-project-one", "/tmp/zu-project-two", "/tmp/zu-project-three"];
+let picked = 0;
+setFolderPicker(async () => pickedFolders[picked++] ?? null);
 
 seedSession("s1", [{ role: "assistant", text: "alpha body" }], {
   path: "/tmp/p-alpha.jsonl",

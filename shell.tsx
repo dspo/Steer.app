@@ -1,12 +1,11 @@
 import { keymap, List, PanResponder, Scroll, signal, Text, token, View } from "nsh";
 import { DockArea, Input, Menu, MenuItem, MenuSeparator, type DockAreaLayout } from "nsh/base";
 import { Window } from "nsh/desktop";
-import { connect, disconnect, info, lastError, phase, recovered, retry, type EnginePhase } from "./engine";
+import { connect, disconnect, lastError, phase, recovered, retry, type EnginePhase } from "./engine";
 import {
   activeContainerId,
   archiveContainer,
   bindDock,
-  containerCount,
   containerError,
   containerTitle,
   containers,
@@ -30,8 +29,8 @@ import {
   orderedProjects,
   projectError,
 } from "./projects";
-import { Launcher, openProjectDialog, ProjectDialog } from "./launcher";
-import { panelIds, sheetCount } from "./dock";
+import { Launcher, ProjectDialog } from "./launcher";
+import { panelIds } from "./dock";
 import { error as sessionError, refreshSessions, sessions } from "./sessions";
 import { SheetBody, sheetGlyph, sheetTitle } from "./sheets";
 import { externalKindLabel } from "./terminals";
@@ -40,7 +39,7 @@ import { openChangesSheet, openHistorySheet } from "./git";
 import { openProblemsSheet } from "./lsp-ui";
 import { UpdatesDialog } from "./updates-ui";
 import { openUpdates } from "./updates";
-import { K, shellLocale, t, toggleShellLocale } from "./i18n";
+import { K, t, toggleShellLocale } from "./i18n";
 import { UIHost, unsupportedMethods } from "./ui-host";
 import { openSubagents } from "./subagents";
 import { dropBrowserPages, openBrowserSheet } from "./browser";
@@ -63,8 +62,9 @@ import { Chip, Dot, Glyph, type GlyphName, motionStyle, shadowCard, shadowRaised
  *
  * The titlebar is Steer's single row: a sidebar toggle, a window-centered
  * session picker, and "open the active project in VS Code" + the tools
- * overflow. Engine state, language and the count readouts live in the bottom
- * status bar; the titlebar never grows a second row.
+ * overflow. There is no bottom status bar: a compact inline indicator carries
+ * an engine state only while it is not the normal connected state, and the
+ * overflow holds the engine and language controls.
  */
 
 /** Boots the engine and loads the registry; the app calls it once. */
@@ -113,12 +113,12 @@ const PHASE_TINT: Record<EnginePhase, string> = {
   error: "destructive",
 };
 
-/** The titlebar's height; Steer's row is 38, the traffic lights want 40. */
-const TITLEBAR_HEIGHT = 40;
+/** The titlebar's height: compact, with the traffic lights still centered. */
+const TITLEBAR_HEIGHT = 36;
 /** The picker trigger and its dropdown share this width (Steer's 360). */
 const PICKER_WIDTH = 360;
-/** The status bar's height (counts, engine state, language). */
-const STATUS_HEIGHT = 26;
+/** The picker is the titlebar's main control, so it nearly fills the row. */
+const PICKER_HEIGHT = 30;
 
 // ---------------------------------------------------------------------------
 // Sidebar and titlebar interaction state
@@ -635,18 +635,6 @@ function Sidebar() {
           }}
         </List>
       </If>
-
-      <View
-        role="button"
-        testID="new-project"
-        accessibilityLabel={t(K.project.create)}
-        class="flex-row items-center gap-2 border-t border-line px-3 hover:bg-hover active:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-1px]"
-        style={{ height: 30, ...motionStyle("fast") }}
-        onPress={openProjectDialog}
-      >
-        <Glyph name="plus" size={11} tint={token("faint")} />
-        <Text style={{ fontSize: 11.5, color: token("muted-foreground") }}>{t(K.project.create)}</Text>
-      </View>
     </View>
   );
 }
@@ -776,6 +764,39 @@ function SessionPicker() {
   );
 }
 
+/**
+ * The engine's inline state: a tinted dot, with words only while it is not
+ * the normal connected state. Pressing it retries a stopped or failed
+ * engine, so the old status bar's retry affordance is still one gesture.
+ */
+function EngineIndicator() {
+  const label = () => t(PHASE_KEY[phase()]);
+  const abnormal = () => phase() !== "connected";
+  const retryEngine = () => {
+    if (phase() === "stopped") void bootShell();
+    else if (phase() !== "starting" && phase() !== "recovering") void retry();
+  };
+  return (
+    <View
+      role="button"
+      testID="engine-state"
+      accessibilityLabel={label()}
+      tooltip={label()}
+      disabled={!abnormal()}
+      class="h-6 flex-row items-center gap-1.5 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+      style={{ ...motionStyle("fast") }}
+      onPress={() => {
+        if (abnormal()) retryEngine();
+      }}
+    >
+      <Dot tint={token(PHASE_TINT[phase()] as any)} size={5.5} />
+      <If when={abnormal()}>
+        <Text class="text-[10px] font-medium text-muted-foreground">{label()}</Text>
+      </If>
+    </View>
+  );
+}
+
 /** The titlebar: sidebar toggle · centered picker · editor + tools overflow. */
 function TitleBar() {
   const titlebar = () => {
@@ -789,6 +810,9 @@ function TitleBar() {
   // bar is hidden; reserve its reported width (plus the row's own inset).
   const padLeft = () => (titlebar().height > 0 ? titlebar().left + 12 : 14);
   const hasContainer = () => activeContainerId() !== null;
+  const canStop = () => phase() === "connected" || phase() === "starting" || phase() === "recovering";
+  const canRetry = () => phase() !== "connected" && phase() !== "starting";
+  const failure = () => sessionError() ?? containerError() ?? projectError() ?? lastError();
   const openEditor = async () => {
     const result = await openActiveInVSCode();
     if (result.kind === "no-folder") note(t(K.titlebar.noFolder));
@@ -814,10 +838,24 @@ function TitleBar() {
           onPress={() => sidebarVisible.set(!sidebarVisible())}
         />
       </View>
-      <View style={{ width: PICKER_WIDTH, height: 24, flexShrink: 0 }}>
+      <View style={{ width: PICKER_WIDTH, height: PICKER_HEIGHT, flexShrink: 0 }}>
         <SessionPicker />
       </View>
-      <View style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+      <View style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, minWidth: 0 }}>
+        <If when={!!recovered()}>
+          <Chip label={t(K.engine.recovered, { generation: recovered()?.to ?? 0 })} tint={token("up")} />
+        </If>
+        <If when={!!failure()}>
+          <Text class="text-[10px] text-destructive" style={{ maxWidth: 260, flexShrink: 1, numberOfLines: 1 }}>
+            {failure() ?? ""}
+          </Text>
+        </If>
+        <If when={!!shellNote()}>
+          <Text class="text-[10px] text-warn" style={{ maxWidth: 240, flexShrink: 1, numberOfLines: 1 }}>
+            {shellNote() ?? ""}
+          </Text>
+        </If>
+        <EngineIndicator />
         <BarIcon
           testID="open-vscode"
           label={t(K.titlebar.openVSCode)}
@@ -863,73 +901,34 @@ function TitleBar() {
           <MenuItem testID="updates" class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={openUpdates}>
             <Text class="text-[12px] text-foreground">{t(K.updates.title)}</Text>
           </MenuItem>
+          <MenuSeparator class="my-1 h-px bg-line" />
+          <MenuItem testID="engine-refresh" class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => void refreshSessions()}>
+            <Text class="text-[12px] text-foreground">{t(K.engine.refresh)}</Text>
+          </MenuItem>
+          <If when={canRetry()}>
+            <MenuItem
+              testID="engine-retry"
+              class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+              onSelect={() => void (phase() === "stopped" ? bootShell() : retry())}
+            >
+              <Text class="text-[12px] text-foreground">{t(K.engine.retry)}</Text>
+            </MenuItem>
+          </If>
+          <If when={canStop()}>
+            <MenuItem testID="engine-stop" class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => void disconnect()}>
+              <Text class="text-[12px] text-foreground">{t(K.engine.stop)}</Text>
+            </MenuItem>
+          </If>
+          <If when={unsupportedMethods().length > 0}>
+            <MenuItem testID="unsupported-methods" disabled class="rounded-lg px-2.5 py-1.5">
+              <Text class="text-[12px] text-muted-foreground">{t(K.status.unsupported, { count: unsupportedMethods().length })}</Text>
+            </MenuItem>
+          </If>
+          <MenuItem testID="language" class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={toggleShellLocale}>
+            <Text class="text-[12px] text-foreground">{t(K.titlebar.language)}</Text>
+          </MenuItem>
         </Menu>
         <View style={{ width: 10 }} />
-      </View>
-    </View>
-  );
-}
-
-/** The bottom line: counts, failures, engine state, language, stop/retry. */
-function StatusBar() {
-  const canStop = () => phase() === "connected" || phase() === "starting" || phase() === "recovering";
-  const canRetry = () => phase() !== "connected" && phase() !== "starting";
-  const failure = () => sessionError() ?? containerError() ?? projectError() ?? lastError();
-  return (
-    <View
-      class="flex-row items-center gap-3 border-t border-line bg-background pl-3 pr-2"
-      style={{ height: STATUS_HEIGHT, flexShrink: 0 }}
-    >
-      <Text class="text-[10.5px] tabular-nums text-faint">{t(K.status.sheets, { count: sheetCount(layout()) })}</Text>
-      <Text class="text-[10.5px] text-faint">{t(K.status.containers, { count: containerCount() })}</Text>
-      <Text class="text-[10.5px] text-faint">{t(K.status.sessions, { count: sessions().length })}</Text>
-      <If when={unsupportedMethods().length > 0}>
-        <Text class="text-[10.5px] text-warn">{t(K.status.unsupported, { count: unsupportedMethods().length })}</Text>
-      </If>
-      <If when={!!recovered()}>
-        <Chip label={t(K.engine.recovered, { generation: recovered()?.to ?? 0 })} tint={token("up")} />
-      </If>
-      <View style={{ flex: 1 }} />
-      <If when={!!failure()}>
-        <View style={{ minWidth: 0, flexShrink: 1 }}>
-          <Text class="text-[10.5px] text-destructive" style={{ numberOfLines: 1 }}>{failure() ?? ""}</Text>
-        </View>
-      </If>
-      <If when={!!shellNote()}>
-        <View style={{ minWidth: 0, flexShrink: 1 }}>
-          <Text class="text-[10.5px] text-warn" style={{ numberOfLines: 1 }}>{shellNote() ?? ""}</Text>
-        </View>
-      </If>
-      <If when={!!info()}>
-        <Text class="text-[10.5px] text-faint" style={{ flexShrink: 0, numberOfLines: 1 }}>{`pi ${info()?.pi} · gen ${info()?.generation}`}</Text>
-      </If>
-      <BarIcon testID="engine-refresh" label={t(K.engine.refresh)} glyph="reload" size={12} onPress={() => void refreshSessions()} />
-      <If when={canRetry()}>
-        <View
-          role="button"
-          testID="engine-retry"
-          accessibilityLabel={t(K.engine.retry)}
-          class="h-[20px] items-center justify-center rounded-md border border-line px-2 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-          onPress={() => void (phase() === "stopped" ? bootShell() : retry())}
-        >
-          <Text class="text-[10.5px] font-medium text-foreground">{t(K.engine.retry)}</Text>
-        </View>
-      </If>
-      <If when={canStop()}>
-        <BarIcon testID="engine-stop" label={t(K.engine.stop)} glyph="stop" size={11} onPress={() => void disconnect()} />
-      </If>
-      <View
-        role="button"
-        testID="language"
-        accessibilityLabel={t(K.status.language)}
-        class="h-[22px] min-w-[24px] items-center justify-center rounded-md hover:bg-hover active:opacity-60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-        onPress={toggleShellLocale}
-      >
-        <Text class="text-[10.5px] font-medium text-muted-foreground">{shellLocale() === "zh-CN" ? "EN" : "中"}</Text>
-      </View>
-      <View class="flex-row items-center gap-1.5 rounded-full border border-line px-2" style={{ height: 20 }}>
-        <Dot tint={token(PHASE_TINT[phase()] as any)} size={5.5} />
-        <Text class="text-[10px] font-medium text-muted-foreground">{t(PHASE_KEY[phase()])}</Text>
       </View>
     </View>
   );
@@ -946,7 +945,7 @@ function terminalPanels(): Array<{ id: string; closable: boolean }> {
     .map((id) => ({ id, closable: false }));
 }
 
-/** The workbench: titlebar · sidebar + canvas · status bar (no boot side effects). */
+/** The workbench: titlebar · sidebar + canvas (no boot side effects). */
 export function Workbench() {
   // The app's Mod+S saves the editor sheet on screen; a binding made while a
   // component renders goes with the component, and the workbench lives as
@@ -1013,7 +1012,6 @@ export function Workbench() {
           </If>
         </View>
       </View>
-      <StatusBar />
       <UIHost />
       <ProjectDialog />
       <UpdatesDialog />

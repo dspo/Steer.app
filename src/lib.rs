@@ -25,6 +25,7 @@ mod fs;
 mod git;
 mod instance;
 mod lsp;
+mod picker;
 mod pty;
 
 pub use fs::{Fs, FsEntry, FsExpected, FsFile, FsStat, FsWriteResult};
@@ -33,6 +34,7 @@ pub use git::{
 };
 pub use instance::{Instance, InstanceClaim};
 pub use lsp::{Lsp, LspExit, LspOptions};
+pub use picker::Picker;
 pub use pty::{Pty, PtyExit, PtyOptions};
 
 /// The engine's default loopback port: 0 asks the system for a free one, so
@@ -325,6 +327,7 @@ fn native(registry: &mut Registry) {
         .module::<Fs>()
         .module::<Git>()
         .module::<Instance>()
+        .module::<Picker>()
         .class::<Lsp>()
         .class::<Pty>();
 }

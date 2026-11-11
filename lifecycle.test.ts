@@ -26,7 +26,10 @@ test("a headless run claims no instance lock", async () => {
     Instance.release();
     // Stop the sidecar this app started, as the shell's Stop does, so the
     // next file is not handed an engine it did not ask for.
-    if (app.shows("id:engine-stop")) await app.press("id:engine-stop");
+    if (app.shows("id:titlebar-tools")) {
+      await app.press("id:titlebar-tools");
+      if (app.shows("id:engine-stop")) await app.press("id:engine-stop");
+    }
     await Engine.stop();
     Engine.setStateDir("");
   }

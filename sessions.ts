@@ -5,6 +5,7 @@ import type {
   SessionData,
   SessionInfoData,
   SessionModelInfo,
+  SessionModelsData,
   SessionThinkingLevel,
   StateSnapshot,
 } from "./contracts/protocol";
@@ -126,6 +127,76 @@ export async function refreshSessionInfo(id: string): Promise<void> {
   } catch {
     // The session's sheet still renders its transcript; the next event or a
     // later reopen supplies the composer's data.
+  }
+}
+
+/** What the model picker has for a session: its grouped choices or a load state. */
+export type SessionModelsState = {
+  status: "idle" | "loading" | "ready" | "error";
+  data?: SessionModelsData;
+  error?: string;
+};
+
+/** The picker's data per session, loaded on demand (`session.models`). */
+export const sessionModels = signal<Record<string, SessionModelsState>>({});
+
+type ModelTransport = (type: string, payload?: Record<string, unknown>, timeoutMs?: number) => Promise<any>;
+let modelTransport: ModelTransport | null = null;
+
+/** Replaces the transport for the model commands (fixtures, tests). */
+export function setModelTransport(next: ModelTransport | null): void {
+  modelTransport = next;
+}
+
+const modelRequest = (type: string, payload: Record<string, unknown>, timeoutMs: number) =>
+  modelTransport ? modelTransport(type, payload, timeoutMs) : request(type, payload, timeoutMs);
+
+function patchModels(id: string, next: SessionModelsState): void {
+  sessionModels.set({ ...sessionModels(), [id]: next });
+}
+
+/**
+ * Loads a session's available models. A ready cache is reused until `force`;
+ * a load already in flight is shared, so opening the menu twice costs one
+ * request.
+ */
+export async function loadSessionModels(id: string, force = false): Promise<void> {
+  if (!id) return;
+  const current = sessionModels()[id];
+  if (!force && (current?.status === "ready" || current?.status === "loading")) return;
+  patchModels(id, { status: "loading" });
+  try {
+    const data = (await modelRequest("session.models", { sessionId: id }, 30000)) as SessionModelsData;
+    patchModels(id, { status: "ready", data });
+    applySessionInfo(id, data);
+  } catch (failure) {
+    patchModels(id, { status: "error", error: String(failure) });
+  }
+}
+
+/**
+ * Switches the session's model through the engine. On success the reply's
+ * `session.info` shape is folded in immediately and a fresh `session.info`
+ * confirms it; on failure the reason stays with the picker's state.
+ */
+export async function chooseSessionModel(id: string, provider: string, modelId: string): Promise<boolean> {
+  if (!id || !provider || !modelId) return false;
+  try {
+    const data = (await modelRequest("session.setModel", { sessionId: id, provider, id: modelId }, 30000)) as SessionInfoData;
+    applySessionInfo(id, data);
+    patchModels(id, {
+      status: "ready",
+      data: {
+        ...(sessionModels()[id]?.data ?? { providers: [] }),
+        ...(data.model ? { current: data.model } : {}),
+        ...(data.thinkingLevel ? { thinkingLevel: data.thinkingLevel } : {}),
+      },
+    });
+    void refreshSessionInfo(id);
+    return true;
+  } catch (failure) {
+    patchModels(id, { ...(sessionModels()[id] ?? { status: "error" as const }), status: "error", error: String(failure) });
+    return false;
   }
 }
 

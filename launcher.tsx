@@ -1,24 +1,35 @@
-import { signal, Text, token, View, Scroll } from "nsh";
-import { Dialog, Input, Menu, MenuItem } from "nsh/base";
+import { effect, keymap, signal, Text, token, View } from "nsh";
+import { Dialog, Input, Menu, MenuItem, MenuSeparator } from "nsh/base";
 import { K, t } from "./i18n";
 import {
   closeLauncher,
   createProject,
   launcherLocked,
-  launcherOpen,
   launcherProjectId,
   launcherStarting,
   loadProjects,
-  openLauncher,
   projectError,
   projects,
   startFromLauncher,
 } from "./projects";
-import { activeContainerId, containers, containersLoaded, createExternalContainer } from "./containers";
+import {
+  activeContainerId,
+  containers,
+  containersLoaded,
+  createContainer,
+  createExternalContainer,
+} from "./containers";
 import { openBrowserSheet } from "./browser";
-import type { ContainerKind } from "./contracts/protocol";
-import { ComposerChip } from "./composer";
-import { Glyph, motionStyle, shadowDialog, shadowRaised } from "./ui";
+import type { ContainerKind, ProjectRecord } from "./contracts/protocol";
+import { Glyph, motionStyle, shadowDialog, shadowRaised, type GlyphName } from "./ui";
+import { pickFolder } from "./picker";
+import {
+  addProjectRoot,
+  removeProjectRoot,
+  rootPayload,
+  setPrimaryProjectRoot,
+  type RootDraft,
+} from "./project-roots";
 
 /**
  * The Launcher: composer first, container second. It shows on an empty
@@ -26,16 +37,24 @@ import { Glyph, motionStyle, shadowDialog, shadowRaised } from "./ui";
  * it. The project chip changes the target unless locked.
  */
 
-const EXTERNAL_ACTIONS: Array<{ kind: Exclude<ContainerKind, "Pi">; key: keyof typeof K.external }> = [
-  { kind: "Terminal", key: "terminal" },
-  { kind: "Claude", key: "claude" },
-  { kind: "Codex", key: "codex" },
-  { kind: "Copilot", key: "copilot" },
+const AGENT_ACTIONS: Array<{ kind: Exclude<ContainerKind, "Pi">; key: keyof typeof K.external; glyph: GlyphName }> = [
+  { kind: "Claude", key: "claude", glyph: "code" },
+  { kind: "Codex", key: "codex", glyph: "gear" },
+  { kind: "Copilot", key: "copilot", glyph: "branch" },
 ];
+
+const EXTERNAL_GLYPH: Record<Exclude<ContainerKind, "Pi">, GlyphName> = {
+  Terminal: "terminal",
+  Claude: "code",
+  Codex: "gear",
+  Copilot: "branch",
+};
 
 export function Launcher() {
   const draft = signal("");
+  const focused = signal(false);
   const externalStarting = signal<string | null>(null);
+  const piStarting = signal(false);
   // A registry whose first load is still in flight must not be raced by a
   // create (the load's empty-state reset would win). A store that already
   // holds rows is past that point; fixtures seed it directly.
@@ -47,6 +66,13 @@ export function Launcher() {
     draft.set("");
     void startFromLauncher(text);
   };
+  // Cmd+Enter is the explicit send lane; Return (and Shift+Return for a line
+  // break) already belongs to the Input. The binding follows the focused
+  // composer, so it cannot fire from another surface.
+  effect(() => {
+    if (!focused()) return;
+    return keymap.bind("mod+enter", () => submit(), { when: "always" });
+  });
   const startExternal = async (kind: Exclude<ContainerKind, "Pi">) => {
     if (externalStarting() || !readyToCreate()) return;
     externalStarting.set(kind);
@@ -60,12 +86,26 @@ export function Launcher() {
       externalStarting.set(null);
     }
   };
+  const startPi = async () => {
+    if (piStarting() || !readyToCreate()) return;
+    piStarting.set(true);
+    try {
+      const id = await createContainer(undefined, launcherProjectId());
+      if (id) {
+        await loadProjects();
+        closeLauncher();
+      }
+    } finally {
+      piStarting.set(false);
+    }
+  };
   const selected = () => launcherProjectId();
   const selectedName = () => {
     const id = selected();
     if (id === null) return t(K.project.chats);
     return projects().find((project) => project.id === id)?.name ?? t(K.project.title);
   };
+  const hint = () => keymap.label("mod+enter");
   return (
     <View class="flex-1 items-center justify-center bg-background" style={{ paddingHorizontal: 32, paddingVertical: 32 }}>
       <View style={{ width: "100%", maxWidth: 720, gap: 18 }}>
@@ -85,6 +125,8 @@ export function Launcher() {
             autoFocus
             placeholder={t(K.launcher.placeholder)}
             onSubmit={submit}
+            onFocus={() => focused.set(true)}
+            onBlur={() => focused.set(false)}
             style={{
               minHeight: 72,
               paddingHorizontal: 2,
@@ -136,6 +178,14 @@ export function Launcher() {
                         </MenuItem>
                       )}
                     </Each>
+                    <MenuSeparator class="my-1 h-px bg-line" />
+                    <MenuItem
+                      testID="launcher-new-project"
+                      class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+                      onSelect={() => openProjectDialog((project) => launcherProjectId.set(project.id))}
+                    >
+                      <Text class="text-[12px] text-foreground">{t(K.project.create)}</Text>
+                    </MenuItem>
                   </Menu>
                 }
               >
@@ -143,65 +193,58 @@ export function Launcher() {
               </If>
             </View>
             <View style={{ flex: 1 }} />
-            <ComposerChip
-              testID="launcher-send"
-              label={launcherStarting() ? t(K.launcher.starting) : t(K.launcher.start)}
-              glyph="send"
-              primary
-              disabled={!canStart()}
-              onPress={submit}
-            />
+            <Text class="text-[10px] text-faint" testID="launcher-hint">
+              {launcherStarting() ? t(K.launcher.starting) : t(K.launcher.hint, { shortcut: hint() })}
+            </Text>
           </View>
         </View>
 
-        {/* Project selection, external terminals and the browser stay one
-            gesture away, below the hero rather than in a card around it. */}
-        <View class="flex-row items-center gap-1.5">
-          <Text class="text-[10.5px] font-medium text-faint">{t(K.launcher.terminals)}</Text>
-          <Each of={EXTERNAL_ACTIONS} key={(action) => action.kind}>
-            {(action) => {
-              const value = action();
-              const busy = () => externalStarting() === value.kind;
-              const label = t(K.external[value.key]);
-              return (
-                <View
-                  role="button"
-                  testID={`external-${value.kind.toLowerCase()}`}
-                  accessibilityLabel={t(K.external.open, { kind: label })}
-                  class={
-                    externalStarting() || !readyToCreate()
-                      ? "h-6 flex-row items-center gap-1 rounded-md px-1.5 opacity-40"
-                      : "h-6 flex-row items-center gap-1 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-                  }
-                  style={{ ...motionStyle("fast") }}
-                  disabled={externalStarting() !== null || !readyToCreate()}
-                  onPress={() => void startExternal(value.kind)}
-                >
-                  <Glyph name="terminal" size={10} tint={token("faint")} />
-                  <Text class="text-[11px] font-medium text-muted-foreground">{busy() ? "…" : label}</Text>
-                </View>
-              );
-            }}
-          </Each>
-          <View style={{ flex: 1 }} />
-          <View
-            role="button"
-            testID="launcher-browser"
-            accessibilityLabel={t(K.browser.open)}
-            class={
-              activeContainerId() === null
-                ? "h-6 flex-row items-center gap-1 rounded-md px-1.5 opacity-40"
-                : "h-6 flex-row items-center gap-1 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-            }
-            style={{ ...motionStyle("fast") }}
-            disabled={activeContainerId() === null}
-            onPress={() => {
-              if (!activeContainerId()) return;
-              if (openBrowserSheet()) closeLauncher();
-            }}
-          >
-            <Glyph name="globe" size={10} tint={token("faint")} />
-            <Text class="text-[11px] font-medium text-muted-foreground">{t(K.browser.open)}</Text>
+        {/* Direct tools, left-aligned in two rows. No heading, no suffix:
+            the labels are the actions. */}
+        <View style={{ gap: 6, alignItems: "flex-start" }}>
+          <View class="flex-row items-center gap-4">
+            <LauncherTool
+              testID="external-terminal"
+              label={t(K.external.terminal)}
+              glyph={EXTERNAL_GLYPH.Terminal}
+              disabled={externalStarting() !== null || !readyToCreate()}
+              busy={externalStarting() === "Terminal"}
+              onPress={() => void startExternal("Terminal")}
+            />
+            <LauncherTool
+              testID="launcher-browser"
+              label={t(K.browser.open)}
+              glyph="globe"
+              disabled={activeContainerId() === null}
+              onPress={() => {
+                if (openBrowserSheet()) closeLauncher();
+              }}
+            />
+          </View>
+          <View class="flex-row flex-wrap items-center gap-4">
+            <Each of={AGENT_ACTIONS} key={(action) => action.kind}>
+              {(action) => {
+                const value = action();
+                return (
+                  <LauncherTool
+                    testID={`external-${value.kind.toLowerCase()}`}
+                    label={t(K.external[value.key])}
+                    glyph={value.glyph}
+                    disabled={externalStarting() !== null || piStarting() || !readyToCreate()}
+                    busy={externalStarting() === value.kind}
+                    onPress={() => void startExternal(value.kind)}
+                  />
+                );
+              }}
+            </Each>
+            <LauncherTool
+              testID="launcher-pi"
+              label={t(K.external.pi)}
+              glyph="pi"
+              disabled={piStarting() || externalStarting() !== null || !readyToCreate()}
+              busy={piStarting()}
+              onPress={() => void startPi()}
+            />
           </View>
         </View>
 
@@ -215,51 +258,93 @@ export function Launcher() {
   );
 }
 
+/** One direct tool below the hero composer. */
+function LauncherTool(props: {
+  testID: string;
+  label: string;
+  glyph: GlyphName;
+  disabled?: boolean;
+  busy?: boolean;
+  onPress: () => void;
+}) {
+  const disabled = () => props.disabled ?? false;
+  return (
+    <View
+      role="button"
+      testID={props.testID}
+      accessibilityLabel={props.label}
+      disabled={disabled()}
+      class={
+        disabled()
+          ? "h-6 flex-row items-center gap-1.5 rounded-md px-2 opacity-40"
+          : "h-6 flex-row items-center gap-1.5 rounded-md px-2 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+      }
+      style={{ ...motionStyle("fast") }}
+      onPress={() => {
+        if (!disabled()) props.onPress();
+      }}
+    >
+      <Glyph name={props.glyph} size={11} tint={token("faint")} />
+      <Text class="text-[11.5px] font-medium text-muted-foreground">{props.busy ? "…" : props.label}</Text>
+    </View>
+  );
+}
+
 /* Project creation ------------------------------------------------------- */
 
 export const projectDialogOpen = signal(false);
 const projectNameDraft = signal("");
-const projectRootsDraft = signal("");
+const projectRootsDraft = signal<RootDraft[]>([]);
 const projectDialogError = signal<string | null>(null);
+const projectPicking = signal(false);
+let projectCreated: ((project: ProjectRecord) => void) | null = null;
 
-export function openProjectDialog(): void {
+/** Opens the project dialog; `onCreated` adopts the new project (the Launcher's chip). */
+export function openProjectDialog(onCreated?: (project: ProjectRecord) => void): void {
   projectNameDraft.set("");
-  projectRootsDraft.set("");
+  projectRootsDraft.set([]);
   projectDialogError.set(null);
+  projectPicking.set(false);
+  projectCreated = onCreated ?? null;
   projectDialogOpen.set(true);
 }
 
-function parseRoots(text: string): Array<{ path: string; primary: boolean }> {
-  const roots: Array<{ path: string; primary: boolean }> = [];
-  let primary = 0;
-  for (const raw of text.split("\n")) {
-    let line = raw.trim();
-    if (!line) continue;
-    const starred = line.startsWith("*");
-    if (starred) line = line.replace(/^\*\s*/, "").trim();
-    if (!line) continue;
-    if (starred) primary = roots.length;
-    roots.push({ path: line, primary: false });
-  }
-  if (roots.length > 0) roots[Math.min(primary, roots.length - 1)].primary = true;
-  return roots;
+function folderName(path: string): string {
+  return path.split("/").filter(Boolean).pop() ?? path;
 }
 
-/** The project creation dialog: one path per line, `*` marks the primary. */
+/** The project creation dialog: a name and Finder-picked roots, no paths typed. */
 export function ProjectDialog() {
   const isOpen = () => projectDialogOpen();
+  const roots = () => projectRootsDraft();
+  const canCreate = () => roots().length > 0 && !projectPicking();
+  const choose = async () => {
+    if (projectPicking()) return;
+    projectPicking.set(true);
+    projectDialogError.set(null);
+    try {
+      const path = await pickFolder(t(K.project.pickPrompt));
+      if (path) projectRootsDraft.set(addProjectRoot(roots(), path));
+    } catch (failure) {
+      projectDialogError.set(t(K.project.pickFailed, { error: String(failure) }));
+    } finally {
+      projectPicking.set(false);
+    }
+  };
   const create = () => {
-    const roots = parseRoots(projectRootsDraft());
-    if (roots.length === 0) {
-      projectDialogError.set(t(K.project.rootsHint));
+    if (!canCreate()) {
+      projectDialogError.set(t(K.project.noRoots));
       return;
     }
-    void createProject(projectNameDraft(), roots).then((project) => {
+    void createProject(projectNameDraft(), rootPayload(roots())).then((project) => {
       if (!project) {
         projectDialogError.set(projectError() ?? "create failed");
         return;
       }
+      const adopt = projectCreated;
+      projectCreated = null;
       projectDialogOpen.set(false);
+      adopt?.(project);
     });
   };
   return (
@@ -281,18 +366,89 @@ export function ProjectDialog() {
         placeholder={t(K.project.namePlaceholder)}
         style={{ height: 36, paddingHorizontal: 10, fontSize: 13, color: token("foreground"), placeholderColor: token("faint"), caretColor: token("primary"), borderWidth: 1, borderColor: token("border"), borderRadius: 8, backgroundColor: token("background") }}
       />
-      <Text class="text-[12px] text-muted-foreground">{t(K.project.roots)}</Text>
-      <Input
-        testID="project-roots"
-        value={projectRootsDraft()}
-        onChange={({ value }) => projectRootsDraft.set(value)}
-        multiline
-        placeholder={t(K.project.rootsPlaceholder)}
-        style={{ minHeight: 96, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12, lineHeight: 18, color: token("foreground"), placeholderColor: token("faint"), caretColor: token("primary"), borderWidth: 1, borderColor: token("border"), borderRadius: 8, backgroundColor: token("background") }}
-      />
+      <View class="flex-row items-center gap-2">
+        <Text class="text-[12px] text-muted-foreground">{t(K.project.roots)}</Text>
+        <View style={{ flex: 1 }} />
+        <View
+          role="button"
+          testID="project-add-root"
+          accessibilityLabel={t(K.project.pickFolder)}
+          disabled={projectPicking()}
+          class={
+            projectPicking()
+              ? "h-7 flex-row items-center gap-1.5 rounded-lg border border-line bg-card px-2.5 opacity-40"
+              : "h-7 flex-row items-center gap-1.5 rounded-lg border border-line bg-card px-2.5 hover:bg-hover active:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+          }
+          style={{ ...motionStyle("fast") }}
+          onPress={() => void choose()}
+        >
+          <Glyph name="folder" size={11} tint={token("muted-foreground")} />
+          <Text class="text-[11.5px] font-medium text-foreground">
+            {projectPicking() ? t(K.project.picking) : t(K.project.pickFolder)}
+          </Text>
+        </View>
+      </View>
+      <If when={roots().length === 0}>
+        <View
+          testID="project-roots-empty"
+          class="items-center justify-center rounded-lg border border-line bg-inset px-3"
+          style={{ minHeight: 64 }}
+        >
+          <Text class="text-[11.5px] text-faint" style={{ textAlign: "center" }}>
+            {t(K.project.noRoots)}
+          </Text>
+        </View>
+      </If>
+      <Each of={roots()} key={(root) => root.path}>
+        {(root, index) => (
+          <View
+            testID={`project-root-${index()}`}
+            class="flex-row items-center gap-2 rounded-lg border border-line bg-background px-2.5 py-1.5"
+          >
+            <Glyph name="folder" size={12} tint={token("muted-foreground")} />
+            <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+              <Text class="text-[12px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
+                {folderName(root().path)}
+              </Text>
+              <Text class="text-[10px] text-faint" style={{ numberOfLines: 1 }} tooltip={root().path}>
+                {root().path}
+              </Text>
+            </View>
+            <If
+              when={root().primary}
+              else={
+                <View
+                  role="button"
+                  testID={`project-root-primary-${index()}`}
+                  accessibilityLabel={t(K.project.setPrimary)}
+                  class="h-6 items-center justify-center rounded-md px-1.5 hover:bg-hover active:opacity-70"
+                  onPress={() => projectRootsDraft.set(setPrimaryProjectRoot(roots(), root().path))}
+                >
+                  <Text class="text-[10.5px] text-muted-foreground">{t(K.project.setPrimary)}</Text>
+                </View>
+              }
+            >
+              <View class="items-center justify-center rounded-full bg-brand-tint px-2" style={{ height: 18 }}>
+                <Text class="text-[10px] font-medium text-brand">{t(K.project.primary)}</Text>
+              </View>
+            </If>
+            <View
+              role="button"
+              testID={`project-root-remove-${index()}`}
+              accessibilityLabel={t(K.project.removeRoot)}
+              class="h-6 w-5 items-center justify-center rounded-md hover:bg-hover active:opacity-70"
+              onPress={() => projectRootsDraft.set(removeProjectRoot(roots(), root().path))}
+            >
+              <Glyph name="close" size={10} tint={token("faint")} />
+            </View>
+          </View>
+        )}
+      </Each>
       <Text class="text-[11.5px] text-faint">{t(K.project.rootsHint)}</Text>
       <If when={!!projectDialogError()}>
-        <Text class="text-[11px] text-destructive">{projectDialogError() ?? ""}</Text>
+        <Text testID="project-dialog-error" class="text-[11px] text-destructive">
+          {projectDialogError() ?? ""}
+        </Text>
       </If>
       <View class="flex-row justify-end gap-2">
         <View
@@ -309,7 +465,12 @@ export function ProjectDialog() {
           role="button"
           testID="project-create"
           accessibilityLabel={t(K.project.create)}
-          class="h-8 items-center justify-center rounded-lg bg-primary px-3 hover:bg-primary/90 active:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+          disabled={!canCreate()}
+          class={
+            canCreate()
+              ? "h-8 items-center justify-center rounded-lg bg-primary px-3 hover:bg-primary/90 active:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+              : "h-8 items-center justify-center rounded-lg bg-primary px-3 opacity-40"
+          }
           style={{ ...motionStyle("fast") }}
           onPress={create}
         >

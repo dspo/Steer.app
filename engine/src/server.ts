@@ -54,6 +54,9 @@ import {
   type SessionInfoResult,
   type SessionMeta,
   type SessionModelInfo,
+  type SessionModelOption,
+  type SessionModelProvider,
+  type SessionModelsData,
   type StateSnapshot,
   type UIMethod,
   type UIResponsePayload,
@@ -251,6 +254,53 @@ function sessionInfo(rec: Rec): SessionInfoResult {
     thinkingLevel: String(rec.session.thinkingLevel ?? "off"),
     ...(model ? { model } : {}),
     ...(contextUsage ? { contextUsage } : {}),
+  };
+}
+
+/** The two-level model picker's data: providers, their models, the current one. */
+async function modelsData(rec: Rec): Promise<SessionModelsData> {
+  const runtime: any = rec.session.modelRuntime;
+  const groups = new Map<string, SessionModelProvider>();
+  let available: any[] = [];
+  try {
+    available = Array.isArray(runtime?.getAvailable) ? [...(await runtime.getAvailable())] : [];
+  } catch {
+    // No credentials or a failed catalog refresh: the picker shows nothing
+    // rather than inventing choices, and the current model still names itself.
+    available = [];
+  }
+  for (const model of available) {
+    // `getAvailable` is chat models; skip anything a newer pi adds.
+    if (model?.type && model.type !== "chat") continue;
+    const providerId = String(model.provider ?? "");
+    if (!providerId || !model.id) continue;
+    let group = groups.get(providerId);
+    if (!group) {
+      const provider = runtime?.getProvider?.(providerId);
+      group = { id: providerId, name: String(provider?.name ?? providerId), models: [] };
+      groups.set(providerId, group);
+    }
+    const contextWindow = Number(model.contextWindow ?? 0);
+    const option: SessionModelOption = {
+      provider: providerId,
+      id: String(model.id),
+      name: String(model.name ?? model.id),
+      reasoning: !!model.reasoning,
+      ...(contextWindow > 0 ? { contextWindow } : {}),
+    };
+    group.models.push(option);
+  }
+  const providers = [...groups.values()]
+    .map((group) => ({
+      ...group,
+      models: group.models.slice().sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  const current = modelData(rec);
+  return {
+    providers,
+    ...(current ? { current } : {}),
+    thinkingLevel: String(rec.session.thinkingLevel ?? "off") as SessionModelsData["thinkingLevel"],
   };
 }
 
@@ -1317,6 +1367,39 @@ async function handle(ws: any, message: Envelope): Promise<void> {
           tools: rec.session.getAllTools().map((tool: any) => String(tool.name ?? tool)),
         }),
       );
+      return;
+    }
+    case "session.models": {
+      const rec = await requireSession(ws, message, payload);
+      if (!rec) return;
+      try {
+        reply(ws, makeReply(id, message.type, await modelsData(rec)));
+      } catch (error: any) {
+        reply(ws, makeErrorReply(id, message.type, String(error?.message ?? error), "models_failed"));
+      }
+      return;
+    }
+    case "session.setModel": {
+      const rec = await requireSession(ws, message, payload);
+      if (!rec) return;
+      const provider = String(payload.provider ?? "");
+      const modelId = String(payload.id ?? "");
+      if (!provider || !modelId) {
+        reply(ws, makeErrorReply(id, message.type, "provider and id are required", "bad_payload"));
+        return;
+      }
+      try {
+        const runtime: any = rec.session.modelRuntime;
+        const model = runtime?.getModel?.(provider, modelId);
+        if (!model) {
+          reply(ws, makeErrorReply(id, message.type, `unknown model ${provider}/${modelId}`, "model_not_found"));
+          return;
+        }
+        await rec.session.setModel(model);
+        reply(ws, makeReply(id, message.type, sessionInfo(rec)));
+      } catch (error: any) {
+        reply(ws, makeErrorReply(id, message.type, String(error?.message ?? error), "set_model_failed"));
+      }
       return;
     }
     case "subagent.list": {

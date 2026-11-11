@@ -1,5 +1,5 @@
 import { expect, open, test } from "nsh/test";
-test("the shell is a Steer titlebar over the project sidebar, with the engine in the status bar", async () => {
+test("the shell is a Steer titlebar over the project sidebar, with no status bar", async () => {
   const app = await open("./App.tsx", { network: "live", width: 1200, height: 800 });
   expect(app.texts()).toContain("会话");
   expect(app.texts()).toContain("新建");
@@ -19,28 +19,31 @@ test("the shell is a Steer titlebar over the project sidebar, with the engine in
   expect(app.count("id:new-container")).toBe(0);
   await app.press("id:sidebar-toggle");
   await app.waitUntil(() => app.count("id:new-container") === 1, { timeout: 5000 });
-  // The engine starts in the background; any phase label is valid here.
-  const texts = app.texts();
-  const showsPhase = texts.some((text) =>
-    ["未启动", "启动中", "运行中", "重连中", "协议不兼容", "错误"].includes(text),
-  );
-  expect(showsPhase).toBe(true);
-  await app.waitUntil(() => app.texts().includes("运行中"), { timeout: 20000 });
+  // There is no bottom status bar, and the engine's normal connected state
+  // is a quiet dot: the phase words appear only while it is not connected.
+  expect(app.count("id:status-bar")).toBe(0);
+  expect(app.count("id:engine-state")).toBe(1);
+  await app.waitFor("label:运行中", { timeout: 20000 });
+  await app.press("id:titlebar-tools");
   await app.press("id:engine-stop");
-  await app.waitUntil(() => app.texts().includes("未启动"), { timeout: 10000 });
+  await app.waitFor("label:未启动", { timeout: 10000 });
 });
 
 test("the shell speaks English when the user prefers it", async () => {
   const app = await open("./App.tsx", { network: "live", width: 1200, height: 800 });
+  // The language switch lives in the titlebar overflow now. Let the engine
+  // settle first: its phase label is part of the menu's item list.
+  await app.waitFor("label:运行中", { timeout: 20000 });
+  await app.press("id:titlebar-tools");
   await app.press("id:language");
   // The locale is a signal: the shell redraws on the next frame.
   await app.waitUntil(() => app.texts().includes("Sessions"), { timeout: 5000 });
   expect(app.texts()).toContain("Sessions");
   expect(app.texts()).toContain("New");
   expect(app.texts()).not.toContain("All sessions");
-  await app.waitUntil(() => app.texts().includes("Running"), { timeout: 20000 });
+  await app.press("id:titlebar-tools");
   await app.press("id:engine-stop");
-  await app.waitUntil(() => app.texts().includes("Stopped"), { timeout: 10000 });
+  await app.waitFor("label:Stopped", { timeout: 10000 });
 });
 
 test("a conversation renders history, tool lines and prose", async () => {

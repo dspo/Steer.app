@@ -25,7 +25,7 @@ afterAll(async () => {
 
 test("the Launcher opens an external terminal container without a composer", async () => {
   const app = await open("./App.tsx", { network: "live", width: 1200, height: 800 });
-  await app.waitUntil(() => app.texts().includes("运行中"), { timeout: 20000 });
+  await app.waitFor("label:运行中", { timeout: 20000 });
   // No containers: the empty canvas is the Launcher.
   await app.waitFor("id:external-terminal");
   await app.waitUntil(() => app.enabled("id:external-terminal"), { timeout: 20000 });
@@ -43,22 +43,25 @@ test("the Launcher opens an external terminal container without a composer", asy
   await app.press(`label:归档容器 ${title}`);
   await app.waitUntil(() => !app.texts().some((text) => text === title), { timeout: 10000 });
   expect(app.shows("id:terminal-view")).toBe(false);
+  await app.press("id:titlebar-tools");
   await app.press("id:engine-stop");
-  await app.waitUntil(() => app.texts().includes("未启动"), { timeout: 10000 });
+  await app.waitFor("label:未启动", { timeout: 10000 });
 }, 60000);
 
 test("an external kind keeps its kind label in the shell's language", async () => {
   const app = await open("./App.tsx", { network: "live", width: 1200, height: 800 });
-  await app.waitUntil(() => app.texts().includes("运行中"), { timeout: 20000 });
+  await app.waitFor("label:运行中", { timeout: 20000 });
+  await app.press("id:titlebar-tools");
   await app.press("id:language");
   await app.waitFor("id:external-terminal");
   await app.waitUntil(() => app.enabled("id:external-terminal"), { timeout: 20000 });
-  // English: the action row and the created row both use the English copy.
-  expect(app.texts()).toContain("External");
+  // English: the first tool row and the created row both use the English copy.
+  expect(app.texts()).toContain("Terminal");
   await app.press("id:external-terminal");
   await app.waitUntil(() => app.texts().some((text) => text.startsWith("Terminal · ")), {
     timeout: 15000,
   });
+  await app.press("id:titlebar-tools");
   await app.press("id:engine-stop");
-  await app.waitUntil(() => app.texts().includes("Stopped"), { timeout: 10000 });
+  await app.waitFor("label:Stopped", { timeout: 10000 });
 }, 60000);
