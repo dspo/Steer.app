@@ -113,7 +113,7 @@ const PHASE_TINT: Record<EnginePhase, string> = {
 };
 
 /** The titlebar's height: compact, with the traffic lights still centered. */
-const TITLEBAR_HEIGHT = 36;
+const TITLEBAR_HEIGHT = 40;
 /** The picker trigger and its dropdown share this width (Steer's 360). */
 const PICKER_WIDTH = 360;
 /** The picker is the titlebar's main control, so it nearly fills the row. */
@@ -444,7 +444,7 @@ function SearchSection(props: { label: string; count: number }) {
 /** The sidebar: header actions, the filter, and project → container. */
 function Sidebar() {
   return (
-    <View class="bg-sidebar border-r border-line" style={{ width: 232, flexShrink: 0 }}>
+    <View class="bg-sidebar" style={{ width: 232, flexShrink: 0 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingTop: 8, paddingBottom: 6, height: 36 }}>
         <Text style={{ fontSize: 13, fontWeight: "700", color: token("foreground"), flexShrink: 0 }}>{t(K.sidebar.title)}</Text>
         <View style={{ flex: 1 }} />
@@ -750,8 +750,9 @@ function TitleBar() {
     else if (result.kind === "failed") note(t(K.titlebar.openFailed, { error: result.error }));
   };
   return (
+    // Same material as the sidebar: the window is one layer, no divider.
     <View
-      class="flex-row items-center border-b border-line bg-background"
+      class="flex-row items-center"
       style={{ height: TITLEBAR_HEIGHT, flexShrink: 0 }}
       desktop={{ windowDrag: true }}
     >
@@ -877,10 +878,25 @@ function terminalPanels(): Array<{ id: string; closable: boolean }> {
 function Canvas() {
   const size = signal({ width: 0, height: 0 });
   const measured = () => size();
+  // The card is the content's only container (DESIGN §3.1): everything the
+  // canvas draws — tab bars, panels, the composer — lives inside it, and
+  // its corners clip. The `+` overlay measures the card, so its geometry
+  // stays the DockArea's own.
   return (
     <View
-      class="flex-1 bg-background"
-      style={{ flexDirection: "column", minWidth: 0, minHeight: 0, position: "relative" }}
+      class="flex-1 overflow-hidden bg-card"
+      style={{
+        flexDirection: "column",
+        minWidth: 0,
+        minHeight: 0,
+        position: "relative",
+        borderRadius: 14,
+        // 8–10pt of the window's `sidebar` showing on all sides (DESIGN §3).
+        marginTop: 8,
+        marginRight: 10,
+        marginBottom: 10,
+        marginLeft: 10,
+      }}
       onLayout={({ bounds }) => {
         const { width, height } = bounds.size;
         if (measured().width !== width || measured().height !== height) size.set({ width, height });
@@ -895,7 +911,7 @@ function Canvas() {
         onZoomChange={({ panel }) => setZoom(panel)}
         onPanelActiveChange={({ panel, active }) => onPanelActive(panel, active)}
         groupClass="flex-1 bg-background overflow-hidden"
-        tabBarClass="flex-row items-end gap-0.5 border-b border-line bg-inset px-2"
+        tabBarClass="flex-row items-end gap-0.5 border-b border-line bg-card px-2"
         // The right strip is the `+`'s: a tab never ends under the overlay.
         tabBarStyle={{ height: 34, paddingRight: 30 }}
         tabClass="group focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-1px] active:opacity-80"
@@ -949,7 +965,7 @@ function Canvas() {
         renderEmpty={() => (
           // A canvas with no sheet: the Hero is one click away, and it is a
           // sheet like any other (closing it leaves this state).
-          <View class="flex-1 items-center justify-center gap-2 bg-background">
+          <View class="flex-1 items-center justify-center gap-2 bg-card">
             <Text class="text-sm font-semibold text-foreground">{t(K.canvas.emptyTitle)}</Text>
             <Text class="text-xs text-muted-foreground">{t(K.canvas.emptyNote)}</Text>
             <View
@@ -987,7 +1003,9 @@ export function Workbench() {
   // a project row's `+` reach the same canvas.
   keymap.bind("mod+n", () => openHero(null));
   return (
-    <View class="flex-1 bg-background" style={{ flexDirection: "column", minHeight: 0 }}>
+    // S3's one-layer shell: the whole window is `sidebar`; the content is
+    // the card the Canvas draws (DESIGN §3).
+    <View class="flex-1 bg-sidebar" style={{ flexDirection: "column", minHeight: 0 }}>
       <TitleBar />
       <View style={{ flex: 1, flexDirection: "row", minHeight: 0 }}>
         <If when={sidebarVisible()}>

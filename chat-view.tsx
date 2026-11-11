@@ -234,7 +234,7 @@ function Hero(props: { id: string }) {
     <View
       testID="session-hero"
       class="flex-1 items-center justify-center bg-background"
-      style={{ paddingHorizontal: 24, paddingBottom: 24 }}
+      style={{ paddingHorizontal: 24, paddingBottom: 16 }}
     >
       <View style={{ width: "100%", maxWidth: 720, gap: 20 }}>
         <Text class="text-[16px] font-black text-foreground" style={{ textAlign: "center" }}>
