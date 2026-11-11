@@ -143,6 +143,17 @@ export const sessionModels = signal<Record<string, SessionModelsState>>({});
 type ModelTransport = (type: string, payload?: Record<string, unknown>, timeoutMs?: number) => Promise<any>;
 let modelTransport: ModelTransport | null = null;
 
+type SessionTransport = (type: string, payload?: Record<string, unknown>, timeoutMs?: number) => Promise<any>;
+let sessionTransport: SessionTransport | null = null;
+
+/** Replaces the transport for the session commands (fixtures, tests). */
+export function setSessionTransport(next: SessionTransport | null): void {
+  sessionTransport = next;
+}
+
+const sessionRequest = (type: string, payload?: Record<string, unknown>, timeoutMs?: number) =>
+  sessionTransport ? sessionTransport(type, payload, timeoutMs) : request(type, payload, timeoutMs);
+
 /** Replaces the transport for the model commands (fixtures, tests). */
 export function setModelTransport(next: ModelTransport | null): void {
   modelTransport = next;
@@ -524,7 +535,7 @@ export async function send(text: string, sessionId?: string): Promise<void> {
   if (view.streaming) return followUp(trimmed, id);
   optimisticUser(id, trimmed);
   try {
-    await request("session.prompt", { sessionId: id, text: trimmed });
+    await sessionRequest("session.prompt", { sessionId: id, text: trimmed });
   } catch (failure) {
     patchView(id, { streaming: false, error: String(failure) });
   }
@@ -543,7 +554,7 @@ export async function followUp(text: string, sessionId?: string): Promise<void> 
   if (!view.streaming) return send(trimmed, id);
   optimisticUser(id, trimmed);
   try {
-    await request("session.followUp", { sessionId: id, text: trimmed });
+    await sessionRequest("session.followUp", { sessionId: id, text: trimmed });
   } catch (failure) {
     patchView(id, { error: String(failure) });
   }
@@ -600,4 +611,36 @@ export async function stop(sessionId?: string): Promise<void> {
   } catch (failure) {
     patchView(id, { streaming: false, error: String(failure) });
   }
+}
+
+/** Sets the session's thinking level (the `/thinking` command's engine leg). */
+export async function setThinkingLevel(id: string, level: SessionThinkingLevel): Promise<boolean> {
+  try {
+    const data = (await sessionRequest("session.setThinking", { sessionId: id, level }, 30000)) as SessionInfoData;
+    applySessionInfo(id, data);
+    return true;
+  } catch (failure) {
+    patchView(id, { error: String(failure) });
+    return false;
+  }
+}
+
+/** Starts a manual compaction (the `/compact` command's engine leg). */
+export async function compactSession(id: string, instructions?: string): Promise<boolean> {
+  try {
+    await sessionRequest("session.compact", { sessionId: id, ...(instructions ? { instructions } : {}) }, 30000);
+    return true;
+  } catch (failure) {
+    patchView(id, { error: String(failure) });
+    return false;
+  }
+}
+
+/**
+ * Clears the local transcript view (`/clear`): pi's interactive command
+ * clears the screen without touching the session file, and so does this —
+ * the history stays on disk and rehydrates on the next open.
+ */
+export function clearSessionView(id: string): void {
+  patchView(id, { messages: [] });
 }

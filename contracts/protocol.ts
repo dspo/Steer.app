@@ -112,6 +112,18 @@ export const COMMANDS = {
     replay: "duplicate",
     note: "Switches the session's model; pi validates auth and records the change in the transcript.",
   },
+  "session.setThinking": {
+    group: "session",
+    idempotent: true,
+    replay: "safe",
+    note: "Sets the session's thinking level; pi records the change in the transcript.",
+  },
+  "session.compact": {
+    group: "session",
+    idempotent: false,
+    replay: "duplicate",
+    note: "Starts a manual compaction; progress arrives as compaction events.",
+  },
   "subagent.list": {
     group: "subagent",
     idempotent: true,
@@ -708,6 +720,16 @@ export interface SettingsData {
 
 export interface SettingsPutPayload {
   sidebarWidth?: number;
+}
+
+export interface SessionSetThinkingPayload {
+  sessionId: string;
+  level: SessionThinkingLevel;
+}
+
+export interface SessionCompactPayload {
+  sessionId: string;
+  instructions?: string;
 }
 
 /** pi's live estimate of the session's context use. */

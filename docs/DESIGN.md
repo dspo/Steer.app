@@ -132,7 +132,21 @@ Hero 的两排动作使用各 CLI 的品牌图标（24pt 光学尺寸）：
 | 斜杆命令 | 输入 `/` 在输入框上方弹出候选（命令 + 一句说明），样式与 Menu 同套；选中后本地执行（模型/思考/清屏/压缩/会话）或按原文提交，未知命令给明确提示 |
 | 移除 | 项目目录、访问模式、语音（保持移除） |
 
-斜杆命令的映射表（哪条本地执行、哪条进 `session.prompt`）以 pi 1.5.0 为准，实现时写进本表与 architecture §4.3。
+斜杆命令的映射（pi 1.5.0 为准；表即 `slash.ts` 的实现，候选弹层逐条列"命令 + 一句说明"）：
+
+| 命令 | Zu 的做法 |
+|---|---|
+| `/model` | **本地**：打开 composer 的模型菜单（`openModelMenuRequest`） |
+| `/thinking` | **本地**：循环下一个思考档位（`session.setThinking`，pi 记进 transcript） |
+| `/compact` | **本地**：手动压缩（`session.compact`，进度走 `compaction.*` 事件） |
+| `/clear` | **本地**：清空本地会话视图（历史留在磁盘，重开即回来） |
+| `/new` | **本地**：开 scratch 的 Hero（与「新建」同一入口） |
+| `/resume` | **本地**：打开侧栏的会话搜索 |
+| 扩展/模板/技能命令 | **按原文进 `session.prompt`**（pi 在扩展宿主里执行；弹层不列它们，输入即走） |
+| `/help` `/login` `/logout` `/settings` `/export` `/import` `/fork` `/clone` `/session` `/tree` `/name` `/reload` `/trust` `/share` `/copy` `/bug` `/quit` `/hotkeys` `/changelog` | **不支持**：pi 的交互命令，Zu 给一句明确提示，不发送 |
+
+未知命令（不在上表）按扩展命令原文发送；输入 `/` 时弹层即过滤，Enter 对
+`/` 草稿执行命令而不是发送。
 
 ### 3.7 拖拽页签
 

@@ -181,6 +181,15 @@ export const K = {
     done: "app.tool.done",
     failed: "app.tool.failed",
   },
+  slash: {
+    model: "app.slash.model",
+    thinking: "app.slash.thinking",
+    compact: "app.slash.compact",
+    clear: "app.slash.clear",
+    new: "app.slash.new",
+    resume: "app.slash.resume",
+    unsupported: "app.slash.unsupported",
+  },
   session: {
     running: "app.session.running",
     placeholder: "app.session.placeholder",

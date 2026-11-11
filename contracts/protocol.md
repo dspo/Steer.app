@@ -91,6 +91,8 @@ dropped after the first was matched).
 | `session.tools` | `{ sessionId }` | yes | safe | `{ tools: string[] }` |
 | `session.models` | `{ sessionId, refresh? }` | yes | safe | `{ providers: [{ id, name, models: [{ provider, id, name, contextWindow?, reasoning }] }], current?, thinkingLevel?, reason? }` |
 | `session.setModel` | `{ sessionId, provider, id }` | no | duplicate | `SessionInfoResult`; an unknown or unauthenticated model errors |
+| `session.setThinking` | `{ sessionId, level }` | yes | safe | `SessionInfoResult`; pi records the change in the transcript |
+| `session.compact` | `{ sessionId, instructions? }` | no | duplicate | `{ started: true }`; progress arrives as `compaction.*` events; a streaming session errors |
 | `session.prompt` | `{ sessionId, text }` | no | duplicate | `{ accepted: true }` |
 | `session.steer` | `{ sessionId, text }` | no | duplicate | `{ accepted: true }`; an idle session errors |
 | `session.followUp` | `{ sessionId, text }` | no | duplicate | `{ accepted: true }`; an idle session errors |

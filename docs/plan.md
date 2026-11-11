@@ -14,8 +14,8 @@
 [evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)、
 [evidence/s21-6-system-locale.md](evidence/s21-6-system-locale.md)、
 [evidence/s21-7-auto-archive.md](evidence/s21-7-auto-archive.md) 与 `docs/evidence/ui-s2-*.png`。
-**下一个动作是 §2.2 的 11a（composer 的 pi 斜杆命令）**（第 11 项已完成，证据
-[evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)、[evidence/s21-3-scratch.md](evidence/s21-3-scratch.md)、[evidence/s21-4-action-matrix.md](evidence/s21-4-action-matrix.md)、[evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)、[evidence/s21-6-system-locale.md](evidence/s21-6-system-locale.md)、[evidence/s21-7-auto-archive.md](evidence/s21-7-auto-archive.md)、[evidence/s22-8-shell.md](evidence/s22-8-shell.md)、[evidence/s22-9-sidebar-drag.md](evidence/s22-9-sidebar-drag.md)、[evidence/s22-10-remove-picker.md](evidence/s22-10-remove-picker.md)、[evidence/s22-11-composer.md](evidence/s22-11-composer.md)）。
+**下一个动作是 §2.2 的第 12 项（红绿灯）与第 13 项（tab 宽度）**（8–11 与 11a 已完成，证据
+[evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)、[evidence/s21-3-scratch.md](evidence/s21-3-scratch.md)、[evidence/s21-4-action-matrix.md](evidence/s21-4-action-matrix.md)、[evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)、[evidence/s21-6-system-locale.md](evidence/s21-6-system-locale.md)、[evidence/s21-7-auto-archive.md](evidence/s21-7-auto-archive.md)、[evidence/s22-8-shell.md](evidence/s22-8-shell.md)、[evidence/s22-9-sidebar-drag.md](evidence/s22-9-sidebar-drag.md)、[evidence/s22-10-remove-picker.md](evidence/s22-10-remove-picker.md)、[evidence/s22-11-composer.md](evidence/s22-11-composer.md)、[evidence/s22-11a-slash.md](evidence/s22-11a-slash.md)）。
 开工前读：本文件 §2 → [architecture.md](architecture.md) §4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 →
 [evidence/apis-verified.md](evidence/apis-verified.md)。
 > 架构见 [architecture.md](architecture.md)，视觉规格见 [DESIGN.md](DESIGN.md)，决策台账见 [decisions.md](decisions.md)。
@@ -29,7 +29,7 @@
 | M-0 | P0 可用性：模型注册与无模型界面 | ✅ | §2.0 |
 | M-A | M0–M12 已交付 | ✅ | §1 |
 | M-B | Hero 与画布结构（S1 + S2） | ✅ 1–7 与 F1–F3 全部完成 | §2.1、§2.1.1 |
-| M-C | 一体化外壳与组合（S3） | 🔁 8–10 与 11 完成；11a、12–13 待做 | §2.2 |
+| M-C | 一体化外壳与组合（S3） | 🔁 8–11 与 11a 完成；12–13 待做 | §2.2 |
 | M-D | 细节（图标、拖拽、字体） | ⬜ | §2.3 |
 | M-E | 独立修复 | ⏸ B2 挂起 | §2.4 |
 | M-F | 代码仓库整洁化（并行轨道） | ⬜ | §5 |
@@ -163,6 +163,11 @@
 > 分割线是 composer 自己的、恰好与它同宽；idle=↑发送、streaming=■停止（同位置），排队/引导/打断收进
 > `⋯` 菜单且可点无副作用。三种状态截图 `ui-s22-11-{idle,streaming,menu}.png`。
 > 证据 [evidence/s22-11-composer.md](evidence/s22-11-composer.md）。
+
+> **11a 已完成（2026-11-12）**：斜杆命令落地——`slash.ts` 的三类映射（本地 / 按原文进 prompt /
+> 不支持），输入 `/` 弹候选、Enter 对 `/` 草稿执行命令；新 wire 命令 `session.setThinking` 与
+> `session.compact` 支撑本地腿；映射表进 DESIGN §3.6 与 architecture。9 条映射测试（每条一条）。
+> 证据 [evidence/s22-11a-slash.md](evidence/s22-11a-slash.md)。
 
 > **F1 已完成（2026-11-11，`4293eb7`）**：`replaceSheet()` 把目标 sheet 放进 Hero 的原槽位并移除 Hero；容器 Hero 的
 > 浏览器、终端/TUI（F2）与 Pi（F3）动作、以及 composer 提交都走它。证据

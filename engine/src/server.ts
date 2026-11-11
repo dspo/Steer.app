@@ -1449,6 +1449,35 @@ async function handle(ws: any, message: Envelope): Promise<void> {
       }
       return;
     }
+    case "session.setThinking": {
+      const rec = await requireSession(ws, message, payload);
+      if (!rec) return;
+      const level = String(payload.level ?? "");
+      try {
+        rec.session.setThinkingLevel(level as any);
+        reply(ws, makeReply(id, message.type, sessionInfo(rec)));
+      } catch (error: any) {
+        reply(ws, makeErrorReply(id, message.type, String(error?.message ?? error), "set_thinking_failed"));
+      }
+      return;
+    }
+    case "session.compact": {
+      const rec = await requireSession(ws, message, payload);
+      if (!rec) return;
+      if (rec.session.isStreaming) {
+        reply(ws, makeErrorReply(id, message.type, "session is streaming; try again when idle", "session_busy"));
+        return;
+      }
+      reply(ws, makeReply(id, message.type, { started: true }));
+      const instructions = payload.instructions === undefined ? undefined : String(payload.instructions);
+      void rec.session
+        .compact(instructions)
+        .catch((error: any) => {
+          emit("error", { message: String(error?.message ?? error) }, rec.id);
+          emit("compaction.end", { reason: "manual", aborted: true, willRetry: false, errorMessage: String(error?.message ?? error) }, rec.id);
+        });
+      return;
+    }
     case "subagent.list": {
       reply(
         ws,

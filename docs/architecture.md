@@ -68,6 +68,8 @@ UI 与引擎之间唯一的共享面：TS 类型 + 运行时校验 + `protocol.m
 | `session.*` | `list`、`create`、`open`、`info`、`extensions`、`tools`、`prompt`、`steer`、`followUp`、`abort`、`close` | engine（pi） | `open` 按 path 幂等；`create`/`prompt`/`steer`/`followUp` 非幂等 |
 | `subagent.*` | `list`、`transcript`、`dispatch`、`abort` | engine（Zu 调度面） | `dispatch` 非幂等；其余幂等 |
 | `project.*` | `list`、`create`、`update`、`setMembership` | engine（Zu 状态） | `create` 非幂等；其余幂等 |
+| `settings.*` | `get`、`put`（壳的窗口家具，`settings.json`） | engine（Zu 状态） | 幂等；put 合并写入 |
+| `session.setThinking` / `session.compact` | 思考档位、手动压缩（composer 的斜杆命令） | pi（AgentSession） | setThinking 幂等；compact 非幂等 |
 | `container.*` | `list`、`create`、`show`、`attachSession`、`archive`、`unarchive` | engine（Zu 状态） | `create` 非幂等；其余幂等 |
 | `layout.*` | `get`、`put` | engine（Zu 状态） | 是（last write wins） |
 | `state.*` | `snapshot`、`subscribe` | engine（Zu 状态） | 是 |
@@ -200,7 +202,7 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 - **容器标题 = 存活的最早创建 sheet 的标题**：容器记 `sheetOrder`（创建序，append；关闭时移除；拖 tab 不改），每个 sheet kind 提供动态标题——session 取会话名（`appendSessionInfo` 可改）、terminal 取 OSC 标题、webview 取页面 title、其余固定。
 - **canvas 空态 = 该容器的 Hero sheet**（项目 chip + composer + 动作行）。容器里没有任何 sheet 时自动归档（§5.4）。Hero 的「浏览器」与顶栏 `open-browser` 都在当前容器打开一个 browser sheet；每容器的实例号递增（`n`），可同时开多个。
 - **浏览器降级**：nsh 的 `WebView` 没有 pause prop，因此非可见 browser sheet 不用「暂停」：`BrowserBody` 读 `visiblePanels()`，不可见时卸载 `WebView`（显示占位文案），再次可见时按 store 的 URL 重挂载。这是唯一诚实的实现，不声称存在 pause API。
-- **Composer 的斜杆命令**：输入 `/` 弹出候选；能本地执行的映射到 Zu 的 store（模型/thinking、清屏、压缩、会话操作），其余按原文进 `session.prompt`，不支持的明确提示。映射表以 pi 1.5.0 为准，落在 [DESIGN.md](DESIGN.md) §3.6 与本节（§2.2-11a）。
+- **Composer 的斜杆命令（§2.2-11a）**：输入 `/` 弹出候选（命令 + 一句说明），Enter 对 `/` 草稿执行命令而不是发送。映射表在 [DESIGN.md](DESIGN.md) §3.6，实现是 `slash.ts`：`/model`、`/clear`、`/new`、`/resume` 是纯 UI 动作；`/thinking`、`/compact` 走 wire 命令 `session.setThinking` / `session.compact`（pi 的 `setThinkingLevel()` / `compact()`）；扩展、模板与技能命令按原文进 `session.prompt`；pi 交互独占的命令（`/login` 等）给出明确提示而不发送。
 
 ### 4.4 键盘与焦点
 

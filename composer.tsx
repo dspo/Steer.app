@@ -2,6 +2,7 @@ import { effect, Scroll, signal, Text, token, View } from "nsh";
 import { Input, Menu, MenuItem, Submenu } from "nsh/base";
 import { K, t } from "./i18n";
 import type { SessionModelsReason } from "./contracts/protocol";
+import { openModelMenuRequest, runSlash, slashCandidates, type SlashOutcome } from "./slash";
 import {
   chooseSessionModel,
   followUp,
@@ -134,6 +135,13 @@ export function modelsReasonText(reason: SessionModelsReason | undefined, error?
 
 export function ModelPicker(props: { sessionId: string }) {
   const open = signal(false);
+  // The `/model` command lands here: open once, then clear the request.
+  effect(() => {
+    if (openModelMenuRequest() !== props.sessionId) return;
+    openModelMenuRequest.set(null);
+    open.set(true);
+  });
+
   const view = () => viewFor(props.sessionId);
   const state = () => sessionModels()[props.sessionId];
   const providers = () => state()?.data?.providers ?? [];
@@ -337,14 +345,32 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean; ha
     draft.set("");
     return text;
   };
+  const context = () => contextLine(view()?.contextUsage);
+  // The slash popup: open while the draft is a slash draft, filtered by it.
+  const slashDraft = () => {
+    const text = draft().trimStart();
+    return text.startsWith("/") ? text : "";
+  };
+  const candidates = () => (slashDraft() ? slashCandidates(slashDraft()) : []);
+  const notice = signal<SlashOutcome | null>(null);
+  const runDraft = () => {
+    const text = slashDraft();
+    if (!text) return false;
+    void runSlash(props.sessionId, text).then((outcome) => {
+      if (outcome.kind === "unsupported") notice.set(outcome);
+      else notice.set(null);
+    });
+    draft.set("");
+    return true;
+  };
   const submit = () => {
+    if (runDraft()) return;
     if (!canSubmit()) return;
     const text = take();
     // Enter is the polite lane while a turn runs: the message waits its turn.
     if (streaming()) void followUp(text, props.sessionId);
     else void send(text, props.sessionId);
   };
-  const context = () => contextLine(view()?.contextUsage);
   return (
     <View
       style={{
@@ -352,6 +378,7 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean; ha
         maxWidth: 820,
         alignSelf: "center",
         gap: 6,
+        position: "relative",
         // The divider is the composer's own, exactly as wide as it is.
         borderTopWidth: props.hairline ? 1 : 0,
         borderTopColor: token("line"),
@@ -374,6 +401,38 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean; ha
             onPress={() => void loadSessionModels(props.sessionId, true)}
           />
         </View>
+      </If>
+      {/* The slash candidates: the mapping's own rows, filtered by the draft. */}
+      <If when={candidates().length > 0}>
+        <View
+          testID="session-slash"
+          class="absolute left-0 right-0 z-10 rounded-xl border border-border bg-popover p-1"
+          style={{ bottom: "100%", marginBottom: 4, boxShadow: shadowRaised() }}
+        >
+          {candidates().map((command) => (
+            <View
+              role="button"
+              testID={`slash-${command.name}`}
+              class="flex-row items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-hover active:bg-accent"
+              onPress={() => {
+                void runSlash(props.sessionId, `/${command.name}`).then((outcome) => {
+                  if (outcome.kind === "unsupported") notice.set(outcome);
+                });
+                draft.set("");
+              }}
+            >
+              <Text class="text-[12px] font-medium text-foreground">{`/${command.name}`}</Text>
+              <Text class="min-w-0 flex-1 text-[11px] text-faint" style={{ numberOfLines: 1 }}>
+                {command.description()}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </If>
+      <If when={notice()?.kind === "unsupported"}>
+        <Text testID="session-slash-notice" class="text-[11px] leading-[16px] text-faint">
+          {t(K.slash.unsupported, { name: `/${(notice() as any).name}` })}
+        </Text>
       </If>
       <Input
         testID="session-input"

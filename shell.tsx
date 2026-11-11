@@ -3,6 +3,7 @@ import { DockArea, Input, Menu, MenuItem, MenuSeparator, type DockAreaLayout } f
 import { Window } from "nsh/desktop";
 import { containerTitle } from "./titles";
 import { loadSettings, setSidebarWidth, sidebarWidth, SIDEBAR_DEFAULT_WIDTH } from "./settings";
+import { setSlashActions } from "./slash";
 import { connect, disconnect, lastError, phase, recovered, retry, type EnginePhase } from "./engine";
 import {
   closeSheet,
@@ -854,6 +855,14 @@ export function Workbench() {
   // component renders goes with the component, and the workbench lives as
   // long as the app.
   keymap.bind("mod+s", () => saveActiveEditor());
+  // `/resume` (the composer's slash table) opens the sidebar's search: the
+  // shell owns that surface, so it installs the action.
+  setSlashActions({
+    openSidebarSearch: () => {
+      sidebarVisible.set(true);
+      sidebarFilterOpen.set(true);
+    },
+  });
   // New is a scratch canvas wherever the user is; the sidebar's button and
   // a project row's `+` reach the same canvas.
   keymap.bind("mod+n", () => openHero(null));
