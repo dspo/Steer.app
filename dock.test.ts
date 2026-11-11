@@ -5,6 +5,7 @@ import {
   defaultLayoutForSessions,
   hasSheet,
   layoutSessions,
+  sheetCount,
   pruneLayout,
   sessionIdOfSheet,
   sessionSheetId,
@@ -46,4 +47,12 @@ test("pruning drops sheets of sessions a container no longer has", () => {
   const emptied = pruneLayout(layout, []);
   expect(layoutSessions(emptied)).toEqual([]);
   expect(activePanelIds(emptied)).toEqual([]);
+});
+
+test("opening the same auxiliary sheet twice keeps one tab", () => {
+  const base = defaultLayoutForSessions(["s1"]);
+  const once = appendSheet(base, "subagents:c1");
+  const twice = appendSheet(once, "subagents:c1");
+  expect(sheetCount(twice)).toBe(sheetCount(once));
+  expect(twice.center.type === "tabs" && twice.center.panels.filter((p: string) => p === "subagents:c1").length).toBe(1);
 });

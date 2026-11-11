@@ -117,6 +117,8 @@ export function activateSheet(layout: DockAreaLayout, id: string): DockAreaLayou
  * there is always a tabs node; the (never taken) fallback makes one.
  */
 export function appendSheet(layout: DockAreaLayout, id: string, prefer?: string): DockAreaLayout {
+  // A sheet is one instance: asking again shows the one already in the
+  // layout instead of adding a second tab with the same id.
   if (hasSheet(layout, id)) return activateSheet(layout, id);
   const groups: Extract<DockNode, { type: "tabs" }>[] = [];
   const collect = (node: DockNode): void => {
@@ -149,7 +151,15 @@ export function pruneLayout(layout: DockAreaLayout, validSessions: string[]): Do
       if (children.length === 0) return null;
       return { ...node, children };
     }
-    const panels = node.panels.filter((panel) => !sessionIdOfSheet(panel) || valid.has(panel));
+    // A sheet is one instance. Layouts written before `appendSheet` checked
+    // for an existing id can hold the same panel twice; the first stays.
+    const seen = new Set<string>();
+    const panels = node.panels.filter((panel) => {
+      if (seen.has(panel)) return false;
+      if (sessionIdOfSheet(panel) && !valid.has(panel)) return false;
+      seen.add(panel);
+      return true;
+    });
     if (panels.length === 0) return null;
     const activeIndex = Math.min(node.activeIndex ?? 0, panels.length - 1);
     return { ...node, panels, activeIndex };

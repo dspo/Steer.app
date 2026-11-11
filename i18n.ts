@@ -129,6 +129,7 @@ export const K = {
     noRoots: "app.project.noRoots",
   },
   subagents: {
+    count: "app.subagents.count",
     title: "app.subagents.title",
     empty: "app.subagents.empty",
     abort: "app.subagents.abort",

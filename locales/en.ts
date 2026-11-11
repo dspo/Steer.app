@@ -36,6 +36,7 @@ export const en: Record<string, string> = {
   "app.project.roots": "Roots",
   "app.project.rootsHint": "Choose folders in Finder; the first one chosen is the primary root.",
   "app.project.rootsCount": "%{count} roots",
+  "app.subagents.count": "%{count} runs",
   "app.subagents.title": "Subagents",
   "app.subagents.empty": "No subagent runs in this container yet.",
   "app.subagents.abort": "Stop subagent",

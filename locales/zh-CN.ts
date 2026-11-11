@@ -36,6 +36,7 @@ export const zhCN: Record<string, string> = {
   "app.project.roots": "根目录",
   "app.project.rootsHint": "用访达选择目录；第一次选的目录是主目录。",
   "app.project.rootsCount": "%{count} 个根目录",
+  "app.subagents.count": "%{count} 个运行",
   "app.subagents.title": "子代理",
   "app.subagents.empty": "这个容器还没有子代理运行。",
   "app.subagents.abort": "停止子代理",

@@ -370,9 +370,10 @@ function SubagentsBody(props: { containerId: string }) {
   return (
     <View class="flex-1 flex-row bg-card">
       <View class="border-r border-line" style={{ width: 300 }}>
+        {/* The tab already names the sheet; the header only counts runs. */}
         <View class="flex-row items-center gap-2 border-b border-line px-3 py-2">
           <Glyph name="branch" size={13} tint={token("muted-foreground")} />
-          <Text class="flex-1 text-[12px] font-semibold text-foreground">{t(K.subagents.title)}</Text>
+          <Text class="flex-1 text-[11px] text-muted-foreground">{t(K.subagents.count, { count: runs().length })}</Text>
           <Chip label={String(runs().length)} />
         </View>
         <Scroll style={{ flex: 1 }} contentStyle={{ paddingVertical: 4 }}>

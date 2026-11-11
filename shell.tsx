@@ -873,8 +873,13 @@ export function Workbench() {
                 // Every tab is the same width: a strip whose tabs take their
                 // titles' width looks ragged, and the title truncates instead.
                 <View
-                  class={`relative h-8 w-[148px] flex-row items-center gap-1.5 rounded-lg px-2.5 ${tab.active ? "bg-card" : "hover:bg-hover"}`}
+                  class={`relative h-8 flex-row items-center gap-1.5 rounded-lg px-2.5 ${tab.active ? "bg-card" : "hover:bg-hover"}`}
                   style={{
+                    width: 144,
+                    minWidth: 144,
+                    maxWidth: 144,
+                    flexGrow: 0,
+                    flexShrink: 0,
                     borderRadius: 8,
                     backgroundColor: tab.active ? token("card") : "transparent",
                     boxShadow: tab.active ? shadowCard() : "none",
