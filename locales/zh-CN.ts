@@ -8,6 +8,7 @@ export const zhCN: Record<string, string> = {
   "app.phase.error": "错误",
   "app.engine.start": "启动引擎",
   "app.engine.portBusy": "端口 %{port} 已被占用：另一个 Zu 或进程在用它。",
+  "app.engine.startFailed": "引擎未能启动，见 %{log}。",
   "app.engine.retry": "重试",
   "app.engine.refresh": "刷新",
   "app.engine.stop": "停止引擎",

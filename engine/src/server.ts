@@ -69,6 +69,8 @@ import {
 import { dispatchExtension, SubagentManager, type SubagentHost } from "./subagents";
 import { PI_VERSION } from "./version";
 
+/** 0 lets the system pick one, so two hosts on a machine never collide;
+ * the chosen port is published beside the state for the native module. */
 const PORT = Number(process.env.ZU_PORT ?? 47823);
 const TOKEN = process.env.ZU_TOKEN ?? "";
 const AGENT_DIR = getAgentDir();
@@ -1394,6 +1396,13 @@ const server = Bun.serve({
   },
 });
 
+const portFile = join(stateDir(), "engine.port");
+try {
+  mkdirSync(dirname(portFile), { recursive: true });
+  writeFileSync(portFile, String(server.port));
+} catch {
+  // A read-only state directory: the caller's ZU_PORT is the answer.
+}
 console.log(`zu-engine v${PROTOCOL_VERSION} generation ${generation} listening on 127.0.0.1:${server.port} (pi ${PI_VERSION})`);
 
 /** 5000 ms; the shell treats 15 s without one as a dead engine. */

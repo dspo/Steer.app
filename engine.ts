@@ -154,12 +154,13 @@ export async function connect(): Promise<void> {
   if (result === "incompatible") return;
   if (result !== "ok") {
     phase.set("error");
-    // A port someone else holds is a different failure from a sidecar that
-    // started but did not speak the protocol: say which one it is.
-    if (!Engine.portAvailable()) {
-      lastError.set(t(K.engine.portBusy, { port: Engine.port() }));
+    // No port means the sidecar never bound (it died or never started);
+    // a port without an answer means it bound but did not speak.
+    const port = Engine.port();
+    if (port === 0) {
+      lastError.set(t(K.engine.startFailed, { log: Engine.logPath() }));
     } else {
-      lastError.set(`engine did not answer on 127.0.0.1:${Engine.port()} — see ${Engine.logPath()}`);
+      lastError.set(`engine did not answer on 127.0.0.1:${port} — see ${Engine.logPath()}`);
     }
     return;
   }

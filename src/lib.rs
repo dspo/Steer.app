@@ -46,6 +46,7 @@ fn engine_port() -> u16 {
 
 struct EngineState {
     child: Child,
+    port: u16,
 }
 
 /// The running sidecar; `None` before the first start and after a failure.
@@ -85,6 +86,8 @@ impl Engine {
             "engine sidecar not found (build it with `cd engine && bun run build`)".to_owned()
         })?;
         let dir = zu_dir()?;
+        let port_file = dir.join("engine.port");
+        let _ = std::fs::remove_file(&port_file);
         let log = std::fs::File::create(dir.join("engine.log")).map_err(|e| e.to_string())?;
         let stderr = log.try_clone().map_err(|e| e.to_string())?;
         let mut command = Command::new(&path);
@@ -109,7 +112,11 @@ impl Engine {
             .stderr(Stdio::from(stderr))
             .spawn()
             .map_err(|e| format!("cannot start {}: {e}", path.display()))?;
-        *guard = Some(EngineState { child });
+        // The sidecar binds and then writes the port it got (ZU_PORT=0 asks
+        // the system for a free one). Wait for it so `port()` has an answer
+        // by the time `connect` asks.
+        let port = wait_for_port(&port_file, engine_port());
+        *guard = Some(EngineState { child, port });
         Ok(())
     }
 
@@ -171,9 +178,13 @@ impl Engine {
         }
     }
 
-    /// The loopback port the sidecar listens on (`ZU_PORT` overrides it).
+    /// The port the running sidecar bound; 0 before a start.
     pub fn port() -> u16 {
-        engine_port()
+        ENGINE
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(|state| state.port))
+            .unwrap_or(0)
     }
 
     /// Whether the sidecar's loopback port is free. A bind that fails means
@@ -241,6 +252,22 @@ fn native(registry: &mut Registry) {
         .module::<Instance>()
         .class::<Lsp>()
         .class::<Pty>();
+}
+
+/// Waits (briefly) for the sidecar to publish the port it bound; falls back
+/// to the requested one when the file never appears.
+fn wait_for_port(path: &std::path::Path, fallback: u16) -> u16 {
+    for _ in 0..50 {
+        if let Ok(text) = std::fs::read_to_string(path) {
+            if let Ok(port) = text.trim().parse::<u16>() {
+                if port != 0 {
+                    return port;
+                }
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    fallback
 }
 
 /// Whether `port` can be bound on the sidecar's loopback address.

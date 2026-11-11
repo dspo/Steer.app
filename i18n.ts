@@ -79,6 +79,7 @@ export const K = {
     reconnect: "app.engine.reconnect",
     recovered: "app.engine.recovered",
     portBusy: "app.engine.portBusy",
+    startFailed: "app.engine.startFailed",
   },
   sidebar: {
     title: "app.sidebar.title",

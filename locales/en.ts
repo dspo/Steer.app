@@ -8,6 +8,7 @@ export const en: Record<string, string> = {
   "app.phase.error": "Error",
   "app.engine.start": "Start engine",
   "app.engine.portBusy": "Port %{port} is in use: another Zu or another process holds it.",
+  "app.engine.startFailed": "The engine did not start. See %{log}.",
   "app.engine.retry": "Try again",
   "app.engine.refresh": "Refresh",
   "app.engine.stop": "Stop engine",

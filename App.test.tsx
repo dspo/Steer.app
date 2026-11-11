@@ -19,6 +19,8 @@ test("the shell shows the session list and engine controls", async () => {
 test("the shell speaks English when the user prefers it", async () => {
   const app = await open("./App.tsx", { network: "live", width: 1200, height: 800 });
   await app.press("id:language");
+  // The locale is a signal: the shell redraws on the next frame.
+  await app.waitUntil(() => app.texts().includes("Sessions"), { timeout: 5000 });
   expect(app.texts()).toContain("Sessions");
   expect(app.texts()).toContain("All sessions");
   expect(app.count("label:Refresh")).toBe(2);
