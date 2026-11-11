@@ -29,3 +29,13 @@
 
 未验证：真实模型回合（无凭据）；真实的 `session.steer`/`followUp` wire 回执与队列 UI；长历史
 虚拟化（当前 `Scroll`+`Each`）；托盘/系统通知/真实 updater 安装（M12 既有差距）。
+
+
+## 2026-11-11 需求清单 01 收尾
+
+- 进一版 `nsh test .` **220/220**，`cargo test --lib` 52/52，`nsh build .` 1 asset。
+- 顶栏 36pt、去掉底部状态栏；SessionContainer picker 30/32pt；引擎/语言/刷新/停止进 overflow。
+- 起始页：两级 Providers→Models、Enter/⌘↩ 发送、Shift+↩ 换行、无「开始」；Finder `osascript choose folder` 选根（native Picker），侧栏建项目入口移除。
+- 工具两行：终端/浏览器 + Claude Code/Codex/GitHub Copilot/Pi；无「外部终端」「TUI」。
+- 容器归属创建后固定；拖拽/换项目菜单与 `project.setMembership` 删除。tab 统一 144pt、悬浮关闭；TUI 自行退出关 tab；panel content `overflow-hidden` 不再画到邻 panel；VS Code `windowId=_blank`。
+- 仍有肉眼复核项：真实 Finder 对话框（headless 未启动）、面板拖拽分隔线观感、复杂 Markdown 在超长虚拟列表回收行中的表现。
