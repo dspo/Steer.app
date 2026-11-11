@@ -1,11 +1,7 @@
 import { openUrl } from "nsh";
 import type { ContainerRecord } from "./contracts/protocol";
-import {
-  activeContainerId,
-  containerTitle,
-  liveContainers,
-  switchContainer,
-} from "./containers";
+import { activeContainerId, liveContainers, switchContainer } from "./containers";
+import { containerTitle } from "./titles";
 import { containerProject, projects } from "./projects";
 import { focusSession, sessions, type SessionMeta } from "./sessions";
 

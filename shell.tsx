@@ -1,6 +1,7 @@
 import { keymap, List, PanResponder, Scroll, signal, Text, token, View } from "nsh";
 import { DockArea, Input, Menu, MenuItem, MenuSeparator, type DockAreaLayout } from "nsh/base";
 import { Window } from "nsh/desktop";
+import { containerTitle } from "./titles";
 import { connect, disconnect, lastError, phase, recovered, retry, type EnginePhase } from "./engine";
 import {
   closeSheet,
@@ -8,7 +9,6 @@ import {
   archiveContainer,
   bindDock,
   containerError,
-  containerTitle,
   containers,
   layout,
   liveContainers,

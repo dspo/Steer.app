@@ -31,13 +31,11 @@ import {
   refreshSessions,
   send,
   sessions,
-  sessionTitle,
   viewFor,
 } from "./sessions";
 import { stopLspContainer } from "./lsp";
 import {
   closeTerminalsOfContainer,
-  externalKindLabel,
   focusTerminal,
   reconcileTerminals,
   registerTerminal,
@@ -45,7 +43,6 @@ import {
   terminalResource,
   terminalSheetContainer,
   terminalSheetId,
-  terminalTitle,
   setProgramExitHandler,
   type TerminalAction,
 } from "./terminals";
@@ -144,23 +141,40 @@ export function liveContainers(): ContainerRecord[] {
   return containersByRecency();
 }
 
-/** A container's label: its captain's session title, a terminal's title,
- * else the kind and cwd. */
-export function containerTitle(container: ContainerRecord): string {
-  const folder = container.cwd.split("/").filter(Boolean).slice(-1)[0] ?? "";
-  // A container is a place to work, so its own name wins over its captain's:
-  // a fresh session has no name, and two unnamed containers would read as the
-  // same id prefix — pressing the other one looked like nothing happened.
-  const captain = container.sessions[0];
-  const named = captain ? sessionTitle(captain.sessionId) : "";
-  const namedIsTitle = named && named !== captain?.sessionId?.slice(0, 8);
-  if (namedIsTitle) return named;
-  if (container.kind !== "Pi") {
-    const title = terminalTitle(terminalSheetId(container.id, 1));
-    if (title) return title;
-    return externalKindLabel(container.kind);
-  }
-  return folder || container.id.slice(0, 8);
+/**
+ * Each container's sheets in creation order (S2). The container's title is
+ * the earliest-created surviving sheet's, so closing the first tab promotes
+ * the second instead of leaving a name with nothing behind it. The order is
+ * UI state: on a restart it is rebuilt from the restored layout's tree order.
+ */
+export const sheetOrder = signal<Record<string, string[]>>({});
+
+/**
+ * Notes a sheet as newly opened on the canvas. Creation order cannot be read
+ * off a layout edit — the dock helpers build the next tree from the current
+ * one — so whoever opens a sheet says so.
+ */
+export function noteSheetOpened(id: string): void {
+  const containerId = activeContainerId();
+  if (!containerId) return;
+  const current = sheetOrder()[containerId] ?? [];
+  if (current.includes(id)) return;
+  sheetOrder.set({ ...sheetOrder(), [containerId]: [...current, id] });
+}
+
+/** Drops sheets that left the layout; an open sheet keeps its place. */
+function pruneSheetOrder(containerId: string, next: DockAreaLayout): void {
+  const current = sheetOrder()[containerId];
+  if (!current) return;
+  const alive = new Set(panelIds(next));
+  const order = current.filter((id) => alive.has(id));
+  if (order.length !== current.length) sheetOrder.set({ ...sheetOrder(), [containerId]: order });
+}
+
+/** Seeds a container's order from its layout when nothing is recorded yet. */
+function seedSheetOrder(containerId: string, layout: DockAreaLayout): void {
+  if (sheetOrder()[containerId]) return;
+  sheetOrder.set({ ...sheetOrder(), [containerId]: panelIds(layout) });
 }
 
 /** The canvas of a new or not-yet-stashed container: its own terminal for an
@@ -269,6 +283,9 @@ function activateCanvas(container: ContainerRecord, next: DockAreaLayout, zoom: 
   activeContainerId.set(container.id);
   savedFor = container.id;
   layout.set(next);
+  // A container seen for the first time after a restart has no recorded
+  // order; its restored tree order is the best account of it.
+  seedSheetOrder(container.id, next);
   zoomedPanel.set(zoom);
   syncVisible();
 }
@@ -455,6 +472,7 @@ export async function openPath(path: string): Promise<void> {
     if (session) {
       const id = sessionSheetId(session.sessionId);
       if (!layoutSessions(layout()).includes(session.sessionId)) {
+        noteSheetOpened(id);
         setLayout(appendSheet(layout(), id));
         await flushLayout();
       }
@@ -479,6 +497,7 @@ export async function openPath(path: string): Promise<void> {
     if (session) {
       adoptSession(session);
       const id = sessionSheetId(session.id);
+      noteSheetOpened(id);
       setLayout(appendSheet(layout(), id));
       await flushLayout();
       focusSession(session.id);
@@ -490,6 +509,8 @@ export async function openPath(path: string): Promise<void> {
 
 /** The DockArea layout changed: keep the tree, the visible set and the stash. */
 export function setLayout(next: DockAreaLayout): void {
+  const containerId = activeContainerId();
+  if (containerId) pruneSheetOrder(containerId, next);
   layout.set(next);
   // The scratch canvas has no layout file; its tree lives in memory.
   if (activeContainerId() === null) scratchLayout.set(next);
@@ -506,6 +527,7 @@ export function openAuxSheet(kind: "subagents" | "stats" | "tasks" | "traces"): 
   const container = activeContainerId();
   if (!isPiContainer(container)) return;
   const id = `${kind}:${container}`;
+  noteSheetOpened(id);
   setLayout(appendSheet(layout(), id));
 }
 
@@ -516,6 +538,7 @@ export function openAuxSheet(kind: "subagents" | "stats" | "tasks" | "traces"): 
  */
 export function openHomeSheet(prefer?: string | null): void {
   const id = homeSheetId(activeContainerId());
+  noteSheetOpened(id);
   const next = appendSheet(layout(), id, prefer ?? undefined);
   setLayout(next);
 }
@@ -531,6 +554,7 @@ export async function showContainerSession(containerId: string, fromSheet?: stri
   if (!container || !captain) return;
   if (activeContainerId() !== container.id) await switchContainer(container.id);
   const sheetId = sessionSheetId(captain.sessionId);
+  noteSheetOpened(sheetId);
   setLayout(
     fromSheet ? replaceSheet(layout(), fromSheet, sheetId) : appendSheet(layout(), sheetId),
   );
@@ -570,6 +594,7 @@ export function closeSheet(id: string): void {
 export function openFilesSheet(containerId: string | null = activeContainerId()): void {
   if (!containerId) return;
   const id = `files:${containerId}`;
+  noteSheetOpened(id);
   setLayout(appendSheet(layout(), id));
 }
 
@@ -598,6 +623,7 @@ export function openTerminalSheet(
   if (!container || activeContainerId() !== containerId) return null;
   const sheetId = terminalSheetId(containerId, nextTerminalIndex(containerId));
   registerTerminal(sheetId, action);
+  noteSheetOpened(sheetId);
   setLayout(fromSheet ? replaceSheet(layout(), fromSheet, sheetId) : appendSheet(layout(), sheetId));
   return sheetId;
 }

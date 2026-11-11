@@ -1,6 +1,6 @@
 import { signal, WebView, type WebViewNavigation } from "nsh";
 import { appendSheet, panelIds, replaceSheet } from "./dock";
-import { activeContainerId, layout, setLayout, setScratchSheetTransfer } from "./containers";
+import { activeContainerId, layout, noteSheetOpened, setLayout, setScratchSheetTransfer } from "./containers";
 import { K, t } from "./i18n";
 
 /**
@@ -128,6 +128,7 @@ export function openBrowserSheet(
   const ids = [...panelIds(layout()), ...Object.keys(pages())];
   const id = browserSheetId(canvas, nextBrowserInstance(canvas, ids));
   ensureBrowserPage(id);
+  noteSheetOpened(id);
   setLayout(replace ? replaceSheet(layout(), replace, id) : appendSheet(layout(), id));
   return id;
 }

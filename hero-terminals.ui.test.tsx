@@ -36,8 +36,9 @@ test("a container's Hero opens its terminals inside that container", async () =>
   expect(stateOf(app).pty).toBe(2);
   expect(app.texts().some((text) => text.startsWith("Claude Code · "))).toBe(true);
 
-  // Archiving the container takes both PTYs with it.
-  await app.press("label:归档容器 Captain");
+  // Archiving the container takes both PTYs with it. The row is named by its
+  // earliest sheet (S2): the shell terminal that replaced the Hero.
+  await app.press("label:归档容器 终端 · tmp");
   await app.waitUntil(() => stateOf(app).pty === 0, { timeout: 20000 });
   expect(stateOf(app).containers).toBe(0);
   expect(app.shows("id:terminal-view")).toBe(false);

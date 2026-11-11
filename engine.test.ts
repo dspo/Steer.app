@@ -11,6 +11,7 @@ import {
   messages,
   openSession,
   refreshSessions,
+  viewFor,
   send,
   sessions,
   stop,
@@ -534,8 +535,12 @@ test("a steer reaches the running turn and the queue reports it", async () => {
   await freshEngine();
   const id = await createSession("/tmp/zu-test");
   const queues: any[] = [];
+  const failures: any[] = [];
   const stopListening = onEngineEvent((event) => {
     if (event.type === "queue.update" && event.sessionId === id) queues.push(event);
+    if (event.sessionId === id && (event.type === "error" || event.type === "retry.end" || event.type === "compaction.end")) {
+      failures.push(event);
+    }
   });
   try {
     await send("Count from 1 to 400, one number per line.");
@@ -552,7 +557,7 @@ test("a steer reaches the running turn and the queue reports it", async () => {
       // not a steering result: say which one instead of "false !== true".
       const rows = messages().map((message) => `${message.role}:${message.text.length}`).join(" ");
       throw new Error(
-        `the turn ended after ${waited} ms; error=${sessionError() ?? lastError() ?? "none"} rows=[${rows}] interrupted=${interrupted()}`,
+        `the turn ended after ${waited} ms; error=${sessionError() ?? lastError() ?? "none"} view=${viewFor(id)?.error ?? "none"} rows=[${rows}] interrupted=${interrupted()} events=${JSON.stringify(failures).slice(0, 400)}`,
       );
     }
     expect(streaming()).toBe(true);

@@ -86,7 +86,9 @@ test("the tab follows the page title, and a hidden sheet keeps its address", asy
   await app.press("id:open-browser");
   await app.waitUntil(() => pageDebug(app).includes("webview:pi:browser-fixture:2"));
   expect(app.value("id:browser-address")).toBe("");
-  await app.press("Example Domain");
+  // The hidden sheet kept its state: closing the blank tab reveals the first
+  // again, with its address back in the bar.
+  await app.press("id:tab-close-webview:pi:browser-fixture:2");
   await app.waitUntil(() => app.value("id:browser-address") === "https://example.com/");
   expect(app.value("id:browser-address")).toBe("https://example.com/");
 
@@ -128,7 +130,8 @@ test("a container switch keeps the browser address and title", async () => {
   // first container's layout and the UI store's page state.
   await app.press("Open container zu-browser-2");
   await app.waitUntil(() => !app.shows("id:browser-address"));
-  await app.press("Open container zu-browser");
+  // The first container is titled by its earliest sheet — the page (S2).
+  await app.press("Open container Example Domain");
   await app.waitFor("id:browser-address");
   expect(app.value("id:browser-address")).toBe("https://example.com/");
   expect(app.texts()).toContain("Example Domain");
