@@ -1,6 +1,6 @@
 # §2.1-2：切容器必 hydrate、external 建后必切换画布（A1/B3）
 
-日期：2026-11-11。工作树未提交（§2.1-1 已提交为 `a58e0ad`）。`nsh check` ✓、`cargo check --all-targets` ✓、
+日期：2026-11-11。已提交为 `bcd4004`（§2.1-1 是 `a58e0ad`）。`nsh check` ✓、`cargo check --all-targets` ✓、
 `nsh test` 233/233 ✓、`script/bundle-mac.sh` ✓。
 
 ## 验收

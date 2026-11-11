@@ -6,8 +6,9 @@
 工作树未提交。门禁全绿（`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 233/233 ✓、
 `script/bundle-mac.sh` ✓），证据见 [evidence/s1-hero-sheet.md](evidence/s1-hero-sheet.md)、
 [evidence/s21-2-switch-hydrate.md](evidence/s21-2-switch-hydrate.md) 与 `docs/evidence/ui-s2-*.png`。
-§2.1 剩下的 3–7 项与 §2.1.1 的 F2–F3 未动工；下一个动作是 F2（容器内的终端/TUI 资源），
-随后 F3，再进第 3 项（scratch 画布）。
+§2.1 剩下的 3–7 项、§2.1.1 的 F2–F3、§2.2–§2.3 与 §5 未动工。**下一个动作是 §2.0 P0-1（模型注册）**，
+随后 P0-2、F2/F3，再进第 3 项（scratch 画布）。2026-11-11 的四条调整已并入：移除顶栏 picker（§2.2-10）、
+模型问题升为 P0（§2.0）、Composer 斜杆操作（§2.2-11a）、代码仓库整洁化（§5）。
 开工前读：本文件 §2 → [architecture.md](architecture.md) §4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 →
 [evidence/apis-verified.md](evidence/apis-verified.md)。
 > 架构见 [architecture.md](architecture.md)，视觉规格见 [DESIGN.md](DESIGN.md)，决策台账见 [decisions.md](decisions.md)。
@@ -40,6 +41,15 @@
 - **S2 容器由 sheet 序驱动**：容器记 `sheetOrder`（创建序），标题取"存活的最早创建者"，每个 sheet kind 提供动态标题。
 - **S3 外壳一体化**：窗口一层底色（titlebar + 侧栏同材质无分隔），内容是一张内嵌的白色圆角卡片。
 
+### 2.0 P0 可用性：模型注册（先于 Casing II 剩余项）
+
+「没有可用的模型」让发消息这一核心动作失效，是可用性问题，不是配色细节；排在 F2 之前。
+
+| # | 问题 | 要点 | 验收 |
+|---|---|---|---|
+| P0-1 | 会话没有可用模型（原 §2.4-17） | `modelsData` 的 registry 可能没加载 pi CLI 的 models（`~/.pi/agent/models.json` + 认证）。先对比 `pi --list-models` 与 `session.models`，找出是引擎没初始化 registry、过滤掉了 provider，还是 UI 没展示；在引擎启动/会话创建前显式初始化 model registry，不靠副作用。 | 同一台机器上新会话列出的模型与 `pi --list-models` 一致；默认模型能直接发消息；`session.models` 的空/错有引擎测试 |
+| P0-2 | 无模型时的界面 | 没有可用模型时，composer 不只把发送禁用掉：显示一句可操作的说明（例如配置 pi 的 provider/登录），并保留输入；模型菜单显示真实原因，不静默空列表。 | 无模型状态有明确文案与入口；有模型后无需重启即恢复；一条 UI 测试 |
+
 ### 2.1 第 1 批：结构性（S1 + S2）
 
 | # | 任务 | 要点 | 验收 |
@@ -64,7 +74,7 @@
 
 **边界**：F2 只管**容器 Hero**。scratch 没有容器，动作仍按第 3 项先铸容器；"侧栏/Launcher 直接拉起的终端 = 独立 external 容器"（architecture §5.3）对 scratch 仍成立，铸哪种容器在第 3 项定稿。
 
-> **F1 已完成（2026-11-11，未提交）**：`replaceSheet()` 把目标 sheet 放进 Hero 的原槽位并移除 Hero；容器 Hero 的
+> **F1 已完成（2026-11-11，`4293eb7`）**：`replaceSheet()` 把目标 sheet 放进 Hero 的原槽位并移除 Hero；容器 Hero 的
 > 浏览器动作与 composer 提交都走它（“Pi”/会话动作暂时到 `showContainerSession`，F3 会改成原生 TUI）。
 > F2/F3 未动工：容器内的终端/TUI 动作仍会新建 SessionContainer，Pi 动作仍聚焦 Zu 会话。
 > 证据 [evidence/s21-1-hero-actions.md](evidence/s21-1-hero-actions.md)。
@@ -75,7 +85,7 @@
 > 终端/TUI 进程自己退出会关掉它的 sheet。第 7 项需要 shell 侧的关闭路径来处理不是进程的 sheet（最后一个 Hero、
 > 最后一个 Pi 会话），并在零 sheet 时切走归档。
 >
-> **§2.1-2 已完成（2026-11-11，未提交）**：启动先切画布、后扫会话索引；switch / create / external create 共用
+> **§2.1-2 已完成（2026-11-11，`bcd4004`）**：启动先切画布、后扫会话索引；switch / create / external create 共用
 > `activateCanvas`；每次画布意图取 ticket，旧应答不得覆盖新意图。验收与过程见
 > [evidence/s21-2-switch-hydrate.md](evidence/s21-2-switch-hydrate.md)。这条只证明"点动作会进入 TUI sheet"；
 > 容器内 Hero 的动作目前仍会新建 SessionContainer、且 Hero 会留在旁边，由 §2.1.1 的 F1–F3 修正。
@@ -86,8 +96,9 @@
 |---|---|---|---|
 | 8 | 一体化外壳 | 全窗 `sidebar` 底；titlebar 40pt 无分隔线；侧栏无右边框；内容区白卡 `radius 14` + 四周 8–10pt；tab bar 融入卡片；composer 在卡片内左右 24 | 与 ZCode 截图并排，底色/圆角/间距/字号一致 |
 | 9 | 侧栏可拖拽 | 侧栏与卡片间 4pt 热区，宽 200–360，持久化到 `zu/settings.json` | 拖拽即时生效，重启保持 |
-| 10 | picker 三态 | 常态=纯文本标题（无框无底）；hover=凹槽（`bg-inset` + inset 阴影 + radius 6）；展开=下拉从凹槽下沿接出；宽度 360pt | 与截图一致 |
+| 10 | 移除顶栏 picker | 删掉 titlebar 的会话/容器 picker：`SessionPicker` 与 `pickerCandidates`/`pickerSessions`/`pickContainer` 的 UI 路径、对应 i18n 键与 `App.test`/`containers.ui`/`projects.ui`/`titlebar.test` 里的用例一并收掉；顶栏只留左开关与右侧动作，中心不再有 360pt 控件，也不新增别处入口 | 顶栏无 picker；切容器只经侧栏；全量测试绿，且没有只为 picker 存在的导出 |
 | 11 | composer（仅交互） | 分割线只与 composer 同宽；模型/thinking/context 右对齐；idle=↑发送、streaming=■停止（同位置）；排队/引导/打断收进 `⋯` 菜单（不接线） | 三种状态各一条截图；`⋯` 项可点但无副作用 |
+| 11a | Composer 的 pi 斜杆操作 | 以 pi 1.5.0 的斜杆命令为准先列清单（`/model`、`/thinking`、`/compact`、`/clear`、`/new`、`/resume`、`/help`…），逐条映射：能本地做的（模型/思考、清屏、压缩、会话切换）由 Zu 的 store 执行，其余按原文进 `session.prompt`，不支持的明确提示；输入 `/` 弹候选（命令 + 一句说明），与模型菜单、停止/排队不冲突 | 映射表进 DESIGN §3.6 与 architecture；`/model` 能开模型菜单并切换，`/compact` 与 pi 一致，未知命令有提示；每条映射一条测试 |
 | 12 | 红绿灯 | 原生比例：直径 12、间距 8、左边距 16、垂直居中 | 与原生窗口并排看不出差异 |
 | 13 | tab 宽度 Chrome 式 | `maxWidth 240`、`minWidth 72`、`flexShrink 1`、`flexGrow 0`；标题截断 | panel 变窄或 tab 增多时被均匀挤压 |
 
@@ -101,9 +112,10 @@
 
 ### 2.4 独立修复
 
+> 「无可用模型」已提升为 §2.0 的 P0-1/P0-2。
+
 | # | 问题 | 要点 |
 |---|---|---|
-| 17 | 复查 13「无可用模型」 | `modelsData` 的 registry 可能没加载 CLI 的 models（`~/.pi/agent/models.json`）。对比 `pi --list-models` 与 `session.models`，必要时显式初始化 model registry |
 | 18 | B2 markdown 偶发纯文本 | **挂起**：现场已丢失（重启后自行恢复）。保留一个可复现样本后再修 |
 
 ## 3. 不做（挂账）
@@ -123,3 +135,18 @@ script/bundle-mac.sh                       ✓ 打包冒烟
 ```
 
 每个批次结束时：全量绿 + 截图（`docs/evidence/ui-*.png`）+ 本节状态更新。
+
+## 5. 代码仓库整洁化（新增，并行轨道）
+
+目标：结构可导航、每个事实只有一处、没有只为历史存在的代码/文档；**每个提交只做一类移动**，随时可全量回绿。
+与 Casing II 并行：C1/C5/C6/C7 可立即插入；C2（文件布局）等 Casing II 的功能项完成后再做，避免移动与改写互相冲突。
+
+| # | 任务 | 要点 | 验收 |
+|---|---|---|---|
+| C1 | 死代码与导出清理 | 清掉没人引用的导出/工具（如 `containerCount`、`nextSheetId`、`TOOLBAR_KINDS` 一类）、过期 i18n 键、注释里的旧路径；不为了"可能有用"保留 | `nsh check`/`nsh build` 无告警；全量测试绿；导出清单每一项都有调用方 |
+| C2 | 文件布局 | 根目录 40+ 个模块按 `shell/`、`canvas/`、`stores/`、`sheets/`、`ui/` 归位；只改 import 路径，不改行为 | 每步可编译、测试绿；README 代码地图与目录一致 |
+| C3 | 命名一致 | `launcher.tsx`→`hero.tsx`、`launcher-*` 测试 id/键、`home:*` 与"Hero"术语统一；`titlebar.ts` 在 picker 移除后按剩余职责改名 | 代码、i18n、DESIGN/architecture/README 用同一套术语 |
+| C4 | 单一事实源 | sheet id/标题/可见性、终端资源、布局编辑只留一处；删重复的分支与镜像状态 | grep 不出第二份同类逻辑；相关单测合并 |
+| C5 | 测试卫生 | fixture 隔离（M9 已改每轮新仓库）、确定性等待（不靠固定 sleep）、临时目录清理、跨测试共享状态审计 | 全量连跑 3 次全绿，无偶发 |
+| C6 | 文档与证据 | 断链、过期状态/门禁数字、DESIGN 缺失章节（如动作矩阵 §4.1）、证据索引；`docs/research` 的去留 | 链接检查通过；状态与最近一次门禁一致 |
+| C7 | Rust 与引擎 | `cargo fmt --check`、重点看 `clippy` 的实用项、错误码表、死代码；engine 侧同样 | 门禁绿；无新增告警 |

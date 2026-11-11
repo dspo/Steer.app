@@ -176,6 +176,7 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 - sheet 可跨 panel 拖拽（移动语义），**状态不丢**（`renderPanel` 按 key 渲染一次）。
 - **画布 = 一个容器，或一个临时画布**：侧栏一行 = 一个容器 = 一组面板的入口；切换行 = stash 当前布局 + restore 目标布局。多窗口不在设计中。M4 的侧栏按 Project → 容器分组，无归属容器落 Chats；「全部会话」用虚拟化 `List` 放在底部，打开会话即归入当前容器。
 - **没有"页面状态"**：Hero 也是 sheet（`home:{containerId}` 容器内、`home:scratch` 临时画布），画布永远只渲染 sheet 树。旧的 `launcherOpen` 页面布尔已删除——它与容器状态是两份真相，正是"切容器停在起始页"这类错位的来源。
+- **顶栏没有 picker**（2026-11-11 调整）：会话/容器 picker 从顶栏移除。切容器只经侧栏（项目 → 容器），「新建」/⌘N 仍是 scratch 画布；顶栏中心只留窗口拖拽区，不补替代控件（`⌘K` 命令面板是后续独立功能）。
 - **scratch 画布**：kind `Scratch`，无 cwd、无进程、不进注册表、不持久化。它是"未发生任何行为的画布"：Hero 带项目 chip，提交 composer 或选一个动作后铸真实容器并切换；scratch 里开的浏览器 sheet 随容器迁移，未提交则暂存（只保留一份 scratch）。
 - **Hero 的动作**：在容器里，动作开在**该容器**（浏览器 sheet、终端/TUI 资源），并把 Hero 自身从这组 tab 里**就地替换**掉（先插入目标 sheet，再关 Hero），不留下一个 Hero 与目标并排；在 scratch 里，动作先按 scratch 的规则铸容器。Hero 的 Pi 动作是原生 `pi` CLI 的 TUI（一个终端资源），Zu 会话是 `session:{sessionId}` sheet，两者不互相代替：composer 进 Zu 会话，Pi 动作进原生 TUI。
 - **容器内的终端是资源，可以多个**：`terminal:{containerId}:{n}`，`terminals.ts` 按终端资源 id 持 PTY；归档容器时结束其全部终端。外部容器（Terminal/Claude/Codex/Copilot）仍是"进程即容器"：从侧栏/scratch 直接拉起时自成一个 external 容器。
@@ -199,6 +200,7 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 - **容器标题 = 存活的最早创建 sheet 的标题**：容器记 `sheetOrder`（创建序，append；关闭时移除；拖 tab 不改），每个 sheet kind 提供动态标题——session 取会话名（`appendSessionInfo` 可改）、terminal 取 OSC 标题、webview 取页面 title、其余固定。
 - **canvas 空态 = 该容器的 Hero sheet**（项目 chip + composer + 动作行）。容器里没有任何 sheet 时自动归档（§5.4）。Hero 的「浏览器」与顶栏 `open-browser` 都在当前容器打开一个 browser sheet；每容器的实例号递增（`n`），可同时开多个。
 - **浏览器降级**：nsh 的 `WebView` 没有 pause prop，因此非可见 browser sheet 不用「暂停」：`BrowserBody` 读 `visiblePanels()`，不可见时卸载 `WebView`（显示占位文案），再次可见时按 store 的 URL 重挂载。这是唯一诚实的实现，不声称存在 pause API。
+- **Composer 的斜杆命令**：输入 `/` 弹出候选；能本地执行的映射到 Zu 的 store（模型/thinking、清屏、压缩、会话操作），其余按原文进 `session.prompt`，不支持的明确提示。映射表以 pi 1.5.0 为准，落在 [DESIGN.md](DESIGN.md) §3.6 与本节（§2.2-11a）。
 
 ### 4.4 键盘与焦点
 
@@ -396,6 +398,7 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 13. **LSP 的成本与边界**：每容器 × 语言族一个进程，rust-analyzer 在大仓库的索引内存/CPU 不在 Zu 的控制内；诊断只保留打开文件（Problems 不是全工作区索引），关闭 sheet 即 `didClose` 并清掉该文件的诊断；全文 `didChange` 在每次停顿发送整份文本（2 MiB 上限内），不是增量；`snippetSupport: false`，补全插入普通文本；headless 的 `app.hover` 只在 selector 自身派发 `MouseMove`，无法驱动 Editor 内部 rows 的 hover（真实 macOS 指针路径未自动化）；语言服务器启动依赖 PATH/常见目录，GUI 进程的 PATH 可能仍缺用户自定义安装位置（错误会显示在 Problems 的 server 状态）。
 14. **更新未端到端验证**：仓库无 `nsh.json` 的 `"updater"`、公钥和 release；`checkForUpdate` 在 dev 返回 null，真实下载/签名校验/替换 `.app` 没有跑过。UI 状态机用 fake service 覆盖，发布前的配置步骤在 evidence/m12-lifecycle.md。`canInstall:false` 没有 `openUrl` 能力，只显示 URL。
 15. **通知未真机投递**：headless 的 `Notifications` 不产生系统横幅；开发运行的 macOS app 不是 signed bundle，`permission()` 会是 `unavailable`。真实通知需要打包签署后的 app，且本轮没有重启用户正在使用的 app。策略/权限/按开的逻辑有 8 条单测，真实 banner/点击列在 evidence 的未验证项。
+16. **模型注册表（P0）**：`session.models` 依赖 pi 的 model registry（`~/.pi/agent/models.json` + 认证）。引擎若不显式初始化，列表可能为空，发消息这一核心动作直接不可用；列在 plan §2.0（P0-1/P0-2）。
 
 ## 9. 文档
 

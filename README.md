@@ -7,14 +7,14 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 （上 355、下 113）。
 
 **当前状态（as of 2026-11-11）**：M0–M12 已交付（地基、对话、契约与监督、容器与面板、项目与 Launcher、子代理、轮廓、
-终端、编辑器、Git、浏览器、LSP、常驻与更新）。Casing II：**§2.1-1（Hero sheet 化，`a58e0ad`）与 §2.1-2
-（切容器必 hydrate，`bcd4004`）已提交**；**§2.1.1 F1（Hero 动作就地替换）已完成，工作树未提交**；F2/F3（容器内
-终端/TUI 资源、原生 Pi TUI）与第 3 项起未动工。门禁：`nsh check` ✓、`cargo check --all-targets` ✓、
-`nsh test` 235/235 ✓、`script/bundle-mac.sh` ✓。证据见
+终端、编辑器、Git、浏览器、LSP、常驻与更新）。Casing II：**§2.1-1（`a58e0ad`）、§2.1-2（`bcd4004`）、
+§2.1.1 F1（`4293eb7`）已提交**；F2/F3（容器内终端/TUI 资源、原生 Pi TUI）与第 3 项起未动工。
+门禁：`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 235/235 ✓、`script/bundle-mac.sh` ✓。证据见
 [docs/evidence/s1-hero-sheet.md](docs/evidence/s1-hero-sheet.md)、
 [docs/evidence/s21-2-switch-hydrate.md](docs/evidence/s21-2-switch-hydrate.md)、
-[docs/evidence/s21-1-hero-actions.md](docs/evidence/s21-1-hero-actions.md) 与 `docs/evidence/ui-s2-*.png`；
-下一项是 [§2.1.1 F2](docs/plan.md)。
+[docs/evidence/s21-1-hero-actions.md](docs/evidence/s21-1-hero-actions.md) 与 `docs/evidence/ui-s2-*.png`。
+下一项是 [§2.0 P0-1（模型注册）](docs/plan.md)。2026-11-11 的计划调整：移除顶栏 picker、模型问题升为 P0、
+Composer 接入 pi 斜杆操作、新增代码仓库整洁化并行轨道（[plan §5](docs/plan.md)）。
 
 ## 文档
 

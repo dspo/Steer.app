@@ -1,6 +1,6 @@
 # §2.1.1 Hero 动作的容器内语义（验收反馈）
 
-日期：2026-11-11。F1 已完成，工作树未提交；F2/F3 未动工。`nsh check` ✓、`nsh test` 235/235 ✓、`script/bundle-mac.sh` ✓。
+日期：2026-11-11。F1 已完成并提交（`4293eb7`）；F2/F3 未动工。`nsh check` ✓、`nsh test` 235/235 ✓、`script/bundle-mac.sh` ✓。
 
 三条验收反馈（用户）：
 
