@@ -43,10 +43,14 @@ test("the titlebar picker switches the container and its tab content", async () 
   await app.press("id:session-picker");
   await app.waitUntil(() => app.shows(`id:picker-container-${target.id}`), { timeout: 10000 });
   await app.press(`id:picker-container-${target.id}`);
-  await app.waitUntil(async () => {
+  let active = "";
+  for (let waited = 0; waited < 10000; waited += 100) {
     const list = await request("container.list", {});
-    return list.activeContainerId === target.id;
-  }, { timeout: 10000 });
+    active = list.activeContainerId;
+    if (active === target.id) break;
+    await sleep(100);
+  }
+  expect(active).toBe(target.id);
   // The canvas is the target container's session, not the previously active
   // one: its tab title (the unnamed session's short id) must be present.
   await app.waitUntil(() => app.texts().some((text) => text.includes(firstSession.slice(0, 8))), {

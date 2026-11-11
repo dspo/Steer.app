@@ -42,13 +42,13 @@ class Client {
 
   private constructor(readonly handle: Lsp) {}
 
-  static start(root: string): Client {
+  static start(root: string, command = "rust-analyzer", args: string[] = []): Client {
     // The callbacks can fire before `Lsp.start` returns (a server's stderr
     // usually does), so they write into a holder that is filled immediately
     // after. Nothing the handshake needs can arrive before the request.
     let client: Client | null = null;
     const handle = Lsp.start(
-      { command: "rust-analyzer", args: [], cwd: root },
+      { command, args, cwd: root },
       (message) => {
         if (!client) return;
         let parsed: any;
@@ -348,3 +348,96 @@ test("a missing server and a missing cwd are coded errors, and stop is idempoten
   expect(() => create({ command: "rust-analyzer", args: [], cwd: "" })).toThrow();
   expect(created).toBeNull();
 });
+
+// The same client against the machine's other two servers. Neither is
+// mocked: the fixture is written with `zu/fs`, the handshake is real, and
+// the diagnostic is the server's own.
+async function initializeOn(client: Client, root: string, languageId: string, file: string, text: string) {
+  const canonical = (await Fs.stat(root, ".")).path;
+  const rootUri = pathToUri(canonical);
+  const uri = pathToUri(`${canonical}/${file}`);
+  const initialize = await client.request(
+    "initialize",
+    {
+      processId: null,
+      clientInfo: { name: "Zu M11 test", version: "0.1.0" },
+      rootUri,
+      workspaceFolders: [{ uri: rootUri, name: canonical.split("/").pop() }],
+      capabilities: {
+        textDocument: {
+          synchronization: { didSave: true },
+          hover: { contentFormat: ["markdown", "plaintext"] },
+          definition: { linkSupport: true },
+          completion: { completionItem: { snippetSupport: false } },
+          publishDiagnostics: { relatedInformation: true },
+        },
+        workspace: { configuration: true, workspaceFolders: true },
+      },
+    },
+    90000,
+  );
+  client.notify("initialized", {});
+  client.notify("textDocument/didOpen", { textDocument: { uri, languageId, version: 1, text } });
+  return { initialize, uri };
+}
+
+test("typescript-language-server reports a real type error", async () => {
+  const folder = `zu-m11-ts-${TAG}`;
+  const root = `/tmp/${folder}`;
+  await Fs.mkdir("/tmp", folder);
+  await Fs.write(root, "package.json", '{"name":"zu-m11-ts","private":true}\n', null, null);
+  await Fs.write(
+    root,
+    "tsconfig.json",
+    JSON.stringify({ compilerOptions: { strict: true, target: "ES2020", module: "ESNext", noEmit: true }, include: ["src"] }, null, 2),
+    null,
+    null,
+  );
+  await Fs.mkdir(root, "src");
+  const text = 'const value: number = "not a number";\nexport { value };\n';
+  await Fs.write(root, "src/index.ts", text, null, null);
+
+  const client = Client.start(root, "typescript-language-server", ["--stdio"]);
+  try {
+    // typescript-language-server answers without `serverInfo`; its
+    // capabilities and the diagnostics below are the evidence it is up.
+    const { initialize, uri } = await initializeOn(client, root, "typescript", "src/index.ts", text);
+    expect(!!initialize?.capabilities).toBe(true);
+    await until(
+      "typescript-language-server's diagnostics",
+      () => client.diagnostics.some((params) => params.uri === uri && params.diagnostics.length > 0),
+      120000,
+    );
+    const published = [...client.diagnostics].reverse().find((params) => params.uri === uri)!;
+    const error = published.diagnostics.find((row: any) => row.severity === 1);
+    expect(error).toBeDefined();
+    expect(error.message).toMatch(/not assignable|Type 'string'/);
+  } finally {
+    await client.stop();
+  }
+}, 180000);
+
+test("gopls reports a real type error", async () => {
+  const folder = `zu-m11-go-${TAG}`;
+  const root = `/tmp/${folder}`;
+  await Fs.mkdir("/tmp", folder);
+  await Fs.write(root, "go.mod", "module zum11go\n\ngo 1.21\n", null, null);
+  const text = 'package main\n\nfunc main() {\n\tvar value int = "not a number"\n\t_ = value\n}\n';
+  await Fs.write(root, "main.go", text, null, null);
+
+  const client = Client.start(root, "gopls", []);
+  try {
+    const { uri } = await initializeOn(client, root, "go", "main.go", text);
+    await until(
+      "gopls's diagnostics",
+      () => client.diagnostics.some((params) => params.uri === uri && params.diagnostics.length > 0),
+      150000,
+    );
+    const published = [...client.diagnostics].reverse().find((params) => params.uri === uri)!;
+    const error = published.diagnostics.find((row: any) => row.severity === 1);
+    expect(error).toBeDefined();
+    expect(error.message).toMatch(/cannot use|cannot convert|string/);
+  } finally {
+    await client.stop();
+  }
+}, 240000);

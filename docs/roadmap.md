@@ -197,7 +197,7 @@
 
 ## 13. M10 — 浏览器
 
-> **2026-11-11 已知差距**：`target=_blank` / `window.open` 外开未实现（nsh 0.4.0 没有新窗口回调，也未授予 `openUrl`）；页内链接点击与页内搜索未自动化；headless 没有 web view，真实页面只由 macOS 宿主手工验过 `example.com` 与 DuckDuckGo Lite。 · 实现完成，验收达成一半
+> **2026-11-11 已知差距**：`target=_blank` / `window.open` 现由页前注入脚本转成宿主消息，**在当前 sheet 内导航**（nsh 0.4.0 没有新窗口回调，也未授予 `openUrl`）——脚本与消息契约有单测；页内链接点击与页内搜索仍未自动化；headless 没有 web view，真实页面由 macOS 宿主手工验过 `example.com` 与 DuckDuckGo Lite。 · 实现完成，验收达成一半
 
 > **状态（2026-11-11，`bbfb5ac`）**：实现完成；真实 macOS 宿主上加载了真实网页并跑通前进/后退，
 > 但「链接在 sheet 内或外部打开」只达成 sheet 内一半（原因见下）。
@@ -231,7 +231,7 @@
 
 ## 14. M11 — LSP
 
-> **2026-11-11 已知差距**：真实 server 验收只覆盖 Rust（`rust-analyzer` 的 diagnostics/hover/definition/completion 实跑；TS 与 Go 只映射未实跑）；诊断只保留已打开文件，无全工作区索引；重启或归档不恢复语言服务器。
+> **2026-11-11 已知差距**：三个语言服务器都已实跑——`rust-analyzer`（诊断/hover/定义/补全）、`typescript-language-server --stdio`、`gopls` 各自报告真实类型错误（`lsp.test.ts`）；诊断只保留已打开文件，无全工作区索引；重启或归档不恢复语言服务器。
 
 | 项 | 内容 |
 |---|---|
