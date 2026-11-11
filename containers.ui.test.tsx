@@ -140,13 +140,3 @@ test("archiving removes a container from the sidebar but keeps the data", async 
   expect(app.texts()).toContain("alpha body");
 });
 
-test("the titlebar session picker switches the container and its canvas", async () => {
-  const app = await open("./fixtures/containers.tsx", { width: 1200, height: 800 });
-  await app.waitFor("text:alpha body");
-  await app.press("id:session-picker");
-  await app.waitFor("id:picker-container-c2");
-  await app.press("id:picker-container-c2");
-  await app.waitFor("text:beta body");
-  expect(app.texts()).toContain("beta body");
-  expect(app.texts()).not.toContain("alpha body");
-});

@@ -86,18 +86,6 @@ test("New reaches the scratch canvas from a container, by button and by Cmd+N", 
   await shot(app, "ui-s2-scratch-hero");
 });
 
-test("the centered picker filters containers and switches the canvas", async () => {
-  const app = await open("./fixtures/containers.tsx", { width: 1200, height: 800 });
-  await app.waitFor("text:alpha body");
-  await app.press("id:session-picker");
-  await app.waitFor("id:session-picker-input");
-  await app.type("id:session-picker-input", "Beta");
-  await app.waitFor("id:picker-container-c2");
-  await app.press("id:picker-container-c2");
-  await app.waitFor("text:beta body");
-  expect(app.texts()).toContain("beta body");
-  expect(app.texts()).not.toContain("alpha body");
-});
 
 test("the VS Code action opens the active project's primary root", async () => {
   const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });

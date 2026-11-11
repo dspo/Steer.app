@@ -98,10 +98,6 @@ export const K = {
   titlebar: {
     showSidebar: "app.titlebar.showSidebar",
     hideSidebar: "app.titlebar.hideSidebar",
-    sessionPicker: "app.titlebar.sessionPicker",
-    noSession: "app.titlebar.noSession",
-    pickerPlaceholder: "app.titlebar.pickerPlaceholder",
-    pickerEmpty: "app.titlebar.pickerEmpty",
     openVSCode: "app.titlebar.openVSCode",
     openFailed: "app.titlebar.openFailed",
     noFolder: "app.titlebar.noFolder",

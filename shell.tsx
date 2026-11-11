@@ -43,15 +43,9 @@ import { K, t } from "./i18n";
 import { UIHost, unsupportedMethods } from "./ui-host";
 import { dropBrowserPages, openBrowserSheet } from "./browser";
 import {
-  activeContainer,
-  containerMatches,
-  containerProjectName,
   openActiveInVSCode,
-  pickContainer,
-  pickerCandidates,
-  pickerSessions,
-  sessionMatches,
-} from "./titlebar";
+} from "./vscode";
+import { containerMatches, sessionMatches } from "./search";
 import { Chip, Dot, Glyph, type GlyphName, motionStyle, shadowCard, shadowRaised } from "./ui";
 import { TabBarPlus } from "./tab-plus";
 
@@ -117,9 +111,7 @@ const PHASE_TINT: Record<EnginePhase, string> = {
 /** The titlebar's height: compact, with the traffic lights still centered. */
 const TITLEBAR_HEIGHT = 40;
 /** The picker trigger and its dropdown share this width (Steer's 360). */
-const PICKER_WIDTH = 360;
 /** The picker is the titlebar's main control, so it nearly fills the row. */
-const PICKER_HEIGHT = 30;
 
 // ---------------------------------------------------------------------------
 // Sidebar and titlebar interaction state
@@ -131,8 +123,6 @@ const sidebarFilterOpen = signal(false);
 const sidebarQuery = signal("");
 /** Collapsed project groups, by stable key (the project id, `__chats`). */
 const collapsedGroups = signal<Record<string, boolean>>({});
-const pickerOpen = signal(false);
-const pickerQuery = signal("");
 /** A one-line report from a titlebar action (VS Code refused, no folder). */
 const shellNote = signal<string | null>(null);
 let noteTimer: any = null;
@@ -565,132 +555,6 @@ function Sidebar() {
   );
 }
 
-/** The window-centered session picker: trigger + a searchable recent list. */
-function SessionPicker() {
-  const active = () => activeContainer();
-  // The scratch canvas has no container; the picker still opens the list.
-  const title = () => (active() ? containerTitle(active()!) : t(K.launcher.title));
-  const meta = () => {
-    const container = active();
-    if (!container) return t(K.canvas.scratch);
-    const project = containerProjectName(container);
-    return project ? `${project} · ${shortPath(container.cwd)}` : shortPath(container.cwd);
-  };
-  const candidates = () => pickerCandidates(pickerQuery());
-  return (
-    <Menu
-      open={pickerOpen()}
-      onOpenChange={({ open }) => {
-        pickerOpen.set(open);
-        if (open) pickerQuery.set("");
-      }}
-      align="center"
-      offset={6}
-      popupClass="rounded-xl border border-border bg-popover"
-      popupStyle={{ width: PICKER_WIDTH, padding: 6, boxShadow: shadowRaised() }}
-      trigger={
-        <View
-          role="button"
-          testID="session-picker"
-          accessibilityLabel={t(K.titlebar.sessionPicker)}
-          accessibilityState={{ expanded: pickerOpen(), hasPopup: true }}
-          class="h-8 flex-row items-center gap-1.5 rounded-md border border-border bg-card px-2 hover:bg-hover active:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-          style={{ ...motionStyle("fast") }}
-        >
-          <Glyph name="folder" size={12} tint={token("muted-foreground")} />
-          <View style={{ flex: 1, minWidth: 0, gap: 0 }}>
-            <Text style={{ fontSize: 12, fontWeight: "500", color: token("foreground"), numberOfLines: 1 }}>{title()}</Text>
-          </View>
-          <Text style={{ fontSize: 9.5, color: token("faint"), flexShrink: 1, numberOfLines: 1 }}>{meta()}</Text>
-          <Glyph name="caret-down" size={9} tint={token("faint")} />
-        </View>
-      }
-    >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, height: 28, paddingHorizontal: 8, marginBottom: 4, borderRadius: 8, borderWidth: 1, borderColor: token("border") }}>
-        <Glyph name="search" size={12} tint={token("faint")} />
-        <Input
-          testID="session-picker-input"
-          value={pickerQuery()}
-          onChange={({ value }) => pickerQuery.set(value)}
-          autoFocus
-          placeholder={t(K.titlebar.pickerPlaceholder)}
-          style={{ flex: 1, height: 26, fontSize: 12, color: token("foreground"), placeholderColor: token("faint") }}
-        />
-      </View>
-      <MenuSeparator class="my-1 h-px bg-line" />
-      <If when={candidates().length === 0}>
-        <Text class="px-2 py-2 text-[11.5px] text-faint">{t(K.titlebar.pickerEmpty)}</Text>
-      </If>
-      <Each of={candidates()} key={(container) => container.id}>
-        {(container) => (
-          <MenuItem
-            testID={`picker-container-${container().id}`}
-            accessibilityLabel={`Open container ${containerTitle(container())}`}
-            onSelect={() => {
-              const id = container().id;
-              pickerOpen.set(false);
-              revealContainer(container());
-              void pickContainer(id);
-            }}
-            class="rounded-lg px-2 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 7, minWidth: 0 }}>
-              <View
-                style={{
-                  width: 5,
-                  height: 5,
-                  borderRadius: 3,
-                  backgroundColor: container().id === activeContainerId() ? token("brand") : "transparent",
-                  flexShrink: 0,
-                }}
-              />
-              <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-                <Text style={{ fontSize: 12, fontWeight: "500", color: token("foreground"), numberOfLines: 1 }}>
-                  {containerTitle(container())}
-                </Text>
-                <Text style={{ fontSize: 10, color: token("faint"), numberOfLines: 1 }}>
-                  {[containerProjectName(container()), shortPath(container().cwd)].filter(Boolean).join(" · ")}
-                </Text>
-              </View>
-            </View>
-          </MenuItem>
-        )}
-      </Each>
-      <If when={pickerSessions(pickerQuery()).length > 0}>
-        <MenuSeparator class="my-1 h-px bg-line" />
-        <Text class="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wider text-faint">
-          {t(K.sidebar.sessions)}
-        </Text>
-        <Each of={pickerSessions(pickerQuery())} key={(session) => session.path}>
-          {(session) => (
-            <MenuItem
-              testID={`picker-session-${session().id}`}
-              accessibilityLabel={`Open ${sessionLabel(session())}`}
-              onSelect={() => {
-                pickerOpen.set(false);
-                void openPath(session().path);
-              }}
-              class="rounded-lg px-2 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 7, minWidth: 0 }}>
-                <Glyph name="chat" size={11} tint={token("faint")} />
-                <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-                  <Text style={{ fontSize: 12, fontWeight: "500", color: token("foreground"), numberOfLines: 1 }}>
-                    {sessionLabel(session())}
-                  </Text>
-                  <Text style={{ fontSize: 10, color: token("faint"), numberOfLines: 1 }}>
-                    {shortPath(session().cwd)} · {relative(session().modified)}
-                  </Text>
-                </View>
-              </View>
-            </MenuItem>
-          )}
-        </Each>
-      </If>
-    </Menu>
-  );
-}
-
 /**
  * The engine's inline state: a tinted dot, with words only while it is not
  * the normal connected state. Pressing it retries a stopped or failed
@@ -752,9 +616,7 @@ function TitleBar() {
       style={{ height: TITLEBAR_HEIGHT, flexShrink: 0 }}
       desktop={{ windowDrag: true }}
     >
-      {/* The traffic-light inset lives inside the left wing, not on the row:
-          two equal wings then put the fixed 360 picker exactly on the
-          window's center line (the row's own padding would bias it). */}
+      {/* The traffic-light inset lives inside the left wing, not on the row. */}
       <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}>
         <View style={{ width: padLeft() }} />
         <BarIcon
@@ -765,9 +627,6 @@ function TitleBar() {
           tint={sidebarVisible() ? "foreground" : "muted-foreground"}
           onPress={() => sidebarVisible.set(!sidebarVisible())}
         />
-      </View>
-      <View style={{ width: PICKER_WIDTH, height: PICKER_HEIGHT, flexShrink: 0 }}>
-        <SessionPicker />
       </View>
       <View style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, minWidth: 0 }}>
         <If when={!!recovered()}>

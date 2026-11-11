@@ -8,7 +8,9 @@ test("the shell is a Steer titlebar over the project sidebar, with no status bar
   // The titlebar's own controls: sidebar toggle, centered picker, VS Code,
   // tools overflow. No second row of engine buttons lives up there.
   expect(app.count("id:sidebar-toggle")).toBe(1);
-  expect(app.count("id:session-picker")).toBe(1);
+  // The centered picker is gone (§2.2-10): the titlebar keeps only the
+  // left toggle and the right actions.
+  expect(app.count("id:session-picker")).toBe(0);
   expect(app.count("id:open-vscode")).toBe(1);
   expect(app.count("id:titlebar-tools")).toBe(1);
   // The resting sidebar is Project → SessionContainer; the all-sessions list

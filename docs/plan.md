@@ -14,8 +14,8 @@
 [evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)、
 [evidence/s21-6-system-locale.md](evidence/s21-6-system-locale.md)、
 [evidence/s21-7-auto-archive.md](evidence/s21-7-auto-archive.md) 与 `docs/evidence/ui-s2-*.png`。
-**下一个动作是 §2.2 的第 10 项（移除顶栏 picker）**（8、9 两项已完成，证据
-[evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)、[evidence/s21-3-scratch.md](evidence/s21-3-scratch.md)、[evidence/s21-4-action-matrix.md](evidence/s21-4-action-matrix.md)、[evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)、[evidence/s21-6-system-locale.md](evidence/s21-6-system-locale.md)、[evidence/s21-7-auto-archive.md](evidence/s21-7-auto-archive.md)、[evidence/s22-8-shell.md](evidence/s22-8-shell.md)、[evidence/s22-9-sidebar-drag.md](evidence/s22-9-sidebar-drag.md)）。
+**下一个动作是 §2.2 的第 11 项（composer 仅交互）与 11a（pi 斜杆命令）**（8–10 已完成，证据
+[evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)、[evidence/s21-3-scratch.md](evidence/s21-3-scratch.md)、[evidence/s21-4-action-matrix.md](evidence/s21-4-action-matrix.md)、[evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)、[evidence/s21-6-system-locale.md](evidence/s21-6-system-locale.md)、[evidence/s21-7-auto-archive.md](evidence/s21-7-auto-archive.md)、[evidence/s22-8-shell.md](evidence/s22-8-shell.md)、[evidence/s22-9-sidebar-drag.md](evidence/s22-9-sidebar-drag.md)、[evidence/s22-10-remove-picker.md](evidence/s22-10-remove-picker.md)）。
 开工前读：本文件 §2 → [architecture.md](architecture.md) §4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 →
 [evidence/apis-verified.md](evidence/apis-verified.md)。
 > 架构见 [architecture.md](architecture.md)，视觉规格见 [DESIGN.md](DESIGN.md)，决策台账见 [decisions.md](decisions.md)。
@@ -29,7 +29,7 @@
 | M-0 | P0 可用性：模型注册与无模型界面 | ✅ | §2.0 |
 | M-A | M0–M12 已交付 | ✅ | §1 |
 | M-B | Hero 与画布结构（S1 + S2） | ✅ 1–7 与 F1–F3 全部完成 | §2.1、§2.1.1 |
-| M-C | 一体化外壳与组合（S3） | 🔁 8–9 完成；10–13 待做 | §2.2 |
+| M-C | 一体化外壳与组合（S3） | 🔁 8–10 完成；11–13 待做 | §2.2 |
 | M-D | 细节（图标、拖拽、字体） | ⬜ | §2.3 |
 | M-E | 独立修复 | ⏸ B2 挂起 | §2.4 |
 | M-F | 代码仓库整洁化（并行轨道） | ⬜ | §5 |
@@ -152,6 +152,12 @@
 > （引擎侧钳宽、合并写、原子落盘），`bootShell` 启动读回。证据
 > [evidence/s22-9-sidebar-drag.md](evidence/s22-9-sidebar-drag.md)（`settings.test.ts`
 > 含 live 引擎的读写用例）。
+
+> **第 10 项已完成（2026-11-12）**：顶栏 picker 整体删除（组件、`pickerCandidates`/
+> `pickerSessions`/`pickContainer`/`PICKER_LIMIT`、四个 i18n 键、三个以 picker 为入口的
+> UI 用例）；`titlebar.ts` 按剩余职责拆为 `vscode.ts`（VS Code 动作）与 `search.ts`
+> （侧栏搜索的匹配规则）。顶栏只剩左开关与右侧动作，中心是拖拽区。
+> 证据 [evidence/s22-10-remove-picker.md](evidence/s22-10-remove-picker.md)。
 
 > **F1 已完成（2026-11-11，`4293eb7`）**：`replaceSheet()` 把目标 sheet 放进 Hero 的原槽位并移除 Hero；容器 Hero 的
 > 浏览器、终端/TUI（F2）与 Pi（F3）动作、以及 composer 提交都走它。证据

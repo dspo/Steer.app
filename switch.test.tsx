@@ -40,33 +40,3 @@ test("pressing a container row switches the active container", async () => {
   await app.press("Open container zu-switch-b");
   expect(await untilActive(b.container.id)).toBe(true);
 }, 180000);
-
-
-test("the titlebar picker switches the container and its tab content", async () => {
-  // A second app against the same engine state; the first test's containers
-  // are still there, so pick by explicit id from the engine list.
-  const before = await request("container.list", {});
-  expect(before.containers.length).toBeGreaterThanOrEqual(2);
-  const target = before.containers.find((row: any) => row.cwd.endsWith("/zu-switch-a"));
-  expect(target).toBeDefined();
-  const firstSession = target.sessions[0].sessionId;
-
-  const app = await open("./App.tsx", { network: "live", width: 1280, height: 800 });
-  await app.waitUntil(() => app.texts().includes("zu-switch-a"), { timeout: 60000 });
-  await app.press("id:session-picker");
-  await app.waitUntil(() => app.shows(`id:picker-container-${target.id}`), { timeout: 10000 });
-  await app.press(`id:picker-container-${target.id}`);
-  let active = "";
-  for (let waited = 0; waited < 10000; waited += 100) {
-    const list = await request("container.list", {});
-    active = list.activeContainerId;
-    if (active === target.id) break;
-    await sleep(100);
-  }
-  expect(active).toBe(target.id);
-  // The canvas is the target container's session, not the previously active
-  // one: its tab title (the unnamed session's short id) must be present.
-  await app.waitUntil(() => app.texts().some((text) => text.includes(firstSession.slice(0, 8))), {
-    timeout: 10000,
-  });
-}, 180000);
