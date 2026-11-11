@@ -88,6 +88,7 @@ export const en: Record<string, string> = {
   "app.session.stop": "Stop",
   "app.session.send": "Send",
   "app.session.queue": "Queue",
+  "app.session.more": "More message lanes",
   "app.session.steer": "Steer",
   "app.session.interrupt": "Interrupt",
   "app.session.contextUsage": "Context usage",

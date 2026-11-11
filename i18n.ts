@@ -188,6 +188,7 @@ export const K = {
     stop: "app.session.stop",
     send: "app.session.send",
     queue: "app.session.queue",
+    more: "app.session.more",
     steer: "app.session.steer",
     interrupt: "app.session.interrupt",
     contextUsage: "app.session.contextUsage",

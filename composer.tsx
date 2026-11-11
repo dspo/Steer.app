@@ -5,27 +5,25 @@ import type { SessionModelsReason } from "./contracts/protocol";
 import {
   chooseSessionModel,
   followUp,
-  interrupt,
   loadSessionModels,
   send,
   sessionModels,
-  steer,
   stop,
   viewFor,
 } from "./sessions";
 import { Glyph, motionStyle, shadowRaised, type GlyphName } from "./ui";
 
 /**
- * The composer: a bare, borderless input over one footer row. The message
- * area and the composer share the page background; the only boundary is the
- * hairline the footer owner draws above this component. There is no card,
- * bubble or shadow around it, as in Steer.
+ * The composer: a bare input over one footer row, all right-aligned (DESIGN
+ * §3.6). The hairline above it belongs to the composer and is exactly its
+ * width (`hairline`); the message area and the composer share the page
+ * background — no card, bubble or shadow around it, as in Steer.
  *
- * The footer's left cluster names the session's model and context from
- * `session.info`; its right cluster is the action lane. Idle has one accent
- * send. While a turn runs it has the absolute-priority stop, then the queue
- * (Enter's lane), steer and interrupt — every one a compact chip, none gated
- * by a draft except stop.
+ * The footer names the session's model, thinking level and context, then the
+ * action: idle is one accent send; while a turn runs the same spot is the
+ * stop (absolute — never gated by the draft), and the queue, steer and
+ * interrupt lanes fold into a `⋯` menu whose entries press without acting
+ * (visual-only until the pi wiring lands, §2.2-11).
  */
 
 /** `12.3k`, `1M`, `840`: a token count at a glance. */
@@ -280,8 +278,45 @@ export function ModelPicker(props: { sessionId: string }) {
   );
 }
 
-/** The session composer: input and footer, without the surrounding lane. */
-export function ChatComposer(props: { sessionId: string; autofocus?: boolean }) {
+/** The `⋯` lanes: visual-only entries (§2.2-11 says 不接线). */
+function ComposerMore() {
+  const open = signal(false);
+  const item = "rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent";
+  return (
+    <Menu
+      open={open()}
+      onOpenChange={({ open: next }) => open.set(next)}
+      align="end"
+      offset={6}
+      popupClass="rounded-xl border border-border bg-popover p-1"
+      popupStyle={{ minWidth: 172, boxShadow: shadowRaised() }}
+      trigger={
+        <View
+          role="button"
+          testID="session-more"
+          accessibilityLabel={t(K.session.more)}
+          class="h-6 w-6 items-center justify-center rounded-md hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+          style={{ ...motionStyle("fast") }}
+        >
+          <Glyph name="more" size={12} tint={token("muted-foreground")} />
+        </View>
+      }
+    >
+      <MenuItem testID="session-queue" class={item} onSelect={() => open.set(false)}>
+        <Text class="text-[12px] text-foreground">{t(K.session.queue)}</Text>
+      </MenuItem>
+      <MenuItem testID="session-steer" class={item} onSelect={() => open.set(false)}>
+        <Text class="text-[12px] text-foreground">{t(K.session.steer)}</Text>
+      </MenuItem>
+      <MenuItem testID="session-interrupt" class={item} onSelect={() => open.set(false)}>
+        <Text class="text-[12px] text-foreground">{t(K.session.interrupt)}</Text>
+      </MenuItem>
+    </Menu>
+  );
+}
+
+/** The session composer: input and one right-aligned footer row. */
+export function ChatComposer(props: { sessionId: string; autofocus?: boolean; hairline?: boolean }) {
   const draft = signal("");
   const view = () => viewFor(props.sessionId);
   const streaming = () => view()?.streaming ?? false;
@@ -309,17 +344,20 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean }) 
     if (streaming()) void followUp(text, props.sessionId);
     else void send(text, props.sessionId);
   };
-  const doSteer = () => {
-    if (!canSubmit()) return;
-    void steer(take(), props.sessionId);
-  };
-  const doInterrupt = () => {
-    if (!canSubmit()) return;
-    void interrupt(take(), props.sessionId);
-  };
   const context = () => contextLine(view()?.contextUsage);
   return (
-    <View style={{ width: "100%", maxWidth: 820, alignSelf: "center", gap: 6 }}>
+    <View
+      style={{
+        width: "100%",
+        maxWidth: 820,
+        alignSelf: "center",
+        gap: 6,
+        // The divider is the composer's own, exactly as wide as it is.
+        borderTopWidth: props.hairline ? 1 : 0,
+        borderTopColor: token("line"),
+        paddingTop: props.hairline ? 8 : 0,
+      }}
+    >
       {/* No models is not a dead composer: the input stays, the send waits,
           and the line names the cause with a retry of its own. */}
       <If when={modelsUnavailable()}>
@@ -360,67 +398,47 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean }) 
           borderWidth: 0,
         }}
       />
-      <View class="flex-row items-center gap-2">
-        <View class="min-w-0 flex-row items-center gap-1" style={{ flex: 1 }}>
-          <ModelPicker sessionId={props.sessionId} />
-          <If when={!!context()}>
-            <>
-              <If when={!!view()?.model}>
-                <Text class="text-[11px] text-faint">·</Text>
-              </If>
-              <Text class="text-[11px] text-faint" accessibilityLabel={t(K.session.contextUsage)}>
-                {context()}
-              </Text>
-            </>
-          </If>
-        </View>
-        <View class="flex-row items-center gap-1">
-          <If
-            when={streaming()}
-            else={
-              <ComposerChip
-                testID="session-send"
-                label={t(K.session.send)}
-                glyph="send"
-                primary
-                disabled={!canSubmit()}
-                onPress={submit}
-              />
-            }
-          >
-            {/* Stop is absolute: never gated by the draft. */}
+      {/* One row, everything to the right (DESIGN §3.6): the model and the
+          context gauge, then the `⋯` lanes while a turn runs, then the
+          action — idle's ↑ send and streaming's ■ stop in the same spot. */}
+      <View class="flex-row items-center justify-end gap-2">
+        <ModelPicker sessionId={props.sessionId} />
+        <If when={!!context()}>
+          <>
+            <If when={!!view()?.model}>
+              <Text class="text-[11px] text-faint">·</Text>
+            </If>
+            <Text class="text-[11px] text-faint" accessibilityLabel={t(K.session.contextUsage)}>
+              {context()}
+            </Text>
+          </>
+        </If>
+        <If when={streaming()}>
+          <ComposerMore />
+        </If>
+        <If
+          when={streaming()}
+          else={
             <ComposerChip
-              testID="session-stop"
-              label={t(K.session.stop)}
-              glyph="stop"
-              danger
-              disabled={false}
-              onPress={() => void stop(props.sessionId)}
-            />
-            <ComposerChip
-              testID="session-queue"
-              label={t(K.session.queue)}
+              testID="session-send"
+              label={t(K.session.send)}
               glyph="send"
+              primary
               disabled={!canSubmit()}
               onPress={submit}
             />
-            <ComposerChip
-              testID="session-steer"
-              label={t(K.session.steer)}
-              glyph="branch"
-              disabled={!canSubmit()}
-              onPress={doSteer}
-            />
-            <ComposerChip
-              testID="session-interrupt"
-              label={t(K.session.interrupt)}
-              glyph="alert"
-              danger
-              disabled={!canSubmit()}
-              onPress={doInterrupt}
-            />
-          </If>
-        </View>
+          }
+        >
+          {/* Stop is absolute: never gated by the draft. */}
+          <ComposerChip
+            testID="session-stop"
+            label={t(K.session.stop)}
+            glyph="stop"
+            danger
+            disabled={false}
+            onPress={() => void stop(props.sessionId)}
+          />
+        </If>
       </View>
     </View>
   );

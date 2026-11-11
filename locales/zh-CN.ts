@@ -88,6 +88,7 @@ export const zhCN: Record<string, string> = {
   "app.session.stop": "停止",
   "app.session.send": "发送",
   "app.session.queue": "排队",
+  "app.session.more": "更多消息操作",
   "app.session.steer": "引导",
   "app.session.interrupt": "打断",
   "app.session.contextUsage": "上下文占用",

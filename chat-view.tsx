@@ -217,12 +217,9 @@ export function Conversation(props: { id: string }) {
           />
         )}
       </List>
-      {/* The one hairline between the messages and the composer. */}
-      <View
-        class="border-t border-line bg-background"
-        style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 10 }}
-      >
-        <ChatComposer sessionId={props.id} autofocus />
+      {/* The composer draws its own hairline, exactly its width. */}
+      <View class="bg-background" style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 10 }}>
+        <ChatComposer sessionId={props.id} autofocus hairline />
       </View>
     </View>
   );
