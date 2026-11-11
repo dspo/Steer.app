@@ -1,4 +1,4 @@
-import { reduceMotion, Scroll, Text, token, View } from "nsh";
+import { effect, List, type ListRef, reduceMotion, signal, Text, token, View } from "nsh";
 import { TextView } from "nsh/base";
 import { K, t } from "./i18n";
 import { viewFor } from "./sessions";
@@ -148,51 +148,75 @@ function QuietLine(props: { testID: string; glyph: "stop" | "alert"; text: strin
 }
 
 /** The conversation, with the composer as its footer. */
-function Conversation(props: { id: string }) {
+export function Conversation(props: { id: string }) {
   const view = () => viewFor(props.id);
   const messages = () => view()?.messages ?? [];
   const streaming = () => view()?.streaming ?? false;
   const last = () => messages()[messages().length - 1];
   const waitingForWords = () =>
     streaming() && (!last() || last()?.role !== "assistant" || !last()?.text);
+  let list: ListRef | undefined;
+  /** Whether the view is at the bottom, so new content follows it. */
+  const following = signal(true);
+  let dragging = false;
+
+  // A virtualized list: only the rows near the viewport exist, so a long
+  // transcript costs its visible height, not its whole history. The list
+  // follows the stream while the user stays at the bottom.
+  effect(() => {
+    const count = messages().length;
+    const tail = last()?.text?.length ?? 0;
+    if (following() && (count > 0 || tail > 0)) {
+      queueMicrotask(() => list?.scrollToEnd({ animated: true }));
+    }
+  });
+
+  const footer = (
+    <View style={{ gap: 10 }}>
+      <If when={waitingForWords()}>
+        <View class="flex-row items-center" style={{ height: 22 }}>
+          <Caret />
+        </View>
+      </If>
+      <If when={view()?.interrupted ?? false}>
+        <QuietLine testID="session-interrupted" glyph="stop" text={t(K.session.interrupted)} />
+      </If>
+      <If when={!!view()?.error}>
+        <QuietLine
+          testID="session-error"
+          glyph="alert"
+          text={t(K.session.error, { error: view()?.error ?? "" })}
+        />
+      </If>
+    </View>
+  );
+
   return (
     <View class="flex-1 bg-background" style={{ minHeight: 0 }}>
-      <Scroll
+      <List
         testID="session-transcript"
+        ref={(node) => (list = node)}
+        each={messages()}
+        keyExtractor={(_message, index) => String(index)}
+        estimatedItemSize={120}
         style={{ flex: 1 }}
-        contentStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingVertical: 20 }}
+        contentStyle={{ paddingHorizontal: 24, paddingVertical: 20, gap: 16 }}
+        footer={footer}
+        onScrollDragStart={() => (dragging = true)}
+        onScroll={(event) => {
+          if (!dragging) return;
+          following.set(event.offset.y + event.size.height >= event.contentSize.height - 40);
+        }}
+        onMomentumEnd={() => (dragging = false)}
+        onScrollEnd={() => (dragging = false)}
       >
-        {/* Short histories sit at the bottom, as Steer's ListAlignment::Bottom
-            does; a long one still scrolls normally. */}
-        <View style={{ flexGrow: 1, justifyContent: "flex-end", width: "100%", maxWidth: 820, alignSelf: "center", gap: 16 }}>
-          <Each of={messages()} key="index">
-            {(message, index) => {
-              const isLast = () => index() === messages().length - 1;
-              return (
-                <MessageRow
-                  message={message}
-                  streaming={() => streaming() && isLast() && message().role === "assistant"}
-                />
-              );
-            }}
-          </Each>
-          <If when={waitingForWords()}>
-            <View class="flex-row items-center" style={{ height: 22 }}>
-              <Caret />
-            </View>
-          </If>
-          <If when={view()?.interrupted ?? false}>
-            <QuietLine testID="session-interrupted" glyph="stop" text={t(K.session.interrupted)} />
-          </If>
-          <If when={!!view()?.error}>
-            <QuietLine
-              testID="session-error"
-              glyph="alert"
-              text={t(K.session.error, { error: view()?.error ?? "" })}
-            />
-          </If>
-        </View>
-      </Scroll>
+        {(message, index) => (
+          <MessageRow
+            message={message}
+            streaming={() => streaming() && index() === messages().length - 1 && message().role === "assistant"}
+          />
+        )}
+      </List>
       {/* The one hairline between the messages and the composer. */}
       <View
         class="border-t border-line bg-background"
@@ -212,8 +236,8 @@ function Hero(props: { id: string }) {
       class="flex-1 items-center justify-center bg-background"
       style={{ paddingHorizontal: 24, paddingBottom: 24 }}
     >
-      <View style={{ width: "100%", maxWidth: 720, gap: 18 }}>
-        <Text class="text-[15px] font-bold text-foreground" style={{ textAlign: "center" }}>
+      <View style={{ width: "100%", maxWidth: 720, gap: 20 }}>
+        <Text class="text-[16px] font-black text-foreground" style={{ textAlign: "center" }}>
           {t(K.launcher.title)}
         </Text>
         <ChatComposer sessionId={props.id} autofocus />

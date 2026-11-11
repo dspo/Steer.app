@@ -88,3 +88,12 @@ test("an interrupted or failed turn is a quiet line, not a banner", async () => 
   expect(app.texts().some((text) => text.includes("引擎错误"))).toBe(true);
   expect(app.texts().some((text) => text.includes("引擎已断开"))).toBe(false);
 });
+
+test("a long transcript renders only the rows near the viewport", async () => {
+  const app = await open("./fixtures/chat-long.tsx", { width: 1200, height: 800 });
+  await app.waitFor("text:row 1999");
+  // 2000 messages, but a virtualized list holds a viewport's worth.
+  const rows = app.texts().filter((text) => /^row \d+$/.test(text));
+  expect(rows.length).toBeGreaterThan(0);
+  expect(rows.length).toBeLessThan(200);
+});
