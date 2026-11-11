@@ -25,7 +25,9 @@ import type { TerminalAction } from "./terminals";
 import { homeSheetContainer } from "./dock";
 import { openBrowserSheet } from "./browser";
 import type { ContainerKind, ProjectRecord } from "./contracts/protocol";
+import type { BrandName } from "./brand-icons";
 import { Glyph, motionStyle, shadowDialog, shadowRaised, type GlyphName } from "./ui";
+import { BrandIcon } from "./brand-icons";
 import { pickFolder } from "./picker";
 import {
   addProjectRoot,
@@ -42,10 +44,10 @@ import {
  * container; on the scratch canvas it mints one in the chosen project.
  */
 
-const AGENT_ACTIONS: Array<{ kind: Exclude<ContainerKind, "Pi">; key: keyof typeof K.external; glyph: GlyphName }> = [
-  { kind: "Claude", key: "claude", glyph: "code" },
-  { kind: "Codex", key: "codex", glyph: "gear" },
-  { kind: "Copilot", key: "copilot", glyph: "branch" },
+const AGENT_ACTIONS: Array<{ kind: Exclude<ContainerKind, "Pi">; key: keyof typeof K.external; brand: BrandName }> = [
+  { kind: "Claude", key: "claude", brand: "claude" },
+  { kind: "Codex", key: "codex", brand: "codex" },
+  { kind: "Copilot", key: "copilot", brand: "copilot" },
 ];
 
 const EXTERNAL_GLYPH: Record<Exclude<ContainerKind, "Pi">, GlyphName> = {
@@ -303,7 +305,7 @@ export function HeroSheet(props: { id: string }) {
                   <LauncherTool
                     testID={`external-${value.kind.toLowerCase()}`}
                     label={t(K.external[value.key])}
-                    glyph={value.glyph}
+                    brand={value.brand}
                     disabled={starting() || !readyToCreate() || needsProject()}
                     busy={busy() === value.kind}
                     onPress={() => void startExternal(value.kind)}
@@ -314,7 +316,7 @@ export function HeroSheet(props: { id: string }) {
             <LauncherTool
               testID="launcher-pi"
               label={t(K.external.pi)}
-              glyph="pi"
+              brand="pi"
               disabled={starting() || !readyToCreate() || needsProject()}
               busy={busy() === "pi"}
               onPress={() => void startPi()}
@@ -336,7 +338,8 @@ export function HeroSheet(props: { id: string }) {
 function LauncherTool(props: {
   testID: string;
   label: string;
-  glyph: GlyphName;
+  glyph?: GlyphName;
+  brand?: BrandName;
   disabled?: boolean;
   busy?: boolean;
   onPress: () => void;
@@ -358,7 +361,11 @@ function LauncherTool(props: {
         if (!disabled()) props.onPress();
       }}
     >
-      <Glyph name={props.glyph} size={11} tint={token("faint")} />
+      {props.brand ? (
+        <BrandIcon brand={props.brand} size={13} tint={token("muted-foreground")} />
+      ) : (
+        <Glyph name={props.glyph ?? "file"} size={11} tint={token("faint")} />
+      )}
       <Text class="text-[11.5px] font-medium text-muted-foreground">{props.busy ? "…" : props.label}</Text>
     </View>
   );

@@ -147,6 +147,7 @@ test("the Hero's tools are two left-aligned rows with plain labels", async () =>
   await app.waitFor("text:alpha body");
   await app.press("id:new-container");
   await app.waitFor("text:开始你的对话");
+  await shot(app, "ui-s23-14-brand-icons");
   for (const id of [
     "external-terminal",
     "launcher-browser",
