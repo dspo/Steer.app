@@ -1,19 +1,26 @@
 import { signal } from "nsh";
-import { Pty, type PtyExit } from "zu/native";
+import { Pty } from "zu/native";
 import type { ContainerKind, ContainerRecord } from "./contracts/protocol";
 import { t, K } from "./i18n";
 import { panelIds } from "./dock";
 import type { DockAreaLayout } from "./dock";
 
 /**
- * The external containers' terminals.
+ * A container's terminals.
  *
- * A PTY belongs to an external container, not to a sheet component: switching
- * containers hides a sheet without ending the shell, and `ensureTerminal`
- * keeps one handle per container for the app's lifetime. The component only
- * attaches a sink to it. The native `Pty` owns the process; the handle owns the
- * replay buffer that lets a remounted Terminal rebuild the screen (including
- * the alternate screen a TUI set) after a container switch.
+ * A terminal is a **resource**: a sheet `terminal:{containerId}:{n}`, whose
+ * PTY belongs to the store rather than to the sheet component. Switching
+ * containers hides a sheet without ending the shell; `ensureTerminal` keeps
+ * one handle per resource for the app's lifetime, and the component only
+ * attaches a sink to it. The native `Pty` owns the process; the handle owns
+ * the replay buffer that lets a remounted Terminal rebuild the screen
+ * (including the alternate screen a TUI set) after a container switch.
+ *
+ * A container can hold several: a Pi container's Hero opens a shell and the
+ * agent TUIs side by side, and every one of them is that container's — not a
+ * new sidebar row. The action is remembered per sheet; after a restart (a
+ * PTY never survives one) a restored sheet falls back to its container's
+ * kind: an external container restarts its CLI, a Pi container its shell.
  *
  * Output never goes through the engine wire: `onData` posts from the PTY's
  * reader task straight into this store.
@@ -21,8 +28,13 @@ import type { DockAreaLayout } from "./dock";
 
 /** The most output kept for a remount; a long session keeps the tail. */
 const MAX_REPLAY = 512 * 1024;
-/** A closed external container's PTY is killed; archived ones never reopen. */
-const AGENT_COMMANDS: Partial<Record<ContainerKind, string>> = {
+
+/** What a terminal runs: a plain shell or an agent's native TUI. */
+export type TerminalAction = "shell" | "Pi" | "Claude" | "Codex" | "Copilot";
+
+const ACTION_COMMANDS: Record<TerminalAction, string | null> = {
+  shell: null,
+  Pi: "pi",
   Claude: "claude",
   Codex: "codex",
   Copilot: "copilot",
@@ -37,7 +49,9 @@ export interface TerminalInfo {
 }
 
 export interface TerminalHandle {
+  sheetId: string;
   containerId: string;
+  action: TerminalAction;
   pty?: Pty;
   /** Output since the last attach (a remount replays it). */
   buffer: string;
@@ -46,10 +60,12 @@ export interface TerminalHandle {
   info: TerminalInfo;
 }
 
-/** What the shell shows about a container's terminal (a mirror, not the PTY). */
+/** What the shell shows about a terminal resource (a mirror, not the PTY). */
 export const terminalInfo = signal<Record<string, TerminalInfo>>({});
 
 const handles = new Map<string, TerminalHandle>();
+/** The action each open sheet runs; a restored sheet has no entry. */
+const actions = new Map<string, TerminalAction>();
 
 /**
  * What to do when a program ends on its own. The container store owns the
@@ -65,42 +81,74 @@ export function setProgramExitHandler(handler: ((sheetId: string) => void) | nul
 }
 const refs = new Map<string, { focus: () => void; text: () => Promise<string> }>();
 
-/** The sheet id of an external container's terminal. */
-export function terminalSheetId(containerId: string): string {
-  return `terminal:${containerId}`;
+/** One terminal resource of a container: `terminal:{containerId}:{n}`. */
+export function terminalSheetId(containerId: string, index: number): string {
+  return `terminal:${containerId}:${index}`;
 }
 
-/** The external container a terminal sheet names. */
-export function containerOfTerminalSheet(id: string): string | null {
-  return id.startsWith("terminal:") ? id.slice("terminal:".length) : null;
+/**
+ * The container and index a terminal sheet names. A sheet written before
+ * terminals were resources (`terminal:{containerId}`) is resource 1.
+ */
+export function terminalResource(sheetId: string): { containerId: string; index: number } | null {
+  if (!sheetId.startsWith("terminal:")) return null;
+  const rest = sheetId.slice("terminal:".length);
+  const at = rest.lastIndexOf(":");
+  const tail = at >= 0 ? rest.slice(at + 1) : "";
+  if (at >= 0 && /^\d+$/.test(tail)) return { containerId: rest.slice(0, at), index: Number(tail) };
+  return { containerId: rest, index: 1 };
+}
+
+/** The container a terminal sheet belongs to, or `null` for another kind. */
+export function terminalSheetContainer(sheetId: string): string | null {
+  return terminalResource(sheetId)?.containerId ?? null;
+}
+
+/** The action a terminal sheet runs, if the shell opened it this run. */
+export function terminalAction(sheetId: string): TerminalAction | undefined {
+  return actions.get(sheetId);
+}
+
+/** Records what a sheet runs (the Hero's action, before the sheet mounts). */
+export function registerTerminal(sheetId: string, action: TerminalAction): void {
+  actions.set(sheetId, action);
+}
+
+/** The action a container kind's own terminal runs by default. */
+export function defaultAction(kind: ContainerKind): TerminalAction {
+  if (kind === "Pi" || kind === "Terminal") return "shell";
+  return kind;
+}
+
+/** The action's label in the shell's language. */
+export function terminalActionLabel(action: TerminalAction): string {
+  switch (action) {
+    case "Pi":
+      return t(K.external.pi);
+    case "Claude":
+      return t(K.external.claude);
+    case "Codex":
+      return t(K.external.codex);
+    case "Copilot":
+      return t(K.external.copilot);
+    default:
+      return t(K.external.terminal);
+  }
 }
 
 function publish(handle: TerminalHandle): void {
-  terminalInfo.set({ ...terminalInfo(), [handle.containerId]: { ...handle.info } });
+  terminalInfo.set({ ...terminalInfo(), [handle.sheetId]: { ...handle.info } });
 }
 
-function seedTitle(container: ContainerRecord): string {
-  const label = t(K.external[container.kind === "Pi" ? "terminal" : kindKey(container.kind)]);
+function seedTitle(container: ContainerRecord, action: TerminalAction): string {
+  const label = terminalActionLabel(action);
   const folder = container.cwd.split("/").filter(Boolean).slice(-1)[0];
   return folder ? `${label} · ${folder}` : label;
 }
 
-function kindKey(kind: ContainerKind): keyof typeof K.external {
-  switch (kind) {
-    case "Claude":
-      return "claude";
-    case "Codex":
-      return "codex";
-    case "Copilot":
-      return "copilot";
-    default:
-      return "terminal";
-  }
-}
-
 /** The external kind's label in the shell's language. */
 export function externalKindLabel(kind: ContainerKind): string {
-  return kind === "Pi" ? t(K.external.terminal) : t(K.external[kindKey(kind)]);
+  return terminalActionLabel(defaultAction(kind));
 }
 
 function append(handle: TerminalHandle, data: string): void {
@@ -119,29 +167,38 @@ function append(handle: TerminalHandle, data: string): void {
 }
 
 /**
- * The container's PTY, started on first use. A failed start stays in
+ * A terminal resource's PTY, started on first use. A failed start stays in
  * `terminalInfo` as an error; `restartTerminal` tries again.
  */
-export function ensureTerminal(container: ContainerRecord): TerminalHandle {
-  const existing = handles.get(container.id);
+export function ensureTerminal(sheetId: string, container: ContainerRecord): TerminalHandle {
+  const existing = handles.get(sheetId);
   if (existing) return existing;
+  const action = actions.get(sheetId) ?? defaultAction(container.kind);
   const handle: TerminalHandle = {
+    sheetId,
     containerId: container.id,
+    action,
     buffer: "",
     truncated: false,
-    info: { title: seedTitle(container), running: false, exitCode: null, exitSignal: null, error: null },
+    info: { title: seedTitle(container, action), running: false, exitCode: null, exitSignal: null, error: null },
   };
-  handles.set(container.id, handle);
+  handles.set(sheetId, handle);
   try {
     const pty = Pty.open(
       {
-        command: AGENT_COMMANDS[container.kind] ?? null,
+        command: ACTION_COMMANDS[action],
         cwd: container.cwd,
         cols: 80,
         rows: 24,
       },
-      (data) => append(handle, data),
+      // A closed sheet's PTY still reports its death; that is not news the
+      // shell should see, and republishing it would put the entry back.
+      (data) => {
+        if (handles.get(sheetId) !== handle) return;
+        append(handle, data);
+      },
       (exit) => {
+        if (handles.get(sheetId) !== handle) return;
         const running = handle.info.running;
         handle.info = {
           ...handle.info,
@@ -150,11 +207,12 @@ export function ensureTerminal(container: ContainerRecord): TerminalHandle {
           exitSignal: exit.signal ?? null,
         };
         publish(handle);
-        // Only a program that was running and ended by itself: closing the
-        // sheet first sets `running` false, so a user's close is not echoed.
-        if (running && container.kind !== "Pi") {
-          onProgramExit?.(terminalSheetId(container.id));
-        }
+        // A program that was running and ended by itself: closing the sheet
+        // first sets `running` false, so a user's close is not echoed. A
+        // shell in a Pi container is a place to work and stays (with its
+        // restart action); every other exit takes the sheet with it.
+        const stays = action === "shell" && container.kind === "Pi";
+        if (running && !stays) onProgramExit?.(sheetId);
       },
     );
     handle.pty = pty;
@@ -175,11 +233,8 @@ export function ensureTerminal(container: ContainerRecord): TerminalHandle {
  * live chunks. `reset` says the buffer starts after dropped output, so the
  * emulator must clear before taking it.
  */
-export function attachTerminal(
-  containerId: string,
-  sink: (data: string) => void,
-): { buffer: string; reset: boolean } {
-  const handle = handles.get(containerId);
+export function attachTerminal(sheetId: string, sink: (data: string) => void): { buffer: string; reset: boolean } {
+  const handle = handles.get(sheetId);
   if (!handle) return { buffer: "", reset: false };
   handle.sink = sink;
   const replay = handle.buffer;
@@ -190,53 +245,54 @@ export function attachTerminal(
 }
 
 /** Stops sending output to a Terminal that is going away; the PTY stays. */
-export function detachTerminal(containerId: string): void {
-  const handle = handles.get(containerId);
+export function detachTerminal(sheetId: string): void {
+  const handle = handles.get(sheetId);
   if (handle) handle.sink = undefined;
-  refs.delete(containerId);
+  refs.delete(sheetId);
 }
 
 /** Registers the mounted Terminal so activating its tab can focus it. */
 export function bindTerminalRef(
-  containerId: string,
+  sheetId: string,
   ref: { focus: () => void; text: () => Promise<string> } | undefined,
 ): void {
-  if (ref) refs.set(containerId, ref);
-  else refs.delete(containerId);
+  if (ref) refs.set(sheetId, ref);
+  else refs.delete(sheetId);
 }
 
-/** Focuses the terminal of a container whose tab became active. */
-export function focusTerminal(containerId: string): void {
-  refs.get(containerId)?.focus();
+/** Focuses the terminal of a sheet whose tab became active. */
+export function focusTerminal(sheetId: string): void {
+  refs.get(sheetId)?.focus();
 }
 
-/** The mounted Terminal of a container (tests read its screen). */
-export function terminalRef(containerId: string): { focus: () => void; text: () => Promise<string> } | undefined {
-  return refs.get(containerId);
+/** The mounted Terminal of a sheet (tests read its screen). */
+export function terminalRef(sheetId: string): { focus: () => void; text: () => Promise<string> } | undefined {
+  return refs.get(sheetId);
 }
 
 /** The PTY's last reported cell size, `null` before it exists. */
-export function terminalSize(containerId: string): [number, number] | null {
-  const pty = handles.get(containerId)?.pty;
+export function terminalSize(sheetId: string): [number, number] | null {
+  const pty = handles.get(sheetId)?.pty;
   if (!pty) return null;
   const [cols, rows] = pty.size;
   return [cols, rows];
 }
 
 /** The program's title, as the emulator last heard it (OSC 0/2). */
-export function setTerminalTitle(containerId: string, title: string): void {
-  const handle = handles.get(containerId);
+export function setTerminalTitle(sheetId: string, title: string): void {
+  const handle = handles.get(sheetId);
   if (!handle || !title.trim() || handle.info.title === title) return;
   handle.info = { ...handle.info, title };
   publish(handle);
 }
 
-/** Kills the PTY and forgets the handle (archive, or the tab closed). */
-export function closeTerminal(containerId: string): void {
-  const handle = handles.get(containerId);
+/** Kills a terminal's PTY and forgets the handle (archive, or the tab closed). */
+export function closeTerminal(sheetId: string): void {
+  const handle = handles.get(sheetId);
+  actions.delete(sheetId);
   if (!handle) return;
-  handles.delete(containerId);
-  refs.delete(containerId);
+  handles.delete(sheetId);
+  refs.delete(sheetId);
   handle.sink = undefined;
   try {
     handle.pty?.close();
@@ -245,29 +301,36 @@ export function closeTerminal(containerId: string): void {
     // A PTY that already ended has nothing to close.
   }
   const next = { ...terminalInfo() };
-  delete next[containerId];
+  delete next[sheetId];
   terminalInfo.set(next);
 }
 
+/** Kills every terminal a container holds (archive takes them all). */
+export function closeTerminalsOfContainer(containerId: string): void {
+  for (const [sheetId, handle] of [...handles]) {
+    if (handle.containerId === containerId) closeTerminal(sheetId);
+  }
+}
+
 /** Stops the program and starts a fresh one (the exited state's action). */
-export function restartTerminal(container: ContainerRecord): TerminalHandle {
-  closeTerminal(container.id);
-  return ensureTerminal(container);
+export function restartTerminal(sheetId: string, container: ContainerRecord): TerminalHandle {
+  closeTerminal(sheetId);
+  return ensureTerminal(sheetId, container);
 }
 
 /**
  * Keeps the store honest after a layout edit: a terminal sheet the user closed
  * takes its PTY with it. Container switches do not call this (they replace the
- * layout wholesale and must keep the hidden container's PTY alive).
+ * layout wholesale and must keep the hidden container's PTYs alive).
  */
 export function reconcileTerminals(layout: DockAreaLayout): void {
   const open = new Set(panelIds(layout));
-  for (const containerId of [...handles.keys()]) {
-    if (!open.has(terminalSheetId(containerId))) closeTerminal(containerId);
+  for (const sheetId of [...handles.keys()]) {
+    if (!open.has(sheetId)) closeTerminal(sheetId);
   }
 }
 
-/** The tab title for a terminal sheet, once its container exists. */
-export function terminalTitle(containerId: string): string | null {
-  return terminalInfo()[containerId]?.title ?? null;
+/** The tab title for a terminal sheet, once its PTY has a title. */
+export function terminalTitle(sheetId: string): string | null {
+  return terminalInfo()[sheetId]?.title ?? null;
 }

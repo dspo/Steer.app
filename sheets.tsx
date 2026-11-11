@@ -8,12 +8,16 @@ import { closeSheet, containers } from "./containers";
 import {
   attachTerminal,
   bindTerminalRef,
+  defaultAction,
   detachTerminal,
   ensureTerminal,
   externalKindLabel,
   restartTerminal,
   setTerminalTitle,
+  terminalAction,
+  terminalActionLabel,
   terminalInfo,
+  terminalSheetContainer,
   terminalTitle,
 } from "./terminals";
 import { K, t } from "./i18n";
@@ -106,9 +110,9 @@ export function sheetTitle(id: string): string {
   if (kind === "subagents") return t(K.subagents.title);
   if (kind === "terminal") {
     if (!instance) return t(K.sheet.terminalTitle);
-    const live = terminalTitle(instance);
+    const live = terminalTitle(id);
     if (live) return live;
-    const container = containers().find((row) => row.id === instance);
+    const container = containers().find((row) => row.id === terminalSheetContainer(id));
     return container ? externalKindLabel(container.kind) : t(K.sheet.terminalTitle);
   }
   if (kind === "webview") return browserTabTitle(id);
@@ -171,7 +175,7 @@ export function SheetBody(props: { id: string }) {
   if (kind === "home") return <HeroSheet id={props.id} />;
   if (kind === "session") return <SessionBody id={instance || "pending"} sheetId={props.id} />;
   if (kind === "subagents") return <SubagentsBody containerId={instance} />;
-  if (kind === "terminal") return <TerminalBody containerId={instance} />;
+  if (kind === "terminal") return <TerminalBody id={props.id} />;
   if (kind === "webview") return <BrowserBody id={props.id} />;
   if (kind === "files") return <FilesBody containerId={instance} />;
   if (kind === "changes") return <ChangesBody containerId={instance} />;
@@ -201,9 +205,11 @@ export function SheetBody(props: { id: string }) {
 }
 
 /**
- * A real terminal: the external container's PTY, drawn by `nsh/base`'s
- * `Terminal` (its `VtEmulator`). Bytes go straight from `zu/native` to the
- * emulator; the sheet never sees the engine wire.
+ * A real terminal: one terminal resource of a container, drawn by
+ * `nsh/base`'s `Terminal` (its `VtEmulator`). Bytes go straight from
+ * `zu/native` to the emulator; the sheet never sees the engine wire. A
+ * container holds several (`terminal:{containerId}:{n}`): a shell beside an
+ * agent's TUI is two sheets of one container, not two sidebar rows.
  *
  * The `Terminal` stays mounted while its tab is hidden: the emulator must
  * keep the alternate screen and scrollback a TUI set, and the base
@@ -213,12 +219,17 @@ export function SheetBody(props: { id: string }) {
  * supported "keep the emulator, skip its paint" hook to add beyond that, so
  * the emulator is never paused; hiding a tab costs no PTY work.
  */
-export function TerminalBody(props: { containerId: string }) {
-  const container = () => containers().find((row) => row.id === props.containerId);
-  const info = () => terminalInfo()[props.containerId];
-  const sheetId = () => `terminal:${props.containerId}`;
-  const visible = () => visiblePanels().includes(sheetId());
-  const handle = container() ? ensureTerminal(container()!) : undefined;
+export function TerminalBody(props: { id: string }) {
+  const containerId = () => terminalSheetContainer(props.id) ?? "";
+  const container = () => containers().find((row) => row.id === containerId());
+  const info = () => terminalInfo()[props.id];
+  const visible = () => visiblePanels().includes(props.id);
+  const action = () => terminalAction(props.id) ?? defaultAction(container()!.kind);
+  // The handle exists before the emulator binds (it replays the buffer), and
+  // a sheet still mounted for the frame after its container was archived
+  // must not restart a PTY the archive just ended.
+  const handle =
+    container() && !container()!.archived ? ensureTerminal(props.id, container()!) : undefined;
   let term: TerminalRef | undefined;
 
   // A TUI agent's process is the sheet: when it exits, its tab goes with it.
@@ -227,20 +238,20 @@ export function TerminalBody(props: { containerId: string }) {
   effect(() => {
     const current = info();
     if (current && !current.running && current.exitCode !== null) {
-      closeSheet(sheetId());
+      closeSheet(props.id);
     }
   });
 
   // The sheet going away (a closed tab, a project switch that drops the
   // container) detaches the Terminal without killing the shell: the store
   // decides, through archive and metadata reconciliation, when it dies.
-  cleanup(() => detachTerminal(props.containerId));
+  cleanup(() => detachTerminal(props.id));
 
   const bind = (ref: TerminalRef | undefined) => {
     term = ref;
-    bindTerminalRef(props.containerId, ref);
+    bindTerminalRef(props.id, ref);
     if (!ref) return;
-    const replay = attachTerminal(props.containerId, (data) => {
+    const replay = attachTerminal(props.id, (data) => {
       try {
         ref.write(data);
       } catch {
@@ -255,12 +266,12 @@ export function TerminalBody(props: { containerId: string }) {
   const restart = () => {
     const row = container();
     if (!row) return;
-    restartTerminal(row);
+    restartTerminal(props.id, row);
     if (!term) return;
     // Reattach the existing emulator to the new PTY: reset first, then the
     // store's live sink replaces the old one.
     term.reset();
-    const replay = attachTerminal(row.id, (data) => {
+    const replay = attachTerminal(props.id, (data) => {
       try {
         term?.write(data);
       } catch {
@@ -275,7 +286,7 @@ export function TerminalBody(props: { containerId: string }) {
     return (
       <View class="flex-1 items-center justify-center gap-1 bg-card">
         <Text class="text-[12px] text-muted-foreground">{t(K.external.terminal)}</Text>
-        <Text class="text-[11px] font-mono text-faint">{props.containerId}</Text>
+        <Text class="text-[11px] font-mono text-faint">{props.id}</Text>
       </View>
     );
   }
@@ -310,7 +321,7 @@ export function TerminalBody(props: { containerId: string }) {
         scrollback={5000}
         fontSize={13}
         lineHeight={18}
-        accessibilityLabel={externalKindLabel(container()!.kind)}
+        accessibilityLabel={terminalActionLabel(action())}
         cursorClass="bg-foreground/50"
         class="flex-1 bg-background px-2 py-1.5"
         onData={({ data }) => {
@@ -328,7 +339,7 @@ export function TerminalBody(props: { containerId: string }) {
             // The program ended between the layout and the resize.
           }
         }}
-        onTitleChange={({ title }) => setTerminalTitle(props.containerId, title)}
+        onTitleChange={({ title }) => setTerminalTitle(props.id, title)}
       />
       <If when={!running()}>
         <View class="flex-row items-center gap-2 border-t border-line bg-inset px-3 py-1.5">

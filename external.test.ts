@@ -72,7 +72,7 @@ test("an external container's layout and project membership persist across a res
   expect(external.container.cwd).toBe("/tmp");
   expect(external.container.projectId).toBe(projects.project.id);
 
-  const layout = { center: { type: "tabs", panels: [`terminal:${external.container.id}`], activeIndex: 0 } };
+  const layout = { center: { type: "tabs", panels: [`terminal:${external.container.id}:1`], activeIndex: 0 } };
   await request("layout.put", { containerId: external.container.id, layout, zoom: null }, 10000);
 
   // A second external kind is a different container even in the same project
@@ -96,7 +96,7 @@ test("an external container's layout and project membership persist across a res
 test("archiving an external container keeps its record and restores it", async () => {
   const list = await request("container.list", {}, 10000);
   const target = list.containers.find((row: any) => row.kind === "Terminal");
-  const layout = { center: { type: "tabs", panels: [`terminal:${target.id}`], activeIndex: 0 } };
+  const layout = { center: { type: "tabs", panels: [`terminal:${target.id}:1`], activeIndex: 0 } };
   await request("layout.put", { containerId: target.id, layout, zoom: null }, 10000);
   const archived = await request("container.archive", { containerId: target.id }, 30000);
   expect(archived.containers.find((row: any) => row.id === target.id)?.archived).toBe(true);

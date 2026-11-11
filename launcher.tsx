@@ -17,9 +17,10 @@ import {
   containersLoaded,
   createContainer,
   createExternalContainer,
-  showContainerSession,
+  openTerminalSheet,
   startInContainer,
 } from "./containers";
+import type { TerminalAction } from "./terminals";
 import { homeSheetContainer } from "./dock";
 import { openBrowserSheet } from "./browser";
 import type { ContainerKind, ProjectRecord } from "./contracts/protocol";
@@ -51,6 +52,14 @@ const EXTERNAL_GLYPH: Record<Exclude<ContainerKind, "Pi">, GlyphName> = {
   Claude: "code",
   Codex: "gear",
   Copilot: "branch",
+};
+
+/** What a container Hero's external action runs: the kind's own CLI. */
+const EXTERNAL_ACTION: Record<Exclude<ContainerKind, "Pi">, TerminalAction> = {
+  Terminal: "shell",
+  Claude: "Claude",
+  Codex: "Codex",
+  Copilot: "Copilot",
 };
 
 /**
@@ -104,11 +113,20 @@ export function HeroSheet(props: { id: string }) {
   });
   const startExternal = async (kind: Exclude<ContainerKind, "Pi">) => {
     if (busy() || !readyToCreate()) return;
+    const id = containerId();
+    // In a container, the shell or TUI is a terminal resource of *that*
+    // container: the Hero's tab becomes the terminal's and the sidebar keeps
+    // one row. The scratch canvas has no container to hold one, so it still
+    // mints an external one (the project chip's target, §2.1-3).
+    if (id) {
+      openTerminalSheet(id, EXTERNAL_ACTION[kind], props.id);
+      return;
+    }
     busy.set(kind);
     try {
-      const id = await createExternalContainer(kind, projectOf());
+      const created = await createExternalContainer(kind, projectOf());
       // The new container's canvas takes over; the Hero stays its tab.
-      if (id) await loadProjects();
+      if (created) await loadProjects();
     } finally {
       busy.set(null);
     }
@@ -116,9 +134,11 @@ export function HeroSheet(props: { id: string }) {
   const startPi = async () => {
     if (busy() || !readyToCreate()) return;
     const id = containerId();
-    if (id && hostsPi()) {
-      // Inside a Pi container, Pi is its captain session: bring that sheet up.
-      await showContainerSession(id, props.id);
+    // In a container, Pi is the native CLI as a terminal resource of *that*
+    // container (F3): the Hero's tab becomes the TUI's, and the Zu session
+    // stays exactly where it was. Only the composer starts a Zu session.
+    if (id) {
+      openTerminalSheet(id, "Pi", props.id);
       return;
     }
     busy.set("pi");

@@ -136,9 +136,10 @@
 | Q79 | scratch 画布 | **临时画布**：kind `Scratch`，无 cwd/进程/注册表/持久化；Hero 带项目 chip；提交后铸真实容器并迁移 sheet；未提交则暂存 | arch §4.2 |
 | Q80 | 归档动效 | 侧栏行高度 + 透明度 180ms 退场，同组其余行平滑上移 | design §3.8 |
 | Q81 | 模型注册表归属与「无模型」的表达 | **引擎级一个 `ModelRuntime`，启动时显式创建**，每个会话共用并 `await` 它；`session.models` 默认读它的 snapshot，`refresh: true` 才重新做 pi 的 auth 检查（snapshot 为空时总是重新检查），所以登录 provider 后无需重启。空列表必须带 `reason`（`no_catalog`/`no_credentials`/`no_models`/`unavailable`），菜单说原因而不是空列表；pi 的 `unknown/unknown` 占位模型不出现在 `session.info`——`model` 缺失即「无模型」。composer 此时保留输入、只停住发送，给说明与重试 | `engine/src/server.ts`、`contracts/protocol.md`、`sessions.ts`、`composer.tsx`、`src/lib.rs`（`setAgentDir`，测试专用）；evidence/s20-models.md |
+| Q82 | 容器内的终端与 Pi TUI | **终端是容器的资源**：sheet `terminal:{containerId}:{n}`，PTY 按资源 id 记账（`terminalInfo`/attach/close 同键）；容器 Hero 的 Terminal/Claude/Codex/Copilot/Pi 都在本容器开资源并就地替换 Hero，不新建容器（scratch 仍铸 external 容器，待 §2.1-3）；归档先更新注册表再杀该容器全部 PTY，终端移除后 PTY 的 exit 回调不得写回 `terminalInfo`。**Pi 动作 = 原生 `pi` CLI 的 TUI**，Zu 会话只由 composer/`session:{id}` 承担。重启后资源没有"跑什么"的记忆，按容器 kind 取默认 | `terminals.ts`、`containers.ts`、`launcher.tsx`、`sheets.tsx`；arch §5.4；evidence/s211-f2f3-container-terminals.md |
 
 ## 决策编号说明
 
-- Q1–Q81 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（Q56/§3.6 的 `zu/fs`）、git 执行与根/路径边界（Q58/§3.6 的 `zu/git`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）、浏览器的能力/链接策略与非可见降级（Q61/Q62/§4.3）、LSP 的传输/全文同步/语言映射（Q64/§3.6）、单实例锁与关窗/托盘/通知策略（Q65/Q66/§4.6）、更新源缺失时的诚实状态与发布配置（Q67/§3.7）、模型注册表的归属与「无模型」的表达（Q81）。
+- Q1–Q82 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（Q56/§3.6 的 `zu/fs`）、git 执行与根/路径边界（Q58/§3.6 的 `zu/git`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）、浏览器的能力/链接策略与非可见降级（Q61/Q62/§4.3）、LSP 的传输/全文同步/语言映射（Q64/§3.6）、单实例锁与关窗/托盘/通知策略（Q65/Q66/§4.6）、更新源缺失时的诚实状态与发布配置（Q67/§3.7）、模型注册表的归属与「无模型」的表达（Q81）、容器内终端资源与 Pi TUI（Q82）。
 - 原 engine/ui/domain 三份文档里的 E/U 编号已废弃，统一并入本表。
 - 已完成的和下一批工作见 [plan.md](plan.md)；条件性里程碑（M-tty / M-arch / M-web）的触发条件也记在那里。

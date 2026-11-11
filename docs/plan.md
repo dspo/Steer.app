@@ -4,11 +4,12 @@
 
 **当前进度（2026-11-11）**：§2.1-1（`a58e0ad`）、§2.1-2（`bcd4004`）、§2.1.1 F1（`4293eb7`）已提交；
 §2.0 的 P0-1 / P0-2（模型注册与无模型界面）已完成，证据见 [evidence/s20-models.md](evidence/s20-models.md)；
-四条调整已并入（`b1f4937`）。门禁全绿（`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 237/237 ✓、
+四条调整已并入（`b1f4937`）。门禁全绿（`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 241/241 ✓、
 `script/bundle-mac.sh` ✓），证据见 [evidence/s1-hero-sheet.md](evidence/s1-hero-sheet.md)、
 [evidence/s21-2-switch-hydrate.md](evidence/s21-2-switch-hydrate.md)、
-[evidence/s21-1-hero-actions.md](evidence/s21-1-hero-actions.md) 与 `docs/evidence/ui-s2-*.png`。
-**下一个动作是 §2.1.1 的 F2（容器内终端/TUI 资源）**，随后 F3（原生 Pi TUI），再进第 3 项（scratch 画布）。
+[evidence/s21-1-hero-actions.md](evidence/s21-1-hero-actions.md)、
+[evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md) 与 `docs/evidence/ui-s2-*.png`。
+**下一个动作是 §2.1 的第 3 项（scratch 画布）**（F2/F3 已完成，证据 [evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)）。
 开工前读：本文件 §2 → [architecture.md](architecture.md) §4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 →
 [evidence/apis-verified.md](evidence/apis-verified.md)。
 > 架构见 [architecture.md](architecture.md)，视觉规格见 [DESIGN.md](DESIGN.md)，决策台账见 [decisions.md](decisions.md)。
@@ -21,7 +22,7 @@
 |---|---|---|---|
 | M-0 | P0 可用性：模型注册与无模型界面 | ✅ | §2.0 |
 | M-A | M0–M12 已交付 | ✅ | §1 |
-| M-B | Hero 与画布结构（S1 + S2） | 🔁 1–3 完成；F2/F3 与第 3–7 项待做 | §2.1、§2.1.1 |
+| M-B | Hero 与画布结构（S1 + S2） | 🔁 1–2 与 F1–F3 完成；第 3–7 项待做 | §2.1、§2.1.1 |
 | M-C | 一体化外壳与组合（S3） | ⬜ | §2.2 |
 | M-D | 细节（图标、拖拽、字体） | ⬜ | §2.3 |
 | M-E | 独立修复 | ⏸ B2 挂起 | §2.4 |
@@ -97,6 +98,12 @@
 | F3 | Pi TUI 与 Zu 会话分离 | Hero 的 Pi 动作 = 原生 `pi` CLI 的 TUI，开成 F2 的终端资源；Zu 会话仍由 composer / `session:{sessionId}` sheet 承担，且 Hero 的 Pi 动作不聚焦已打开的会话。scratch 的 Hero 先按第 3 项铸容器，再在容器内开 TUI。 | Pi 容器 Hero 点 Pi：出现原生 pi TUI 的终端 tab，Zu 会话 sheet 不变；用 composer 才进入 Zu 会话 |
 
 **边界**：F2 只管**容器 Hero**。scratch 没有容器，动作仍按第 3 项先铸容器；"侧栏/Launcher 直接拉起的终端 = 独立 external 容器"（architecture §5.3）对 scratch 仍成立，铸哪种容器在第 3 项定稿。
+
+> **F2 / F3 已完成（2026-11-11）**：终端改成容器内的资源（`terminal:{containerId}:{n}`，PTY 按资源 id
+> 记账），容器 Hero 的 Terminal/Claude/Codex/Copilot/Pi 都在本容器开终端 sheet 并就地替换 Hero，
+> 侧栏行数不变；归档先更新注册表再杀该容器全部 PTY。Pi 动作是原生 `pi` CLI 的 TUI，Zu 会话只由
+> composer 进入。证据 [evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)
+> （`hero-terminals.ui.test.tsx` 两条验收 + `terminals.test.ts`）；决策 [decisions.md](decisions.md) Q82。
 
 > **F1 已完成（2026-11-11，`4293eb7`）**：`replaceSheet()` 把目标 sheet 放进 Hero 的原槽位并移除 Hero；容器 Hero 的
 > 浏览器动作与 composer 提交都走它（“Pi”/会话动作暂时到 `showContainerSession`，F3 会改成原生 TUI）。

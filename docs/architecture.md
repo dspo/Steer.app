@@ -189,7 +189,7 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 ### 4.3 布局与状态
 
 - 布局是**纯数据**：app 持有 `DockAreaLayout`，`onLayoutChange` 回报整份新布局传回。
-- **sheet 身份 = 稳定 id**（`kind:instance`，如 `home:{containerId}`、`home:scratch`、`session:{sessionId}`、`terminal:{containerId}`、`files:{containerId}`、`editor:{containerId}:{base64url path}`、`diff:{containerId}:{base64url old~new}`、`webview:{containerId}:{n}`、`problems:{containerId}`）；布局树只存 id，内容由 `sheets.tsx` 注册表解析。编辑器的未保存文本存在 `editors.ts` 的 store 里（不随 sheet 卸载丢失），M8 起布局 stash/restore 与容器切换都能恢复同一个文件。浏览器页的 URL/标题/loading/error/消息日志存在 `browser.ts` 的 store（内存态）：切容器或隐藏页签后保留，重挂载时按 URL 重新加载；页面运行时状态（滚动、表单、SPA 内存）会丢。应用重启只恢复 `webview:*` 页签 id，store 为空，因此是新标签页（§5.5）。
+- **sheet 身份 = 稳定 id**（`kind:instance`，如 `home:{containerId}`、`home:scratch`、`session:{sessionId}`、`terminal:{containerId}:{n}`、`files:{containerId}`、`editor:{containerId}:{base64url path}`、`diff:{containerId}:{base64url old~new}`、`webview:{containerId}:{n}`、`problems:{containerId}`）；布局树只存 id，内容由 `sheets.tsx` 注册表解析。编辑器的未保存文本存在 `editors.ts` 的 store 里（不随 sheet 卸载丢失），M8 起布局 stash/restore 与容器切换都能恢复同一个文件。浏览器页的 URL/标题/loading/error/消息日志存在 `browser.ts` 的 store（内存态）：切容器或隐藏页签后保留，重挂载时按 URL 重新加载；页面运行时状态（滚动、表单、SPA 内存）会丢。应用重启只恢复 `webview:*` 页签 id，store 为空，因此是新标签页（§5.5）。
 - **按容器 stash**：`layouts/{containerId}.json`；zoom **不在 `DockAreaLayout` 里**（它是内部 signal + `onZoomChange` 事件），要单独存，恢复后用 ref 的 `groupOf`/`toggleZoom` 灌回。`onLayoutChange` 高频，debounce 后保存；切容器前先 flush，恢复时先离开现有 zoom 再按 panel id 找 group 灌回。布局与 zoom 的读写经 `layout.get/put`，UI 仍不持文件系统。
 - **启动恢复上次活跃容器**；恢复时**静默移除**指向已死资源的 sheet，并对同 id 的重复 sheet 去重（旧布局可能带重复）。
   顺序固定为 `container.list` → 切容器（`container.show` + `layout.get` + hydrate）→ `session.list`：画布不等全量会话索引，

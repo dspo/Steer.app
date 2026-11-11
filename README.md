@@ -8,14 +8,15 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 
 **当前状态（as of 2026-11-11）**：M0–M12 已交付（地基、对话、契约与监督、容器与面板、项目与 Launcher、子代理、轮廓、
 终端、编辑器、Git、浏览器、LSP、常驻与更新）。Casing II：**§2.1-1（`a58e0ad`）、§2.1-2（`bcd4004`）、
-§2.1.1 F1（`4293eb7`）已提交**；**§2.0 的 P0-1/P0-2 已完成**（引擎级模型注册表、无模型界面）；
-F2/F3（容器内终端/TUI 资源、原生 Pi TUI）与第 3 项起未动工。
-门禁：`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 237/237 ✓、`script/bundle-mac.sh` ✓。证据见
+§2.1.1 F1（`4293eb7`）已提交**；**§2.0 的 P0-1/P0-2 已完成**（引擎级模型注册表、无模型界面），
+**§2.1.1 F2/F3 已完成**（容器内终端资源、原生 Pi TUI）；第 3 项起未动工。
+门禁：`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 241/241 ✓、`script/bundle-mac.sh` ✓。证据见
 [docs/evidence/s1-hero-sheet.md](docs/evidence/s1-hero-sheet.md)、
 [docs/evidence/s21-2-switch-hydrate.md](docs/evidence/s21-2-switch-hydrate.md)、
 [docs/evidence/s21-1-hero-actions.md](docs/evidence/s21-1-hero-actions.md)、
-[docs/evidence/s20-models.md](docs/evidence/s20-models.md) 与 `docs/evidence/ui-s2-*.png`。
-下一项是 [§2.1.1 F2（容器内终端/TUI 资源）](docs/plan.md)。2026-11-11 的计划调整：移除顶栏 picker、模型问题升为 P0、
+[docs/evidence/s20-models.md](docs/evidence/s20-models.md)、
+[docs/evidence/s211-f2f3-container-terminals.md](docs/evidence/s211-f2f3-container-terminals.md) 与 `docs/evidence/ui-s2-*.png`。
+下一项是 [§2.1 第 3 项（scratch 画布）](docs/plan.md)。2026-11-11 的计划调整：移除顶栏 picker、模型问题升为 P0、
 Composer 接入 pi 斜杆操作、新增代码仓库整洁化并行轨道（[plan §5](docs/plan.md)）。
 
 ## 文档
@@ -66,13 +67,13 @@ Composer 接入 pi 斜杆操作、新增代码仓库整洁化并行轨道（[pla
 | `src/lsp.rs` | The native `Lsp` class: argv/explicit cwd/no shell, process group, bounded `Content-Length` framing, reader/writer/stderr/waiter threads, `Callback::post`, stop/drop cleanup, coded errors |
 | `file-tree.ts` | Pure file-tree data: sorting, expanded rows, row test ids, sheet-id helpers |
 | `sessions.ts` | Per-session views: folds engine events by session id, rebuilds from a snapshot, reopens by file |
-| `terminals.ts` | PTY store: one `Pty` per external container, replay buffer, title/exit mirror, archive close |
+| `terminals.ts` | PTY store: one `Pty` per terminal resource (`terminal:{containerId}:{n}`, several per container), replay buffer, title/exit mirror, archive close |
 | `src/pty.rs` | The native `Pty` class: `portable-pty` open/write/resize/close, reader/writer/waiter threads, `Callback::post` |
 | `src/fs.rs` | The native `zu/fs` module: path policy, caps, atomic write, BOM, stale check, coded errors |
 | `src/git.rs` | The native `zu/git` module: porcelain v2 status, patch diffs, log, branches, stage/unstage, commit, checkout; root and path policy, coded errors |
 | `ui.tsx` | Canvas glyphs、`Logo`、`Dot`/`Chip`/`SectionTitle`、motion/阴影 token、`applyScrollbarTheme` |
 | `theme.json` | Design tokens (shadcn-style, light + dark) via `nsh.json` `"theme"` |
-| Tests | `App.test.tsx`、`containers.test.ts`、`containers.ui.test.tsx`、`dock.test.ts`、`dock-move.test.tsx`、`contracts.test.ts`、`i18n.test.ts`、`many-sessions.test.tsx`、`projects.test.ts`、`projects.ui.test.tsx`、`subagents.test.ts`、`subagents.ui.test.tsx`、`ui-host.test.tsx`、`external.test.ts`、`external.ui.test.tsx`、`pty.test.ts`、`terminal.ui.test.tsx`、`terminal.claude.test.tsx`、`engine.test.ts`（live）、`fs.test.ts`、`file-tree.test.ts`、`files.ui.test.tsx`、`git.test.ts`、`git.ui.test.tsx`、`browser.test.ts`、`browser.ui.test.tsx`、`browser.live.test.tsx`、`lsp.test.ts`（真实 rust-analyzer）、`lsp.ui.test.tsx`（受控 LSP + 真实 Workbench）、`notifications.test.ts`、`updates.test.ts`、`updates.ui.test.tsx`、`lifecycle.test.ts`、`lifecycle.ui.test.tsx`、`lifecycle.window.test.tsx`、`lifecycle.quit.test.tsx`、`lifecycle.app.test.tsx`、`tab-plus.test.ts`、`models.ui.test.tsx`、`startup.test.tsx`（`nsh test` 计 237/237，含 44 条 Rust 单测） |
+| Tests | `App.test.tsx`、`containers.test.ts`、`containers.ui.test.tsx`、`dock.test.ts`、`dock-move.test.tsx`、`contracts.test.ts`、`i18n.test.ts`、`many-sessions.test.tsx`、`projects.test.ts`、`projects.ui.test.tsx`、`subagents.test.ts`、`subagents.ui.test.tsx`、`ui-host.test.tsx`、`external.test.ts`、`external.ui.test.tsx`、`pty.test.ts`、`terminal.ui.test.tsx`、`terminal.claude.test.tsx`、`engine.test.ts`（live）、`fs.test.ts`、`file-tree.test.ts`、`files.ui.test.tsx`、`git.test.ts`、`git.ui.test.tsx`、`browser.test.ts`、`browser.ui.test.tsx`、`browser.live.test.tsx`、`lsp.test.ts`（真实 rust-analyzer）、`lsp.ui.test.tsx`（受控 LSP + 真实 Workbench）、`notifications.test.ts`、`updates.test.ts`、`updates.ui.test.tsx`、`lifecycle.test.ts`、`lifecycle.ui.test.tsx`、`lifecycle.window.test.tsx`、`lifecycle.quit.test.tsx`、`lifecycle.app.test.tsx`、`tab-plus.test.ts`、`models.ui.test.tsx`、`terminals.test.ts`、`hero-terminals.ui.test.tsx`、`startup.test.tsx`（`nsh test` 计 241/241，含 44 条 Rust 单测） |
 
 交互全部来自 `nsh/base DockArea`：拖 sheet 到另一 panel（移动且状态不丢）、拖到组边缘分栏、拖手缩放、`×` 关闭、Zoom、<600pt compact。
 唯一的例外是每组标题栏右端的 `+`：0.4.0 的 tab bar 没有尾部插槽，`tab-plus.tsx` 按布局几何把它画成覆盖层（见

@@ -36,14 +36,18 @@ import {
 } from "./sessions";
 import { stopLspContainer } from "./lsp";
 import {
-  closeTerminal,
-  containerOfTerminalSheet,
+  closeTerminalsOfContainer,
   externalKindLabel,
   focusTerminal,
   reconcileTerminals,
+  registerTerminal,
+  terminalInfo,
+  terminalResource,
+  terminalSheetContainer,
   terminalSheetId,
   terminalTitle,
   setProgramExitHandler,
+  type TerminalAction,
 } from "./terminals";
 
 /**
@@ -128,8 +132,8 @@ export function liveContainers(): ContainerRecord[] {
   return containersByRecency();
 }
 
-/** A container's label: its captain's session title, an external TUI's
- * terminal title, else the kind and cwd. */
+/** A container's label: its captain's session title, a terminal's title,
+ * else the kind and cwd. */
 export function containerTitle(container: ContainerRecord): string {
   const folder = container.cwd.split("/").filter(Boolean).slice(-1)[0] ?? "";
   // A container is a place to work, so its own name wins over its captain's:
@@ -140,18 +144,18 @@ export function containerTitle(container: ContainerRecord): string {
   const namedIsTitle = named && named !== captain?.sessionId?.slice(0, 8);
   if (namedIsTitle) return named;
   if (container.kind !== "Pi") {
-    const title = terminalTitle(container.id);
+    const title = terminalTitle(terminalSheetId(container.id, 1));
     if (title) return title;
     return externalKindLabel(container.kind);
   }
   return folder || container.id.slice(0, 8);
 }
 
-/** The canvas of a new or not-yet-stashed container: a terminal for an
+/** The canvas of a new or not-yet-stashed container: its own terminal for an
  * external one, one sheet per session otherwise. */
 export function defaultLayoutForContainer(container: ContainerRecord): DockAreaLayout {
   if (container.kind !== "Pi") {
-    return { center: { type: "tabs", panels: [terminalSheetId(container.id)], activeIndex: 0 } };
+    return { center: { type: "tabs", panels: [terminalSheetId(container.id, 1)], activeIndex: 0 } };
   }
   return defaultLayoutForSessions(container.sessions.map((session) => session.sessionId));
 }
@@ -371,13 +375,16 @@ export async function archiveContainer(id: string): Promise<void> {
   const ticket = takeCanvasTicket();
   try {
     const data = (await transport("container.archive", { containerId: id }, 30000)) as ContainerListData;
-    // An external container is its process: archiving kills the PTY before
-    // the canvas switches away (the handle is not tied to the sheet).
-    closeTerminal(id);
+    // The registry first, then the processes: a terminal sheet still mounted
+    // for one frame must see its container archived and not restart a PTY.
+    containers.set(data.containers ?? []);
+    // An external container is its process: archiving kills its PTY before
+    // the canvas switches away. A Pi container's terminals (the Hero's shell
+    // and TUIs) go with it too — the container is their only home.
+    closeTerminalsOfContainer(id);
     // Language servers belong to the workspace too; archiving ends them and
     // clears their diagnostics, so a dead container leaves no process behind.
     stopLspContainer(id);
-    containers.set(data.containers ?? []);
     if (activeContainerId() === id) {
       savedFor = null;
       const next = data.activeContainerId;
@@ -541,6 +548,35 @@ export function openFilesSheet(containerId: string | null = activeContainerId())
   setLayout(appendSheet(layout(), id));
 }
 
+/** The next free terminal resource number in a container. */
+function nextTerminalIndex(containerId: string): number {
+  let max = 0;
+  for (const id of [...panelIds(layout()), ...Object.keys(terminalInfo())]) {
+    const resource = terminalResource(id);
+    if (resource && resource.containerId === containerId) max = Math.max(max, resource.index);
+  }
+  return max + 1;
+}
+
+/**
+ * Opens a terminal resource in a container: a plain shell, an agent's TUI or
+ * the native `pi` TUI. The container is the terminal's home — a Pi container
+ * holding a shell beside a TUI is one sidebar row with several tabs — and a
+ * Hero's action replaces the Hero sheet with it (`fromSheet`).
+ */
+export function openTerminalSheet(
+  containerId: string,
+  action: TerminalAction,
+  fromSheet?: string,
+): string | null {
+  const container = containers().find((row) => row.id === containerId);
+  if (!container || activeContainerId() !== containerId) return null;
+  const sheetId = terminalSheetId(containerId, nextTerminalIndex(containerId));
+  registerTerminal(sheetId, action);
+  setLayout(fromSheet ? replaceSheet(layout(), fromSheet, sheetId) : appendSheet(layout(), sheetId));
+  return sheetId;
+}
+
 export function setZoom(panel: string | null): void {
   zoomedPanel.set(panel);
   syncVisible();
@@ -550,9 +586,8 @@ export function setZoom(panel: string | null): void {
 /** A panel became the displayed tab: focus and hydrate its session. */
 export function onPanelActive(panel: string, active: boolean): void {
   if (!active) return;
-  const terminalId = containerOfTerminalSheet(panel);
-  if (terminalId) {
-    focusTerminal(terminalId);
+  if (terminalSheetContainer(panel)) {
+    focusTerminal(panel);
     return;
   }
   const sessionId = sessionIdOfSheet(panel);
