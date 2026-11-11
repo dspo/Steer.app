@@ -51,6 +51,7 @@ import {
   openActiveInVSCode,
   pickContainer,
   pickerCandidates,
+  pickerSessions,
   sessionMatches,
 } from "./titlebar";
 import { Chip, Dot, Glyph, type GlyphName, motionStyle, shadowCard, shadowRaised } from "./ui";
@@ -740,6 +741,37 @@ function SessionPicker() {
           </MenuItem>
         )}
       </Each>
+      <If when={pickerSessions(pickerQuery()).length > 0}>
+        <MenuSeparator class="my-1 h-px bg-line" />
+        <Text class="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wider text-faint">
+          {t(K.sidebar.sessions)}
+        </Text>
+        <Each of={pickerSessions(pickerQuery())} key={(session) => session.path}>
+          {(session) => (
+            <MenuItem
+              testID={`picker-session-${session().id}`}
+              accessibilityLabel={`Open ${sessionLabel(session())}`}
+              onSelect={() => {
+                pickerOpen.set(false);
+                void openPath(session().path);
+              }}
+              class="rounded-lg px-2 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 7, minWidth: 0 }}>
+                <Glyph name="chat" size={11} tint={token("faint")} />
+                <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+                  <Text style={{ fontSize: 12, fontWeight: "500", color: token("foreground"), numberOfLines: 1 }}>
+                    {sessionLabel(session())}
+                  </Text>
+                  <Text style={{ fontSize: 10, color: token("faint"), numberOfLines: 1 }}>
+                    {shortPath(session().cwd)} · {relative(session().modified)}
+                  </Text>
+                </View>
+              </View>
+            </MenuItem>
+          )}
+        </Each>
+      </If>
     </Menu>
   );
 }

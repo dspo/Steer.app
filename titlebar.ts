@@ -7,7 +7,7 @@ import {
   switchContainer,
 } from "./containers";
 import { containerProject, projects } from "./projects";
-import { focusSession, type SessionMeta } from "./sessions";
+import { focusSession, sessions, type SessionMeta } from "./sessions";
 
 /**
  * The titlebar's data side: the session picker's candidates, the "open in
@@ -52,6 +52,18 @@ export function sessionMatches(session: SessionMeta, query: string): boolean {
 export function pickerCandidates(query = ""): ContainerRecord[] {
   return liveContainers()
     .filter((container) => containerMatches(container, query))
+    .slice(0, PICKER_LIMIT);
+}
+
+/** The picker's session rows: recent openable sessions matching `query`. */
+export function pickerSessions(query = ""): SessionMeta[] {
+  const term = query.trim().toLowerCase();
+  return sessions()
+    .filter((session) => {
+      if (!term) return true;
+      const faces = [session.name, session.preview, session.cwd, session.path];
+      return faces.some((face) => (face ?? "").toLowerCase().includes(term));
+    })
     .slice(0, PICKER_LIMIT);
 }
 
