@@ -146,6 +146,25 @@ Hero 的两排动作使用各 CLI 的品牌图标（24pt 光学尺寸）：
 
 ## 4. 表面语言
 
+### 4.1 动作可用性矩阵
+
+三种画布上下文下，每个动作是否可用，以及它在容器内的语义（§2.1.1 是行
+Terminal/Claude/Codex/Copilot/Pi 的定义来源）：
+
+| 动作 | 容器内 | scratch + 项目 | scratch 无项目 |
+|---|---|---|---|
+| 浏览器（Hero、顶栏） | ✓ 在该容器开 `webview:{containerId}:{n}` | ✓ 开 `webview:scratch:{n}`，铸容器时随迁 | ✓ 同左 |
+| 终端 / Claude / Codex / Copilot | ✓ 该容器的终端资源 `terminal:{containerId}:{n}`（F2） | ✓ 先铸容器再接：external 容器（"进程即容器"） | ✗ 先选项目 |
+| Pi | ✓ 原生 `pi` CLI 的终端资源（F3），不动 Zu 会话 | ✓ 先铸 Pi 容器，再在其中开 TUI | ✗ 先选项目 |
+| composer | ✓ 该容器的 captain 会话 | ✓ 铸 Pi 容器并把首条消息发进去 | ✓ 铸 Chats 容器（聊天是合法目标） |
+| 文件 / 更改 / 历史 / 问题（顶栏 ⋯） | ✓ | ✗ 需要容器：先提交 composer 或选一个动作 | ✗ 同左 |
+| 项目 chip | 只显示归属，不可改 | ✓ 选项目 / Chats / 新建项目 | ✓ 同左 |
+
+"scratch 无项目"指 chip 停在 Chats：可以开始一段 Chats 对话，但铸工作区的动作
+（终端/TUI）要求先选项目，避免把进程绑到一个任意目录。禁用不是隐藏：按钮仍在位，
+只是 `opacity-40`，读屏与 tooltip 仍说明它是哪个动作。
+
+
 - **行**：透明底；hover `bg-hover`；pressed `bg-accent/60`；选中 `bg-card` + `shadowCard()` +
   文字 600。hover 时行尾菜单/归档从 `opacity-0` 进到 1（120ms），同一条命令也在菜单和
   键盘路径上。

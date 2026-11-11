@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, expect, open, test } from "nsh/test";
 import { Engine } from "zu/native";
+import { connect, request } from "./engine";
 
 // The shell's external-container path: the Hero's action row creates a
 // real Terminal container, the canvas shows its terminal sheet with no
@@ -23,6 +24,19 @@ afterAll(async () => {
   Engine.setNoExtensions(false);
 });
 
+/**
+ * The Hero's tools that mint a workspace need a project (DESIGN §4.1), so
+ * each case gives the scratch canvas one and picks it from the chip.
+ */
+async function pickProject(app: any): Promise<void> {
+  await connect();
+  const made = await request("project.create", { name: "M7", roots: [{ path: "/tmp", primary: true }] }, 20000);
+  await app.waitFor("id:launcher-input", { timeout: 20000 });
+  await app.press("id:launcher-project");
+  await app.waitFor(`id:launcher-project-${made.project.id}`, { timeout: 20000 });
+  await app.press(`id:launcher-project-${made.project.id}`);
+}
+
 test("the Hero opens an external terminal container without a composer", async () => {
   const app = await open("./App.tsx", { network: "live", width: 1200, height: 800 });
   await app.waitFor("label:运行中", { timeout: 20000 });
@@ -31,6 +45,7 @@ test("the Hero opens an external terminal container without a composer", async (
   await app.waitFor("id:external-terminal");
   expect(app.texts()).toContain("开始");
   await app.waitFor("id:tab-plus-home:scratch");
+  await pickProject(app);
   await app.waitUntil(() => app.enabled("id:external-terminal"), { timeout: 20000 });
   await app.press("id:external-terminal");
   // The terminal sheet, titled by the container's kind and cwd, takes the
@@ -55,6 +70,7 @@ test("a terminal's own exit takes the last sheet, and the Hero brings it back", 
   const app = await open("./App.tsx", { network: "live", width: 1200, height: 800 });
   await app.waitFor("label:运行中", { timeout: 20000 });
   await app.waitFor("id:external-terminal");
+  await pickProject(app);
   await app.waitUntil(() => app.enabled("id:external-terminal"), { timeout: 20000 });
   await app.press("id:external-terminal");
   await app.waitFor("id:terminal-view", { timeout: 20000 });
@@ -76,6 +92,7 @@ test("an external kind keeps its kind label in the shell's language", async () =
   await app.press("id:titlebar-tools");
   await app.press("id:language");
   await app.waitFor("id:external-terminal");
+  await pickProject(app);
   await app.waitUntil(() => app.enabled("id:external-terminal"), { timeout: 20000 });
   // English: the first tool row and the created row both use the English copy.
   expect(app.texts()).toContain("Terminal");

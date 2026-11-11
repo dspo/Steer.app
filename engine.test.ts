@@ -6,6 +6,7 @@ import {
   activeId,
   activePath,
   createSession,
+  error as sessionError,
   interrupted,
   messages,
   openSession,
@@ -541,9 +542,18 @@ test("a steer reaches the running turn and the queue reports it", async () => {
     // A live model's first token is the one wait this suite cannot make
     // deterministic: under a loaded machine it can take a minute, and a
     // tight budget turns that into a false failure (C5).
-    for (let waited = 0; waited < 90000; waited += 50) {
+    let waited = 0;
+    for (; waited < 90000; waited += 50) {
       if (streaming() && messages().some((message) => message.role === "assistant" && message.text.length > 0)) break;
       await sleep(50);
+    }
+    if (!streaming()) {
+      // A turn that ended before its first token is a model/provider failure,
+      // not a steering result: say which one instead of "false !== true".
+      const rows = messages().map((message) => `${message.role}:${message.text.length}`).join(" ");
+      throw new Error(
+        `the turn ended after ${waited} ms; error=${sessionError() ?? lastError() ?? "none"} rows=[${rows}] interrupted=${interrupted()}`,
+      );
     }
     expect(streaming()).toBe(true);
     const reply = await request("session.steer", { sessionId: id, text: "Stop counting and reply with exactly: STEERED" });

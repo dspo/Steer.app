@@ -256,3 +256,65 @@ test("the scratch canvas holds a browser page and moves it into the container it
   // The container belongs to Project Two: the picked chip is the mint's target.
   expect(state.project).toBe("p2");
 }, 60000);
+
+// DESIGN §4.1's action availability matrix, one case per canvas context. The
+// Hero's tools and the titlebar's ⋯ menu are the two action surfaces; a
+// disabled row stays in place (it is not hidden), so its label is readable.
+
+type Pressable = { press: (selector: string) => Promise<void>; waitFor: (selector: string, options?: { timeout?: number }) => Promise<void> };
+
+async function titlebarTools(app: Pressable): Promise<void> {
+  await app.press("id:titlebar-tools");
+  await app.waitFor("id:open-files");
+}
+
+test("a container's Hero and titlebar offer every action", async () => {
+  const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
+  await app.waitFor("text:alpha body");
+  // The container's Hero (the tab bar's `+`): every tool is live, and so are
+  // the workspace sheets in the titlebar.
+  await app.press("id:tab-plus-session:s1");
+  await app.waitFor("id:launcher-input");
+  for (const id of ["external-terminal", "launcher-browser", "external-claude", "launcher-pi"]) {
+    expect(app.enabled(`id:${id}`)).toBe(true);
+  }
+  await titlebarTools(app);
+  for (const id of ["open-files", "open-changes", "open-history", "open-problems", "open-browser"]) {
+    expect(app.enabled(`id:${id}`)).toBe(true);
+  }
+});
+
+test("a scratch canvas with a project offers the actions but not the workspace sheets", async () => {
+  const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
+  await app.waitFor("text:alpha body");
+  await app.press("id:new-container");
+  await app.waitFor("id:launcher-input");
+  await app.press("id:launcher-project");
+  await app.waitFor("id:launcher-project-p1");
+  await app.press("id:launcher-project-p1");
+  for (const id of ["external-terminal", "launcher-browser", "launcher-pi"]) {
+    expect(app.enabled(`id:${id}`)).toBe(true);
+  }
+  await titlebarTools(app);
+  for (const id of ["open-files", "open-changes", "open-history", "open-problems"]) {
+    expect(app.enabled(`id:${id}`)).toBe(false);
+  }
+  expect(app.enabled("id:open-browser")).toBe(true);
+});
+
+test("a scratch canvas without a project keeps the browser and the chip", async () => {
+  const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
+  await app.waitFor("text:alpha body");
+  // New starts on Chats: no workspace target, so the minting tools wait for
+  // a project; the browser and the chip still work.
+  await app.press("id:new-container");
+  await app.waitFor("id:launcher-input");
+  expect(app.enabled("id:launcher-browser")).toBe(true);
+  expect(app.enabled("id:launcher-project")).toBe(true);
+  for (const id of ["external-terminal", "external-claude", "launcher-pi"]) {
+    expect(app.enabled(`id:${id}`)).toBe(false);
+  }
+  await titlebarTools(app);
+  expect(app.enabled("id:open-files")).toBe(false);
+  expect(app.enabled("id:open-browser")).toBe(true);
+});

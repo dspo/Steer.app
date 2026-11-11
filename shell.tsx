@@ -782,7 +782,9 @@ function TitleBar() {
           <MenuItem testID="open-files" disabled={!hasContainer()} class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => openFilesSheet()}>
             <Text class="text-[12px] text-foreground">{t(K.files.title)}</Text>
           </MenuItem>
-          <MenuItem testID="open-browser" disabled={!hasContainer()} class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => openBrowserSheet()}>
+          {/* The browser is the one sheet a canvas without a container can
+              hold (DESIGN §4.1); the rest name a workspace. */}
+          <MenuItem testID="open-browser" class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => openBrowserSheet()}>
             <Text class="text-[12px] text-foreground">{t(K.browser.open)}</Text>
           </MenuItem>
           <MenuItem testID="open-changes" disabled={!hasContainer()} class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => openChangesSheet()}>

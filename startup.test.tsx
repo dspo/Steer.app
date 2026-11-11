@@ -51,9 +51,16 @@ test("startup shows the registry's active container and hydrates its conversatio
 }, 240000);
 
 test("the scratch Hero's Pi and agent actions open their sheets", async () => {
+  // The Hero's minting tools need a project (DESIGN §4.1); this case is
+  // about the sheets they produce, so give the scratch canvas one.
+  await connect();
+  const made = await request("project.create", { name: "S21", roots: [{ path: "/tmp", primary: true }] }, 20000);
   const app = await open("./App.tsx", { network: "live", width: 1280, height: 800 });
   await app.waitFor("label:运行中", { timeout: 20000 });
   await app.waitFor("id:launcher-pi", { timeout: 20000 });
+  await app.press("id:launcher-project");
+  await app.waitFor(`id:launcher-project-${made.project.id}`, { timeout: 20000 });
+  await app.press(`id:launcher-project-${made.project.id}`);
   await app.waitUntil(() => app.enabled("id:launcher-pi"), { timeout: 20000 });
 
   // Pi: the native `pi` CLI, opened as a terminal of the container the
@@ -63,7 +70,8 @@ test("the scratch Hero's Pi and agent actions open their sheets", async () => {
   expect(app.texts().some((text) => text.startsWith("Pi · "))).toBe(true);
   expect(app.shows("id:launcher-input")).toBe(false);
 
-  // Each TUI action leaves the scratch canvas for its terminal sheet.
+  // Each TUI action leaves the scratch canvas for its terminal sheet. New
+  // starts on Chats (no project), so each pass picks the project again.
   for (const [tool, label] of [
     ["external-claude", "Claude Code"],
     ["external-codex", "Codex"],
@@ -71,6 +79,9 @@ test("the scratch Hero's Pi and agent actions open their sheets", async () => {
   ] as const) {
     await app.press("id:new-container");
     await app.waitFor("id:launcher-input", { timeout: 20000 });
+    await app.press("id:launcher-project");
+    await app.waitFor(`id:launcher-project-${made.project.id}`, { timeout: 20000 });
+    await app.press(`id:launcher-project-${made.project.id}`);
     await app.press(`id:${tool}`);
     await app.waitUntil(() => app.shows("id:terminal-view"), { timeout: 30000 });
     expect(app.shows("id:launcher-input")).toBe(false);

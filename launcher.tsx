@@ -94,6 +94,9 @@ export function HeroSheet(props: { id: string }) {
   // create (the load's empty-state reset would win). A store that already
   // holds rows is past that point; fixtures seed it directly.
   const readyToCreate = () => !scratch() || containersLoaded() || containers().length > 0;
+  // DESIGN §4.1: on the scratch canvas an action that mints a workspace needs
+  // a project first; only the browser and the chip work without one.
+  const needsProject = () => scratch() && heroProjectId() === null;
   const canStart = () => draft().trim().length > 0 && !starting() && readyToCreate();
   const submit = () => {
     if (!canStart()) return;
@@ -280,7 +283,7 @@ export function HeroSheet(props: { id: string }) {
               testID="external-terminal"
               label={t(K.external.terminal)}
               glyph={EXTERNAL_GLYPH.Terminal}
-              disabled={starting() || !readyToCreate()}
+              disabled={starting() || !readyToCreate() || needsProject()}
               busy={busy() === "Terminal"}
               onPress={() => void startExternal("Terminal")}
             />
@@ -301,7 +304,7 @@ export function HeroSheet(props: { id: string }) {
                     testID={`external-${value.kind.toLowerCase()}`}
                     label={t(K.external[value.key])}
                     glyph={value.glyph}
-                    disabled={starting() || !readyToCreate()}
+                    disabled={starting() || !readyToCreate() || needsProject()}
                     busy={busy() === value.kind}
                     onPress={() => void startExternal(value.kind)}
                   />
@@ -312,7 +315,7 @@ export function HeroSheet(props: { id: string }) {
               testID="launcher-pi"
               label={t(K.external.pi)}
               glyph="pi"
-              disabled={starting() || !readyToCreate()}
+              disabled={starting() || !readyToCreate() || needsProject()}
               busy={busy() === "pi"}
               onPress={() => void startPi()}
             />
