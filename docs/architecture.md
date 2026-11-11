@@ -177,6 +177,8 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 - **画布 = 一个容器，或一个临时画布**：侧栏一行 = 一个容器 = 一组面板的入口；切换行 = stash 当前布局 + restore 目标布局。多窗口不在设计中。M4 的侧栏按 Project → 容器分组，无归属容器落 Chats；「全部会话」用虚拟化 `List` 放在底部，打开会话即归入当前容器。
 - **没有"页面状态"**：Hero 也是 sheet（`home:{containerId}` 容器内、`home:scratch` 临时画布），画布永远只渲染 sheet 树。旧的 `launcherOpen` 页面布尔已删除——它与容器状态是两份真相，正是"切容器停在起始页"这类错位的来源。
 - **scratch 画布**：kind `Scratch`，无 cwd、无进程、不进注册表、不持久化。它是"未发生任何行为的画布"：Hero 带项目 chip，提交 composer 或选一个动作后铸真实容器并切换；scratch 里开的浏览器 sheet 随容器迁移，未提交则暂存（只保留一份 scratch）。
+- **Hero 的动作**：在容器里，动作开在**该容器**（浏览器 sheet、终端/TUI 资源），并把 Hero 自身从这组 tab 里**就地替换**掉（先插入目标 sheet，再关 Hero），不留下一个 Hero 与目标并排；在 scratch 里，动作先按 scratch 的规则铸容器。Hero 的 Pi 动作是原生 `pi` CLI 的 TUI（一个终端资源），Zu 会话是 `session:{sessionId}` sheet，两者不互相代替：composer 进 Zu 会话，Pi 动作进原生 TUI。
+- **容器内的终端是资源，可以多个**：`terminal:{containerId}:{n}`，`terminals.ts` 按终端资源 id 持 PTY；归档容器时结束其全部终端。外部容器（Terminal/Claude/Codex/Copilot）仍是"进程即容器"：从侧栏/scratch 直接拉起时自成一个 external 容器。
 - **每个 panel 的 tab bar 最右有常驻 `+`**，在该 panel 打开 `home:{containerId}`（已存在则激活）。nsh 0.4.0 的 tab bar 没有尾部插槽
   （`tab_group` 只渲染 tabs），所以 `+` 是 app 侧的覆盖层（`tab-plus.tsx`）：由布局树算出每个可见组的矩形（split 的 `sizes`、
   1pt handle、最后一个可见子节点取剩余），把 20pt 的 ghost 按钮放在组标题栏右端；zoom 只画被 zoom 的组，宽度 <600pt（compact）
@@ -189,6 +191,11 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 - **sheet 身份 = 稳定 id**（`kind:instance`，如 `home:{containerId}`、`home:scratch`、`session:{sessionId}`、`terminal:{containerId}`、`files:{containerId}`、`editor:{containerId}:{base64url path}`、`diff:{containerId}:{base64url old~new}`、`webview:{containerId}:{n}`、`problems:{containerId}`）；布局树只存 id，内容由 `sheets.tsx` 注册表解析。编辑器的未保存文本存在 `editors.ts` 的 store 里（不随 sheet 卸载丢失），M8 起布局 stash/restore 与容器切换都能恢复同一个文件。浏览器页的 URL/标题/loading/error/消息日志存在 `browser.ts` 的 store（内存态）：切容器或隐藏页签后保留，重挂载时按 URL 重新加载；页面运行时状态（滚动、表单、SPA 内存）会丢。应用重启只恢复 `webview:*` 页签 id，store 为空，因此是新标签页（§5.5）。
 - **按容器 stash**：`layouts/{containerId}.json`；zoom **不在 `DockAreaLayout` 里**（它是内部 signal + `onZoomChange` 事件），要单独存，恢复后用 ref 的 `groupOf`/`toggleZoom` 灌回。`onLayoutChange` 高频，debounce 后保存；切容器前先 flush，恢复时先离开现有 zoom 再按 panel id 找 group 灌回。布局与 zoom 的读写经 `layout.get/put`，UI 仍不持文件系统。
 - **启动恢复上次活跃容器**；恢复时**静默移除**指向已死资源的 sheet，并对同 id 的重复 sheet 去重（旧布局可能带重复）。
+  顺序固定为 `container.list` → 切容器（`container.show` + `layout.get` + hydrate）→ `session.list`：画布不等全量会话索引，
+  大会话库启动时也不会先空一屏。
+- **到达画布的路径只有一条**（`activateCanvas`）：切换、新建 Pi 容器、新建 external 容器都经它写 `activeContainerId` / 布局 /
+  zoom / 可见集，不各写一份。每次画布意图（切换、New、新建、归档）取一个 ticket；旧 ticket 在写回前被丢弃——
+  启动的切换还没落地时侧栏已经可点，迟到的应答不得把画布换回用户刚离开的容器。
 - **容器标题 = 存活的最早创建 sheet 的标题**：容器记 `sheetOrder`（创建序，append；关闭时移除；拖 tab 不改），每个 sheet kind 提供动态标题——session 取会话名（`appendSessionInfo` 可改）、terminal 取 OSC 标题、webview 取页面 title、其余固定。
 - **canvas 空态 = 该容器的 Hero sheet**（项目 chip + composer + 动作行）。容器里没有任何 sheet 时自动归档（§5.4）。Hero 的「浏览器」与顶栏 `open-browser` 都在当前容器打开一个 browser sheet；每容器的实例号递增（`n`），可同时开多个。
 - **浏览器降级**：nsh 的 `WebView` 没有 pause prop，因此非可见 browser sheet 不用「暂停」：`BrowserBody` 读 `visiblePanels()`，不可见时卸载 `WebView`（显示占位文案），再次可见时按 store 的 URL 重挂载。这是唯一诚实的实现，不声称存在 pause API。

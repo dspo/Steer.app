@@ -29,20 +29,23 @@ test("switching to a container with a conversation shows its transcript, not the
   expect(opened.id).toBe(row.sessionId);
 
   const app = await open("./App.tsx", { network: "live", width: 1280, height: 800 });
-  await app.waitUntil(() => app.texts().includes("zu-hero-a"), { timeout: 60000 });
-  await app.waitUntil(() => app.texts().includes("zu-hero-b"), { timeout: 60000 });
+  // Wait on the rows themselves: a container's label follows its session
+  // (the folder until the view is loaded), so the folder text is not stable.
+  await app.waitFor(`id:container-row-${a.container.id}`, { timeout: 60000 });
+  await app.waitFor(`id:container-row-${b.container.id}`, { timeout: 60000 });
 
   await app.press(`id:container-row-${a.container.id}`);
-  await app.waitUntil(() => app.texts().includes("hello A"), { timeout: 30000 });
+  await app.waitFor("id:session-transcript", { timeout: 30000 });
+  expect(app.texts()).toContain("hello A");
   expect(app.texts()).not.toContain(zhCN[K.launcher.title]);
 
   await app.press(`id:container-row-${b.container.id}`);
-  await sleep(1500);
+  await app.waitFor("id:session-hero", { timeout: 30000 });
   // B is empty: its start page is correct there.
   expect(app.texts()).toContain(zhCN[K.launcher.title]);
 
   await app.press(`id:container-row-${a.container.id}`);
-  await app.waitUntil(() => app.texts().includes("hello A"), { timeout: 30000 });
+  await app.waitFor("id:session-transcript", { timeout: 30000 });
   expect(app.texts()).not.toContain(zhCN[K.launcher.title]);
   expect(aSession.length).toBeGreaterThan(0);
   expect(bSession.length).toBeGreaterThan(0);

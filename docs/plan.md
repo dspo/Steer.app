@@ -2,10 +2,12 @@
 
 > 唯一的工作指导文档。已完成的部分给证据位置；未做的按批次给出任务与验收。
 
-**当前进度（2026-11-11）**：§2.1 第 1 项（Hero sheet 化）已完成，工作树未提交。门禁全绿（`nsh check` ✓、
-`cargo check --all-targets` ✓、`nsh test` 231/231 ✓、`script/bundle-mac.sh` ✓），证据见
-[evidence/s1-hero-sheet.md](evidence/s1-hero-sheet.md) 与 `docs/evidence/ui-s2-*.png`。
-§2.1 剩下的 2–7 项未动工；下一个动作是第 2 项（修 A1/B3）。
+**当前进度（2026-11-11）**：§2.1 第 1 项（Hero sheet 化）已提交（`a58e0ad`）；第 2 项（修 A1/B3）已完成，
+工作树未提交。门禁全绿（`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 233/233 ✓、
+`script/bundle-mac.sh` ✓），证据见 [evidence/s1-hero-sheet.md](evidence/s1-hero-sheet.md)、
+[evidence/s21-2-switch-hydrate.md](evidence/s21-2-switch-hydrate.md) 与 `docs/evidence/ui-s2-*.png`。
+§2.1 剩下的 3–7 项与 §2.1.1 的 F1–F3（验收反馈）未动工；下一个动作是 §2.1.1 F1（Hero 就地替换），
+随后 F2/F3，再进第 3 项（scratch 画布）。
 开工前读：本文件 §2 → [architecture.md](architecture.md) §4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 →
 [evidence/apis-verified.md](evidence/apis-verified.md)。
 > 架构见 [architecture.md](architecture.md)，视觉规格见 [DESIGN.md](DESIGN.md)，决策台账见 [decisions.md](decisions.md)。
@@ -45,16 +47,33 @@
 | 1 | Hero sheet 化（S1） | `home:{containerId}` / `home:scratch`；删 `launcherOpen`；`empty()` 改为"画布无 sheet"；侧栏「新建」/⌘N 进 scratch；每个 panel 的 tab bar 最右加常驻 `+`，打开该 panel 的 Hero sheet（已存在则激活） | 启动、切容器、点 `+` 都只渲染 sheet；删 `launcherOpen` 后全量测试绿 |
 | 2 | 修 A1/B3 | 切容器必 hydrate；external 容器创建后必切换画布；S1 落地后这类错位结构性消失 | 构建后启动停在启动容器并显示其对话；Hero 页点 Pi/Claude/Codex/Copilot 进入对应 TUI sheet |
 | 3 | scratch 画布 | kind `Scratch`，不持久化；Hero 带项目 chip（选项目/Chats/新建项目）；提交 composer 或选动作后铸真实容器并切换；scratch 里开的浏览器 sheet 随容器迁移，未提交则暂存 | 新建 → 选项目 → 提交 → 得到归属该项目的容器；不提交切走再回来，浏览器仍在 |
-| 4 | 动作可用性矩阵 | 见 [DESIGN.md](DESIGN.md) §4.1：容器内全可用；scratch+项目除"文件/更改/历史/问题"需先建容器外可用；scratch 无项目只剩浏览器与选项目 | 三种上下文各一条 UI 测试 |
+| 4 | 动作可用性矩阵 | 新增 [DESIGN.md](DESIGN.md) §4.1（现在没有这一节）：容器内全可用；终端/TUI 类动作的容器内语义见 §2.1.1；scratch+项目除"文件/更改/历史/问题"需先建容器外可用；scratch 无项目只剩浏览器与选项目 | 三种上下文各一条 UI 测试 |
 | 5 | 容器标题（S2） | `sheetOrder` + 每 kind 的 `title()`：session=会话名（`appendSessionInfo` 可改）/terminal=OSC 标题/webview=页面 title/其余固定 | 关闭第一个 sheet 后第二个顶上来；Claude Code 改终端标题时容器标题跟着变 |
 | 6 | 语言跟随系统 | 删语言按钮；启动读 `locale()`：`zh*`→zh-CN，其余→en | 系统中文显示中文，非中文显示英文 |
 | 7 | 无 tab 自动归档（含 Hero） | 容器 `sheetCount === 0` → 切到相邻容器 → archive → 侧栏行 180ms 退场（高度+透明度） | 关掉包括 Hero 在内的全部 sheet 后容器消失且引擎侧 archived |
 
-> **§2.1-1 已完成（2026-11-11）**：`home:{containerId}` / `home:scratch` 是 sheet 种类；`launcherOpen` 及其页面路径已删除；
+#### 2.1.1 Hero 动作的容器内语义（验收反馈，2026-11-11）
+
+> 这三条来自 §2.1-1 的验收，不是新批次；排在第 3 项之前，因为 scratch 的"选动作"依赖它们。
+
+| # | 任务 | 要点 | 验收 |
+|---|---|---|---|
+| F1 | Hero 就地替换 | Hero 上的动作（浏览器、终端、各 TUI）在当前 canvas 的同一组里**替换 Hero 自身**：先把目标 sheet 插到 Hero 的位置，再关掉 Hero；Hero 不留在旁边。提交 composer / 选择动作同理。 | 容器 Hero 点浏览器：Hero 的 tab 消失，浏览器 tab 占它的位置；关掉浏览器不会把 Hero 变回来（Hero 由 `+` 再开） |
+| F2 | 容器内的终端/TUI 资源 | 容器 Hero 的 Terminal / Claude Code / Codex / Copilot / Pi TUI 在**当前容器**内开终端 sheet（`terminal:{containerId}:{n}`，同一容器可多个），不新建 SessionContainer；`terminals.ts` 从"按容器 id 持一个 PTY"改为"按终端资源 id 持 PTY"；归档容器杀掉它的全部终端。侧栏行数不变。 | Pi 容器 Hero 依次开终端与 Claude：canvas 多出两个终端 tab，侧栏仍是同一个容器；归档后两个 PTY 都结束 |
+| F3 | Pi TUI 与 Zu 会话分离 | Hero 的 Pi 动作 = 原生 `pi` CLI 的 TUI，开成 F2 的终端资源；Zu 会话仍由 composer / `session:{sessionId}` sheet 承担，且 Hero 的 Pi 动作不聚焦已打开的会话。scratch 的 Hero 先按第 3 项铸容器，再在容器内开 TUI。 | Pi 容器 Hero 点 Pi：出现原生 pi TUI 的终端 tab，Zu 会话 sheet 不变；用 composer 才进入 Zu 会话 |
+
+**边界**：F2 只管**容器 Hero**。scratch 没有容器，动作仍按第 3 项先铸容器；"侧栏/Launcher 直接拉起的终端 = 独立 external 容器"（architecture §5.3）对 scratch 仍成立，铸哪种容器在第 3 项定稿。
+
+> **§2.1-1 已完成（2026-11-11，`a58e0ad`）**：`home:{containerId}` / `home:scratch` 是 sheet 种类；`launcherOpen` 及其页面路径已删除；
 > 画布只有 sheet 树。每个可见组的标题栏右端有 `+`（nsh 0.4.0 没有尾部插槽，`+` 是 app 侧按布局几何画的覆盖层，
 > 见 [evidence/s1-hero-sheet.md](evidence/s1-hero-sheet.md)）。nsh 的 tab × 关不掉组里最后一个 tab，但零 sheet 仍可达：
 > 终端/TUI 进程自己退出会关掉它的 sheet。第 7 项需要 shell 侧的关闭路径来处理不是进程的 sheet（最后一个 Hero、
 > 最后一个 Pi 会话），并在零 sheet 时切走归档。
+>
+> **§2.1-2 已完成（2026-11-11，未提交）**：启动先切画布、后扫会话索引；switch / create / external create 共用
+> `activateCanvas`；每次画布意图取 ticket，旧应答不得覆盖新意图。验收与过程见
+> [evidence/s21-2-switch-hydrate.md](evidence/s21-2-switch-hydrate.md)。这条只证明"点动作会进入 TUI sheet"；
+> 容器内 Hero 的动作目前仍会新建 SessionContainer、且 Hero 会留在旁边，由 §2.1.1 的 F1–F3 修正。
 
 ### 2.2 第 2 批：外壳与组合（S3）
 

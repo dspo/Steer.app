@@ -83,6 +83,22 @@ let saveTimer: any = null;
 let savedFor: string | null = null;
 let transport: ContainerTransport = request;
 
+/**
+ * Every canvas intent (a switch, New's scratch, a create) takes a ticket.
+ * A slower, older one must not apply over a newer intent: the sidebar is
+ * clickable while the startup switch is still in flight, and a late reply
+ * would otherwise put back the container the user just left.
+ */
+let canvasTicket = 0;
+
+function takeCanvasTicket(): number {
+  return ++canvasTicket;
+}
+
+function ticketCurrent(ticket: number): boolean {
+  return ticket === canvasTicket;
+}
+
 /** Replaces the engine transport (tests drive the store without a sidecar). */
 export function setContainerTransport(next: ContainerTransport | null): void {
   transport = next ?? request;
@@ -169,7 +185,9 @@ function showScratch(): void {
  * is what the canvas comes back to.
  */
 export async function openScratch(): Promise<void> {
+  const ticket = takeCanvasTicket();
   if (activeContainerId() !== null) await flushLayout();
+  if (!ticketCurrent(ticket)) return;
   const base = activeContainerId() === null ? layout() : scratchLayout();
   scratchLayout.set(withScratchHero(base));
   showScratch();
@@ -196,7 +214,9 @@ export async function loadContainers(): Promise<void> {
     const data = (await transport("container.list", {}, 10000)) as ContainerListData;
     containers.set(data.containers ?? []);
     const id = data.activeContainerId ?? liveContainers()[0]?.id ?? null;
-    await refreshSessions();
+    // The canvas comes first: switching needs the registry and the layout
+    // file only, while `session.list` scans every session on disk and would
+    // otherwise leave an empty canvas (or the scratch Hero) on startup.
     if (id) {
       await switchContainer(id, true);
     } else {
@@ -204,6 +224,7 @@ export async function loadContainers(): Promise<void> {
       scratchLayout.set(withScratchHero(scratchLayout()));
       showScratch();
     }
+    await refreshSessions();
   } catch (failure) {
     containerError.set(String(failure));
   } finally {
@@ -211,30 +232,59 @@ export async function loadContainers(): Promise<void> {
   }
 }
 
+/** Adds or replaces a container's row in the sidebar's projection. */
+function upsertContainer(container: ContainerRecord): void {
+  const rows = containers();
+  containers.set(
+    rows.some((row) => row.id === container.id)
+      ? rows.map((row) => (row.id === container.id ? container : row))
+      : [...rows, container],
+  );
+}
+
+/**
+ * Puts `container` on the canvas with `next` as its layout. Every way a
+ * container reaches the canvas — a switch, a create, a created external —
+ * goes through here, so they cannot drift (the A1/B3 class of mismatch).
+ */
+function activateCanvas(container: ContainerRecord, next: DockAreaLayout, zoom: string | null): void {
+  upsertContainer(container);
+  activeContainerId.set(container.id);
+  savedFor = container.id;
+  layout.set(next);
+  zoomedPanel.set(zoom);
+  syncVisible();
+}
+
 /**
  * Makes `id` active. `force` reloads even when it is already shown (a
- * reconnect or a fresh registry load).
+ * reconnect or a fresh registry load). Callers that are already part of a
+ * later intent (an archive's follow-up switch) pass their own ticket.
  */
-export async function switchContainer(id: string, force = false): Promise<void> {
-  if (!force && activeContainerId() === id && savedFor === id) return;
+export function switchContainer(id: string, force = false): Promise<void> {
+  if (!force && activeContainerId() === id && savedFor === id) return Promise.resolve();
+  return switchNow(id, takeCanvasTicket());
+}
+
+async function switchNow(id: string, ticket: number): Promise<void> {
   await flushLayout();
+  if (!ticketCurrent(ticket)) return;
   stashScratch();
   try {
     const data = await transport("container.show", { containerId: id }, 10000);
     const container = data?.container as ContainerRecord;
     if (!container) throw new Error("container not found");
-    containers.set(containers().map((row) => (row.id === container.id ? container : row)));
-    activeContainerId.set(container.id);
-    savedFor = container.id;
     const stashed = await transport("layout.get", { containerId: container.id }, 10000);
+    // A newer intent (a click, New) arrived while this one was in flight:
+    // its canvas stands, and this reply's canvas change is dropped.
+    if (!ticketCurrent(ticket)) return;
     const sessionIds = container.sessions.map((session) => session.sessionId);
     const restored = isLayout(stashed?.layout)
       ? pruneLayout(stashed.layout as DockAreaLayout, sessionIds)
       : defaultLayoutForContainer(container);
-    layout.set(restored);
-    zoomedPanel.set(typeof stashed?.zoom === "string" ? stashed.zoom : null);
-    syncVisible();
+    activateCanvas(container, restored, typeof stashed?.zoom === "string" ? stashed.zoom : null);
     await hydrateVisible(container);
+    if (!ticketCurrent(ticket)) return;
     await applyZoom(untracked(zoomedPanel));
     containerError.set(null);
   } catch (failure) {
@@ -244,7 +294,9 @@ export async function switchContainer(id: string, force = false): Promise<void> 
 
 /** Creates a pi container in `cwd` (the active one's cwd when omitted). */
 export async function createContainer(cwd?: string, projectId?: string | null): Promise<string | null> {
+  const ticket = takeCanvasTicket();
   await flushLayout();
+  if (!ticketCurrent(ticket)) return null;
   stashScratch();
   try {
     const payload: Record<string, unknown> = {};
@@ -255,14 +307,14 @@ export async function createContainer(cwd?: string, projectId?: string | null): 
     const container = data?.container as ContainerRecord;
     const session = data?.session as SessionData | undefined;
     if (!container) throw new Error("container create returned nothing");
-    containers.set([...containers(), container]);
-    activeContainerId.set(container.id);
-    savedFor = container.id;
     if (session) adoptSession(session);
+    if (!ticketCurrent(ticket)) {
+      // A newer intent owns the canvas; the container still exists.
+      upsertContainer(container);
+      return session ? session.id : null;
+    }
     const sessionIds = container.sessions.map((row) => row.sessionId);
-    layout.set(defaultLayoutForSessions(sessionIds));
-    zoomedPanel.set(null);
-    syncVisible();
+    activateCanvas(container, defaultLayoutForSessions(sessionIds), null);
     await flushLayout();
     if (session) {
       focusSession(session.id);
@@ -284,7 +336,9 @@ export async function createExternalContainer(
   kind: Exclude<ContainerKind, "Pi">,
   projectId: string | null = null,
 ): Promise<string | null> {
+  const ticket = takeCanvasTicket();
   await flushLayout();
+  if (!ticketCurrent(ticket)) return null;
   stashScratch();
   try {
     const payload: Record<string, unknown> = { kind, projectId };
@@ -296,12 +350,12 @@ export async function createExternalContainer(
     const data = await transport("container.create", payload, 30000);
     const container = data?.container as ContainerRecord | undefined;
     if (!container) throw new Error("container create returned nothing");
-    containers.set([...containers(), container]);
-    activeContainerId.set(container.id);
-    savedFor = container.id;
-    layout.set(defaultLayoutForContainer(container));
-    zoomedPanel.set(null);
-    syncVisible();
+    if (!ticketCurrent(ticket)) {
+      // A newer intent owns the canvas; the container still exists.
+      upsertContainer(container);
+      return container.id;
+    }
+    activateCanvas(container, defaultLayoutForContainer(container), null);
     await flushLayout();
     containerError.set(null);
     return container.id;
@@ -313,6 +367,7 @@ export async function createExternalContainer(
 
 /** Archives a container: it leaves the sidebar and its sessions are torn down. */
 export async function archiveContainer(id: string): Promise<void> {
+  const ticket = takeCanvasTicket();
   try {
     const data = (await transport("container.archive", { containerId: id }, 30000)) as ContainerListData;
     // An external container is its process: archiving kills the PTY before
@@ -325,8 +380,11 @@ export async function archiveContainer(id: string): Promise<void> {
     if (activeContainerId() === id) {
       savedFor = null;
       const next = data.activeContainerId;
-      if (next) await switchContainer(next, true);
-      else {
+      // The follow-up switch is part of this archive's intent: it keeps the
+      // archive's ticket, so a click made while the archive was in flight
+      // still owns the canvas.
+      if (next) await switchNow(next, ticket);
+      else if (ticketCurrent(ticket)) {
         // The last container left: the scratch canvas is where the shell
         // goes, as it does at a first launch with no registry rows.
         scratchLayout.set(withScratchHero(scratchLayout()));
