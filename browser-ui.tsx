@@ -7,6 +7,8 @@ import {
   browserPage,
   browserPlatform,
   clearBrowserMessages,
+  EXTERNAL_OPEN_SCRIPT,
+  externalOpenUrl,
   logBrowserMessage,
   normalizeAddress,
   probeBrowserPlatform,
@@ -234,7 +236,17 @@ function BrowserSurface(props: { id: string }) {
                 if (/-999|cancell?ed/i.test(error.message)) return;
                 reportBrowserError(props.id, error);
               }}
-              onMessage={(message) => logBrowserMessage(props.id, message.data)}
+              injectedJavaScriptBeforeContentLoaded={EXTERNAL_OPEN_SCRIPT}
+              onMessage={(message) => {
+                // A `target=_blank` link or `window.open` moves this sheet
+                // instead of opening a window the host cannot place.
+                const target = externalOpenUrl(message.data);
+                if (target) {
+                  navigate(target);
+                  return;
+                }
+                logBrowserMessage(props.id, message.data);
+              }}
             />
           </View>
         </If>

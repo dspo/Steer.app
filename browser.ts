@@ -329,3 +329,35 @@ export function addressErrorMessage(result: AddressResult): string | null {
   if (result.reason === "empty") return null;
   return t(K.browser.invalidAddress);
 }
+
+/**
+ * Runs before a page's own scripts: `target=_blank` links and `window.open`
+ * would leave the sheet (nsh has no new-window callback), so they are turned
+ * into a host message and the sheet navigates itself. The page never reaches
+ * the wire or the agent; this only moves the sheet.
+ */
+export const EXTERNAL_OPEN_SCRIPT = `(() => {
+  const post = (url) => {
+    try { window.nsh && window.nsh.postMessage(JSON.stringify({ type: "zu.open", url: String(url) })); } catch {}
+  };
+  window.open = function (url) { if (url) post(url); return null; };
+  document.addEventListener("click", (event) => {
+    const link = event.target && event.target.closest && event.target.closest("a[target=_blank]");
+    if (!link || !link.href) return;
+    event.preventDefault();
+    post(link.href);
+  }, true);
+})();`;
+
+/** The URL in a page's `zu.open` message, or null for anything else. */
+export function externalOpenUrl(data: string): string | null {
+  try {
+    const parsed = JSON.parse(data);
+    if (parsed && parsed.type === "zu.open" && typeof parsed.url === "string" && parsed.url) {
+      return parsed.url;
+    }
+  } catch {
+    // Not a host message.
+  }
+  return null;
+}

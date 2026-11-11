@@ -1,6 +1,8 @@
 import { expect, test } from "nsh/test";
 import {
   BROWSER_MESSAGE_LIMIT,
+  EXTERNAL_OPEN_SCRIPT,
+  externalOpenUrl,
   BROWSER_MESSAGE_LIMIT_CHARS,
   addressErrorMessage,
   applyBrowserNavigation,
@@ -159,4 +161,16 @@ test("the page state survives a remount and page messages stay in the log", () =
   dropBrowserPages("pi:store");
   expect(browserPage(id).url).toBeNull();
   expect(browserPage(other).url).toBe("https://example.org/");
+});
+
+test("a page's target=_blank and window.open become a sheet navigation", async () => {
+  // The injected script posts a host message the sheet turns into a load;
+  // headless has no web view, so the two halves are checked apart.
+  expect(EXTERNAL_OPEN_SCRIPT).toContain("zu.open");
+  expect(EXTERNAL_OPEN_SCRIPT).toContain("window.open");
+  expect(EXTERNAL_OPEN_SCRIPT).toContain('a[target=_blank]');
+  expect(externalOpenUrl(JSON.stringify({ type: "zu.open", url: "https://example.com/x" }))).toBe("https://example.com/x");
+  expect(externalOpenUrl(JSON.stringify({ type: "other", url: "https://example.com" }))).toBe(null);
+  expect(externalOpenUrl("not json")).toBe(null);
+  expect(externalOpenUrl(JSON.stringify({ type: "zu.open" }))).toBe(null);
 });
