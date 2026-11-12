@@ -1,7 +1,7 @@
 import { effect, Scroll, signal, Text, token, View } from "nsh";
 import { Input, Menu, MenuItem, Submenu } from "nsh/base";
 import { K, t } from "../ui/i18n";
-import type { SessionModelsReason } from "../contracts/protocol";
+import type { SessionModelsReason } from "../../contracts/protocol";
 import { openModelMenuRequest, runSlash, slashCandidates, type SlashOutcome } from "../stores/slash";
 import {
   chooseSessionModel,

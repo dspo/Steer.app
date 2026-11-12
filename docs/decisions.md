@@ -151,8 +151,14 @@
 | Q94 | 品牌图标 | Canvas 填充路径（`new Path2D(svgData)` 原生解析）：`brand-icons.tsx` 落四标的 path/viewBox/fill-rule，`BrandIcon` 按 size 缩放、以纯色 tint 填充（品牌色不保两外观可读）；Hero 第二排换品牌标，第一排功能位保持轮廓 Glyph | `brand-icons.tsx`、`launcher.tsx`；DESIGN §3.5；evidence/s23-14-brand-icons.md |
 | Q95 | 拖拽 tab 的抽象物 | 用 nsh 0.4.0 的两个挂钩：`renderDragPreview`（幽灵：tab 形状 144 宽、卡底 + shadowCard + 图标标题，跟随指针）与 `renderDropIndicator`（页签槽位 = 2pt brand 竖线；组分割/边缘 = 块状框）。**源 tab 占位需要 DockTab.dragging 标志**，nsh 0.4.0 没有——按 Q54 的 pin 升级规则单独成批，应用侧不伪造 | `shell.tsx`；DESIGN §3.7；evidence/s23-15-drag-ghost.md |
 
+## 仓库布局（C8）
+
+| # | 问题 | 裁决 | 落点 |
+|---|---|---|---|
+| Q96 | 前端工程文件裸在仓库根，三块如何归位 | **三包 + 一共享面**：`app/`（nsh 应用：`nsh.json`/`App.tsx`/五层/测试与 fixtures 全在其中，nsh 命令一律以 `app` 为应用目录）、`native/`（`zu-native` crate，`app/nsh.json` 以 `"rust": "../native"` 指向——CLI 按 canonicalize 解析该字段，允许 crate 在 app 目录之外）、`pi-harness/`（完整 pi 发行版，原 `engine/`）、`contracts/` 留根（UI↔harness 的共享面不属于任何一侧；两侧导入深度恰好对称，都是 `../../contracts/`）。资产按归属拆：Lilex 随 crate（`assets!()` 要求资产在 crate 自己的 `assets/`）→ `native/assets/fonts`；托盘图标是 TSX 资产 → `app/assets/`。dev 模式 sidecar 按 `CARGO_MANIFEST_DIR` 回退 `../pi-harness/dist/pi-engine`；`script/bundle-mac.sh` 的 `nsh package` 改为从 `app/` 目录执行 | `app/nsh.json`、`native/src/lib.rs`、`app/tsconfig.json`、`.gitignore`、`script/bundle-mac.sh`；arch §3.6/§3.8 |
+
 ## 决策编号说明
 
-- Q1–Q95 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（Q56/§3.6 的 `zu/fs`）、git 执行与根/路径边界（Q58/§3.6 的 `zu/git`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）、浏览器的能力/链接策略与非可见降级（Q61/Q62/§4.3）、LSP 的传输/全文同步/语言映射（Q64/§3.6）、单实例锁与关窗/托盘/通知策略（Q65/Q66/§4.6）、更新源缺失时的诚实状态与发布配置（Q67/§3.7）、模型注册表的归属与「无模型」的表达（Q81）、容器内终端资源与 Pi TUI（Q82）、scratch 的页面归属与铸容器语义（Q83）、动作可用性矩阵（Q84）、容器标题的 S2 细则（Q85）、语言跟随系统（Q86）、无 sheet 自动归档的路径（Q87）、S3 外壳的几何落地（Q88）、侧栏宽度的持久化（Q89）、顶栏 picker 移除的收尾（Q90）、composer 仅交互的收尾（Q91）、斜杆命令的三类映射（Q92）、红绿灯与页签宽度（Q93）、品牌图标（Q94）、拖拽 tab 的抽象物（Q95）。
+- Q1–Q96 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（Q56/§3.6 的 `zu/fs`）、git 执行与根/路径边界（Q58/§3.6 的 `zu/git`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）、浏览器的能力/链接策略与非可见降级（Q61/Q62/§4.3）、LSP 的传输/全文同步/语言映射（Q64/§3.6）、单实例锁与关窗/托盘/通知策略（Q65/Q66/§4.6）、更新源缺失时的诚实状态与发布配置（Q67/§3.7）、模型注册表的归属与「无模型」的表达（Q81）、容器内终端资源与 Pi TUI（Q82）、scratch 的页面归属与铸容器语义（Q83）、动作可用性矩阵（Q84）、容器标题的 S2 细则（Q85）、语言跟随系统（Q86）、无 sheet 自动归档的路径（Q87）、S3 外壳的几何落地（Q88）、侧栏宽度的持久化（Q89）、顶栏 picker 移除的收尾（Q90）、composer 仅交互的收尾（Q91）、斜杆命令的三类映射（Q92）、红绿灯与页签宽度（Q93）、品牌图标（Q94）、拖拽 tab 的抽象物（Q95）、仓库三包布局（Q96）。
 - 原 engine/ui/domain 三份文档里的 E/U 编号已废弃，统一并入本表。
 - 已完成的和下一批工作见 [plan.md](plan.md)；条件性里程碑（M-tty / M-arch / M-web）的触发条件也记在那里。

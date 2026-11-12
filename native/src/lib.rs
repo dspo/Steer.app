@@ -117,7 +117,7 @@ impl Engine {
         }
         let token = ensure_token()?;
         let path = engine_path().ok_or_else(|| {
-            "engine sidecar not found (build it with `cd engine && bun run build`)".to_owned()
+            "engine sidecar not found (build it with `cd pi-harness && bun run build`)".to_owned()
         })?;
         let _ = std::fs::remove_file(&port_file);
         let log = std::fs::File::create(dir.join("engine.log")).map_err(|e| e.to_string())?;
@@ -483,7 +483,7 @@ fn engine_path() -> Option<PathBuf> {
             return Some(packaged);
         }
     }
-    let dev = Path::new(env!("CARGO_MANIFEST_DIR")).join("engine/dist/pi-engine");
+    let dev = Path::new(env!("CARGO_MANIFEST_DIR")).join("../pi-harness/dist/pi-engine");
     dev.is_file().then_some(dev)
 }
 
@@ -602,7 +602,7 @@ mod tests {
 
     #[test]
     fn browser_capabilities_are_the_ui_only_minimum() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("nsh.json");
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../app/nsh.json");
         let manifest = std::fs::read_to_string(path).expect("read nsh.json");
         let json: serde_json::Value = serde_json::from_str(&manifest).expect("nsh.json is JSON");
         let capabilities = json.get("capabilities").expect("capabilities");

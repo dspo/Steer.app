@@ -1,6 +1,6 @@
 import { expect, test } from "nsh/test";
 import { Engine } from "zu/native";
-import { PROTOCOL_VERSION } from "./contracts/protocol";
+import { PROTOCOL_VERSION } from "../contracts/protocol";
 import { connect, disconnect, info, lastError, onEngineEvent, phase, recovered, request, snapshot } from "./stores/engine";
 import {
   activeId,
@@ -496,7 +496,7 @@ function dialRawClient(): Promise<{
 test("a real extension's confirm and notify reach the shell", async () => {
   if (skip) return;
   await disconnect();
-  const probe = "/Users/chenzhongrun/projects/dspo/nsh-pi/fixtures/extensions/ui-probe.ts";
+  const probe = "/Users/chenzhongrun/projects/dspo/nsh-pi/app/fixtures/extensions/ui-probe.ts";
   Engine.setExtensionPaths(probe);
   try {
     await Engine.start();

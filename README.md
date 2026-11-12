@@ -14,7 +14,10 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 **§2.3 全部完成**（第 14 项品牌图标、第 15 项拖拽幽灵 + 落位竖线、第 16 项 Lilex 字体——crate 经 `assets!()` 壳带、引擎首帧前注册，sheet 内容用 Lilex、轮廓系统字体；15 的"源 tab 占位"仍待 nsh 升级，见证据）。
 **§5 代码仓库整洁化已完成**（C1 死代码与导出、C2 五层目录 shell/canvas/stores/sheets/ui、C3 Launcher→Hero 统一、
 C4 单一事实源、C5 无条件等待清零、C6 文档与证据、C7 fmt/clippy/错误码表）；挂起项不变（B2 等样本、M13 等账号）。
-门禁：`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` ✓（live 的 steer 用例偶发供应商慢首 token，重跑全绿）、`script/bundle-mac.sh` ✓。证据见
+**C8 三包布局已完成（2026-11-12，Q96）**：`app/`（nsh 应用 + 测试）+ `native/`（zu-native crate）+ `pi-harness/`（完整 pi 发行版），
+`contracts/` 留根作共享面；nsh 命令以 `app` 为应用目录，字体随 crate（`native/assets/fonts`）。
+门禁：`nsh check app` ✓、`cargo check --all-targets`（`native/`）✓、`nsh test app` ✓（live 的 steer 用例偶发供应商慢首 token，重跑全绿）、`script/bundle-mac.sh` ✓。证据见
+[docs/evidence/c8-layout.md](docs/evidence/c8-layout.md)、
 [docs/evidence/s1-hero-sheet.md](docs/evidence/s1-hero-sheet.md)、
 [docs/evidence/s21-2-switch-hydrate.md](docs/evidence/s21-2-switch-hydrate.md)、
 [docs/evidence/s21-1-hero-actions.md](docs/evidence/s21-1-hero-actions.md)、
@@ -48,13 +51,19 @@ Composer 接入 pi 斜杆操作、新增代码仓库整洁化并行轨道（[pla
 | [docs/evidence/](docs/evidence/) | 依据：spike 实测、可行性、终端仿真核对比、API 核实、各里程碑验证记录 |
 | [docs/research/](docs/research/) | 外源调研存档：ThinkRail 与 manox-app 的可吸纳项清单（已吸纳项的出处，按仓库 HEAD 快照） |
 
-## 代码地图（app + `engine/` + `src/`）
+## 代码地图（`app/` + `native/` + `pi-harness/` + `contracts/`）
 
-根上是入口与锚点：`App.tsx`（bootstrap：装滚动条主题、boot 引擎一次、渲染 `Workbench`；nsh 的入口解析它，留在根）、
-`contracts/`（冻结的 wire 契约：`protocol.ts` 类型/命令/事件表/校验 + `protocol.md`）、`engine/`（pi 1.5.0 sidecar）、
-`src/`（Rust native module）、`theme.json`（shadcn 风格 token，light + dark）、`assets/`（托盘图标、Lilex）、测试与 fixtures。
+仓库是三包 + 一共享面：**`app/`**（nsh 应用：入口、五层前端、测试与 fixtures，`nsh.json` 在此）、
+**`native/`**（`zu-native` crate：Rust native module，Lilex 经 `assets!()` 随 crate 壳带）、
+**`pi-harness/`**（完整的 pi 发行版：精确 pin 的 pi 1.5.0 + wire 胶水 + 内置扩展，`bun --compile` 成 sidecar）、
+**`contracts/`**（冻结的 wire 契约：`protocol.ts` 类型/命令/事件表/校验 + `protocol.md`——UI 与 harness 的共享面，
+不属于任何一侧，留在根）。`app/nsh.json` 以 `"rust": "../native"` 指向 crate；nsh 命令一律以 `app` 为应用目录。
 
-其余模块按层归位（依赖自上而下：shell → sheets/canvas → stores → ui）：
+`app/` 根上是入口与锚点：`App.tsx`（bootstrap：装滚动条主题、boot 引擎一次、渲染 `Workbench`；nsh 的入口解析它，
+留在 `app/` 根）、`theme.json`（shadcn 风格 token，light + dark）、`assets/`（托盘图标——TSX 资产）、
+测试与 fixtures。
+
+其余模块按层归位（依赖自上而下：shell → sheets/canvas → stores → ui；下表路径都相对 `app/`）：
 
 **`shell/`——工作台与生命周期**
 
@@ -124,11 +133,12 @@ Composer 接入 pi 斜杆操作、新增代码仓库整洁化并行轨道（[pla
 | `ui/i18n.ts`, `ui/locales/` | zh-CN/en key tables and the parity test's key list |
 | `ui/copy.ts` | Shell copy helpers shared by fixtures and tests |
 
-**Rust 侧（`src/`，与上表各 typed face 一一对应）**：`src/lib.rs`（native module 注册面 + Lilex 壳带）、
-`src/instance.rs`（单实例锁）、`src/pty.rs`（PTY）、`src/lsp.rs`（LSP）、`src/fs.rs`（fs 策略）、`src/git.rs`（git 策略）、
-`src/picker.rs`（Finder picker）。错误码见 §3.6 的索引（权威在各模块 `//!` 文档）。
+**Rust 侧（`native/src/`，与上表各 typed face 一一对应）**：`native/src/lib.rs`（native module 注册面 + Lilex 壳带；
+dev 模式的 sidecar 路径按 crate 位置回退 `../pi-harness/dist/pi-engine`）、
+`native/src/instance.rs`（单实例锁）、`native/src/pty.rs`（PTY）、`native/src/lsp.rs`（LSP）、`native/src/fs.rs`（fs 策略）、
+`native/src/git.rs`（git 策略）、`native/src/picker.rs`（Finder picker）。错误码见 §3.6 的索引（权威在各模块 `//!` 文档）。
 
-| Tests | 根上的 `*.test.ts(x)`（55 个文件：store 纯逻辑 + headless 真 Workbench + live 引擎/pi/LSP 用例），`nsh test` 计 265/265，含 53 条 Rust 单测 |
+| Tests | `app/` 根上的 `*.test.ts(x)`（55 个文件：store 纯逻辑 + headless 真 Workbench + live 引擎/pi/LSP 用例），`nsh test app` 计 265/265，含 53 条 Rust 单测（crate 在 `native/`） |
 
 交互全部来自 `nsh/base DockArea`：拖 sheet 到另一 panel（移动且状态不丢）、拖到组边缘分栏、拖手缩放、`×` 关闭、Zoom、<600pt compact。
 唯一的例外是每组标题栏右端的 `+`：0.4.0 的 tab bar 没有尾部插槽，`tab-plus.tsx` 按布局几何把它画成覆盖层（见
@@ -139,19 +149,19 @@ Composer 接入 pi 斜杆操作、新增代码仓库整洁化并行轨道（[pla
 With `nsh` on your `PATH` ([install](https://nsh.dev/docs/installation)), or a checkout build:
 
 ```sh
-nsh run . --target macos   # the AppKit host
-nsh run . --target web     # the browser
-nsh check .                # cargo check + typecheck the TSX
-nsh test .                 # Rust + headless TS tests (live pi cases; ZU_SKIP_LIVE=1 skips)
+nsh run app --target macos   # the AppKit host
+nsh run app --target web     # the browser
+nsh check app                # cargo check the crate + typecheck the TSX
+nsh test app                 # Rust + headless TS tests (live pi cases; ZU_SKIP_LIVE=1 skips)
 ```
 
-The engine is a working copy of the sidecar: `cd engine && bun run build` before
-`nsh run` or `script/bundle-mac.sh` if `engine/src` changed. `cd engine && bun run models:parity`
+The harness is a working copy of the sidecar: `cd pi-harness && bun run build` before
+`nsh run app` or `script/bundle-mac.sh` if `pi-harness/src` changed. `cd pi-harness && bun run models:parity`
 compares a session's model list with `pi --list-models` on this machine.
 
 ## 文档治理
 
 - **状态锚点**：本节的「当前状态」写日期、未提交状态与最近一次门禁结果；技术细节不靠散文维护，以 `nsh check` / `nsh test` / 打包冒烟的输出为准。
-- **版本台账**：pi 在 `engine/package.json` 精确 pin（`src/version.ts` 由 `check-version` 守）；nsh 在 `Cargo.toml` **git pin `506b5392`（0.4.0）** + `Cargo.lock`——发布版 0.4.0 没有 `nsh/base Terminal`，M7 必须用 checkout（Q54）。任一侧升级都要跑引擎测试、UI 测试、终端与 DockArea 冒烟，并在 [decisions.md](docs/decisions.md) 记录。
+- **版本台账**：pi 在 `pi-harness/package.json` 精确 pin（`src/version.ts` 由 `check-version` 守）；nsh 在 `native/Cargo.toml` **git pin `506b5392`（0.4.0）** + `Cargo.lock`——发布版 0.4.0 没有 `nsh/base Terminal`，M7 必须用 checkout（Q54）。任一侧升级都要跑引擎测试、UI 测试、终端与 DockArea 冒烟，并在 [decisions.md](docs/decisions.md) 记录。
 - **协议变更**：`contracts/` 是 UI 与 engine 的唯一共享面。改协议 = 同一个 PR 里改 TS 类型、`protocol.md` 与两侧实现；`v` 递增即表示不兼容。
 - **决策变更**：先改 [decisions.md](docs/decisions.md) 的台账与 [architecture.md](docs/architecture.md) 的正文，再改代码；过程写进 [docs/evidence/decision-log.md](docs/evidence/decision-log.md)。

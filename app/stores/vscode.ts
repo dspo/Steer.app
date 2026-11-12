@@ -1,5 +1,5 @@
 import { openUrl } from "nsh";
-import type { ContainerRecord } from "../contracts/protocol";
+import type { ContainerRecord } from "../../contracts/protocol";
 import { activeContainerId, liveContainers } from "./containers";
 import { containerProject, projects } from "./projects";
 

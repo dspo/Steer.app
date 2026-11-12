@@ -14,17 +14,17 @@ APP="$OUT/Zu.app"
 cd "$ROOT"
 
 echo "→ engine sidecar"
-(cd engine && bun run build)
+(cd pi-harness && bun run build)
 
 echo "→ app"
-"$NSH" package . --target macos -o "$OUT"
+(cd app && "$NSH" package --target macos -o "$OUT")
 
 echo "→ sidecar into Contents/Helpers"
 mkdir -p "$APP/Contents/Helpers"
-cp engine/dist/pi-engine "$APP/Contents/Helpers/"
+cp pi-harness/dist/pi-engine "$APP/Contents/Helpers/"
 # pi loads these from beside the executable (photon for images, QuickJS for
 # code mode); without them those paths throw at run time.
-cp engine/dist/photon_rs_bg.wasm engine/dist/quickjs.wasm "$APP/Contents/Helpers/"
+cp pi-harness/dist/photon_rs_bg.wasm pi-harness/dist/quickjs.wasm "$APP/Contents/Helpers/"
 
 # The sidecar and its WASM are part of the app, not an optional add-on: a
 # self-update replaces the whole .app, so an update archive that leaves

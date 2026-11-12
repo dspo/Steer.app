@@ -1,5 +1,5 @@
 import { mount, signal, Text, View, token } from "nsh";
-import type { ContainerRecord } from "../contracts/protocol";
+import type { ContainerRecord } from "../../contracts/protocol";
 import { activeContainerId, containers } from "../stores/containers";
 import { visiblePanels } from "../stores/dock";
 import { TerminalBody } from "../canvas/sheets";

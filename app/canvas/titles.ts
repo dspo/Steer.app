@@ -1,4 +1,4 @@
-import type { ContainerRecord } from "../contracts/protocol";
+import type { ContainerRecord } from "../../contracts/protocol";
 import { sessionIdOfSheet } from "../stores/dock";
 import { sheetOrder } from "../stores/containers";
 import { sessionHasName, sessionTitle } from "../stores/sessions";

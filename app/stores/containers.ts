@@ -6,7 +6,7 @@ import type {
   ContainerListData,
   ContainerRecord,
   SessionData,
-} from "../contracts/protocol";
+} from "../../contracts/protocol";
 import {
   SCRATCH_SHEET,
   activePanelIds,

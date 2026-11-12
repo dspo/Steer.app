@@ -11,7 +11,7 @@ import {
   type StateSnapshot,
   type UIMethod,
   type Welcome,
-} from "../contracts/protocol";
+} from "../../contracts/protocol";
 
 /**
  * The shell's single connection to the engine sidecar.

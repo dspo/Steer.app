@@ -125,7 +125,7 @@ UI **不持 fs、不持 process**：全部用户状态经 wire 落 `~/.pi/zu/`�
 
 ### 3.6 Rust native module（重型集成的地基）
 
-mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一个 `zu-native` crate：
+mixed 模板（`app/nsh.json` 的 `"rust": "../native"`——crate 在 `native/`，是 app 目录的兄弟而非内部子目录；CLI 以 canonicalize 解析，允许 `..`），按域拆注册面，共用一个 `zu-native` crate：
 
 | 模块 | 职责 | 生命周期 |
 |---|---|---|
@@ -159,7 +159,7 @@ INPUT/COMMAND/CLOSED`）；`zu/picker` → `src/picker.rs`（`ERR_PICKER_PLATFOR
 ### 3.7 分发与版本
 
 - **sidecar 位置**：`Zu.app/Contents/Helpers/pi-engine`，直接执行、不释放到 dataDir（签名与公证覆盖最干净）。
-- **pi 版本自管**：`engine/package.json` 精确 pin + `bun.lock` 进 git；升级 = 改 pin 的 PR（引擎测试 + TUI 冒烟 + 兼容性台账）；sidecar 内禁 `pi update`。
+- **pi 版本自管**：`pi-harness/package.json` 精确 pin + `bun.lock` 进 git；升级 = 改 pin 的 PR（引擎测试 + TUI 冒烟 + 兼容性台账）；sidecar 内禁 `pi update`。
 - **兼容性台账**：每个绕过 pi 缺口的适配登记「上游什么条件下可删」。
 - **自更新**：`nsh/updater`（GitHub Releases 或自托管 manifest）。**本仓库当前没有 `nsh.json` 的 `"updater"`**：没有真实 source、公钥和 release，按 M12 的约束不伪造。发布时二选一：GitHub Releases 写 `"updater": { "github": "dspo/nsh-pi" }`（公开仓库的 manifest 不签也行，但建议配 `publicKey`），或自托管写 `"updater": { "url": "https://…/latest.json", "publicKey": "<keygen 出来的公钥>" }`，私钥只留在发布机/CI。**更新包必须包含 `Contents/Helpers`**——`nsh/updater` 替换整个 `.app`，漏掉即引擎消失；`script/bundle-mac.sh` 在打包后断言三个文件都在，`NSH_UPDATE_ARCHIVE=1` 时打的 `tar.gz` 是整个 `.app`，因此天然包含。`nsh update-manifest` + `nsh package --target macos` 的发布步骤与“本机不可端到端验证安装”的事实写在 [evidence/m12-lifecycle.md](evidence/m12-lifecycle.md)。
 - **签名**：nsh 的 `nsh package --target macos` 只做 **ad-hoc** 签名、且不认识 `Contents/Helpers`；其余是我们的活（`script/bundle-mac.sh`）：拷 sidecar 与两个 WASM（**必须与 sidecar 同目录**，photon 用 `process.execPath` 兜底）→ 逐个 `codesign --options runtime`（sidecar 带 `com.apple.security.cs.allow-jit`）→ 签 app → `notarytool` → `stapler`。ad-hoc 打包从 M0 起每轮冒烟，别把未知量留到正式签名那天。
@@ -167,10 +167,10 @@ INPUT/COMMAND/CLOSED`）；`zu/picker` → `src/picker.rs`（`ERR_PICKER_PLATFOR
 
 ### 3.8 构建回路
 
-- `engine/package.json` 的 `build`：`check-version`（`src/version.ts` 必须等于 pin）→ `bun build --compile --target=bun-darwin-arm64` → `cp` 两个 WASM 到 `dist/`（pi 上游同路径：`isBunBinary` / `copy-binary-assets` 的资产布局）。
-- `script/bundle-mac.sh`：sidecar → `nsh package` → Helpers（**断言** `pi-engine` 与两个 WASM 都在，缺一即失败）→ 嵌套 ad-hoc 签名 → dmg；`NSH_UPDATE_ARCHIVE=1` 追加整个 `.app` 的 `tar.gz`（更新包必须含 Helpers）。
-- 开发：engine `bun run src/server.ts`（热重启）+ UI `nsh run .`（热重载）两条循环并行；UI 侧热更新在 mixed 模板下不可用（`nsh hot: no module zu/native`），改 TSX 需重启。
-- **编译产物冒烟**：`dist/pi-engine` 起得来、握手成功、`session.list` 返回——每次改 engine 都跑（已由 `engine.test.ts` 的 freshEngine 覆盖）。
+- `pi-harness/package.json` 的 `build`：`check-version`（`src/version.ts` 必须等于 pin）→ `bun build --compile --target=bun-darwin-arm64` → `cp` 两个 WASM 到 `dist/`（pi 上游同路径：`isBunBinary` / `copy-binary-assets` 的资产布局）。
+- `script/bundle-mac.sh`：sidecar（`pi-harness/`）→ `nsh package app` → Helpers（**断言** `pi-engine` 与两个 WASM 都在，缺一即失败）→ 嵌套 ad-hoc 签名 → dmg；`NSH_UPDATE_ARCHIVE=1` 追加整个 `.app` 的 `tar.gz`（更新包必须含 Helpers）。
+- 开发：pi-harness `bun run src/server.ts`（热重启）+ UI `nsh run app`（热重载）两条循环并行；UI 侧热更新在 mixed 模板下不可用（`nsh hot: no module zu/native`），改 TSX 需重启。
+- **编译产物冒烟**：`dist/pi-engine` 起得来、握手成功、`session.list` 返回——每次改 pi-harness 都跑（已由 `app/engine.test.ts` 的 freshEngine 覆盖；dev 模式 native crate 按 `CARGO_MANIFEST_DIR` 回退到 `../pi-harness/dist/pi-engine`）。
 
 ## 4. 前端：轮廓与画布
 

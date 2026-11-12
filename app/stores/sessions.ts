@@ -8,7 +8,7 @@ import type {
   SessionModelsData,
   SessionThinkingLevel,
   StateSnapshot,
-} from "../contracts/protocol";
+} from "../../contracts/protocol";
 
 /**
  * The session store, keyed by pi session id. M3 can show several sessions at

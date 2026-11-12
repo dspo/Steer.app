@@ -25,7 +25,7 @@ import {
 import type { TerminalAction } from "../stores/terminals";
 import { homeSheetContainer } from "../stores/dock";
 import { openBrowserSheet } from "../stores/browser";
-import type { ContainerKind, ProjectRecord } from "../contracts/protocol";
+import type { ContainerKind, ProjectRecord } from "../../contracts/protocol";
 import type { BrandName } from "../ui/brand-icons";
 import { Glyph, motionStyle, shadowDialog, shadowRaised, type GlyphName } from "../ui/ui";
 import { BrandIcon } from "../ui/brand-icons";

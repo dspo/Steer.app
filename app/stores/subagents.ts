@@ -1,6 +1,6 @@
 import { signal } from "nsh";
 import { onEngineEvent, request } from "./engine";
-import type { PlainMessage, SubagentRun } from "../contracts/protocol";
+import type { PlainMessage, SubagentRun } from "../../contracts/protocol";
 import { activeContainerId, openAuxSheet } from "./containers";
 
 /**

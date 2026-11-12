@@ -26,6 +26,8 @@
 §5 的整洁化轨道已全部完成（2026-11-12）：C1（`9b72b82`）、C3（`a4ed5d1`）、C7（`f76bb55`）、
 C4（`d8e1570`+`0a21630`）、C5（`fc9e8dd`）、C2 五批（`5335034`、`2142c72`、`a74abe0`、`ea0bef6`、`1b3237d`）、
 文档对齐与代码地图（见 [evidence/s5-cleanup.md](evidence/s5-cleanup.md)）。
+C8 三包布局（`app/` + `native/` + `pi-harness/`，`contracts/` 留根）已于 2026-11-12 落地（Q96，
+见 [evidence/c8-layout.md](evidence/c8-layout.md)）。
 **plan 的全部可执行条目至此落地**；剩余为挂起/不做项（§2.4-18 B2 等可复现样本、§3 不做清单、M13 需 Developer ID）。
 开工前读：本文件 §5 → [architecture.md](architecture.md) §4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 →
 [evidence/apis-verified.md](evidence/apis-verified.md)。
@@ -43,7 +45,7 @@ C4（`d8e1570`+`0a21630`）、C5（`fc9e8dd`）、C2 五批（`5335034`、`2142c
 | M-C | 一体化外壳与组合（S3） | ✅ 8–13 全部完成 | §2.2 |
 | M-D | 细节（图标、拖拽、字体） | ✅ 14–16 全部完成 | §2.3 |
 | M-E | 独立修复 | ⏸ B2 挂起 | §2.4 |
-| M-F | 代码仓库整洁化（并行轨道） | ✅ C1–C7 全部完成（2026-11-12） | §5 |
+| M-F | 代码仓库整洁化（并行轨道） | ✅ C1–C7 全部完成（2026-11-12）；C8 三包布局完成 | §5 |
 
 
 
@@ -88,7 +90,7 @@ C4（`d8e1570`+`0a21630`）、C5（`fc9e8dd`）、C2 五批（`5335034`、`2142c
 > （方法永远不是数组），引擎从不问 pi，静默返回空列表。现在引擎在启动时显式创建一个共用的 `ModelRuntime`
 > 并交给每个会话；空列表必带 `reason`（catalog/凭证/模型/失败），pi 的 `unknown/unknown` 占位模型不再发出去；
 > `session.models` 默认读 snapshot，`refresh: true` 才重做 auth 检查。composer 在无模型时保留输入、停住发送、
-> 给说明与重试，菜单显示同一原因。验收：`cd engine && bun run models:parity` 打印 `67 / 67`、`the two lists are equal`；
+> 给说明与重试，菜单显示同一原因。验收：`cd pi-harness `cd engine && bun run models:parity``cd engine && bun run models:parity` bun run models:parity` 打印 `67 / 67`、`the two lists are equal`；
 > `engine.test.ts` 用空 pi home 断言 `no_credentials`；`models.ui.test.tsx` 覆盖无模型说明、菜单原因与重试恢复。
 > 证据与门禁见 [evidence/s20-models.md](evidence/s20-models.md)，决策 [decisions.md](decisions.md) Q81。
 
@@ -257,9 +259,9 @@ C4（`d8e1570`+`0a21630`）、C5（`fc9e8dd`）、C2 五批（`5335034`、`2142c
 ## 4. 门禁
 
 ```
-nsh check .                                ✓ 必须
-cargo check --all-targets                  ✓ 必须
-nsh test .                                 ✓ 全量（含 live 模型、三个语言服务器）
+nsh check app                              ✓ 必须（crate 在 native/，一并 cargo check）
+cargo check --all-targets                  ✓ 必须（在 native/ 跑）
+nsh test app                               ✓ 全量（含 live 模型、三个语言服务器）
 script/bundle-mac.sh                       ✓ 打包冒烟
 ```
 
@@ -279,3 +281,4 @@ script/bundle-mac.sh                       ✓ 打包冒烟
 | C5 | 测试卫生 | fixture 隔离（M9 已改每轮新仓库）、确定性等待（不靠固定 sleep）、临时目录清理、跨测试共享状态审计 | 全量连跑 3 次全绿，无偶发 |
 | C6 | 文档与证据 | 断链、过期状态/门禁数字、DESIGN 缺失章节（如动作矩阵 §4.1）、证据索引；`docs/research` 的去留 | 链接检查通过；状态与最近一次门禁一致 |
 | C7 | Rust 与引擎 | `cargo fmt --check`、重点看 `clippy` 的实用项、错误码表、死代码；engine 侧同样 | 门禁绿；无新增告警 |
+| C8 | 三包布局（2026-11-12 完成，Q96） | 仓库归位为 `app/`（nsh 应用 + 测试）+ `native/`（zu-native crate，`"rust": "../native"`）+ `pi-harness/`（完整 pi 发行版，原 `engine/`）+ `contracts/` 留根（共享面）；字体随 crate（`assets!()`）→ `native/assets/fonts`，托盘图标 → `app/assets/`；nsh 命令以 `app` 为应用目录（`nsh check app`/`nsh test app`/`nsh run app`）；bundle 脚本改从 `app/` 打包 | 门禁绿；README 代码地图、architecture §3.6/§3.8、decisions Q96 与目录一致 |

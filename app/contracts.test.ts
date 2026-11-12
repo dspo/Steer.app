@@ -15,7 +15,7 @@ import {
   parseEnvelope,
   validateCommand,
   type Envelope,
-} from "./contracts/protocol";
+} from "../contracts/protocol";
 
 test("every command has a domain, an idempotency and a replay meaning", () => {
   for (const [name, spec] of Object.entries(COMMANDS)) {
