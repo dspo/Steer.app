@@ -41,6 +41,7 @@ import { saveActiveEditor } from "../stores/editors";
 import { openChangesSheet, openHistorySheet } from "../stores/git";
 import { openProblemsSheet } from "../sheets/lsp-ui";
 import { K, t } from "../ui/i18n";
+import { contributedSidebarSections, type ContributedRow } from "./contrib";
 import { UIHost, unsupportedMethods } from "../ui/ui-host";
 import { dropBrowserPages, openBrowserSheet } from "../stores/browser";
 import {
@@ -429,6 +430,73 @@ function SidebarHandle() {
   );
 }
 
+/** One contributed row (a pack's containers), drawn like a container row. */
+function ContributedGroupRow(props: { row: ContributedRow }) {
+  const row = () => props.row;
+  const active = () => row().active();
+  return (
+    <View
+      class={active() ? "bg-card" : "hover:bg-hover"}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        marginHorizontal: 8,
+        marginVertical: 1,
+        paddingVertical: 7,
+        paddingLeft: 9,
+        paddingRight: 6,
+        borderRadius: 10,
+        backgroundColor: active() ? token("card") : "transparent",
+        boxShadow: active() ? shadowCard() : "none",
+        ...motionStyle("medium"),
+      }}
+    >
+      <View
+        role="button"
+        testID={row().testID}
+        accessibilityLabel={row().title()}
+        accessibilityState={{ selected: active() }}
+        class="flex-1 rounded-lg focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1 active:bg-accent/60"
+        style={{ paddingVertical: 1, gap: 2 }}
+        onPress={row().onPress}
+      >
+        <Text style={{ fontSize: 13, fontWeight: active() ? "600" : "400", color: token("foreground"), numberOfLines: 1 }}>
+          {row().title()}
+        </Text>
+        <If when={row().subtitle().length > 0}>
+          <Text style={{ fontSize: 10.5, color: token("faint"), numberOfLines: 1 }}>{row().subtitle()}</Text>
+        </If>
+      </View>
+    </View>
+  );
+}
+
+/** A contributed sidebar group (a pack's containers), under its header. */
+function ContributedSidebarGroup(props: { section: ReturnType<typeof contributedSidebarSections>[number] }) {
+  const rows = () => props.section.rows();
+  return (
+    <View style={{ gap: 1, paddingBottom: 2 }}>
+      <View
+        role="button"
+        testID={`contributed-group-${props.section.key}`}
+        accessibilityLabel={props.section.title()}
+        class="hover:bg-hover"
+        style={{ flexDirection: "row", alignItems: "center", gap: 5, marginHorizontal: 8, paddingHorizontal: 4, height: 30, borderRadius: 8, ...motionStyle("fast") }}
+      >
+        <Glyph name="chat" size={13} tint={token("muted-foreground")} />
+        <Text class="flex-1 text-[12.5px] font-semibold text-foreground" style={{ numberOfLines: 1 }}>
+          {props.section.title()}
+        </Text>
+      </View>
+      <Each of={rows()} key={(row) => row.id}>
+        {(row) => (
+          <ContributedGroupRow row={row()} />
+        )}
+      </Each>
+    </View>
+  );
+}
+
 function Sidebar() {
   return (
     <View class="bg-sidebar" style={{ width: sidebarWidth(), flexShrink: 0 }}>
@@ -522,6 +590,9 @@ function Sidebar() {
                   name={t(K.project.chats)}
                   onCreate={() => openHero(null, true)}
                 />
+                <Each of={contributedSidebarSections()} key={(section) => section.key}>
+                  {(section) => <ContributedSidebarGroup section={section()} />}
+                </Each>
               </View>
             </If>
             <If when={!!projectError()}>
