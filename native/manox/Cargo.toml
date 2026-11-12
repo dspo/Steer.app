@@ -1,0 +1,17 @@
+[package]
+name = "zu-manox"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+# Same pin as `zu-app`'s (`native/Cargo.toml`): one core for the app, so the
+# generated hosts, the runner and both crates share one engine API.
+nsh-core = { git = "https://github.com/longbridge/nsh.git", rev = "506b539284e070f506cd8ac5f554326b58f99483" }
+serde_json = "1"
+tokio = { version = "1", default-features = false, features = ["sync", "rt", "time", "macros"] }
+
+[dev-dependencies]
+uuid = { version = "1", features = ["v4"] }
