@@ -14,13 +14,13 @@ import { K, t } from "./i18n";
  * the address and title come from `onNavigationStateChange`.
  */
 
-export interface BrowserError {
+interface BrowserError {
   /** `ERR_ACCESS_DENIED`, `ERR_FEATURE_UNAVAILABLE_ON_PLATFORM`, or a platform code. */
   code: string;
   message: string;
 }
 
-export interface BrowserPageState {
+interface BrowserPageState {
   /** The last page the web view reported (what a remount loads). */
   url: string | null;
   /** The page's own title, as last reported. */
@@ -86,7 +86,7 @@ export function browserSheetId(containerId: string, instance: number): string {
  * own; they stay here until the Hero mints a container, then move with it
  * (`transferScratchBrowserSheets`).
  */
-export const SCRATCH_CANVAS = "scratch";
+const SCRATCH_CANVAS = "scratch";
 
 /** A browser sheet id's container and instance, or null for another kind. */
 export function parseBrowserSheetId(id: string): { containerId: string; instance: number } | null {
@@ -110,7 +110,7 @@ export function nextBrowserInstance(containerId: string, ids: string[]): number 
 }
 
 /** A container's browser sheet ids, in layout order. */
-export function browserSheetsOf(containerId: string, ids: string[] = panelIds(layout())): string[] {
+function browserSheetsOf(containerId: string, ids: string[] = panelIds(layout())): string[] {
   return ids.filter((id) => parseBrowserSheetId(id)?.containerId === containerId);
 }
 
@@ -139,7 +139,7 @@ export function openBrowserSheet(
  * sheet ids come back in layout order for the container's own layout. Called
  * while the scratch canvas is still the active one.
  */
-export function transferScratchBrowserSheets(containerId: string): string[] {
+function transferScratchBrowserSheets(containerId: string): string[] {
   const ids = browserSheetsOf(SCRATCH_CANVAS);
   if (ids.length === 0) return [];
   const current = pages();
@@ -234,7 +234,7 @@ export function browserTabTitle(id: string): string {
 
 /* Platform availability -------------------------------------------------- */
 
-export type BrowserPlatform = "unknown" | "available" | "unavailable";
+type BrowserPlatform = "unknown" | "available" | "unavailable";
 
 /** Whether this platform shows web views (one answer for the process). */
 export const browserPlatform = signal<BrowserPlatform>("unknown");
@@ -264,7 +264,7 @@ export function probeBrowserPlatform(): Promise<boolean> {
 
 /* Address normalization -------------------------------------------------- */
 
-export type AddressResult =
+type AddressResult =
   | { ok: true; url: string }
   | { ok: false; reason: "empty" | "invalid" | "unsupported" };
 

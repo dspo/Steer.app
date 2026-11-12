@@ -88,7 +88,7 @@ export function openProblemsSheet(containerId: string | null = activeContainerId
 }
 
 /** The test id of a Problems row (paths contain characters selectors split on). */
-export function problemRowTestId(row: ProblemRow): string {
+function problemRowTestId(row: ProblemRow): string {
   return `problems-row-${row.id.replace(/[^A-Za-z0-9]+/g, "-")}`;
 }
 

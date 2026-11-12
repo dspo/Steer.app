@@ -31,7 +31,7 @@ export type SlashOutcome =
   | { kind: "prompt" }
   | { kind: "unsupported"; name: string };
 
-export interface SlashCommand {
+interface SlashCommand {
   name: string;
   /** The one-line description the popup shows (an `app.slash.*` key). */
   description: (locale?: string) => string;
@@ -39,7 +39,7 @@ export interface SlashCommand {
 }
 
 /** Actions the host installs (opening the model menu, the sidebar search). */
-export interface SlashActions {
+interface SlashActions {
   openSidebarSearch(): void;
 }
 
@@ -53,12 +53,12 @@ export function setSlashActions(next: SlashActions | null): void {
 /** The thinking levels pi cycles through, low to high. */
 const THINKING_ORDER: SessionThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
-export function nextThinkingLevel(level: string): SessionThinkingLevel {
+function nextThinkingLevel(level: string): SessionThinkingLevel {
   const at = THINKING_ORDER.indexOf(level as SessionThinkingLevel);
   return THINKING_ORDER[(at + 1) % THINKING_ORDER.length];
 }
 
-export const SLASH_COMMANDS: SlashCommand[] = [
+const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "model",
     description: (locale) => t(K.slash.model, { locale }),
@@ -168,6 +168,3 @@ async function runLocal(sessionId: string, name: string): Promise<void> {
       return;
   }
 }
-
-/** The popup's open state lives with the composer (one per session surface). */
-export const slashOpen = signal(false);

@@ -33,8 +33,8 @@ export type SessionMeta = {
   preview: string;
 };
 
-export type Role = "user" | "assistant" | "tool" | "note";
-export type ToolState = "running" | "done" | "failed";
+type Role = "user" | "assistant" | "tool" | "note";
+type ToolState = "running" | "done" | "failed";
 export type Msg = {
   role: Role;
   text: string;
@@ -43,7 +43,7 @@ export type Msg = {
 };
 
 /** One session's projected state. */
-export type SessionView = {
+type SessionView = {
   id: string;
   path: string;
   cwd: string;
@@ -107,7 +107,7 @@ function patchView(id: string, patch: Partial<SessionView>): void {
  * gauge after a turn); the reply carries them all. An absent field leaves the
  * view's value alone.
  */
-export function applySessionInfo(id: string, data: SessionInfoData | null | undefined): void {
+function applySessionInfo(id: string, data: SessionInfoData | null | undefined): void {
   if (!data) return;
   const patch: Partial<SessionView> = {};
   if (typeof data.path === "string" && data.path) patch.path = data.path;
@@ -131,7 +131,7 @@ export async function refreshSessionInfo(id: string): Promise<void> {
 }
 
 /** What the model picker has for a session: its grouped choices or a load state. */
-export type SessionModelsState = {
+type SessionModelsState = {
   status: "idle" | "loading" | "ready" | "error";
   data?: SessionModelsData;
   error?: string;

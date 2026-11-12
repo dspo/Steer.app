@@ -53,7 +53,7 @@ export const recovered = signal<{ from: number; to: number; at: number } | null>
 /** The last failure, set only after retries stay failed (it names the log). */
 export const lastError = signal<string | null>(null);
 /** The last heartbeat, for the watchdog and the status line. */
-export const heartbeatAt = signal(0);
+const heartbeatAt = signal(0);
 
 type Listener = (event: EventMessage) => void;
 type SnapshotListener = (snapshot: StateSnapshot) => void;

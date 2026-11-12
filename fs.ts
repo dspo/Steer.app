@@ -13,10 +13,10 @@ import { Fs, type FsEntry, type FsExpected, type FsFile, type FsStat, type FsWri
  */
 
 export type FileEntry = FsEntry;
-export type FileStat = FsStat;
-export type FileContents = FsFile;
-export type FileVersion = FsExpected;
-export type WriteResult = FsWriteResult;
+type FileStat = FsStat;
+type FileContents = FsFile;
+type FileVersion = FsExpected;
+type WriteResult = FsWriteResult;
 
 /** A failure from `zu/fs`, with its code and any details the module set. */
 export interface FsFailure {

@@ -19,7 +19,7 @@ import { Glyph } from "./ui";
  */
 
 /** A streaming reply's caret, inline at the end of the last block. */
-export function Caret() {
+function Caret() {
   const still = reduceMotion();
   return (
     <View
@@ -43,7 +43,7 @@ export function Caret() {
 }
 
 /** The least a transcript row needs: a session `Msg` or a subagent's plain one. */
-export type ChatMessage = {
+type ChatMessage = {
   role: string;
   text: string;
   tool?: { name: string; state: string };

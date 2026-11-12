@@ -20,7 +20,7 @@ import { K, t } from "./i18n";
  * claims nothing: fixtures must not take a lock or require a tray.
  */
 
-export type LifecycleMode = "pending" | "headless" | "primary" | "duplicate";
+type LifecycleMode = "pending" | "headless" | "primary" | "duplicate";
 
 /** What this process is: the owner, a blocked second instance, or headless. */
 export const lifecycleMode = signal<LifecycleMode>("pending");
@@ -83,11 +83,4 @@ export function quitApp(): void {
   } catch {
     // A view embedded in another app leaves the lifecycle to its host.
   }
-}
-
-/** A test hook: lets the bootstrap run again (no production caller). */
-export function resetLifecycleState(): void {
-  started = false;
-  lifecycleMode.set("pending");
-  instanceClaim.set(null);
 }

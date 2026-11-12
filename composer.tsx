@@ -28,7 +28,7 @@ import { Glyph, motionStyle, shadowRaised, type GlyphName } from "./ui";
  */
 
 /** `12.3k`, `1M`, `840`: a token count at a glance. */
-export function formatTokens(tokens: number): string {
+function formatTokens(tokens: number): string {
   if (!Number.isFinite(tokens) || tokens < 0) return "—";
   if (tokens >= 1_000_000) {
     const value = tokens / 1_000_000;
@@ -42,7 +42,7 @@ export function formatTokens(tokens: number): string {
 }
 
 /** The context gauge's one line: `12.3k / 1M · 1%`. */
-export function contextLine(usage: {
+function contextLine(usage: {
   tokens: number | null;
   contextWindow: number;
   percent: number | null;
@@ -61,7 +61,7 @@ export function contextLine(usage: {
  * One footer action. `primary` is the idle send; `danger` is stop and
  * interrupt. Chips are the footer's scale: h-6, text 11, tight radius.
  */
-export function ComposerChip(props: {
+function ComposerChip(props: {
   testID: string;
   label: string;
   glyph?: GlyphName;
@@ -117,7 +117,7 @@ export function ComposerChip(props: {
  */
 
 /** Why an empty list is empty: the engine's code, in the user's words. */
-export function modelsReasonText(reason: SessionModelsReason | undefined, error?: string): string {
+function modelsReasonText(reason: SessionModelsReason | undefined, error?: string): string {
   if (error) return t(K.session.modelsError, { error });
   switch (reason?.code) {
     case "no_credentials":

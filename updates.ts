@@ -38,7 +38,7 @@ export type UpdateEnv = {
 };
 
 /** What the dialog is doing. */
-export type UpdateStatus =
+type UpdateStatus =
   | "idle"
   | "checking"
   | "up-to-date"

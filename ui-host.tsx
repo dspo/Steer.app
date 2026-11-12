@@ -32,7 +32,7 @@ export type UIRequest = {
   sessionId?: string;
 };
 
-export type Toast = { id: number; message: string; kind: "info" | "warning" | "error" };
+type Toast = { id: number; message: string; kind: "info" | "warning" | "error" };
 
 /** The dialog the shell is drawing, if any. */
 export const pendingUI = signal<UIRequest | null>(null);
@@ -41,9 +41,9 @@ export const draft = signal("");
 /** Extension notifications, newest last. */
 export const toasts = signal<Toast[]>([]);
 /** Extension status lines, by key; absent text clears one. */
-export const statuses = signal<Record<string, string>>({});
+const statuses = signal<Record<string, string>>({});
 /** The window title an extension asked for, if any. */
-export const windowTitle = signal<string | null>(null);
+const windowTitle = signal<string | null>(null);
 /** Methods the shell cannot show, newest last (also in engine.log). */
 export const unsupportedMethods = signal<string[]>([]);
 
@@ -115,12 +115,12 @@ export function choose(option: string): void {
 }
 
 /** Saves the input/editor draft. */
-export function submitDraft(): void {
+function submitDraft(): void {
   finish(draft());
 }
 
 /** Dismisses a toast by id. */
-export function dismissToast(id: number): void {
+function dismissToast(id: number): void {
   toasts.set(toasts().filter((toast) => toast.id !== id));
 }
 

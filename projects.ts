@@ -126,9 +126,3 @@ export async function startFromScratch(
     heroStarting.set(false);
   }
 }
-
-/** The label a project chip shows. */
-export function projectName(id: string | null): string {
-  if (id === null) return "Chats";
-  return projects().find((project) => project.id === id)?.name ?? "Project";
-}

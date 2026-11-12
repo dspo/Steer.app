@@ -24,14 +24,14 @@ export { languageFor };
  */
 
 /** `ERR_FS_VERIFY` is this layer's: the save came back but the disk differs. */
-export const ERR_FS_VERIFY = "ERR_FS_VERIFY";
+const ERR_FS_VERIFY = "ERR_FS_VERIFY";
 /** `ERR_FS_ROOT` is also the container's: no cwd to allow. */
 export const ERR_FS_ROOT = "ERR_FS_ROOT";
 
-export type EditorStatus = "loading" | "ready" | "saving";
+type EditorStatus = "loading" | "ready" | "saving";
 
 /** One open file: its text, the version on disk and what the sheet shows. */
-export interface EditorDoc {
+interface EditorDoc {
   sheetId: string;
   containerId: string;
   /** The absolute path the sheet opened (inside the container's cwd). */
@@ -75,7 +75,7 @@ export function encodePath(path: string): string {
 }
 
 /** The path `encodePath` encoded, `null` when the text is not valid. */
-export function decodePath(encoded: string): string | null {
+function decodePath(encoded: string): string | null {
   try {
     const padded = encoded.replace(/-/g, "+").replace(/_/g, "/");
     return Buffer.from(padded, "base64").toString("utf8");
@@ -331,7 +331,7 @@ export function editorPathFor(containerId: string, path: string): string {
 }
 
 /** Forgets a document (its sheet closed). Unsaved text goes with it. */
-export function dropEditor(id: string): void {
+function dropEditor(id: string): void {
   const current = editorDocs();
   const doc = current[id];
   if (!doc) return;

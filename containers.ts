@@ -125,7 +125,7 @@ export function setScratchSheetTransfer(next: ((containerId: string) => string[]
  * `createdAt` descending for a tie, then the id ascending so two containers
  * never swap places between renders.
  */
-export function containersByRecency(rows: ContainerRecord[] = containers()): ContainerRecord[] {
+function containersByRecency(rows: ContainerRecord[] = containers()): ContainerRecord[] {
   return rows
     .filter((container) => !container.archived)
     .slice()
@@ -180,7 +180,7 @@ function seedSheetOrder(containerId: string, layout: DockAreaLayout): void {
 
 /** The canvas of a new or not-yet-stashed container: its own terminal for an
  * external one, one sheet per session otherwise. */
-export function defaultLayoutForContainer(container: ContainerRecord): DockAreaLayout {
+function defaultLayoutForContainer(container: ContainerRecord): DockAreaLayout {
   if (container.kind !== "Pi") {
     return { center: { type: "tabs", panels: [terminalSheetId(container.id, 1)], activeIndex: 0 } };
   }
@@ -740,9 +740,4 @@ export async function applyZoom(panel: string | null): Promise<void> {
     zoomedPanel.set(null);
     syncVisible();
   }
-}
-
-/** The number of live containers (sidebar badge). */
-export function containerCount(): number {
-  return liveContainers().length;
 }

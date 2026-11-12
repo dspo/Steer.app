@@ -373,7 +373,7 @@ function LauncherTool(props: {
 
 /* Project creation ------------------------------------------------------- */
 
-export const projectDialogOpen = signal(false);
+const projectDialogOpen = signal(false);
 const projectNameDraft = signal("");
 const projectRootsDraft = signal<RootDraft[]>([]);
 const projectDialogError = signal<string | null>(null);
@@ -381,7 +381,7 @@ const projectPicking = signal(false);
 let projectCreated: ((project: ProjectRecord) => void) | null = null;
 
 /** Opens the project dialog; `onCreated` adopts the new project (the Launcher's chip). */
-export function openProjectDialog(onCreated?: (project: ProjectRecord) => void): void {
+function openProjectDialog(onCreated?: (project: ProjectRecord) => void): void {
   projectNameDraft.set("");
   projectRootsDraft.set([]);
   projectDialogError.set(null);

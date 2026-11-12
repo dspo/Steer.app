@@ -47,15 +47,6 @@ export function releaseInstance(): boolean {
   }
 }
 
-/** The lock file's path; empty when the native module has no answer. */
-export function instanceLockPath(): string {
-  try {
-    return String(Instance.lockPath());
-  } catch {
-    return "";
-  }
-}
-
 function normalizeClaim(claim: unknown): InstanceClaim {
   const value = (claim ?? {}) as Partial<InstanceClaim>;
   return {

@@ -57,7 +57,7 @@ const arc = (c: CanvasRenderingContext2D, x: number, y: number, r: number, from 
 };
 
 /** The shell's motion tokens: short, eased color/opacity changes, never motion for its own sake. */
-export const motion = {
+const motion = {
   fast: {
     transitionProperty: "background-color, opacity, color, border-color",
     transitionDuration: 120,
@@ -294,56 +294,10 @@ export function Glyph(props: { name: GlyphName; size?: number; tint?: string }) 
  * milü — 355 above the shaft, 113 below — in the 32-unit box the glyphs
  * use. The stroke and the digits take `ink`.
  */
-export function Logo(props: { size?: number; ink?: string }) {
-  const size = props.size ?? 34;
-  return (
-    <Canvas
-      style={{ pointerEvents: "none", width: size, height: size }}
-      draw={(c, { width }) => {
-        c.scale(width / 32, width / 32);
-        const ink = props.ink ?? token("primary-foreground");
-        c.strokeStyle = ink;
-        c.fillStyle = ink;
-        c.lineWidth = 1.8;
-        c.lineCap = "round";
-        c.lineJoin = "round";
-        c.beginPath();
-        // The shaft, then the two arrowheads.
-        c.moveTo(4, 16);
-        c.lineTo(28, 16);
-        c.moveTo(8.5, 12.5);
-        c.lineTo(4, 16);
-        c.lineTo(8.5, 19.5);
-        c.moveTo(23.5, 12.5);
-        c.lineTo(28, 16);
-        c.lineTo(23.5, 19.5);
-        c.stroke();
-        // 355/113 ≈ π, above and below the shaft.
-        c.font = "600 6.5px system-ui";
-        c.textAlign = "center";
-        c.fillText("355", 16, 9);
-        c.fillText("113", 16, 29.5);
-      }}
-    />
-  );
-}
-
 /** A filled status dot. */
 export function Dot(props: { tint: string; size?: number }) {
   const size = props.size ?? 7;
   return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: props.tint }} />;
-}
-
-/** A small all-caps section title used across the sidebar and the panel. */
-export function SectionTitle(props: { label: string; trailing?: string }) {
-  return (
-    <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingTop: 16, paddingBottom: 6 }}>
-      <Text style={{ flex: 1, fontSize: 11, fontWeight: "600", letterSpacing: 0.6, color: token("faint") }}>{props.label}</Text>
-      {props.trailing ? (
-        <Text style={{ fontSize: 11, color: token("faint") }}>{props.trailing}</Text>
-      ) : null}
-    </View>
-  );
 }
 
 /** A rounded label chip (model names, branches, counts). */

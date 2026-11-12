@@ -44,7 +44,7 @@ type TintToken = "brand" | "warn" | "up" | "info" | "muted-foreground" | "primar
  * wherever the sheet moves).
  */
 
-export type SheetKind =
+type SheetKind =
   | "home"
   | "session"
   | "terminal"
@@ -94,7 +94,7 @@ const SPECS: Record<SheetKind, SheetSpec> = {
 };
 
 /** Splits a sheet id (`kind:instance`) into its kind and instance. */
-export function sheetParts(id: string): { kind: SheetKind; instance: string } {
+function sheetParts(id: string): { kind: SheetKind; instance: string } {
   const at = id.indexOf(":");
   const kind = (at < 0 ? id : id.slice(0, at)) as SheetKind;
   return { kind, instance: at < 0 ? "" : id.slice(at + 1) };
@@ -152,17 +152,6 @@ export function sheetGlyph(id: string): GlyphName {
 }
 
 /** The kinds the canvas toolbar offers. */
-export const TOOLBAR_KINDS: SheetKind[] = [
-  "session",
-  "terminal",
-  "claude",
-  "codex",
-  "copilot",
-  "webview",
-  "editor",
-  "diff",
-];
-
 /**
  * A sheet's mock body: the registry's big line, the id dimmed, and a
  * counter whose presses survive the sheet moving between panels —

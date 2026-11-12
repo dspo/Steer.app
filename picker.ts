@@ -5,7 +5,7 @@ import { Picker } from "zu/native";
  * `choose folder` (cancel is `null`); this module only makes it replaceable,
  * so a headless test can answer with paths and never launch Finder.
  */
-export type FolderPicker = (prompt: string) => Promise<string | null>;
+type FolderPicker = (prompt: string) => Promise<string | null>;
 
 const nativePicker: FolderPicker = async (prompt) => (await Picker.pickFolder(prompt)) ?? null;
 

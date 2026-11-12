@@ -39,11 +39,6 @@ export function sortEntries(entries: FileEntry[]): FileEntry[] {
   });
 }
 
-/** The directory key for an entry (its own path when it is a directory). */
-export function dirKey(entry: FileEntry): string {
-  return entry.path;
-}
-
 /**
  * The rows the tree shows: every entry of every expanded directory, in
  * order, with a loading/empty/error row under a directory that is not ready.

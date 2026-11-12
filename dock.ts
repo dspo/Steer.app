@@ -105,7 +105,7 @@ export function hasSheet(layout: DockAreaLayout, id: string): boolean {
 }
 
 /** Displays an open sheet: its group's `activeIndex` moves to it. */
-export function activateSheet(layout: DockAreaLayout, id: string): DockAreaLayout {
+function activateSheet(layout: DockAreaLayout, id: string): DockAreaLayout {
   let changed = false;
   const walk = (node: DockNode): void => {
     if (node.type === "tabs") {
@@ -223,13 +223,6 @@ export function sheetCount(layout: DockAreaLayout): number {
   return panelIds(layout).length;
 }
 
-/** Fresh instance numbers, per kind, for non-session sheets. */
-const instances = new Map<string, number>();
-export function nextSheetId(kind: string): string {
-  const n = (instances.get(kind) ?? 0) + 1;
-  instances.set(kind, n);
-  return `${kind}:${n + 1}`;
-}
 
 /**
  * Removes a sheet from the layout: its tab goes, an emptied group goes with

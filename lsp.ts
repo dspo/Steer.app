@@ -37,10 +37,10 @@ import { languageFor } from "./languages";
  */
 
 /** The families this build knows; each starts one server per container. */
-export type LspFamily = "rust" | "typescript" | "go";
+type LspFamily = "rust" | "typescript" | "go";
 
 /** A language server's lifecycle. */
-export type LspState = "starting" | "ready" | "error" | "stopped";
+type LspState = "starting" | "ready" | "error" | "stopped";
 
 /** One server process, as the Problems sheet and the status line read it. */
 export interface LspServerInfo {
@@ -66,25 +66,20 @@ export interface LspServerInfo {
   initializedAt: number | null;
 }
 
-/** The server's name (`rust-analyzer`), when it introduced itself. */
-export interface LspServerStatuses {
-  [key: string]: LspServerInfo;
-}
-
 /** A raw LSP position: line and UTF-16 column, both from 0. */
-export interface LspPosition {
+interface LspPosition {
   line: number;
   character: number;
 }
 
 /** A raw LSP range. */
-export interface LspRange {
+interface LspRange {
   start: LspPosition;
   end: LspPosition;
 }
 
 /** One published diagnostic, as the server sent it. */
-export interface LspDiagnostic {
+interface LspDiagnostic {
   range: LspRange;
   severity?: number | null;
   code?: string | number | null;
@@ -99,7 +94,7 @@ export interface LspDiagnostic {
 }
 
 /** The diagnostics of one file, plus where they came from. */
-export interface LspFileDiagnostics {
+interface LspFileDiagnostics {
   containerId: string;
   path: string;
   uri: string;
@@ -108,13 +103,13 @@ export interface LspFileDiagnostics {
 }
 
 /** A hover result, as the editor's card draws it (Markdown). */
-export interface LspHoverResult {
+interface LspHoverResult {
   markdown: string;
   range?: LspRange | null;
 }
 
 /** Where a definition points, only inside the container root. */
-export interface LspDefinitionResult {
+interface LspDefinitionResult {
   path: string;
   /** The symbol's own range in the target (for the hover underline). */
   range: EditorRange;
@@ -129,7 +124,7 @@ export interface LspCompletionResult {
 }
 
 /** A navigation the editor sheet applies once its document is ready. */
-export interface RevealTarget {
+interface RevealTarget {
   sheetId: string;
   range: EditorRange;
   nonce: number;
@@ -156,7 +151,7 @@ export interface ProblemRow {
 export const lspServers = signal<Record<string, LspServerInfo>>({});
 
 /** Diagnostics by container, then by canonical file path. */
-export const lspDiagnostics = signal<Record<string, Record<string, LspFileDiagnostics>>>({});
+const lspDiagnostics = signal<Record<string, Record<string, LspFileDiagnostics>>>({});
 
 /** Navigations waiting for an editor sheet to be ready, by sheet id. */
 export const pendingReveals = signal<Record<string, RevealTarget>>({});
@@ -189,13 +184,13 @@ const ERR_RESPONSE = "ERR_LSP_RESPONSE";
 const ERR_SEND = "ERR_LSP_SEND";
 
 /** A failure from the LSP layer, with a code the UI can branch on. */
-export interface LspFailure {
+interface LspFailure {
   code: string;
   message: string;
 }
 
 /** The failure of `error`, keeping the LSP layer's code when there is one. */
-export function lspFailure(error: unknown): LspFailure {
+function lspFailure(error: unknown): LspFailure {
   const value = error as { code?: unknown; message?: unknown } | null | undefined;
   return {
     code: typeof value?.code === "string" ? value.code : ERR_UNAVAILABLE,
@@ -204,7 +199,7 @@ export function lspFailure(error: unknown): LspFailure {
 }
 
 /** One language server's definition: argv, no shell, its own cwd. */
-export interface LspCommand {
+interface LspCommand {
   command: string;
   args?: string[];
   env?: Record<string, string>;
@@ -215,7 +210,7 @@ export interface LspCommand {
  * (the headless UI test uses a controlled child process this way). The
  * packaged app keeps the default map.
  */
-export type LspCommandResolver = (family: LspFamily) => LspCommand | null;
+type LspCommandResolver = (family: LspFamily) => LspCommand | null;
 
 let commandResolver: LspCommandResolver | null = null;
 
@@ -248,7 +243,7 @@ const DEFAULT_SERVERS: Record<LspFamily, ServerSpec> = {
 };
 
 /** The family that serves an editor language, `null` for an unsupported one. */
-export function lspFamilyFor(language: string): LspFamily | null {
+function lspFamilyFor(language: string): LspFamily | null {
   if (language === "rust") return "rust";
   if (
     language === "typescript" ||
@@ -263,16 +258,11 @@ export function lspFamilyFor(language: string): LspFamily | null {
 }
 
 /** The LSP `languageId` for a path. */
-export function lspLanguageId(path: string): string {
+function lspLanguageId(path: string): string {
   const language = languageFor(path);
   if (language === "tsx") return "typescriptreact";
   if (language === "jsx") return "javascriptreact";
   return language;
-}
-
-/** The server's language ids for a family. */
-export function lspLanguagesFor(family: LspFamily): string[] {
-  return DEFAULT_SERVERS[family].languages;
 }
 
 // --- paths and URIs --------------------------------------------------------
@@ -288,7 +278,7 @@ export function pathToUri(path: string): string {
 }
 
 /** The path a `file:` URI names, `null` for another scheme. */
-export function uriToPath(uri: string): string | null {
+function uriToPath(uri: string): string | null {
   if (!uri.startsWith("file://")) return null;
   let rest = uri.slice("file://".length);
   if (rest.startsWith("localhost/")) rest = rest.slice("localhost".length);
@@ -300,7 +290,7 @@ export function uriToPath(uri: string): string | null {
 }
 
 /** Whether `path` is the root or inside it (canonical paths). */
-export function insideRoot(root: string, path: string): boolean {
+function insideRoot(root: string, path: string): boolean {
   if (path === root) return true;
   const base = root.endsWith("/") ? root : `${root}/`;
   return path.startsWith(base);
@@ -1053,7 +1043,7 @@ function severityOf(value: number | null | undefined): EditorDiagnosticSeverity 
 }
 
 /** The ordering Problems and the editor use. */
-export function severityRank(severity: EditorDiagnosticSeverity): number {
+function severityRank(severity: EditorDiagnosticSeverity): number {
   return severity === "error" ? 0 : severity === "warning" ? 1 : severity === "info" ? 2 : 3;
 }
 
@@ -1072,7 +1062,7 @@ function clampRange(range: LspRange): EditorRange {
 }
 
 /** One published diagnostic in the editor's shape. */
-export function toEditorDiagnostic(diagnostic: LspDiagnostic): EditorDiagnostic {
+function toEditorDiagnostic(diagnostic: LspDiagnostic): EditorDiagnostic {
   const tags: EditorDiagnosticTag[] = [];
   for (const tag of diagnostic.tags ?? []) {
     if (tag === 1) tags.push("unnecessary");
@@ -1376,7 +1366,7 @@ export async function lspCompletion(
 // --- LSP value mapping -----------------------------------------------------
 
 /** Markdown of a hover answer (`MarkupContent`, `MarkedString`, a list). */
-export function hoverMarkdown(contents: any): string {
+function hoverMarkdown(contents: any): string {
   if (contents === null || contents === undefined) return "";
   if (typeof contents === "string") return contents;
   if (Array.isArray(contents)) {

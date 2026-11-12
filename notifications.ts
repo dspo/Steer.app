@@ -33,7 +33,7 @@ import { K, t } from "./i18n";
  */
 
 /** How the shell reports the main window: null off a desktop. */
-export type WindowProbe = () => { visible: boolean; focused: boolean } | null;
+type WindowProbe = () => { visible: boolean; focused: boolean } | null;
 
 /** What the shell uses to show and close notifications (tests replace it). */
 export type Notifier = {
@@ -79,7 +79,7 @@ export function setWindowProbe(next: WindowProbe | null): void {
 }
 
 /** The main window's state as the notifications see it; null off a desktop. */
-export function probeWindow(): { visible: boolean; focused: boolean } | null {
+function probeWindow(): { visible: boolean; focused: boolean } | null {
   try {
     return windowProbe();
   } catch {
@@ -88,7 +88,7 @@ export function probeWindow(): { visible: boolean; focused: boolean } | null {
 }
 
 /** Whether a settle should notify: a desktop window that is not in front. */
-export function shouldNotify(): boolean {
+function shouldNotify(): boolean {
   const window = probeWindow();
   return !!window && (!window.visible || !window.focused);
 }
@@ -183,7 +183,7 @@ export function subagentNotificationId(runId: string): string {
 }
 
 /** What a notification press should open. */
-export type NotificationTarget =
+type NotificationTarget =
   | { kind: "session"; sessionId: string }
   | { kind: "subagent"; runId: string; containerId?: string };
 
@@ -389,7 +389,7 @@ export function startNotifications(): void {
 }
 
 /** The engine event the shell calls (and tests can call directly). */
-export function observeEngineEvent(event: { type: string; sessionId?: string; data?: unknown }): void {
+function observeEngineEvent(event: { type: string; sessionId?: string; data?: unknown }): void {
   if (event.type === "agent.state") {
     const id = event.sessionId ?? "";
     if (!id) return;

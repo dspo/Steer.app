@@ -44,7 +44,7 @@ export const ERR_GIT_IDENTITY = "ERR_GIT_IDENTITY";
 export const ERR_GIT_NOT_REPO = "ERR_GIT_NOT_REPO";
 
 /** The failure of `error`, keeping `zu/git`'s code when there is one. */
-export function gitFailure(error: unknown): GitFailure {
+function gitFailure(error: unknown): GitFailure {
   const value = error as
     | {
         code?: unknown;
@@ -70,7 +70,7 @@ export function gitFailure(error: unknown): GitFailure {
 }
 
 /** What a container's Changes sheet renders. */
-export interface ContainerChanges {
+interface ContainerChanges {
   phase: "loading" | "ready" | "error";
   /** The last status read; kept while a refresh runs. */
   status: GitStatus | null;
@@ -78,7 +78,7 @@ export interface ContainerChanges {
 }
 
 /** What a container's History sheet renders. */
-export interface ContainerHistory {
+interface ContainerHistory {
   phase: "loading" | "ready" | "error";
   commits: GitCommit[];
   branches: GitBranches | null;
@@ -111,7 +111,7 @@ function patchHistory(id: string, next: Partial<ContainerHistory>): void {
 }
 
 /** The container's cwd, or `null` when it has none. */
-export function gitRoot(containerId: string): string | null {
+function gitRoot(containerId: string): string | null {
   const container = containers().find((row) => row.id === containerId);
   return container?.cwd ? container.cwd : null;
 }
@@ -239,7 +239,7 @@ export async function unstagePaths(containerId: string, paths: string[]): Promis
 }
 
 /** What a commit attempt became. */
-export type CommitResult =
+type CommitResult =
   | { ok: true; commit: GitCommit }
   | { ok: false; error: GitFailure };
 

@@ -40,7 +40,7 @@ const ACTION_COMMANDS: Record<TerminalAction, string | null> = {
   Copilot: "copilot",
 };
 
-export interface TerminalInfo {
+interface TerminalInfo {
   title: string;
   running: boolean;
   exitCode: number | null;
@@ -48,7 +48,7 @@ export interface TerminalInfo {
   error: string | null;
 }
 
-export interface TerminalHandle {
+interface TerminalHandle {
   sheetId: string;
   containerId: string;
   action: TerminalAction;

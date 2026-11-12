@@ -17,7 +17,7 @@ import { Glyph, motionStyle } from "./ui";
  */
 
 /** A visible tab group's tab bar, in the canvas's coordinates. */
-export type TabBarBox = {
+type TabBarBox = {
   x: number;
   y: number;
   width: number;

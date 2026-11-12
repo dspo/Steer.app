@@ -41,7 +41,7 @@ export function vscodeUrl(path: string): string {
 }
 
 /** What opening the editor did, for the status bar's one-line report. */
-export type OpenEditorResult =
+type OpenEditorResult =
   | { kind: "opened"; path: string; url: string }
   | { kind: "no-folder" }
   | { kind: "failed"; path: string; url: string; error: string };
