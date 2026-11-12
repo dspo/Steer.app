@@ -9,37 +9,33 @@ const STATE_DIR = `/tmp/zu-m12-app-${Date.now()}`;
 Engine.setStateDir(STATE_DIR);
 
 /**
- * The real app on a desktop window model, with the real sidecar: closing
- * the window reports a close press, the shell hides it, and the engine
- * keeps running — the point of M12's "close means hide". The window comes
- * back through the application menu's Show (Mod+0), then the test stops
- * the engine through the app's own control so no sidecar or claim is left
- * behind for the next test file.
+ * The real app on a desktop window model, post-cutover: closing the window
+ * reports a close press, the shell hides it, and the app keeps running —
+ * M12's "close means hide". There is no sidecar to keep alive any more (the
+ * ACP harness processes are per-turn and settle on their own), which is the
+ * stronger form of the same guarantee: hiding tears nothing down, and the
+ * window comes back through the application menu's Show (Mod+0).
  */
-test("hiding the window keeps the engine running", async () => {
+test("hiding the window keeps the app alive with no sidecar", async () => {
   const app = await open("./App.tsx", { network: "live", platform: "macos", width: 1200, height: 800 });
   try {
-    await app.waitFor(`label:${copy("运行中", "Running")}`, { timeout: 30000 });
-    expect(Engine.status()).toBe("running");
+    await app.waitFor("id:hero-input", { timeout: 30000 });
+    expect(Engine.status()).toBe("stopped");
+    expect(Engine.pid()).toBe(0);
     const win = app.window("main");
 
     await app.window("main").pressClose();
     await app.waitUntil(() => win.state()?.visible === false);
-    // The engine is the sidecar process; hiding the window is not a quit
-    // and does not tear down sessions. It is still running after the
-    // window has been hidden for a moment.
-    expect(Engine.status()).toBe("running");
+    // Hiding is not a quit: the app is alive, and there is no resident
+    // process of ours anywhere — not before, not after.
     await app.wait(500);
-    expect(Engine.status()).toBe("running");
+    expect(Engine.status()).toBe("stopped");
+    expect(Engine.pid()).toBe(0);
+    expect(Engine.port()).toBe(0);
 
     await app.keyboard.press("mod+0");
-    await app.waitUntil(() => win.state()?.visible === true && app.shows(`label:${copy("运行中", "Running")}`));
-
-    // Stop through the shell so its watchdog knows this is intentional.
-    await app.press("id:titlebar-tools");
-    await app.press("id:engine-stop");
-    await app.waitFor(`label:${copy("未启动", "Stopped")}`);
-    expect(Engine.status()).toBe("stopped");
+    await app.waitUntil(() => win.state()?.visible === true);
+    expect(Engine.pid()).toBe(0);
   } finally {
     Instance.release();
     await Engine.stop();

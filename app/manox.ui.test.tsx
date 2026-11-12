@@ -27,7 +27,14 @@ test("the manox sheet runs the real host loop on the workbench", async () => {
   // The refused dispatch rolled back: the composer idles (the send is up,
   // the stop and the lanes are gone) and no phantom turn or error line
   // remains — the sheet is exactly as calm as before the dispatch.
-  await app.waitUntil(() => app.shows("id:manox-send"), { timeout: 30000 });
+  // The rollback is the end state, not an instant: the boot's speed decides
+  // whether the refusal echo lands before or after the first look, so the
+  // wait is the calm sheet itself (send up, no optimistic row left), not a
+  // snapshot taken at a lucky moment.
+  await app.waitUntil(
+    () => app.shows("id:manox-send") && app.count("id:manox-user-message") === 0,
+    { timeout: 30000 },
+  );
   expect(app.shows("id:manox-stop")).toBe(false);
   expect(app.shows("id:manox-lanes")).toBe(false);
   expect(app.count("id:manox-error-line")).toBe(0);

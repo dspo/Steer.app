@@ -32,6 +32,15 @@ setPiTransport("acp"); // containers mint ACP local captains: no process at all
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** The suite's other files may have left an engine alive (engine.test pins
+ * the legacy transport and spawns one). This file's premise is the
+ * opposite: the fold works with no engine of ours running, so the setup
+ * clears whatever a previous file left behind before the assertions look. */
+async function ensureNoEngine(): Promise<void> {
+  await Engine.kill();
+  await sleep(50);
+}
+
 /** Writes one pi session file shaped like pi's own, through `zu/fs`. */
 async function writeSessionFile(id: string, body: string[]): Promise<string> {
   const dir = `sessions/--tmp-demo--`;
@@ -43,6 +52,7 @@ async function writeSessionFile(id: string, body: string[]): Promise<string> {
 }
 
 test("the engine is not running and the state files are ours", async () => {
+  await ensureNoEngine();
   expect(Engine.pid()).toBe(0);
   expect(Engine.port()).toBe(0);
   expect((await State.read("registry.json")) === null).toBe(true);
