@@ -211,6 +211,10 @@ export const K = {
     modelsNoCredentials: "app.session.modelsNoCredentials",
     modelsNoCatalog: "app.session.modelsNoCatalog",
     modelsNoChat: "app.session.modelsNoChat",
+    acpModelsUnavailable: "app.session.acpModelsUnavailable",
+    acpThinkingUnavailable: "app.session.acpThinkingUnavailable",
+    acpCompactUnavailable: "app.session.acpCompactUnavailable",
+    acpSubagentsUnavailable: "app.session.acpSubagentsUnavailable",
   },
   dialog: {
     confirm: "app.dialog.confirm",

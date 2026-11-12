@@ -5,6 +5,7 @@ import { containerTitle } from "../canvas/titles";
 import { loadSettings, setSidebarWidth, sidebarWidth, SIDEBAR_DEFAULT_WIDTH } from "../stores/settings";
 import { setSlashActions } from "../stores/slash";
 import { connect, disconnect, lastError, phase, recovered, retry, type EnginePhase } from "../stores/engine";
+import { piTransport } from "../harness/pi-acp/acp";
 import {
   closeSheet,
   activeContainerId,
@@ -63,14 +64,27 @@ import { TabBarPlus } from "../canvas/tab-plus";
  * overflow holds the engine controls.
  */
 
-/** Boots the engine and loads the registry; the app calls it once. */
+/**
+ * Boots the shell: loads the containers, the projects and the settings, then
+ * nothing else waits on a process. Since the cutover the default transport
+ * is the per-turn ACP harness — there is no sidecar to start and no socket
+ * to dial, and the folds read `zu/state` files directly. The legacy engine
+ * transport (`ZU_PI_TRANSPORT=engine`) still connects first, because its
+ * pi sessions ride the sidecar.
+ */
 export async function bootShell(): Promise<void> {
-  await connect();
-  if (phase() === "connected") {
-    await loadContainers();
-    await loadProjects();
-    await loadSettings();
+  if (piTransport() === "engine") {
+    await connect();
+    if (phase() === "connected") {
+      await loadContainers();
+      await loadProjects();
+      await loadSettings();
+    }
+    return;
   }
+  await loadContainers();
+  await loadProjects();
+  await loadSettings();
 }
 
 /** "now", "5m", "3h", "2d", then the date. */
@@ -631,10 +645,12 @@ function Sidebar() {
  * The engine's inline state: a tinted dot, with words only while it is not
  * the normal connected state. Pressing it retries a stopped or failed
  * engine, so the old status bar's retry affordance is still one gesture.
+ * The ACP transport has no resident process to watch — no dot at all.
  */
 function EngineIndicator() {
   const label = () => t(PHASE_KEY[phase()]);
   const abnormal = () => phase() !== "connected";
+  if (piTransport() !== "engine") return null;
   const retryEngine = () => {
     if (phase() === "stopped") void bootShell();
     else if (phase() !== "starting" && phase() !== "recovering") void retry();
@@ -673,8 +689,9 @@ function TitleBar() {
   // bar is hidden; reserve its reported width (plus the row's own inset).
   const padLeft = () => (titlebar().height > 0 ? titlebar().left + 12 : 14);
   const hasContainer = () => activeContainerId() !== null;
-  const canStop = () => phase() === "connected" || phase() === "starting" || phase() === "recovering";
-  const canRetry = () => phase() !== "connected" && phase() !== "starting";
+  const engineTransport = () => piTransport() === "engine";
+  const canStop = () => engineTransport() && (phase() === "connected" || phase() === "starting" || phase() === "recovering");
+  const canRetry = () => engineTransport() && phase() !== "connected" && phase() !== "starting";
   const failure = () => sessionError() ?? containerError() ?? projectError() ?? lastError();
   const openEditor = async () => {
     const result = await openActiveInVSCode();

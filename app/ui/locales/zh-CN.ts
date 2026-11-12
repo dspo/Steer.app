@@ -382,4 +382,8 @@ export const zhCN: Record<string, string> = {
     "pi 里没有已登录的 provider。先运行 `pi` 登录（或在 ~/.pi/agent/models.json 里添加 provider），然后重试。",
   "app.session.modelsNoCatalog": "pi 没有找到模型目录。检查 ~/.pi/agent/models.json 后重试。",
   "app.session.modelsNoChat": "provider 已登录但没有列出可用的对话模型。检查 ~/.pi/agent/models.json 里的条目后重试。",
+  "app.session.acpModelsUnavailable": "ACP harness 暂不支持切换模型：distro 尚未暴露模型表。",
+  "app.session.acpThinkingUnavailable": "ACP harness 暂不支持思考档位：distro 尚未暴露 session modes。",
+  "app.session.acpCompactUnavailable": "ACP harness 暂不支持手动压缩；自动压缩仍然可用。",
+  "app.session.acpSubagentsUnavailable": "ACP harness 暂不支持子代理：dispatch 扩展属于后续 distro 阶段。",
 };

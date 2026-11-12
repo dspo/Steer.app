@@ -1,52 +1,98 @@
 import { expect, open, test } from "nsh/test";
-import { Engine } from "zu/native";
-import { connect, request } from "./stores/engine";
+import { Engine, Fs, State } from "zu/native";
+import { containers, loadContainers, openPath } from "./stores/containers";
+import { error as sessionStoreError, messages, refreshSessions, viewFor } from "./stores/sessions";
+import { resetStateCache } from "./stores/zu-state";
 import { copy, shellCopyLocale } from "./ui/copy";
 import { K, t } from "./ui/i18n";
 
+// S2's acceptance, post-cutover: a container whose session has a
+// conversation shows the transcript when its row is pressed; an empty one
+// shows its start page. Everything is the UI's fold plus ACP loads — the
+// conversation is a fixture session file (no model, no sidecar), and the
+// transcript is read by a harness process that loads and exits.
 
-Engine.setStateDir(`/tmp/zu-hero-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
+const stateDir = `/tmp/zu-hero-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+const agentDir = `/tmp/zu-hero-agent-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+const SESSION_ID = "ffff5555-0000-0000-0000-000000000005";
+const SESSION_PATH = `${agentDir}/sessions/--tmp-zu-hero-a--/2026-07-20T03-38-58-867Z_${SESSION_ID}.jsonl`;
+
+Engine.setStateDir(stateDir);
 Engine.setNoExtensions(true);
+State.setAgentDir(agentDir);
+resetStateCache();
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-test("switching to a container with a conversation shows its transcript, not the hero", async () => {
-  await connect();
-  const a = await request("container.create", { cwd: "/tmp/zu-hero-a" }, 120000);
-  const aSession = String(a.session?.sessionId ?? a.container.sessions[0].sessionId);
-  // The user's own message is on disk as soon as the prompt is accepted, so
-  // the session is non-empty without waiting for (or paying for) a reply.
-  await request("session.prompt", { sessionId: aSession, text: "hello A" }, 30000);
-  const b = await request("container.create", { cwd: "/tmp/zu-hero-b" }, 120000);
-  const bSession = String(b.session?.sessionId ?? b.container.sessions[0].sessionId);
+async function writeFixtureSession(): Promise<void> {
+  await Fs.mkdir("/tmp", "zu-hero-a");
+  await Fs.mkdir("/tmp", "zu-hero-b");
+  await Fs.mkdir("/tmp", agentDir.slice("/tmp/".length));
+  await Fs.mkdir(agentDir, "sessions");
+  await Fs.mkdir(agentDir, "sessions/--tmp-zu-hero-a--");
+  const header = `{"type":"session","version":3,"id":"${SESSION_ID}","timestamp":"2026-07-20T03:38:58.868Z","cwd":"/tmp/zu-hero-a"}\n`;
+  const user = `{"type":"message","id":"m1","parentId":null,"timestamp":"2026-07-20T03:43:26.310Z","message":{"role":"user","content":[{"type":"text","text":"hello A"}]}}\n`;
+  const assistant = `{"type":"message","id":"m2","parentId":"m1","timestamp":"2026-07-20T03:43:30.000Z","message":{"role":"assistant","content":[{"type":"text","text":"answer A"}]}}\n`;
+  await Fs.write(agentDir, `sessions/--tmp-zu-hero-a--/2026-07-20T03-38-58-867Z_${SESSION_ID}.jsonl`, `${header}${user}${assistant}`, null, null);
+}
 
-  // The canvas looks a session up by the id the container records; the file
-  // open must answer with that same id or the view lands under another key.
-  const show = await request("container.show", { containerId: a.container.id }, 10000);
-  const row = show.container.sessions[0];
-  expect(row.path).toBeTruthy();
-  const opened = await request("session.open", { path: row.path }, 10000);
-  expect(opened.id).toBe(row.sessionId);
+test("switching to a container with a conversation shows its transcript, not the hero", async () => {
+  await writeFixtureSession();
+  // The fold learns the file; openPath mints the container around it and
+  // makes it active — the whole write is UI-side.
+  await refreshSessions();
+  await openPath(SESSION_PATH);
+  const row = containers().find((container) =>
+    container.sessions.some((session) => session.path === SESSION_PATH),
+  );
+  expect(row).toBeTruthy();
+  const aId = String(row?.id ?? "");
+  // The transcript over ACP: the fold feeds the load's cwd, the harness
+  // process loads and exits, the view holds the file's rows.
+  const reopened = viewFor(SESSION_ID);
+  expect(reopened?.loaded).toBe(true);
+  expect(messages().some((message) => message.text === "hello A")).toBe(true);
+  expect(sessionStoreError()).toBe(null);
+  // B exists before the app mounts: the app folds the registry file once.
+  const b = await createEmptyContainer("/tmp/zu-hero-b");
+  await sleep(150);
 
   const app = await open("./App.tsx", { network: "live", width: 1280, height: 800 });
-  // Wait on the rows themselves: a container's label follows its session
-  // (the folder until the view is loaded), so the folder text is not stable.
-  await app.waitFor(`id:container-row-${a.container.id}`, { timeout: 60000 });
-  await app.waitFor(`id:container-row-${b.container.id}`, { timeout: 60000 });
+  await app.waitFor(`id:container-row-${aId}`, { timeout: 60000 });
 
-  await app.press(`id:container-row-${a.container.id}`);
-  await app.waitFor("id:session-transcript", { timeout: 30000 });
+  // The row's own pressable carries the id; the colon in `pi:<id>` is fine
+  // for `shows`, but the press goes through the row's accessibility label.
+  await app.press(`Open container hello A`);
+  await app.waitFor("id:session-transcript", { timeout: 60000 });
   expect(app.texts()).toContain("hello A");
-  expect(app.texts()).not.toContain(t(K.hero.title, { locale: shellCopyLocale() }));
+  expect(app.texts()).toContain("answer A");
+  expect(app.shows("id:hero-input")).toBe(false);
 
-  await app.press(`id:container-row-${b.container.id}`);
+  // An empty container's start page is its composer, not a transcript.
+  await app.press(`Open container ${bContainerTitle(b)}`);
   await app.waitFor("id:session-hero", { timeout: 30000 });
-  // B is empty: its start page is correct there.
   expect(app.texts()).toContain(t(K.hero.title, { locale: shellCopyLocale() }));
 
-  await app.press(`id:container-row-${a.container.id}`);
+  await app.press(`Open container hello A`);
   await app.waitFor("id:session-transcript", { timeout: 30000 });
   expect(app.texts()).not.toContain(t(K.hero.title, { locale: shellCopyLocale() }));
-  expect(aSession.length).toBeGreaterThan(0);
-  expect(bSession.length).toBeGreaterThan(0);
 }, 240000);
+
+async function createEmptyContainer(cwd: string): Promise<string> {
+  const { createContainer } = await import("./stores/containers");
+  const key = String((await createContainer(cwd)) ?? "");
+  return containers().find((row) => row.sessions.some((s) => s.sessionId === key))?.id ?? "";
+}
+
+/** B's row label: an untouched captain's folder. */
+function bContainerTitle(id: string): string {
+  const row = containers().find((entry) => entry.id === id);
+  return row ? row.cwd.split("/").filter(Boolean).pop() ?? row.cwd : id;
+}
+
+test("leaves the runner clean", () => {
+  Engine.setStateDir("");
+  State.setAgentDir("");
+  Engine.setNoExtensions(false);
+  resetStateCache();
+});

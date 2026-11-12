@@ -1,6 +1,11 @@
 import { expect, test } from "nsh/test";
 import { Engine } from "zu/native";
 import { PROTOCOL_VERSION } from "../contracts/protocol";
+import { setPiTransport } from "./harness/pi-acp/acp";
+
+// This file exercises the LEGACY engine transport, which the cutover made
+// opt-in: every store branch here must ride the engine, not the ACP harness.
+setPiTransport("engine");
 import { connect, disconnect, info, lastError, onEngineEvent, phase, recovered, request, snapshot } from "./stores/engine";
 import {
   activeId,
@@ -602,3 +607,7 @@ test("a steer reaches the running turn and the queue reports it", async () => {
     await stop();
   }
 }, 600000);
+
+test("leaves the transport pinned for the next file", () => {
+  setPiTransport(null);
+});

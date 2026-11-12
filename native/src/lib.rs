@@ -21,22 +21,26 @@ use std::{
 
 use nsh_core::prelude::*;
 
+mod acp;
 mod fs;
 mod git;
 mod instance;
 mod lsp;
 mod picker;
 mod pty;
+mod state;
 
 /// Lilex, the sheet content's face (§2.3-16, DESIGN §3.4): the crate ships
 /// both weights (`registry.assets(assets!())`), and the engine registers
 /// them before the first render under the family the files' name tables
 /// carry — TS names it as `fonts.ts`'s `SHEET_FONT`.
+pub use acp::{Acp, AcpExit, AcpOptions};
 pub use fs::{Fs, FsEntry, FsExpected, FsFile, FsStat, FsWriteResult};
 pub use git::{Git, GitBranch, GitBranches, GitChange, GitCommit, GitDiff, GitStatus};
 pub use instance::{Instance, InstanceClaim};
 pub use lsp::{Lsp, LspExit, LspOptions};
 pub use picker::Picker;
+pub use state::{ScanSession, SessionScan, State, StateRead, StateWrite};
 pub use pty::{Pty, PtyExit, PtyOptions};
 
 /// The engine's default loopback port: 0 asks the system for a free one, so
@@ -64,20 +68,20 @@ static LAST_EXIT: Mutex<Option<i32>> = Mutex::new(None);
 
 /// Extension paths the host adds to the standard pi locations (tests and
 /// development builds use it; a packaged app leaves it empty).
-static EXTRA_EXTENSIONS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+pub(crate) static EXTRA_EXTENSIONS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 /// The state directory beside pi's state (`~/.pi/zu` unless a test points
 /// it elsewhere): registry, layouts, token, generation and log.
-static STATE_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
+pub(crate) static STATE_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Whether the next sidecar skips extensions (tests that only exercise the
 /// container registry); a packaged app always loads them.
-static NO_EXTENSIONS: Mutex<bool> = Mutex::new(false);
+pub(crate) static NO_EXTENSIONS: Mutex<bool> = Mutex::new(false);
 
 /// pi's home for the sidecar (`~/.pi/agent` unless a test points it
 /// elsewhere): credentials and `models.json`. The model list a session
 /// reports comes from here, so an empty directory is the no-models state.
-static AGENT_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
+pub(crate) static AGENT_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// The engine sidecar: start, stop, and where to reach it.
 #[module]
@@ -97,7 +101,16 @@ impl Engine {
             .lock()
             .map_err(|_| "engine lock poisoned".to_owned())?;
         let dir = zu_dir()?;
-        let port_file = dir.join("engine.port");
+        // The child's own state directory (the UI's `engine/` subdir, see
+        // the spawn below) is where it publishes its port file.
+        let child_state = STATE_DIR
+            .lock()
+            .ok()
+            .and_then(|dir| dir.clone())
+            .or_else(|| zu_dir().ok())
+            .unwrap_or_else(|| PathBuf::from("/tmp/zu"))
+            .join("engine");
+        let port_file = child_state.join("engine.port");
         if let Some(state) = guard.as_mut() {
             match state.child.try_wait() {
                 Ok(None) => {
@@ -131,9 +144,13 @@ impl Engine {
         if !extra.is_empty() {
             command.env("ZU_EXTENSION_PATHS", extra);
         }
-        if let Some(dir) = STATE_DIR.lock().ok().and_then(|dir| dir.clone()) {
-            command.env("ZU_STATE_DIR", dir);
-        }
+        // The engine's own store files (its registry, projects, layouts,
+        // settings and its port file) go to the `engine/` subdirectory whose
+        // port file this function already watches. Since the v2 writer
+        // inversion the UI owns the state directory — it reads the files the
+        // engine used to write in place, which is the migration — and the
+        // engine child never writes them again.
+        command.env("ZU_STATE_DIR", &child_state);
         if NO_EXTENSIONS.lock().map(|skip| *skip).unwrap_or(false) {
             command.env("ZU_NO_EXTENSIONS", "1");
         }
@@ -358,6 +375,8 @@ fn native(registry: &mut Registry) {
         .module::<Git>()
         .module::<Instance>()
         .module::<Picker>()
+        .module::<State>()
+        .class::<Acp>()
         .class::<Lsp>()
         .class::<Pty>();
 }
@@ -475,15 +494,24 @@ pub(crate) fn zu_dir() -> Result<PathBuf, String> {
 /// engine must not be shadowed by it. Development falls back to the
 /// repository's build.
 fn engine_path() -> Option<PathBuf> {
+    harness_path("pi-engine")
+}
+
+/// A pi-harness helper binary by name (`pi-engine`, `pi-acp`), packaged
+/// first and the repository's build second — the resolution the harness
+/// spawn policies share.
+pub(crate) fn harness_path(name: &str) -> Option<PathBuf> {
     if let Ok(exe) = std::env::current_exe()
         && let Some(parent) = exe.parent()
     {
-        let packaged = parent.join("../Helpers/pi-engine");
+        let packaged = parent.join(format!("../Helpers/{name}"));
         if packaged.is_file() {
             return Some(packaged);
         }
     }
-    let dev = Path::new(env!("CARGO_MANIFEST_DIR")).join("../pi-harness/dist/pi-engine");
+    let dev = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../pi-harness/dist")
+        .join(name);
     dev.is_file().then_some(dev)
 }
 

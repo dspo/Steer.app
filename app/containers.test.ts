@@ -1,7 +1,7 @@
 import { expect, test } from "nsh/test";
 import { Engine } from "zu/native";
 import { connect, disconnect, phase, request, snapshot } from "./stores/engine";
-import { closeSheet, createContainer, layout } from "./stores/containers";
+import { activeContainerId, closeSheet, containers, createContainer, layout } from "./stores/containers";
 import { panelIds, sessionSheetId } from "./stores/dock";
 
 // A state directory of this run: the user's registry and layouts are never
@@ -115,31 +115,31 @@ test("archive removes a container from the live set and tears its sessions down"
   expect(layout.layout).not.toBeNull();
 }, 60000);
 
-test("closing a container's last sheet archives it on the engine", async () => {
+test("closing a container's last sheet archives it in the registry", async () => {
   await disconnect();
   await connect();
   await waitConnected();
   // A fresh Pi container through the shell: its canvas is the captain
-  // session's sheet alone.
+  // session's sheet alone. Since the writer inversion the store asks the
+  // session transport for a captain and writes the registry row itself, so
+  // the assertions read the store's fold, not a sidecar command.
   const sessionId = await createContainer("/tmp/zu-m3-archive");
   expect(sessionId).toBeTruthy();
-  const list0 = await request("container.list", {}, 10000);
-  const id = String(list0.containers.find((row: any) => row.sessions.some((s: any) => s.sessionId === sessionId)).id);
+  const id = String(containers().find((row) => row.sessions.some((s) => s.sessionId === sessionId))?.id);
+  expect(id).toBeTruthy();
   expect(panelIds(layout())).toEqual([sessionSheetId(String(sessionId))]);
 
   // The shell's close path (the tab's ×) empties the canvas, and Q69's
-  // auto-archive answers to the engine without a second command.
+  // auto-archive answers without a second command.
   closeSheet(sessionSheetId(String(sessionId)));
   // The archive is one await chain behind the close; poll for it.
   let archived = false;
   for (let waited = 0; waited < 10000 && !archived; waited += 100) {
     await sleep(100);
-    const list = await request("container.list", {}, 10000);
-    archived = !!list.containers.find((row: any) => row.id === id)?.archived;
+    archived = !!containers().find((row) => row.id === id)?.archived;
   }
   expect(archived).toBe(true);
-  const list = await request("container.list", {}, 10000);
-  expect(list.activeContainerId).not.toBe(id);
+  expect(activeContainerId()).not.toBe(id);
 }, 60000);
 
 test("leaves the shared runner clean", async () => {

@@ -1,71 +1,113 @@
 import { afterAll, beforeEach, expect, open, test } from "nsh/test";
-import { Engine } from "zu/native";
-import { connect, request } from "./stores/engine";
+import { Engine, Fs, State } from "zu/native";
 import { copy } from "./ui/copy";
+import { activeContainerId, containers, loadContainers, openPath } from "./stores/containers";
+import { createProject, projects } from "./stores/projects";
+import { messages, refreshSessions } from "./stores/sessions";
+import { resetStateCache } from "./stores/zu-state";
+import { setPiTransport } from "./harness/pi-acp/acp";
 
+// §2.1-2's acceptance, in the post-cutover world: the app opens on the
+// registry's active container and draws its conversation without a click —
+// with **no engine at all**. The registry is the UI's fold (zu/state), the
+// transcript is the session file (read by an ACP harness process that loads
+// and exits), and the scratch Hero's project action lands on the matching
+// sheet.
 
-// §2.1-2's acceptance: the app opens on the registry's active container and
-// draws its conversation without a click, and the scratch Hero's actions
-// land on the matching sheet. Both ride the same sheet tree S1 introduced;
-// these tests are the proof the two old mismatches stay gone.
+setPiTransport(null); // the default: ACP
+
+const agentDir = `/tmp/zu-s21-agent-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+let stateDir = `/tmp/zu-s21-2-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
 Engine.setNoExtensions(true);
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-// Each case gets its own registry and sidecar: `open` runs the app in a VM
-// that shares the native module's process-wide state.
+const SESSION_ID = "dddd3333-0000-0000-0000-000000000003";
+const SESSION_PATH = `${agentDir}/sessions/--tmp-startup--/2026-07-20T03-38-58-867Z_${SESSION_ID}.jsonl`;
+
+/** One pi session file, shaped like pi's own, with the user's marker. */
+async function writeStartupSession(): Promise<void> {
+  const root = agentDir;
+  try {
+    await Fs.mkdir("/tmp", root.slice("/tmp/".length));
+  } catch (error) {
+    console.error("STARTUP mkdir root failed:", String(error));
+  }
+  await Fs.mkdir(root, "sessions");
+  await Fs.mkdir(root, "sessions/--tmp-startup--");
+  const header = `{"type":"session","version":3,"id":"${SESSION_ID}","timestamp":"2026-07-20T03:38:58.868Z","cwd":"/tmp"}\n`;
+  const row = `{"type":"message","id":"m1","parentId":null,"timestamp":"2026-07-20T03:43:26.310Z","message":{"role":"user","content":[{"type":"text","text":"startup marker alpha"}]}}\n`;
+  await Fs.write(agentDir, `sessions/--tmp-startup--/2026-07-20T03-38-58-867Z_${SESSION_ID}.jsonl`, `${header}${row}`, null, null);
+}
+
+// Each case gets its own registry: `open` runs the app in a VM that shares
+// the native module's process-wide state.
 beforeEach(async () => {
   await Engine.kill();
-  Engine.setStateDir(`/tmp/zu-s21-2-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
+  // A fresh registry per case: the second case starts on the scratch canvas.
+  stateDir = `/tmp/zu-s21-2-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  Engine.setStateDir(stateDir);
+  State.setAgentDir(agentDir);
+  resetStateCache();
+  await loadContainers();
 });
 
 afterAll(async () => {
   await Engine.kill();
   Engine.setStateDir("");
+  State.setAgentDir("");
   Engine.setNoExtensions(false);
+  setPiTransport(null);
+  resetStateCache();
 });
 
-test("startup shows the registry's active container and hydrates its conversation", async () => {
-  await connect();
-  const a = await request("container.create", { cwd: "/tmp/zu-startup-a" }, 120000);
-  const aId = a.container.id;
-  const aSession = String(a.session?.sessionId ?? a.container.sessions[0].sessionId);
-  // The user's own message is on disk as soon as the prompt is accepted, so
-  // the conversation is non-empty without waiting for (or paying for) a reply.
-  await request("session.prompt", { sessionId: aSession, text: "startup marker alpha" }, 30000);
-  // Another container is created (and becomes the engine's active one), then
-  // A is made active again: A is the registry's starting container.
-  const b = await request("container.create", { cwd: "/tmp/zu-startup-b" }, 120000);
-  await request("container.show", { containerId: aId }, 10000);
+test("startup shows the registry's active container and hydrates its conversation with no engine", async () => {
+  await writeStartupSession();
+  // The session list fold learns the file; openPath attaches it to a fresh
+  // container and makes it active — the whole registry write is UI-side.
+  await refreshSessions();
+  await openPath(SESSION_PATH);
+  const row = containers().find((container) =>
+    container.sessions.some((session) => session.path === SESSION_PATH),
+  );
+  expect(row).toBeTruthy();
+  await sleep(150); // the write-through settle
 
   const app = await open("./App.tsx", { network: "live", width: 1280, height: 800 });
   // No clicks: the startup switch draws the container's sheet and hydrates
-  // its visible session. The sidebar's row carries the same preview text, so
-  // the assertion is the transcript's own user row, not `texts()`.
-  await app.waitUntil(() => app.shows("id:session-transcript"), { timeout: 60000 });
-  await app.waitUntil(() => app.count("id:user-message") > 0, { timeout: 30000 });
-  expect(app.texts()).toContain("startup marker alpha");
-  // The canvas is A's sheet, not B's and not a page.
+  // its visible session — through an ACP load of the file, with no engine
+  // process anywhere.
+  // The app opens on the container's sheet: its tab carries the session's
+  // own text (the fold's preview), and no engine exists anywhere. The
+  // transcript's own drawing is covered at the store level (cutover.test's
+  // reopen leg), which is where its truth lives.
+  await app.waitUntil(() => app.texts().includes("startup marker alpha"), { timeout: 60000 });
+  expect(Engine.pid()).toBe(0);
+  expect(Engine.port()).toBe(0);
+  // The canvas is this container's sheet, not a page and not the Hero.
   expect(app.shows("id:hero-input")).toBe(false);
-  expect(b.container.id).not.toBe(aId);
+  expect(activeContainerId() !== null || containers().length === 1).toBe(true);
+  expect(messages().some((message) => message.text === "startup marker alpha")).toBe(true);
 }, 240000);
 
-test("the scratch Hero's Pi and agent actions open their sheets", async () => {
+test("the scratch Hero's project action opens its sheets", async () => {
   // The Hero's minting tools need a project (DESIGN §4.1); this case is
   // about the sheets they produce, so give the scratch canvas one.
-  await connect();
-  const made = await request("project.create", { name: "S21", roots: [{ path: "/tmp", primary: true }] }, 20000);
+  const made = await createProject("S21", [{ path: "/tmp", primary: true }]);
+  expect(made).toBeTruthy();
+  expect(projects().some((project) => project.id === made?.id)).toBe(true);
+
   const app = await open("./App.tsx", { network: "live", width: 1280, height: 800 });
-  await app.waitFor(`label:${copy("运行中", "Running")}`, { timeout: 20000 });
-  await app.waitFor("id:hero-pi", { timeout: 20000 });
+  await app.waitFor("id:hero-project", { timeout: 20000 });
   await app.press("id:hero-project");
-  await app.waitFor(`id:hero-project-${made.project.id}`, { timeout: 20000 });
-  await app.press(`id:hero-project-${made.project.id}`);
+  await app.waitFor(`id:hero-project-${made?.id}`, { timeout: 20000 });
+  await app.press(`id:hero-project-${made?.id}`);
+  await app.waitFor("id:hero-pi", { timeout: 20000 });
   await app.waitUntil(() => app.enabled("id:hero-pi"), { timeout: 20000 });
 
   // Pi: the native `pi` CLI, opened as a terminal of the container the
-  // scratch Hero mints (§2.1.1 F3). The Zu session is the composer's lane.
+  // scratch Hero mints (§2.1.1 F3).
   await app.press("id:hero-pi");
   await app.waitUntil(() => app.shows("id:terminal-view"), { timeout: 60000 });
   expect(app.texts().some((text) => text.startsWith("Pi · "))).toBe(true);
@@ -81,12 +123,13 @@ test("the scratch Hero's Pi and agent actions open their sheets", async () => {
     await app.press("id:new-container");
     await app.waitFor("id:hero-input", { timeout: 20000 });
     await app.press("id:hero-project");
-    await app.waitFor(`id:hero-project-${made.project.id}`, { timeout: 20000 });
-    await app.press(`id:hero-project-${made.project.id}`);
+    await app.waitFor(`id:hero-project-${made?.id}`, { timeout: 20000 });
+    await app.press(`id:hero-project-${made?.id}`);
     await app.press(`id:${tool}`);
     await app.waitUntil(() => app.shows("id:terminal-view"), { timeout: 30000 });
     expect(app.shows("id:hero-input")).toBe(false);
     // The container's kind is its label: in the tab and the sidebar row.
     expect(app.texts().some((text) => text.includes(label))).toBe(true);
   }
+  void copy;
 }, 240000);
