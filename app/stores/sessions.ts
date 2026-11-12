@@ -1,4 +1,5 @@
 import { batch, computed, signal } from "nsh";
+import { State } from "zu/native";
 import { onDisconnect, onEngineEvent, onSnapshot, request } from "./engine";
 import { K, t } from "../ui/i18n";
 import {
@@ -238,7 +239,9 @@ function acpSend(key: string, text: string): void {
  * Folds a (possibly partial) `session.info` payload into a view. Events carry
  * one changed field at a time (a model switch, a thinking level, the context
  * gauge after a turn); the reply carries them all. An absent field leaves the
- * view's value alone.
+ * view's value alone. When a path appears (pi cast the session file on the
+ * first turn), the container registry's row learns it too — the row was
+ * minted before the file existed.
  */
 function applySessionInfo(id: string, data: SessionInfoData | null | undefined): void {
   if (!data) return;
@@ -249,6 +252,15 @@ function applySessionInfo(id: string, data: SessionInfoData | null | undefined):
   if (typeof data.thinkingLevel === "string") patch.thinkingLevel = data.thinkingLevel;
   if (data.contextUsage && typeof data.contextUsage === "object") patch.contextUsage = data.contextUsage;
   if (Object.keys(patch).length > 0) patchView(id, patch);
+  if (typeof data.path === "string" && data.path) sessionPathObserver?.(id, data.path);
+}
+
+/** The registry's listener for a session's path appearing. */
+let sessionPathObserver: ((id: string, path: string) => void) | null = null;
+
+/** Installs the session-path observer (the container store's row updater). */
+export function setSessionPathObserver(next: ((id: string, path: string) => void) | null): void {
+  sessionPathObserver = next;
 }
 
 /** Asks the engine for a session's composer data and folds it into the view.
@@ -613,17 +625,41 @@ function project(data: any): Msg[] {
   );
 }
 
-/** Reloads the sidebar from pi's session directory. ACP mode still reads it
- * through the engine in B1 (the parallel leg — the engine is up); the file
- * fold takes this over with `zu/state` in B2. */
+/**
+ * Reloads the sidebar from pi's session directory. Since the read-plane
+ * switch (v2 §6) this is a **file fold**: the native scan walks the session
+ * directory against an mtime watermark (directories included, so a created
+ * or deleted file moves it), skips the parse when nothing moved, and
+ * otherwise reads each file's header, name, first user text and message
+ * count. No process is consulted — the engine's `session.list` is gone from
+ * the read path, whether or not one is running.
+ */
 export async function refreshSessions(): Promise<void> {
   try {
-    const data = await request("session.list", {}, 30000);
-    sessions.set((data?.sessions ?? []) as SessionMeta[]);
+    const scan = await State.scanSessions(sessionScan?.watermark ?? 0);
+    if (!scan.changed) return;
+    sessionScan = {
+      watermark: scan.watermark,
+      sessions: scan.sessions.map((row) => ({
+        id: row.id,
+        path: row.path,
+        cwd: row.cwd,
+        name: row.name,
+        created: row.created,
+        modified: row.modified,
+        messageCount: row.messageCount,
+        preview: row.preview,
+      })),
+    };
+    sessions.set(sessionScan.sessions);
+    error.set(null);
   } catch (failure) {
     error.set(String(failure));
   }
 }
+
+/** The fold's watermark cache: re-parse only when the directory moved. */
+let sessionScan: { watermark: number; sessions: SessionMeta[] } | null = null;
 
 /** Adopts a session the engine already opened (a container command's reply). */
 export function adoptSession(data: SessionData): SessionView {
@@ -759,6 +795,9 @@ export async function send(text: string, sessionId?: string): Promise<void> {
   optimisticUser(id, trimmed);
   try {
     await sessionRequest("session.prompt", { sessionId: id, text: trimmed });
+    // The first turn cast the session file; the composer data (and through
+    // it the container registry's row) learns the path.
+    void refreshSessionInfo(id);
   } catch (failure) {
     patchView(id, { streaming: false, error: String(failure) });
   }

@@ -28,6 +28,7 @@ mod instance;
 mod lsp;
 mod picker;
 mod pty;
+mod state;
 
 /// Lilex, the sheet content's face (§2.3-16, DESIGN §3.4): the crate ships
 /// both weights (`registry.assets(assets!())`), and the engine registers
@@ -39,6 +40,7 @@ pub use git::{Git, GitBranch, GitBranches, GitChange, GitCommit, GitDiff, GitSta
 pub use instance::{Instance, InstanceClaim};
 pub use lsp::{Lsp, LspExit, LspOptions};
 pub use picker::Picker;
+pub use state::{ScanSession, SessionScan, State, StateRead, StateWrite};
 pub use pty::{Pty, PtyExit, PtyOptions};
 
 /// The engine's default loopback port: 0 asks the system for a free one, so
@@ -99,7 +101,16 @@ impl Engine {
             .lock()
             .map_err(|_| "engine lock poisoned".to_owned())?;
         let dir = zu_dir()?;
-        let port_file = dir.join("engine.port");
+        // The child's own state directory (the UI's `engine/` subdir, see
+        // the spawn below) is where it publishes its port file.
+        let child_state = STATE_DIR
+            .lock()
+            .ok()
+            .and_then(|dir| dir.clone())
+            .or_else(|| zu_dir().ok())
+            .unwrap_or_else(|| PathBuf::from("/tmp/zu"))
+            .join("engine");
+        let port_file = child_state.join("engine.port");
         if let Some(state) = guard.as_mut() {
             match state.child.try_wait() {
                 Ok(None) => {
@@ -133,9 +144,13 @@ impl Engine {
         if !extra.is_empty() {
             command.env("ZU_EXTENSION_PATHS", extra);
         }
-        if let Some(dir) = STATE_DIR.lock().ok().and_then(|dir| dir.clone()) {
-            command.env("ZU_STATE_DIR", dir);
-        }
+        // The engine's own store files (its registry, projects, layouts,
+        // settings and its port file) go to the `engine/` subdirectory whose
+        // port file this function already watches. Since the v2 writer
+        // inversion the UI owns the state directory — it reads the files the
+        // engine used to write in place, which is the migration — and the
+        // engine child never writes them again.
+        command.env("ZU_STATE_DIR", &child_state);
         if NO_EXTENSIONS.lock().map(|skip| *skip).unwrap_or(false) {
             command.env("ZU_NO_EXTENSIONS", "1");
         }
@@ -360,6 +375,7 @@ fn native(registry: &mut Registry) {
         .module::<Git>()
         .module::<Instance>()
         .module::<Picker>()
+        .module::<State>()
         .class::<Acp>()
         .class::<Lsp>()
         .class::<Pty>();
