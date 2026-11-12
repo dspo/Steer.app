@@ -1,0 +1,100 @@
+import { signal } from "nsh";
+import type { JSX } from "nsh";
+import type { GlyphName } from "../ui/ui";
+
+/**
+ * The shell's one neutral contribution seam. Until S0 lands the full pack
+ * assembly model, a harness pack reaches the shell's shared surfaces — the
+ * Hero's tool rows, the sidebar's extra groups, and sheet kinds — through
+ * these registries and through nowhere else: the shell renders what is
+ * registered, the registries carry no harness vocabulary, and the packs
+ * never get imported by the shell (the assembly point, `App.tsx`, imports
+ * the packs and lets them register).
+ */
+
+/** A Hero tool row contributed beside the built-in direct tools. */
+export interface ContributedTool {
+  id: string;
+  label: string;
+  glyph: GlyphName;
+  testID: string;
+  /** A disabled tool renders dim and never fires. */
+  disabled: () => boolean;
+  onPress: () => void;
+}
+
+const heroTools = signal<ContributedTool[]>([]);
+
+/** Registers one Hero tool row (last registration per id wins). */
+export function registerHeroTool(tool: ContributedTool): void {
+  heroTools.set([...heroTools().filter((row) => row.id !== tool.id), tool]);
+}
+
+/** The Hero's contributed tools, in registration order. */
+export function contributedHeroTools(): ContributedTool[] {
+  return heroTools();
+}
+
+/** One sidebar row of a contributed group. */
+export interface ContributedRow {
+  id: string;
+  title: () => string;
+  subtitle: () => string;
+  glyph: GlyphName;
+  testID: string;
+  active: () => boolean;
+  onPress: () => void;
+}
+
+/** A group of rows under one header (a pack's containers, say). */
+export interface ContributedSection {
+  key: string;
+  title: () => string;
+  rows: () => ContributedRow[];
+}
+
+const sidebarSections = signal<Record<string, ContributedSection>>({});
+
+/** Installs (or clears, with `null`) one contributed sidebar group. */
+export function setSidebarSection(section: ContributedSection | null): void {
+  const key = section?.key;
+  const next = { ...sidebarSections() };
+  if (section && key) next[key] = section;
+  else if (key) delete next[key];
+  sidebarSections.set(next);
+}
+
+/** The contributed sidebar groups, in registration order. */
+export function contributedSidebarSections(): ContributedSection[] {
+  return Object.values(sidebarSections());
+}
+
+/** A sheet kind a pack owns: its body, tab title and glyph. */
+export interface ContributedSheet {
+  kind: string;
+  glyph: GlyphName;
+  title: (id: string) => string;
+  body: (id: string) => JSX.Element;
+}
+
+const sheetKinds = new Map<string, ContributedSheet>();
+
+/** Registers one sheet kind (re-registering a kind is a bug and throws). */
+export function registerSheetKind(sheet: ContributedSheet): void {
+  if (sheetKinds.has(sheet.kind)) {
+    throw new Error(`sheet kind ${sheet.kind} is already registered`);
+  }
+  sheetKinds.set(sheet.kind, sheet);
+}
+
+/** The kind of a sheet id a pack owns, or null for the shell's kinds. */
+export function contributedSheetKind(id: string): string | null {
+  const at = id.indexOf(":");
+  const kind = at < 0 ? id : id.slice(0, at);
+  return sheetKinds.has(kind) ? kind : null;
+}
+
+/** The registered sheet of a kind a pack owns. */
+export function contributedSheet(kind: string): ContributedSheet | undefined {
+  return sheetKinds.get(kind);
+}

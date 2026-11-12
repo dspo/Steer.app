@@ -25,7 +25,10 @@
     "closeOnPress": false
   },
   "theme": "theme.json",
-  "rust": "../native",
+  "rust": [
+    "../native",
+    "../native/manox"
+  ],
   "capabilities": {
     "network": {
       "hosts": [

@@ -1,0 +1,79 @@
+// Vendored from dspo's AHP spec checkout (microsoft/agent-host-protocol):
+//   repo:    ~/projects/github/agent-host-protocol  (remote: https://github.com/microsoft/agent-host-protocol.git)
+//   commit:  296b25e7b698a4a84a0ee5a28d9573e70048a0bf  (working tree clean at vendoring time)
+//   spec:    v0.9.0 (clients/typescript package.json version), LAST_SYNCED_COMMIT file said 20c6b266 (not resolvable locally)
+//   pin:     contracts/ahp/PIN.md — read it before syncing; do not edit these files by hand.
+// The only transform applied at vendoring time: relative import specifiers lost
+// their `.js` suffix (upstream ships ESM `.js` extensions; this app resolves
+// extensionless TS). Everything else is byte-identical to the pinned commit.
+/**
+ * Common Notification Types — `auth/required`, currently the only connection-
+ * level (non-channel-specific) protocol notification.
+ *
+ * @module common/notifications
+ */
+
+import type { ProtectedResourceMetadata, URI } from './state';
+
+/**
+ * Reason why authentication is required.
+ *
+ * @category Protocol Notifications
+ * @nonexhaustive
+ */
+export const enum AuthRequiredReason {
+  /** The client has not yet authenticated for the resource */
+  Required = 'required',
+  /**
+   * A previously valid token has expired or been revoked. The client must
+   * acquire or renew the credential rather than replaying the challenged token.
+   */
+  Expired = 'expired',
+}
+
+// ─── auth/required ───────────────────────────────────────────────────────────
+
+/**
+ * Sent by the server when a protected resource requires (re-)authentication.
+ *
+ * This notification MAY be associated with any channel — for example, an
+ * agent advertised on the root channel, or a per-session resource. The
+ * `channel` field identifies the subscription the auth requirement belongs
+ * to; the `resource` field carries the complete OAuth protected resource
+ * metadata (per RFC 9728).
+ *
+ * Clients should obtain or renew the credential and push the resulting token
+ * via the `authenticate` command. When `reason` is `expired`, clients MUST NOT
+ * blindly replay the challenged token.
+ *
+ * @category Protocol Notifications
+ * @method auth/required
+ * @direction Server → Client
+ * @messageType Notification
+ * @version 1
+ * @see {@link /specification/authentication | Authentication}
+ * @example
+ * ```json
+ * {
+ *   "jsonrpc": "2.0",
+ *   "method": "auth/required",
+ *   "params": {
+ *     "channel": "ahp-root://",
+ *     "resource": {
+ *       "resource": "https://api.github.com",
+ *       "resource_name": "GitHub API",
+ *       "authorization_servers": ["https://github.com/login/oauth"]
+ *     },
+ *     "reason": "expired"
+ *   }
+ * }
+ * ```
+ */
+export interface AuthRequiredParams {
+  /** Channel URI this notification belongs to */
+  channel: URI;
+  /** Complete RFC 9728 metadata for the protected resource that requires authentication */
+  resource: ProtectedResourceMetadata;
+  /** Why authentication is required */
+  reason?: AuthRequiredReason;
+}

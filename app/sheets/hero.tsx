@@ -28,6 +28,7 @@ import { openBrowserSheet } from "../stores/browser";
 import type { ContainerKind, ProjectRecord } from "../../contracts/protocol";
 import type { BrandName } from "../ui/brand-icons";
 import { Glyph, motionStyle, shadowDialog, shadowRaised, type GlyphName } from "../ui/ui";
+import { contributedHeroTools } from "../shell/contrib";
 import { BrandIcon } from "../ui/brand-icons";
 import { pickFolder } from "../stores/picker";
 import {
@@ -322,6 +323,28 @@ export function HeroSheet(props: { id: string }) {
               busy={busy() === "pi"}
               onPress={() => void startPi()}
             />
+            <Each of={contributedHeroTools()} key={(tool) => tool.id}>
+              {(tool) => (
+                <View
+                  role="button"
+                  testID={tool().testID}
+                  accessibilityLabel={tool().label}
+                  disabled={tool().disabled()}
+                  class={
+                    tool().disabled()
+                      ? "h-6 flex-row items-center gap-1.5 rounded-md px-2 opacity-40"
+                      : "h-6 flex-row items-center gap-1.5 rounded-md px-2 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+                  }
+                  style={{ ...motionStyle("fast") }}
+                  onPress={() => {
+                    if (!tool().disabled()) tool().onPress();
+                  }}
+                >
+                  <Glyph name={tool().glyph} size={11} tint={token("faint")} />
+                  <Text class="text-[11.5px] font-medium text-muted-foreground">{tool().label}</Text>
+                </View>
+              )}
+            </Each>
           </View>
         </View>
 

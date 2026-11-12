@@ -21,6 +21,7 @@ import {
   terminalTitle,
 } from "../stores/terminals";
 import { K, t } from "../ui/i18n";
+import { contributedSheet, contributedSheetKind } from "../shell/contrib";
 import { HeroSheet } from "../sheets/hero";
 import { Chip, Dot, Glyph, type GlyphName } from "../ui/ui";
 import { DiffBody, EditorBody, FilesBody } from "../sheets/files";
@@ -97,6 +98,9 @@ function sheetParts(id: string): { kind: SheetKind; instance: string } {
 /** A sheet's tab title, by id. */
 export function sheetTitle(id: string): string {
   const { kind, instance } = sheetParts(id);
+  // A kind a pack owns names itself (the registry carries no pack imports).
+  const contributed = contributedSheetKind(id) ? contributedSheet(kind) : undefined;
+  if (contributed) return contributed.title(id);
   // Every Hero tab reads the same: the start page, not a place.
   if (kind === "home") return t(K.sheet.homeTitle);
   if (kind === "session") {
@@ -137,6 +141,8 @@ export function sheetTitle(id: string): string {
 /** A sheet's tab glyph, by id. */
 export function sheetGlyph(id: string): GlyphName {
   const { kind } = sheetParts(id);
+  const contributed = contributedSheetKind(id) ? contributedSheet(kind) : undefined;
+  if (contributed) return contributed.glyph;
   return SPECS[kind]?.glyph ?? "file";
 }
 
@@ -151,6 +157,9 @@ export function SheetBody(props: { id: string }) {
   const taps = signal(0);
   const { kind, instance } = sheetParts(props.id);
   const spec = SPECS[kind];
+  // A pack-owned kind renders its own body from its registry entry.
+  const contributed = contributedSheetKind(props.id) ? contributedSheet(kind) : undefined;
+  if (contributed) return contributed.body(props.id);
   if (kind === "home") return <HeroSheet id={props.id} />;
   if (kind === "session") return <SessionBody id={instance || "pending"} sheetId={props.id} />;
   if (kind === "subagents") return <SubagentsBody containerId={instance} />;

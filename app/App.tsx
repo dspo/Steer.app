@@ -5,6 +5,7 @@ import { AlreadyRunning, LifecycleHost } from "./shell/lifecycle-ui";
 import { lifecycleMode, startLifecycle } from "./shell/lifecycle";
 import { followSystemLocale } from "./ui/i18n";
 import { applyScrollbarTheme } from "./ui/ui";
+import { registerManoxPack } from "./harness/manox/register";
 
 /** The app: claim the state directory, boot the engine once, then render the workbench. */
 let booted = false;
@@ -25,6 +26,9 @@ function configureWindow(): void {
 function App() {
   if (!booted) {
     booted = true;
+    // The manox pack contributes its Hero tool, sidebar group and sheet kind
+    // through the shell's neutral seams (the assembly point imports packs).
+    registerManoxPack();
     // The language follows the system's, read once before the first draw.
     followSystemLocale();
     // Claim the state directory (desktop only) and boot the engine unless
