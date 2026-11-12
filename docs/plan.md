@@ -261,7 +261,9 @@ C8 三包布局（`app/` + `native/` + `pi-harness/`，`contracts/` 留根）已
 ```
 nsh check app                              ✓ 必须（crate 在 native/，一并 cargo check）
 cargo check --all-targets                  ✓ 必须（在 native/ 跑）
-nsh test app                               ✓ 全量（含 live 模型、三个语言服务器）
+nsh test app                               ✓ 全量（含 live 模型、三个语言服务器；ZU_SKIP_LIVE=1 跳过——nsh.json env 允许列表已放行）
+ZU_MANOX_GATE=1 nsh test app/manox.test.ts ✓ manox 门禁（hermetic；+MANOX_RUN_LIVE=1 真内核 live turn）
+ZU_MANOX_GATE=1 nsh test app/manox.ui.test.tsx ✓ manox sheet 门禁
 script/bundle-mac.sh                       ✓ 打包冒烟
 ```
 

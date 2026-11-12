@@ -407,6 +407,13 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 13. **LSP 的成本与边界**：每容器 × 语言族一个进程，rust-analyzer 在大仓库的索引内存/CPU 不在 Zu 的控制内；诊断只保留打开文件（Problems 不是全工作区索引），关闭 sheet 即 `didClose` 并清掉该文件的诊断；全文 `didChange` 在每次停顿发送整份文本（2 MiB 上限内），不是增量；`snippetSupport: false`，补全插入普通文本；headless 的 `app.hover` 只在 selector 自身派发 `MouseMove`，无法驱动 Editor 内部 rows 的 hover（真实 macOS 指针路径未自动化）；语言服务器启动依赖 PATH/常见目录，GUI 进程的 PATH 可能仍缺用户自定义安装位置（错误会显示在 Problems 的 server 状态）。
 14. **更新未端到端验证**：仓库无 `nsh.json` 的 `"updater"`、公钥和 release；`checkForUpdate` 在 dev 返回 null，真实下载/签名校验/替换 `.app` 没有跑过。UI 状态机用 fake service 覆盖，发布前的配置步骤在 evidence/m12-lifecycle.md。`canInstall:false` 没有 `openUrl` 能力，只显示 URL。
 15. **通知未真机投递**：headless 的 `Notifications` 不产生系统横幅；开发运行的 macOS app 不是 signed bundle，`permission()` 会是 `unavailable`。真实通知需要打包签署后的 app，且本轮没有重启用户正在使用的 app。策略/权限/按开的逻辑有 8 条单测，真实 banner/点击列在 evidence 的未验证项。
+17. **生成 workspace 的 malachite-bigint 双版本**（2026-11-13）：`.nsh/rust/Cargo.lock`（gitignored 生成物）在
+    fresh 解析时会把 `pymath 0.2` 配到 `malachite-bigint 0.14`（`rustpython-stdlib` 钉 0.12，双版本两套 BigInt 类型即编译失败）。
+    恢复命令（native/manox/Cargo.toml 注释里也有）：`cd app/.nsh/rust && cargo update -p malachite-bigint@0.14.0 --precise 0.12.0`。
+    根治在 manox 仓（manifest 层约束 pymath）或 nsh 生成 workspace 继承成员 lockfile，已列入回报清单。
+18. **manox harness provider 路径不认 MANOX_HOME**（上游 v0.9.1）：`manox_harness::provider::default_config_path` 直查
+    `$HOME/.manox`，测试隔离必须 `MANOX_HOME`+`MANOX_CLAUDE_HOME`+`HOME` 三变量齐设（native/manox 的 hermetic boot 即此）；
+    上游修复后隔离可收敛为单变量。
 16. **模型注册表（P0，已解决 2026-11-11）**：`modelsData` 曾用 `Array.isArray(runtime.getAvailable)` 做守卫（方法永不是数组），引擎从不问 pi、静默空列表。现在引擎启动时显式建共用 `ModelRuntime` 交给每个会话，空列表必带 `reason`；见 plan §2.0 与 [evidence/s20-models.md](evidence/s20-models.md)。
 
 ## 9. 文档
