@@ -4,6 +4,8 @@ import { appendSheet, defaultLayoutForSessions, removeSheet, sessionSheetId } fr
 import { applyBrowserNavigation, browserSheetId, ensureBrowserPage } from "./browser";
 import { seedSession } from "./sessions";
 import { terminalInfo, terminalSheetId } from "./terminals";
+import { editorSheetId } from "./editors";
+import { sheetTitle } from "./sheets";
 import { containerTitle } from "./titles";
 
 // §2.1-5 (S2): a container's title is its earliest-created surviving sheet's,
@@ -97,4 +99,27 @@ test("opening and closing sheets records creation order; an empty one falls back
   // A container without a named captain falls back to its folder.
   const unnamed = { ...container, sessions: [] };
   expect(containerTitle(unnamed)).toBe("alpha");
+});
+
+test("a workspace sheet opened first names the container", () => {
+  // openEditorSheet / openChangesSheet note the sheet like every other opener:
+  // the earliest-created sheet speaks, fixed titles included (§2.1-5).
+  containers.set([container]);
+  activeContainerId.set("c1");
+  sheetOrder.set({});
+  layout.set(defaultLayoutForSessions([]));
+
+  setLayout(appendSheet(layout(), "changes:c1"));
+  noteSheetOpened("changes:c1");
+  expect(sheetOrder().c1).toEqual(["changes:c1"]);
+  expect(containerTitle(container)).toBe(sheetTitle("changes:c1"));
+
+  const editorSheet = editorSheetId("c1", "/tmp/alpha/main.rs");
+  setLayout(appendSheet(layout(), editorSheet));
+  noteSheetOpened(editorSheet);
+  setLayout(removeSheet(layout(), "changes:c1"));
+  // The editor sheet was created after Changes, so Changes' departure
+  // promotes it — its fixed title, not the captain session's.
+  expect(sheetOrder().c1).toEqual([editorSheet]);
+  expect(containerTitle(container)).toBe(sheetTitle(editorSheet));
 });

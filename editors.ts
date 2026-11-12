@@ -1,6 +1,6 @@
 import { Buffer } from "buffer";
 import { signal, untracked } from "nsh";
-import { closeSheet, containers, layout, setLayout } from "./containers";
+import { closeSheet, containers, layout, noteSheetOpened, setLayout } from "./containers";
 import { appendSheet, visiblePanels } from "./dock";
 import { canonicalRoot, failure, readText, sameVersion, statPath, writeText, type FsFailure } from "./fs";
 import { t, K } from "./i18n";
@@ -354,6 +354,7 @@ export function openEditorSheet(containerId: string, path: string): void {
   const id = editorSheetId(containerId, path);
   if (!visiblePanels().includes(id)) {
     setLayout(appendSheet(layout(), id, `files:${containerId}`));
+    noteSheetOpened(id);
   }
 }
 
@@ -361,6 +362,7 @@ export function openEditorSheet(containerId: string, path: string): void {
 export function openDiffSheet(containerId: string, oldPath: string, newPath: string): void {
   const id = diffSheetId(containerId, oldPath, newPath);
   setLayout(appendSheet(layout(), id, `files:${containerId}`));
+  noteSheetOpened(id);
 }
 
 /** Closes an editor sheet and drops its document. */

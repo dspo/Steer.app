@@ -1,6 +1,7 @@
 import { effect, keymap, signal, Text, token, View } from "nsh";
 import { Dialog, Input, Menu, MenuItem, MenuSeparator } from "nsh/base";
 import { K, t } from "./i18n";
+import { baseName } from "./fs";
 import {
   containerProject,
   createProject,
@@ -390,10 +391,6 @@ function openProjectDialog(onCreated?: (project: ProjectRecord) => void): void {
   projectDialogOpen.set(true);
 }
 
-function folderName(path: string): string {
-  return path.split("/").filter(Boolean).pop() ?? path;
-}
-
 /** The project creation dialog: a name and Finder-picked roots, no paths typed. */
 export function ProjectDialog() {
   const isOpen = () => projectDialogOpen();
@@ -489,7 +486,7 @@ export function ProjectDialog() {
             <Glyph name="folder" size={12} tint={token("muted-foreground")} />
             <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
               <Text class="text-[12px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
-                {folderName(root().path)}
+                {baseName(root().path)}
               </Text>
               <Text class="text-[10px] text-faint" style={{ numberOfLines: 1 }} tooltip={root().path}>
                 {root().path}

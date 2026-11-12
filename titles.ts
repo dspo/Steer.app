@@ -1,8 +1,9 @@
 import type { ContainerRecord } from "./contracts/protocol";
 import { sessionIdOfSheet } from "./dock";
 import { sheetOrder } from "./containers";
-import { sessionTitle } from "./sessions";
+import { sessionHasName, sessionTitle } from "./sessions";
 import { sheetTitle } from "./sheets";
+import { baseName } from "./fs";
 import { externalKindLabel, terminalSheetId, terminalTitle } from "./terminals";
 
 /**
@@ -35,8 +36,8 @@ function namedSheetTitle(id: string): string | null {
   if (sessionId) {
     // A fresh session has no name: its id prefix would leave two containers
     // reading the same, so it waits for one (the next sheet speaks instead).
-    const named = sessionTitle(sessionId);
-    return named && named !== sessionId.slice(0, 8) ? named : null;
+    if (!sessionHasName(sessionId)) return null;
+    return sessionTitle(sessionId);
   }
   const title = sheetTitle(id);
   return title.trim() ? title : null;
@@ -44,15 +45,15 @@ function namedSheetTitle(id: string): string | null {
 
 /** What a container is called when no sheet of its own names it. */
 function fallbackTitle(container: ContainerRecord): string {
-  const folder = container.cwd.split("/").filter(Boolean).slice(-1)[0] ?? "";
+  const folder = baseName(container.cwd);
   // A container is a place to work, so its own name wins over its captain's:
   // a fresh session has no name, and two unnamed containers would read as the
   // same id prefix — pressing the other one looked like nothing happened.
   const captain = container.sessions[0];
-  const named = captain ? sessionTitle(captain.sessionId) : "";
-  const namedIsTitle = named && named !== captain?.sessionId?.slice(0, 8);
-  if (namedIsTitle) return named;
+  if (captain && sessionHasName(captain.sessionId)) return sessionTitle(captain.sessionId);
   if (container.kind !== "Pi") {
+    // An external container is born with terminal resource 1 (its default
+    // layout), so its OSC title is the best name on record.
     const title = terminalTitle(terminalSheetId(container.id, 1));
     if (title) return title;
     return externalKindLabel(container.kind);

@@ -6,7 +6,7 @@ import {
   type GitStatus,
 } from "zu/native";
 import { signal } from "nsh";
-import { activeContainerId, containers, layout, setLayout } from "./containers";
+import { activeContainerId, containers, layout, noteSheetOpened, setLayout } from "./containers";
 import { appendSheet } from "./dock";
 import { editorDocs, reloadEditor } from "./editors";
 import { K, t } from "./i18n";
@@ -380,10 +380,12 @@ export async function loadDiff(
 export function openChangesSheet(containerId: string | null = activeContainerId()): void {
   if (!containerId) return;
   setLayout(appendSheet(layout(), `changes:${containerId}`));
+  noteSheetOpened(`changes:${containerId}`);
 }
 
 /** Opens (or shows) the container's History sheet. */
 export function openHistorySheet(containerId: string | null = activeContainerId()): void {
   if (!containerId) return;
   setLayout(appendSheet(layout(), `history:${containerId}`));
+  noteSheetOpened(`history:${containerId}`);
 }

@@ -3,6 +3,7 @@ import { Pty } from "zu/native";
 import type { ContainerKind, ContainerRecord } from "./contracts/protocol";
 import { t, K } from "./i18n";
 import { panelIds } from "./dock";
+import { baseName } from "./fs";
 import type { DockAreaLayout } from "./dock";
 
 /**
@@ -142,7 +143,7 @@ function publish(handle: TerminalHandle): void {
 
 function seedTitle(container: ContainerRecord, action: TerminalAction): string {
   const label = terminalActionLabel(action);
-  const folder = container.cwd.split("/").filter(Boolean).slice(-1)[0];
+  const folder = baseName(container.cwd);
   return folder ? `${label} · ${folder}` : label;
 }
 

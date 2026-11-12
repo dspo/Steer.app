@@ -224,6 +224,13 @@ export function focusSession(id: string): void {
   activeId.set(id);
 }
 
+/** Whether a session has a name of its own: the fallbacks (preview, path,
+ * id prefix) are this module's private spellings, and the container titles
+ * must not re-derive them. */
+export function sessionHasName(id: string): boolean {
+  return sessionTitle(id) !== id.slice(0, 8);
+}
+
 /** The label a sheet or a sidebar row shows for a session. */
 export function sessionTitle(id: string): string {
   const view = views()[id];

@@ -715,14 +715,12 @@ function TitleBar() {
 }
 
 /**
- * An external container is its terminal: closing that sheet would leave a
- * container with no way back, so its tab is not closable. Archive the
- * container instead (which kills the PTY).
+ * The canvas's panels, all closable: the tab's × is drawn below, and closing
+ * a container's last sheet is how it leaves (Q69's auto-archive) — an
+ * external container included, whose exit kills its PTY.
  */
-function terminalPanels(): Array<{ id: string; closable: boolean }> {
-  return panelIds(layout())
-    .filter((id) => id.startsWith("terminal:"))
-    .map((id) => ({ id, closable: false }));
+function canvasPanels(): Array<{ id: string; closable: boolean }> {
+  return panelIds(layout()).map((id) => ({ id, closable: true }));
 }
 
 /**
@@ -762,7 +760,7 @@ function Canvas() {
         ref={(ref) => bindDock(ref)}
         class="flex-1"
         layout={layout()}
-        panels={terminalPanels()}
+        panels={canvasPanels()}
         onLayoutChange={({ layout: next }) => setLayout(next)}
         onZoomChange={({ panel }) => setZoom(panel)}
         onPanelActiveChange={({ panel, active }) => onPanelActive(panel, active)}

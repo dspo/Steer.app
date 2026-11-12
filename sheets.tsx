@@ -48,9 +48,6 @@ type SheetKind =
   | "home"
   | "session"
   | "terminal"
-  | "claude"
-  | "codex"
-  | "copilot"
   | "webview"
   | "editor"
   | "diff"
@@ -77,9 +74,6 @@ const SPECS: Record<SheetKind, SheetSpec> = {
   home: { title: K.sheet.homeTitle, glyph: "pi", tint: "brand", note: K.sheet.homeNote },
   session: { title: K.sheet.sessionTitle, glyph: "chat", tint: "brand", note: K.sheet.sessionNote },
   terminal: { title: K.sheet.terminalTitle, glyph: "terminal", tint: "muted-foreground", note: K.sheet.terminalNote },
-  claude: { title: K.sheet.claudeTitle, glyph: "terminal", tint: "warn", note: K.sheet.claudeNote },
-  codex: { title: K.sheet.codexTitle, glyph: "terminal", tint: "up", note: K.sheet.codexNote },
-  copilot: { title: K.sheet.copilotTitle, glyph: "terminal", tint: "info", note: K.sheet.copilotNote },
   webview: { title: K.sheet.webviewTitle, glyph: "globe", tint: "info", note: K.sheet.webviewNote },
   editor: { title: K.sheet.editorTitle, glyph: "file", tint: "muted-foreground", note: K.sheet.editorNote },
   diff: { title: K.sheet.diffTitle, glyph: "diff", tint: "muted-foreground", note: K.sheet.diffNote },
@@ -133,12 +127,7 @@ export function sheetTitle(id: string): string {
   if (kind === "files" || kind === "changes" || kind === "history") {
     const container = containers().find((row) => row.id === instance);
     const folder = container ? baseName(container.cwd) : "";
-    const title =
-      kind === "files"
-        ? t(K.sheet.filesTitle)
-        : kind === "changes"
-          ? t(K.sheet.changesTitle)
-          : t(K.sheet.historyTitle);
+    const title = t(SPECS[kind].title);
     return folder ? `${title} · ${folder}` : title;
   }
   const spec = SPECS[kind];

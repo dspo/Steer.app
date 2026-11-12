@@ -1,7 +1,7 @@
 import { TextView } from "nsh/base";
 import { effect, Overlay, Scroll, token, View, Text, type Bounds } from "nsh";
 import { appendSheet } from "./dock";
-import { activeContainerId, containers, layout, setLayout } from "./containers";
+import { activeContainerId, containers, layout, noteSheetOpened, setLayout } from "./containers";
 import { editorSheetId, editorPathFor, openEditorSheet } from "./editors";
 import { relativeTo } from "./fs";
 import { K, t } from "./i18n";
@@ -85,6 +85,7 @@ export function HoverCard(props: {
 export function openProblemsSheet(containerId: string | null = activeContainerId()): void {
   if (!containerId) return;
   setLayout(appendSheet(layout(), `problems:${containerId}`));
+  noteSheetOpened(`problems:${containerId}`);
 }
 
 /** The test id of a Problems row (paths contain characters selectors split on). */
