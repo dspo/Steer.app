@@ -545,10 +545,12 @@ test("a steer reaches the running turn and the queue reports it", async () => {
   try {
     await send("Count from 1 to 400, one number per line.");
     // A live model's first token is the one wait this suite cannot make
-    // deterministic: under a loaded machine it can take a minute, and a
-    // tight budget turns that into a false failure (C5).
+    // deterministic: under the full suite's parallel load the sidecar and
+    // the provider have taken over 90 s twice (2026-11-12), and a tight
+    // budget turns that into a false failure (C5). 180 s stays inside the
+    // test's own 480 s even with the stream-end wait at its worst.
     let waited = 0;
-    for (; waited < 90000; waited += 50) {
+    for (; waited < 180000; waited += 50) {
       if (streaming() && messages().some((message) => message.role === "assistant" && message.text.length > 0)) break;
       await sleep(50);
     }
@@ -574,4 +576,4 @@ test("a steer reaches the running turn and the queue reports it", async () => {
     stopListening();
     await stop();
   }
-}, 300000);
+}, 480000);

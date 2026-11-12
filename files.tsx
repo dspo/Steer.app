@@ -19,6 +19,7 @@ import {
   setEditorText,
 } from "./editors";
 import { baseName, canonicalRoot, failure, formatBytes, listDir, readText, relativeTo, type FsFailure } from "./fs";
+import { SHEET_FONT } from "./fonts";
 import {
   ROOT_KEY,
   compareRowTestId,
@@ -647,6 +648,7 @@ export function EditorBody(props: { sheetId: string }) {
           lineNumbers
           indentGuides
           activeLine
+          fontFamily={SHEET_FONT}
           fontSize={13}
           lineHeight={20}
           accessibilityLabel={baseName(path)}
@@ -849,6 +851,7 @@ export function DiffBody(props: { sheetId: string }) {
           lineNumbers
           background
           softWrap={false}
+          fontFamily={SHEET_FONT}
           fontSize={13}
           lineHeight={20}
           onStatsChange={({ stats: next }) => stats.set(next)}

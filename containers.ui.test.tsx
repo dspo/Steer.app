@@ -13,6 +13,9 @@ async function shot(app: { screenshot: (path?: string | null) => Promise<Uint8Ar
 test("containers switch their layouts and throttle hidden sessions", async () => {
   const app = await open("./fixtures/containers.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:alpha body");
+  // §2.3-16: the shell's chrome stays in the system face; only the sheet
+  // content ("alpha body") reads Lilex (DESIGN §3.4).
+  await shot(app, "ui-s23-16-lilex-shell");
   // The first container holds Alpha (shown) and Gamma (hidden).
   expect(app.texts()).toContain("Alpha");
   expect(app.texts()).toContain("Gamma");

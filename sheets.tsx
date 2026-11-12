@@ -30,6 +30,7 @@ import { ChangesBody, HistoryBody } from "./git-ui";
 import { ProblemsBody } from "./lsp-ui";
 import { diffSheetPaths, editorSheetPath } from "./editors";
 import { baseName } from "./fs";
+import { SHEET_FONT } from "./fonts";
 
 /** The color tokens the registry tints glyphs with. */
 type TintToken = "brand" | "warn" | "up" | "info" | "muted-foreground" | "primary-foreground" | "faint";
@@ -319,6 +320,7 @@ export function TerminalBody(props: { id: string }) {
         ref={bind}
         testID="terminal-view"
         scrollback={5000}
+        fontFamily={SHEET_FONT}
         fontSize={13}
         lineHeight={18}
         accessibilityLabel={terminalActionLabel(action())}

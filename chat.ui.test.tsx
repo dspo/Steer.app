@@ -77,6 +77,7 @@ test("the idle composer is one accent send with no stop and no lanes", async () 
   const idle = await open("./fixtures/chat-idle.tsx", { width: 1200, height: 800 });
   await idle.waitFor("id:session-send");
   await shot(idle, "ui-s22-11-idle");
+  await shot(idle, "ui-s23-16-lilex");
   expect(idle.enabled("id:session-send")).toBe(false);
   expect(idle.shows("id:session-stop")).toBe(false);
   expect(idle.shows("id:session-more")).toBe(false);

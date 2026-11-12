@@ -28,6 +28,11 @@ mod lsp;
 mod picker;
 mod pty;
 
+/// Lilex, the sheet content's face (§2.3-16, DESIGN §3.4): the crate ships
+/// both weights (`registry.assets(assets!())`), and the engine registers
+/// them before the first render under the family the files' name tables
+/// carry — TS names it as `fonts.ts`'s `SHEET_FONT`.
+
 pub use fs::{Fs, FsEntry, FsExpected, FsFile, FsStat, FsWriteResult};
 pub use git::{
     Git, GitBranch, GitBranches, GitChange, GitCommit, GitDiff, GitStatus,
@@ -344,6 +349,7 @@ impl Engine {
 #[native_module("zu/native")]
 fn native(registry: &mut Registry) {
     registry
+        .assets(assets!())
         .module::<Engine>()
         .module::<Fs>()
         .module::<Git>()
@@ -351,6 +357,26 @@ fn native(registry: &mut Registry) {
         .module::<Picker>()
         .class::<Lsp>()
         .class::<Pty>();
+}
+
+#[cfg(test)]
+mod font_tests {
+    use nsh_core::element::FontAsset;
+
+    use super::asset;
+
+    // §2.3-16 (DESIGN §3.4): both weights under ONE family, so the layout
+    // picks the nearest weight — body's 400 reads Light (300), bold's 600+
+    // reads Medium (500). Two different names would break that mapping, and
+    // `fonts.ts` names the family by this literal.
+    const LILEX_LIGHT: FontAsset = asset!("fonts/Lilex-Light.ttf");
+    const LILEX_MEDIUM: FontAsset = asset!("fonts/Lilex-Medium.ttf");
+
+    #[test]
+    fn lilex_ships_under_one_family() {
+        assert_eq!(LILEX_LIGHT.family, "Lilex");
+        assert_eq!(LILEX_MEDIUM.family, LILEX_LIGHT.family);
+    }
 }
 
 /// The port published in `engine.port`, if it parses and is non-zero.

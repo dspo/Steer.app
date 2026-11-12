@@ -361,7 +361,7 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 | Diff | nsh `DiffView`（split/unified、hunk 操作） | 无需自研 |
 | Git | shell out `git`（不引入 libgit2） | 零依赖、与 pi 工具行为一致 |
 | 语言 | **跟随系统** `locale()`：`zh*` → zh-CN，其余 → en；类型化键表（`i18n.ts` + `locales/*.ts`） | 无 UI 入口（Q71）；nsh 提供 `locale()`，键表 parity 由 `nsh test` 覆盖 |
-| 字体 | **仅 sheet 内容**用 Lilex：`Lilex-Light`(300) + `Lilex-Medium`(500) 同 family，nsh 就近取字面（400→300、600+→500）；轮廓保持系统字体 | nsh `fonts.md` 的就近匹配（Q72）；文件放 `assets/fonts/` |
+| 字体 | **仅 sheet 内容**用 Lilex：`Lilex-Light`(300) + `Lilex-Medium`(500) 同 family，nsh 就近取字面（400→300、600+→500）；轮廓保持系统字体 | nsh `fonts.md` 的就近匹配（Q72）；crate 经 `assets!()` 壳带（`assets/fonts/`），引擎首帧前注册，`fonts.ts` 持 family 常量 |
 | nsh | `Cargo.toml` 的 `nsh-core`/`nsh-base` **git pin `506b5392`（版本 0.4.0）** + `Cargo.lock`；CLI 用 checkout 构建 | 发布版 0.4.0 没有 `nsh/base Terminal`（`term` 在发布后进 checkout），M7 必须用 checkout；nsh 比 pi 更不稳定，升级需跑 `nsh check`/`nsh test` + 终端与 DockArea 冒烟 |
 
 ## 7. 实现状态（2026-11-11）
@@ -400,10 +400,12 @@ sidecar 内置扩展在 captain 会话内注册工具，实现闭包持有 `Sess
 13. **LSP 的成本与边界**：每容器 × 语言族一个进程，rust-analyzer 在大仓库的索引内存/CPU 不在 Zu 的控制内；诊断只保留打开文件（Problems 不是全工作区索引），关闭 sheet 即 `didClose` 并清掉该文件的诊断；全文 `didChange` 在每次停顿发送整份文本（2 MiB 上限内），不是增量；`snippetSupport: false`，补全插入普通文本；headless 的 `app.hover` 只在 selector 自身派发 `MouseMove`，无法驱动 Editor 内部 rows 的 hover（真实 macOS 指针路径未自动化）；语言服务器启动依赖 PATH/常见目录，GUI 进程的 PATH 可能仍缺用户自定义安装位置（错误会显示在 Problems 的 server 状态）。
 14. **更新未端到端验证**：仓库无 `nsh.json` 的 `"updater"`、公钥和 release；`checkForUpdate` 在 dev 返回 null，真实下载/签名校验/替换 `.app` 没有跑过。UI 状态机用 fake service 覆盖，发布前的配置步骤在 evidence/m12-lifecycle.md。`canInstall:false` 没有 `openUrl` 能力，只显示 URL。
 15. **通知未真机投递**：headless 的 `Notifications` 不产生系统横幅；开发运行的 macOS app 不是 signed bundle，`permission()` 会是 `unavailable`。真实通知需要打包签署后的 app，且本轮没有重启用户正在使用的 app。策略/权限/按开的逻辑有 8 条单测，真实 banner/点击列在 evidence 的未验证项。
-16. **模型注册表（P0）**：`session.models` 依赖 pi 的 model registry（`~/.pi/agent/models.json` + 认证）。引擎若不显式初始化，列表可能为空，发消息这一核心动作直接不可用；列在 plan §2.0（P0-1/P0-2）。
+16. **模型注册表（P0，已解决 2026-11-11）**：`modelsData` 曾用 `Array.isArray(runtime.getAvailable)` 做守卫（方法永不是数组），引擎从不问 pi、静默空列表。现在引擎启动时显式建共用 `ModelRuntime` 交给每个会话，空列表必带 `reason`；见 plan §2.0 与 [evidence/s20-models.md](evidence/s20-models.md)。
 
 ## 9. 文档
 
-- [decisions.md](decisions.md)：Q1–Q57 决策台账（问题 → 裁决 → 落点 → 理由）。
+- [decisions.md](decisions.md)：Q1–Q95 决策台账（问题 → 裁决 → 落点 → 理由）。
 - [plan.md](plan.md)：已完成的工作与下一批任务（唯一的执行指导）。
-- [evidence/](evidence/)：spike 实测、可行性分析、终端仿真核对比、决策过程记录。
+- [DESIGN.md](DESIGN.md)：视觉规格（Token、几何、表面、动效、模块界面）。
+- [research/](research/)：外源调研存档（ThinkRail 与 manox-app 的可吸纳项，已吸纳项的出处）。
+- [evidence/](evidence/)：spike 实测、可行性分析、终端仿真核对比、决策过程记录、各批次验收。

@@ -1,5 +1,6 @@
 import { effect, List, type ListRef, reduceMotion, signal, Text, token, View } from "nsh";
 import { TextView } from "nsh/base";
+import { SHEET_FONT } from "./fonts";
 import { K, t } from "./i18n";
 import { viewFor } from "./sessions";
 import { ChatComposer } from "./composer";
@@ -100,7 +101,9 @@ export function MessageRow(props: { message: () => ChatMessage; streaming: () =>
             borderColor: token("border"),
           }}
         >
-          <Text style={{ userSelect: "text", fontSize: 15, lineHeight: 21, color: token("foreground") }}>
+          <Text
+            style={{ userSelect: "text", fontFamily: SHEET_FONT, fontSize: 15, lineHeight: 21, color: token("foreground") }}
+          >
             {message().text}
           </Text>
         </View>
@@ -117,7 +120,7 @@ export function MessageRow(props: { message: () => ChatMessage; streaming: () =>
         streamingCaret={props.streaming() ? <Caret /> : undefined}
         styles={{
           // A chat's scale: 15 / 22, tighter headings than a document's.
-          root: { gap: 12, fontSize: 15, lineHeight: 22, color: token("foreground") },
+          root: { gap: 12, fontSize: 15, lineHeight: 22, fontFamily: SHEET_FONT, color: token("foreground") },
           heading1: { fontSize: 20, lineHeight: 26 },
           heading2: { fontSize: 17, lineHeight: 22 },
           heading3: { fontSize: 15, lineHeight: 22 },

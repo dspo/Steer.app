@@ -104,7 +104,11 @@ motionStyle()   // 用户在系统里减少动态效果时返回 {}
 | sheet 内容（会话正文、编辑器、终端、Diff） | **Lilex**：`Lilex-Light.ttf`(300) + `Lilex-Medium.ttf`(500)，注册为同一 family；正文 400 就近取 300，加粗 600+ 就近取 500 |
 | 轮廓（顶栏、侧栏、页签、按钮、对话框） | 系统字体（不变） |
 
-文件放 `assets/fonts/`，import 后按 family 名使用；nsh 在首帧前注册，无闪烁。
+文件放 crate 的 `assets/fonts/`，经 `src/lib.rs` 的 `registry.assets(assets!())`
+壳带：引擎在首帧前按文件 name table 的 family（`Lilex`）注册，dev server 按
+登记伺服、打包时拷进包；TS 只有 `fonts.ts` 的 `SHEET_FONT` 常量，四类 sheet
+内容以它为 `fontFamily`。不走 TSX 的字体 import（fixture 的打包根在
+`fixtures/` 下，绝对路径 URI 会在 `--target macos` 的宿主 404）。
 
 ### 3.5 工具行图标
 

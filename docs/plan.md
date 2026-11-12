@@ -2,9 +2,9 @@
 
 > 唯一的工作指导文档。已完成的部分给证据位置；未做的按批次给出任务与验收。
 
-**当前进度（2026-11-11）**：§2.1-1（`a58e0ad`）、§2.1-2（`bcd4004`）、§2.1.1 F1（`4293eb7`）已提交；
+**当前进度（2026-11-12）**：§2.1-1（`a58e0ad`）、§2.1-2（`bcd4004`）、§2.1.1 F1（`4293eb7`）已提交；
 §2.0 的 P0-1 / P0-2（模型注册与无模型界面）已完成，证据见 [evidence/s20-models.md](evidence/s20-models.md)；
-四条调整已并入（`b1f4937`）。门禁全绿（`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 252/252 ✓、
+四条调整已并入（`b1f4937`）。门禁全绿（`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` ✓、
 `script/bundle-mac.sh` ✓），证据见 [evidence/s1-hero-sheet.md](evidence/s1-hero-sheet.md)、
 [evidence/s21-2-switch-hydrate.md](evidence/s21-2-switch-hydrate.md)、
 [evidence/s21-1-hero-actions.md](evidence/s21-1-hero-actions.md)、
@@ -13,10 +13,19 @@
 [evidence/s21-4-action-matrix.md](evidence/s21-4-action-matrix.md)、
 [evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)、
 [evidence/s21-6-system-locale.md](evidence/s21-6-system-locale.md)、
-[evidence/s21-7-auto-archive.md](evidence/s21-7-auto-archive.md) 与 `docs/evidence/ui-s2-*.png`。
-**下一个动作是 §2.3 的第 16 项（Lilex 字体）**（14、15 两项已完成，证据
-[evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)、[evidence/s21-3-scratch.md](evidence/s21-3-scratch.md)、[evidence/s21-4-action-matrix.md](evidence/s21-4-action-matrix.md)、[evidence/s21-5-container-title.md](evidence/s21-5-container-title.md)、[evidence/s21-6-system-locale.md](evidence/s21-6-system-locale.md)、[evidence/s21-7-auto-archive.md](evidence/s21-7-auto-archive.md)、[evidence/s22-8-shell.md](evidence/s22-8-shell.md)、[evidence/s22-9-sidebar-drag.md](evidence/s22-9-sidebar-drag.md)、[evidence/s22-10-remove-picker.md](evidence/s22-10-remove-picker.md)、[evidence/s22-11-composer.md](evidence/s22-11-composer.md)、[evidence/s22-11a-slash.md](evidence/s22-11a-slash.md)、[evidence/s22-12-13-chrome.md](evidence/s22-12-13-chrome.md)、[evidence/s23-14-brand-icons.md](evidence/s23-14-brand-icons.md)、[evidence/s23-15-drag-ghost.md](evidence/s23-15-drag-ghost.md)）。
-开工前读：本文件 §2 → [architecture.md](architecture.md) §4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 →
+[evidence/s21-7-auto-archive.md](evidence/s21-7-auto-archive.md)、
+[evidence/s22-8-shell.md](evidence/s22-8-shell.md)、
+[evidence/s22-9-sidebar-drag.md](evidence/s22-9-sidebar-drag.md)、
+[evidence/s22-10-remove-picker.md](evidence/s22-10-remove-picker.md)、
+[evidence/s22-11-composer.md](evidence/s22-11-composer.md)、
+[evidence/s22-11a-slash.md](evidence/s22-11a-slash.md)、
+[evidence/s22-12-13-chrome.md](evidence/s22-12-13-chrome.md)、
+[evidence/s23-14-brand-icons.md](evidence/s23-14-brand-icons.md)、
+[evidence/s23-15-drag-ghost.md](evidence/s23-15-drag-ghost.md)、
+[evidence/s23-16-lilex.md](evidence/s23-16-lilex.md) 与 `docs/evidence/ui-s2-*.png`。
+**下一个动作是 §5 的整洁化轨道**（C1/C5/C6/C7 可立即插入；Casing II 的功能项 1–16 已全部完成，
+C2/C3 的文件移动不再与功能改写冲突）。
+开工前读：本文件 §5 → [architecture.md](architecture.md) §4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 →
 [evidence/apis-verified.md](evidence/apis-verified.md)。
 > 架构见 [architecture.md](architecture.md)，视觉规格见 [DESIGN.md](DESIGN.md)，决策台账见 [decisions.md](decisions.md)。
 
@@ -30,7 +39,7 @@
 | M-A | M0–M12 已交付 | ✅ | §1 |
 | M-B | Hero 与画布结构（S1 + S2） | ✅ 1–7 与 F1–F3 全部完成 | §2.1、§2.1.1 |
 | M-C | 一体化外壳与组合（S3） | ✅ 8–13 全部完成 | §2.2 |
-| M-D | 细节（图标、拖拽、字体） | 🔁 14–15 完成；16 待做 | §2.3 |
+| M-D | 细节（图标、拖拽、字体） | ✅ 14–16 全部完成 | §2.3 |
 | M-E | 独立修复 | ⏸ B2 挂起 | §2.4 |
 | M-F | 代码仓库整洁化（并行轨道） | ⬜ | §5 |
 
@@ -184,6 +193,14 @@
 > 保留块状指示。"源 tab 变占位（opacity 0.35）"需要 nsh 的 DockTab 暴露 dragging 标志（0.4.0 没有），
 > 按 Q54 的升级规则单独成批，见证据的"已知边界"。
 > 证据 [evidence/s23-15-drag-ghost.md](evidence/s23-15-drag-ghost.md)。
+
+> **第 16 项已完成（2026-11-12）**：Lilex（Light 300 + Medium 500，同 family）由 zu-app crate 经
+> `registry.assets(assets!())` 壳带，引擎首帧前注册；`fonts.ts` 的 `SHEET_FONT` 进四类 sheet 内容
+> （正文、编辑器、终端、Diff），轮廓保持系统字体。不走 TSX 字体 import——fixture 的打包根在
+> `fixtures/` 下，绝对路径 URI 会在 `--target macos` 宿主 404；crate 资产四个 host 同一条路径。
+> Rust 单测守住 family、`fonts.test.ts` 守住常量；截图 `ui-s23-16-lilex.png`（内容 Lilex）、
+> `ui-s23-16-lilex-shell.png`（全壳：侧栏/页签/composer 系统字体，画布 Lilex）。
+> 证据 [evidence/s23-16-lilex.md](evidence/s23-16-lilex.md)。
 
 > **F1 已完成（2026-11-11，`4293eb7`）**：`replaceSheet()` 把目标 sheet 放进 Hero 的原槽位并移除 Hero；容器 Hero 的
 > 浏览器、终端/TUI（F2）与 Pi（F3）动作、以及 composer 提交都走它。证据

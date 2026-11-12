@@ -6,13 +6,14 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 终端、各 agent TUI、webview、编辑器、diff、LSP Problems）。logo 为 Steer 的 `<->` 构型加载祖冲之密率
 （上 355、下 113）。
 
-**当前状态（as of 2026-11-11）**：M0–M12 已交付（地基、对话、契约与监督、容器与面板、项目与 Launcher、子代理、轮廓、
+**当前状态（as of 2026-11-12）**：M0–M12 已交付（地基、对话、契约与监督、容器与面板、项目与 Launcher、子代理、轮廓、
 终端、编辑器、Git、浏览器、LSP、常驻与更新）。Casing II：**§2.1-1（`a58e0ad`）、§2.1-2（`bcd4004`）、
 §2.1.1 F1（`4293eb7`）已提交**；**§2.0 的 P0-1/P0-2 已完成**（引擎级模型注册表、无模型界面），
 **§2.1.1 F2/F3 已完成**（容器内终端资源、原生 Pi TUI），**§2.1-3 已完成**（scratch 画布的页面与铸容器）、**§2.1-4 已完成**（动作可用性矩阵）、**§2.1-5 已完成**（容器标题 S2）、**§2.1-6 已完成**（语言跟随系统）、**§2.1-7 已完成**（无 sheet 自动归档）；
 **§2.1 全部完成**；§2.2 全部完成（S3 外壳、侧栏拖拽 + `settings.*`、移除 picker、composer 仅交互与 11a 斜杆命令、红绿灯、Chrome 页签宽度）；
-§2.3 的第 14 项（品牌图标）与第 15 项（拖拽幽灵 + 落位竖线）已完成，16 待做（源 tab 占位需要 nsh 升级，见证据）。
-门禁：`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` 252/252 ✓、`script/bundle-mac.sh` ✓。证据见
+**§2.3 全部完成**（第 14 项品牌图标、第 15 项拖拽幽灵 + 落位竖线、第 16 项 Lilex 字体——crate 经 `assets!()` 壳带、引擎首帧前注册，sheet 内容用 Lilex、轮廓系统字体；15 的"源 tab 占位"仍待 nsh 升级，见证据）。
+下一轨道是 [§5 代码仓库整洁化](docs/plan.md)（C1–C7，与功能并行；Casing II 功能项已完，C2/C3 的移动不再冲突）。
+门禁：`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` ✓（live 的 steer 用例偶发供应商慢首 token，重跑全绿）、`script/bundle-mac.sh` ✓。证据见
 [docs/evidence/s1-hero-sheet.md](docs/evidence/s1-hero-sheet.md)、
 [docs/evidence/s21-2-switch-hydrate.md](docs/evidence/s21-2-switch-hydrate.md)、
 [docs/evidence/s21-1-hero-actions.md](docs/evidence/s21-1-hero-actions.md)、
@@ -30,8 +31,9 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 [docs/evidence/s22-11a-slash.md](docs/evidence/s22-11a-slash.md)、
 [docs/evidence/s22-12-13-chrome.md](docs/evidence/s22-12-13-chrome.md)、
 [docs/evidence/s23-14-brand-icons.md](docs/evidence/s23-14-brand-icons.md)、
-[docs/evidence/s23-15-drag-ghost.md](docs/evidence/s23-15-drag-ghost.md) 与 `docs/evidence/ui-s2-*.png`。
-下一项是 [§2.3 第 16 项（Lilex 字体）](docs/plan.md)。2026-11-11 的计划调整：移除顶栏 picker、模型问题升为 P0、
+[docs/evidence/s23-15-drag-ghost.md](docs/evidence/s23-15-drag-ghost.md)、
+[docs/evidence/s23-16-lilex.md](docs/evidence/s23-16-lilex.md) 与 `docs/evidence/ui-s2-*.png`。
+2026-11-11 的计划调整：移除顶栏 picker、模型问题升为 P0、
 Composer 接入 pi 斜杆操作、新增代码仓库整洁化并行轨道（[plan §5](docs/plan.md)）。
 
 ## 文档
@@ -41,8 +43,9 @@ Composer 接入 pi 斜杆操作、新增代码仓库整洁化并行轨道（[pla
 | [docs/plan.md](docs/plan.md) | **执行指导**：已完成的工作、下一批任务（Casing II / Hero sheet）、批次与验收 |
 | [docs/architecture.md](docs/architecture.md) | 架构：约束、后端 sidecar、前端轮廓与画布、对象模型、技术选型、风险 |
 | [docs/DESIGN.md](docs/DESIGN.md) | 视觉规格：Token、外壳几何（Casing II 目标）、表面语言、动效、各模块界面 |
-| [docs/decisions.md](docs/decisions.md) | 决策台账 Q1–Q80 |
+| [docs/decisions.md](docs/decisions.md) | 决策台账 Q1–Q95 |
 | [docs/evidence/](docs/evidence/) | 依据：spike 实测、可行性、终端仿真核对比、API 核实、各里程碑验证记录 |
+| [docs/research/](docs/research/) | 外源调研存档：ThinkRail 与 manox-app 的可吸纳项清单（已吸纳项的出处，按仓库 HEAD 快照） |
 
 ## 代码地图（app + `engine/` + `src/`）
 
