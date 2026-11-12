@@ -21,6 +21,7 @@ use std::{
 
 use nsh_core::prelude::*;
 
+mod acp;
 mod fs;
 mod git;
 mod instance;
@@ -32,6 +33,7 @@ mod pty;
 /// both weights (`registry.assets(assets!())`), and the engine registers
 /// them before the first render under the family the files' name tables
 /// carry — TS names it as `fonts.ts`'s `SHEET_FONT`.
+pub use acp::{Acp, AcpExit, AcpOptions};
 pub use fs::{Fs, FsEntry, FsExpected, FsFile, FsStat, FsWriteResult};
 pub use git::{Git, GitBranch, GitBranches, GitChange, GitCommit, GitDiff, GitStatus};
 pub use instance::{Instance, InstanceClaim};
@@ -64,20 +66,20 @@ static LAST_EXIT: Mutex<Option<i32>> = Mutex::new(None);
 
 /// Extension paths the host adds to the standard pi locations (tests and
 /// development builds use it; a packaged app leaves it empty).
-static EXTRA_EXTENSIONS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+pub(crate) static EXTRA_EXTENSIONS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 /// The state directory beside pi's state (`~/.pi/zu` unless a test points
 /// it elsewhere): registry, layouts, token, generation and log.
-static STATE_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
+pub(crate) static STATE_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Whether the next sidecar skips extensions (tests that only exercise the
 /// container registry); a packaged app always loads them.
-static NO_EXTENSIONS: Mutex<bool> = Mutex::new(false);
+pub(crate) static NO_EXTENSIONS: Mutex<bool> = Mutex::new(false);
 
 /// pi's home for the sidecar (`~/.pi/agent` unless a test points it
 /// elsewhere): credentials and `models.json`. The model list a session
 /// reports comes from here, so an empty directory is the no-models state.
-static AGENT_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
+pub(crate) static AGENT_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// The engine sidecar: start, stop, and where to reach it.
 #[module]
@@ -358,6 +360,7 @@ fn native(registry: &mut Registry) {
         .module::<Git>()
         .module::<Instance>()
         .module::<Picker>()
+        .class::<Acp>()
         .class::<Lsp>()
         .class::<Pty>();
 }
@@ -475,15 +478,24 @@ pub(crate) fn zu_dir() -> Result<PathBuf, String> {
 /// engine must not be shadowed by it. Development falls back to the
 /// repository's build.
 fn engine_path() -> Option<PathBuf> {
+    harness_path("pi-engine")
+}
+
+/// A pi-harness helper binary by name (`pi-engine`, `pi-acp`), packaged
+/// first and the repository's build second — the resolution the harness
+/// spawn policies share.
+pub(crate) fn harness_path(name: &str) -> Option<PathBuf> {
     if let Ok(exe) = std::env::current_exe()
         && let Some(parent) = exe.parent()
     {
-        let packaged = parent.join("../Helpers/pi-engine");
+        let packaged = parent.join(format!("../Helpers/{name}"));
         if packaged.is_file() {
             return Some(packaged);
         }
     }
-    let dev = Path::new(env!("CARGO_MANIFEST_DIR")).join("../pi-harness/dist/pi-engine");
+    let dev = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../pi-harness/dist")
+        .join(name);
     dev.is_file().then_some(dev)
 }
 

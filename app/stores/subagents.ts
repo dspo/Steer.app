@@ -1,5 +1,7 @@
 import { signal } from "nsh";
 import { onEngineEvent, request } from "./engine";
+import { piTransport } from "../harness/pi-acp/acp";
+import { K, t } from "../ui/i18n";
 import type { PlainMessage, SubagentRun } from "../../contracts/protocol";
 import { activeContainerId, openAuxSheet } from "./containers";
 
@@ -27,6 +29,13 @@ let loading = false;
 export async function loadSubagents(containerId?: string): Promise<void> {
   const target = containerId ?? activeContainerId();
   if (!target || loading) return;
+  if (piTransport() === "acp") {
+    // The distro carries no dispatch extension yet (v2 §12 P3): the roster
+    // says so instead of spinning an empty list or inventing runs.
+    runs.set([]);
+    subagentError.set(t(K.session.acpSubagentsUnavailable));
+    return;
+  }
   loading = true;
   try {
     const data = await transport("subagent.list", { containerId: target }, 10000);

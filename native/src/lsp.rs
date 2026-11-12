@@ -560,7 +560,7 @@ fn exit_signal_of(_status: &std::process::ExitStatus) -> Option<String> {
 /// The names a stopped server most often reports; anything else keeps its
 /// number.
 #[cfg(unix)]
-fn signal_name(signal: i32) -> String {
+pub(crate) fn signal_name(signal: i32) -> String {
     let name = match signal {
         1 => "SIGHUP",
         2 => "SIGINT",
