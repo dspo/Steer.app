@@ -97,10 +97,10 @@ impl Control {
         if self.closed.swap(true, Ordering::AcqRel) {
             return;
         }
-        if let Ok(mut killer) = self.killer.lock() {
-            if let Some(killer) = killer.as_mut() {
-                let _ = killer.kill();
-            }
+        if let Ok(mut killer) = self.killer.lock()
+            && let Some(killer) = killer.as_mut()
+        {
+            let _ = killer.kill();
         }
         // Dropping the master makes the reader see EOF and closes the pty's
         // slave side; a program in the foreground gets SIGHUP.
@@ -439,7 +439,7 @@ impl Pty {
                     }
                 }
             });
-            return Ok(pty);
+            Ok(pty)
         }
     }
 

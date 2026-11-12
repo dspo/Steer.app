@@ -138,6 +138,13 @@ mixed 模板（`nsh.json` 的 `"rust": "."`），按域拆注册面，共用一�
 
 **为什么是 `zu/fs` 而不是给 UI 开 `capabilities.fs`**：编辑器与文件树需要真实的读写，而 UI 的能力面要保持最小；`zu/fs` 让文件访问与 agent 的工具权限分开，LSP 的 `didOpen/didChange` 也能复用同一份内容（避免编辑器与 LSP 各读一遍）。M8 的落点：`src/fs.rs` 的错误带 `code`（`ERR_FS_ESCAPE`/`ERR_FS_BINARY`/`ERR_FS_TOO_LARGE`/`ERR_FS_STALE`/…）；保存走同目录临时文件 + `rename`，保留 mode 与 UTF-8 BOM；`write` 的 `expected {mtimeMs,size}` 不匹配即 `ERR_FS_STALE`，编辑器据此转只读直到 reload。UI 侧只有 `fs.ts`（类型面）与 `editors.ts`（文档/保存/校验），不持 `capabilities.fs`。**四域失败隔离**：engine、pty、lsp、git、fs 各自失败不影响其余；一个域的崩溃不能让 UI 失去所有能力。
 
+**错误码索引（权威在各 Rust 模块声明的 `//!` 文档，这里不复制语义）**：`zu/fs` →
+`src/fs.rs`（`ERR_FS_ROOT/PATH/ESCAPE/BINARY/TOO_LARGE/TOO_MANY/STALE/ENCODING/READONLY/IO`，I/O 错误透传
+`ENOENT` 等原名）；`zu/git` → `src/git.rs`（`ERR_GIT_ROOT/NOT_REPO/PATH/MESSAGE/BRANCH/COMMAND/IDENTITY/
+TOO_LARGE/IO`，命令失败附带 `exit` 与 `stderr`）；`zu/lsp` → `src/lsp.rs`（`ERR_LSP_ARGS/ENV/CWD/SPAWN/
+INPUT/COMMAND/CLOSED`）；`zu/picker` → `src/picker.rs`（`ERR_PICKER_PLATFORM/PATH/FAILED`）。新增代码先写进
+模块文档再使用；UI 按 `error.code` 分支，不解析 message。
+
 **M9 落点**：`src/git.rs` 的 `zu/git` 是 module 而非 class（一次性调用，无跨调用状态）。每次调用先 canonicalize 工作区根并用 `git rev-parse --show-toplevel` 校验「根即仓库顶层」——容器 cwd 是仓库子目录时返回 `ERR_GIT_NOT_REPO`，因为 porcelain 会把根外路径写成 `../x`，显示一半状态比拒绝更糟；路径只接受根内相对路径，拒绝 `..`、绝对路径、pathspec magic（`:` 开头）与 `-` 开头。`git` 以 argv 数组、`current_dir(root)` 执行，永不经过 shell，并清掉 `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` 等会把命令重定向到别的仓库的变量；没有任何 fetch/pull/push/remote 子命令。status 用 `--porcelain=v2 --branch --untracked-files=all -z`（NUL 记录；rename 的旧路径是下一个字段）；diff 固定 `--no-color --no-ext-diff --no-textconv --unified=3`，untracked 文件用 `git diff --no-index /dev/null <path>`（仍是 git 自己的补丁），补丁超过 2 MiB 返回 `ERR_GIT_TOO_LARGE`；log 用控制字符分隔字段/记录；commit 先用 `git var GIT_AUTHOR_IDENT/GIT_COMMITTER_IDENT` 检查身份，缺失返回 `ERR_GIT_IDENTITY`，身份对话框只写该仓库的 `.git/config`（`--local`），全局配置不动。命令失败一律带 `exit` 与 `stderr`（`ERR_GIT_COMMAND`）。UI 侧 `git.ts` 是类型面与每容器投影，`git-ui.tsx` 是两个 sheet；工作区 diff 复用 M8 的 `DiffView` 的 `patch` 模式，没有第二个 diff 组件。
 
 **M12 落点（单实例）**：`src/instance.rs` 的 `Instance` 把锁放在 `~/.pi/zu/instance.lock`（`ZU_STATE_DIR` 同样生效）。创建不是 `create_new` + `write`：锁的字节先写进同目录临时文件，再用 `fs::hard_link` 原子地挂成锁名——`link` 在目标已存在时失败（不会覆盖），读者也永远看不到半截内容。锁内容两行：pid 与创建时间（毫秒）；pid 用 Unix 的 `kill(pid, 0)` 判活（`EPERM` 也算活着），死进程或截断文件在下一轮回收（回收前重读一次，避免误删别人刚替换的新锁）。同一进程的第二次 `claim` 返回 `acquired: true, already: true`，`startLifecycle` 因此可重入；`release` 只删 pid 还是自己的锁。非 Unix 没有可靠的 pid 探测，已有锁一律当活的（宁可不抢），Zu 只发 macOS。**headless 不 claim**：`startLifecycle` 先看 `nsh/desktop` 的 `isAvailable`。

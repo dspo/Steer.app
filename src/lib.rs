@@ -32,11 +32,8 @@ mod pty;
 /// both weights (`registry.assets(assets!())`), and the engine registers
 /// them before the first render under the family the files' name tables
 /// carry — TS names it as `fonts.ts`'s `SHEET_FONT`.
-
 pub use fs::{Fs, FsEntry, FsExpected, FsFile, FsStat, FsWriteResult};
-pub use git::{
-    Git, GitBranch, GitBranches, GitChange, GitCommit, GitDiff, GitStatus,
-};
+pub use git::{Git, GitBranch, GitBranches, GitChange, GitCommit, GitDiff, GitStatus};
 pub use instance::{Instance, InstanceClaim};
 pub use lsp::{Lsp, LspExit, LspOptions};
 pub use picker::Picker;
@@ -96,7 +93,9 @@ impl Engine {
     /// reaped here, so a failed start leaves no zombie and no stale `ENGINE`
     /// state for the next attempt.
     pub async fn start() -> Result<(), String> {
-        let mut guard = ENGINE.lock().map_err(|_| "engine lock poisoned".to_owned())?;
+        let mut guard = ENGINE
+            .lock()
+            .map_err(|_| "engine lock poisoned".to_owned())?;
         let dir = zu_dir()?;
         let port_file = dir.join("engine.port");
         if let Some(state) = guard.as_mut() {
@@ -169,7 +168,9 @@ impl Engine {
 
     /// Stops the sidecar; the next `start` runs a new one.
     pub async fn stop() -> Result<(), String> {
-        let mut guard = ENGINE.lock().map_err(|_| "engine lock poisoned".to_owned())?;
+        let mut guard = ENGINE
+            .lock()
+            .map_err(|_| "engine lock poisoned".to_owned())?;
         if let Some(mut state) = guard.take() {
             let _ = state.child.kill();
             record_exit(state.child.wait());
@@ -179,7 +180,9 @@ impl Engine {
 
     /// Kills the sidecar without a graceful close, as a crash would.
     pub async fn kill() -> Result<(), String> {
-        let mut guard = ENGINE.lock().map_err(|_| "engine lock poisoned".to_owned())?;
+        let mut guard = ENGINE
+            .lock()
+            .map_err(|_| "engine lock poisoned".to_owned())?;
         if let Some(mut state) = guard.take() {
             let _ = state.child.kill();
             record_exit(state.child.wait());
@@ -441,10 +444,10 @@ fn port_available_on(port: u16) -> bool {
 
 /// Remembers an exit status for `exit_code`.
 fn record_exit(status: std::io::Result<std::process::ExitStatus>) {
-    if let Ok(status) = status {
-        if let Ok(mut code) = LAST_EXIT.lock() {
-            *code = status.code();
-        }
+    if let Ok(status) = status
+        && let Ok(mut code) = LAST_EXIT.lock()
+    {
+        *code = status.code();
     }
 }
 
@@ -454,12 +457,12 @@ pub(crate) fn zu_dir() -> Result<PathBuf, String> {
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         return Ok(dir);
     }
-    if let Ok(dir) = std::env::var("ZU_STATE_DIR") {
-        if !dir.trim().is_empty() {
-            let dir = PathBuf::from(dir.trim());
-            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-            return Ok(dir);
-        }
+    if let Ok(dir) = std::env::var("ZU_STATE_DIR")
+        && !dir.trim().is_empty()
+    {
+        let dir = PathBuf::from(dir.trim());
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        return Ok(dir);
     }
     let home = std::env::var("HOME").map_err(|_| "HOME is not set".to_owned())?;
     let dir = PathBuf::from(home).join(".pi").join("zu");
@@ -472,12 +475,12 @@ pub(crate) fn zu_dir() -> Result<PathBuf, String> {
 /// engine must not be shadowed by it. Development falls back to the
 /// repository's build.
 fn engine_path() -> Option<PathBuf> {
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            let packaged = parent.join("../Helpers/pi-engine");
-            if packaged.is_file() {
-                return Some(packaged);
-            }
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(parent) = exe.parent()
+    {
+        let packaged = parent.join("../Helpers/pi-engine");
+        if packaged.is_file() {
+            return Some(packaged);
         }
     }
     let dev = Path::new(env!("CARGO_MANIFEST_DIR")).join("engine/dist/pi-engine");
@@ -495,7 +498,8 @@ fn ensure_token() -> Result<String, String> {
     }
     let token = random_token();
     let mut file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
-    file.write_all(token.as_bytes()).map_err(|e| e.to_string())?;
+    file.write_all(token.as_bytes())
+        .map_err(|e| e.to_string())?;
     Ok(token)
 }
 
@@ -554,7 +558,10 @@ mod tests {
             error.contains("exited before it published a port"),
             "the failure names the exit, not a timeout: {error}"
         );
-        assert!(error.contains("exit 7"), "the exit status is reported: {error}");
+        assert!(
+            error.contains("exit 7"),
+            "the exit status is reported: {error}"
+        );
         assert!(
             child.try_wait().expect("reap the child").is_some(),
             "the failed child was reaped (no zombie)"

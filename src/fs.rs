@@ -196,11 +196,18 @@ fn canonical_root(root: &str) -> Result<PathBuf, JsError> {
             format!("the workspace root is not absolute: {root}"),
         ));
     }
-    let canonical = raw
-        .canonicalize()
-        .map_err(|error| fs_error(ERR_ROOT, format!("the workspace root is unusable ({root}): {error}")))?;
-    let metadata = fs::metadata(&canonical)
-        .map_err(|error| fs_error(ERR_ROOT, format!("the workspace root is unusable ({root}): {error}")))?;
+    let canonical = raw.canonicalize().map_err(|error| {
+        fs_error(
+            ERR_ROOT,
+            format!("the workspace root is unusable ({root}): {error}"),
+        )
+    })?;
+    let metadata = fs::metadata(&canonical).map_err(|error| {
+        fs_error(
+            ERR_ROOT,
+            format!("the workspace root is unusable ({root}): {error}"),
+        )
+    })?;
     if !metadata.is_dir() {
         return Err(fs_error(
             ERR_ROOT,
@@ -241,10 +248,7 @@ fn ensure_inside(root: &Path, path: &Path) -> Result<(), JsError> {
     }
     Err(fs_error(
         ERR_ESCAPE,
-        format!(
-            "the path leaves the workspace root: {}",
-            path.display()
-        ),
+        format!("the path leaves the workspace root: {}", path.display()),
     ))
 }
 
@@ -465,10 +469,7 @@ fn decode(bytes: &[u8]) -> Result<(String, String), JsError> {
         return Err(binary_error());
     }
     match String::from_utf8(body.to_vec()) {
-        Ok(text) => Ok((
-            text,
-            if has_bom { "utf-8-bom" } else { "utf-8" }.to_owned(),
-        )),
+        Ok(text) => Ok((text, if has_bom { "utf-8-bom" } else { "utf-8" }.to_owned())),
         Err(_) => Err(binary_error()),
     }
 }
@@ -491,7 +492,7 @@ fn write_in(
             return Err(fs_error(
                 ERR_ENCODING,
                 format!("unsupported encoding: {other}"),
-            ))
+            ));
         }
     };
     let target = resolve_for_write(&root, path)?;
@@ -516,10 +517,7 @@ fn write_in(
     }
     if let Some(expected) = expected {
         let metadata = current.as_ref().ok_or_else(|| {
-            fs_error(
-                ERR_STALE,
-                format!("the file is gone: {}", target.display()),
-            )
+            fs_error(ERR_STALE, format!("the file is gone: {}", target.display()))
         })?;
         let info = info_of(metadata);
         if !matches_expected(&info, expected) {
@@ -721,10 +719,11 @@ mod tests {
     #[test]
     fn a_symlink_out_of_the_root_is_refused() {
         let root = TempRoot::new();
-        let outside = root.path().parent().unwrap().join(format!(
-            "zu-fs-outside-{}.txt",
-            std::process::id()
-        ));
+        let outside = root
+            .path()
+            .parent()
+            .unwrap()
+            .join(format!("zu-fs-outside-{}.txt", std::process::id()));
         fs::write(&outside, "secret").unwrap();
         let link = root.path().join("link.txt");
         #[cfg(unix)]
@@ -734,8 +733,7 @@ mod tests {
             let _ = &link;
             return;
         }
-        let error =
-            read_in(&root.path().display().to_string(), "link.txt").unwrap_err();
+        let error = read_in(&root.path().display().to_string(), "link.txt").unwrap_err();
         assert_eq!(code(&error), Some(ERR_ESCAPE));
         let _ = fs::remove_file(&outside);
     }
@@ -766,7 +764,10 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            assert_eq!(fs::metadata(&target).unwrap().permissions().mode() & 0o777, 0o640);
+            assert_eq!(
+                fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+                0o640
+            );
         }
         let leftovers: Vec<_> = fs::read_dir(root.path())
             .unwrap()
@@ -802,14 +803,7 @@ mod tests {
         };
         // Another writer changes the size (mtime alone is too coarse to race).
         fs::write(root.path().join("notes.md"), "first\nsecond\n").unwrap();
-        let error = write_in(
-            &root_path,
-            "notes.md",
-            "mine\n",
-            Some(&expected),
-            None,
-        )
-        .unwrap_err();
+        let error = write_in(&root_path, "notes.md", "mine\n", Some(&expected), None).unwrap_err();
         assert_eq!(code(&error), Some(ERR_STALE));
         assert_eq!(
             fs::read_to_string(root.path().join("notes.md")).unwrap(),
@@ -897,9 +891,11 @@ mod tests {
             fs::read_to_string(root.path().join("real.txt")).unwrap(),
             "new\n"
         );
-        assert!(fs::symlink_metadata(root.path().join("alias.txt"))
-            .unwrap()
-            .file_type()
-            .is_symlink());
+        assert!(
+            fs::symlink_metadata(root.path().join("alias.txt"))
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
     }
 }

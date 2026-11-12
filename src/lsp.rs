@@ -7,7 +7,9 @@
 //! thread collects stderr; a task of the NSH core posts each complete message,
 //! stderr chunk and the exit status through `Callback::post`. JSON-RPC ids,
 //! request timeouts and cancellation live in `lsp.ts` — this module ships
-//! bytes and owns the process, nothing more.
+//! bytes and owns the process, nothing more. Failures carry `code`
+//! (`ERR_LSP_ARGS`, `ERR_LSP_ENV`, `ERR_LSP_CWD`, `ERR_LSP_SPAWN`,
+//! `ERR_LSP_INPUT`, `ERR_LSP_COMMAND`, `ERR_LSP_CLOSED`).
 //!
 //! The server is started from an argv array with an explicit, canonicalized
 //! working directory and no shell. It runs in its own process group, so
@@ -145,13 +147,19 @@ impl Control {
         let mut frame = format!("Content-Length: {}\r\n\r\n", message.len()).into_bytes();
         frame.extend_from_slice(message.as_bytes());
         let Ok(writer) = self.writer.lock() else {
-            return Err(lsp_error(ERR_CLOSED, "the language server lock is poisoned"));
+            return Err(lsp_error(
+                ERR_CLOSED,
+                "the language server lock is poisoned",
+            ));
         };
         let Some(writer) = writer.as_ref() else {
             return Err(lsp_error(ERR_CLOSED, "the language server is closed"));
         };
         let Ok(mut pending) = self.queued.lock() else {
-            return Err(lsp_error(ERR_CLOSED, "the language server lock is poisoned"));
+            return Err(lsp_error(
+                ERR_CLOSED,
+                "the language server lock is poisoned",
+            ));
         };
         if pending.saturating_add(frame.len()) > MAX_INPUT_BYTES {
             return Err(lsp_error(
@@ -232,7 +240,10 @@ impl Lsp {
         } = options;
         let raw = command.trim();
         if raw.is_empty() {
-            return Err(lsp_error(ERR_COMMAND, "no language server command was given"));
+            return Err(lsp_error(
+                ERR_COMMAND,
+                "no language server command was given",
+            ));
         }
         if raw.contains('\0') {
             return Err(lsp_error(ERR_COMMAND, "the command contains a NUL byte"));
@@ -263,7 +274,10 @@ impl Lsp {
         builder.process_group(0);
         if let Some(env) = env {
             for (name, value) in env {
-                if name.is_empty() || name.contains('=') || name.contains('\0') || value.contains('\0')
+                if name.is_empty()
+                    || name.contains('=')
+                    || name.contains('\0')
+                    || value.contains('\0')
                 {
                     return Err(lsp_error(
                         ERR_ENV,
@@ -325,7 +339,9 @@ impl Lsp {
                                     return;
                                 }
                             },
-                            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {
+                                continue;
+                            }
                             Err(_) => break,
                         }
                     }
@@ -356,14 +372,19 @@ impl Lsp {
                                     break;
                                 }
                             }
-                            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {
+                                continue;
+                            }
                             Err(_) => break,
                         }
                     }
                 })
                 .map_err(|error| {
                     kill_group(pid);
-                    lsp_error(ERR_SPAWN, format!("cannot start the LSP stderr reader: {error}"))
+                    lsp_error(
+                        ERR_SPAWN,
+                        format!("cannot start the LSP stderr reader: {error}"),
+                    )
                 })?;
         }
 
@@ -477,7 +498,7 @@ impl Lsp {
                     }
                 }
             });
-            return Ok(lsp);
+            Ok(lsp)
         }
     }
 
@@ -609,7 +630,11 @@ fn resolve_program(raw: &str) -> Result<PathBuf, JsError> {
     }
     let mut directories = Vec::new();
     if let Ok(path) = std::env::var("PATH") {
-        directories.extend(path.split(':').filter(|dir| !dir.is_empty()).map(PathBuf::from));
+        directories.extend(
+            path.split(':')
+                .filter(|dir| !dir.is_empty())
+                .map(PathBuf::from),
+        );
     }
     let mut common = vec![
         PathBuf::from("/opt/homebrew/bin"),
@@ -790,11 +815,26 @@ mod tests {
     #[test]
     fn a_header_without_a_length_or_with_a_bad_one_is_an_error() {
         let mut framer = Framer::default();
-        assert!(framer.push(b"Content-Type: x\r\n\r\n").unwrap_err().contains("no Content-Length"));
+        assert!(
+            framer
+                .push(b"Content-Type: x\r\n\r\n")
+                .unwrap_err()
+                .contains("no Content-Length")
+        );
         let mut framer = Framer::default();
-        assert!(framer.push(b"Content-Length: nope\r\n\r\n").unwrap_err().contains("not a number"));
+        assert!(
+            framer
+                .push(b"Content-Length: nope\r\n\r\n")
+                .unwrap_err()
+                .contains("not a number")
+        );
         let mut framer = Framer::default();
-        assert!(framer.push(b"Content-Length: 0\r\n\r\n").unwrap_err().contains("not a message"));
+        assert!(
+            framer
+                .push(b"Content-Length: 0\r\n\r\n")
+                .unwrap_err()
+                .contains("not a message")
+        );
     }
 
     #[test]
@@ -827,7 +867,9 @@ mod tests {
             Some(ERR_COMMAND)
         );
         assert_eq!(
-            resolve_program("/definitely/not/a/server").unwrap_err().code(),
+            resolve_program("/definitely/not/a/server")
+                .unwrap_err()
+                .code(),
             Some(ERR_COMMAND)
         );
     }
@@ -836,9 +878,14 @@ mod tests {
     fn a_cwd_is_required_absolute_and_real() {
         assert_eq!(explicit_cwd(None).unwrap_err().code(), Some(ERR_CWD));
         assert_eq!(explicit_cwd(Some("")).unwrap_err().code(), Some(ERR_CWD));
-        assert_eq!(explicit_cwd(Some("relative")).unwrap_err().code(), Some(ERR_CWD));
         assert_eq!(
-            explicit_cwd(Some("/definitely/not/a/dir")).unwrap_err().code(),
+            explicit_cwd(Some("relative")).unwrap_err().code(),
+            Some(ERR_CWD)
+        );
+        assert_eq!(
+            explicit_cwd(Some("/definitely/not/a/dir"))
+                .unwrap_err()
+                .code(),
             Some(ERR_CWD)
         );
         let cwd = explicit_cwd(Some("/tmp")).expect("/tmp is a directory");

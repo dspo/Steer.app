@@ -11,9 +11,11 @@
 //! No call fetches, pulls, pushes or touches git's global configuration; the
 //! one configuration this module writes is a repository's own author
 //! identity (`set_identity`), when a commit needs one. Errors carry `code`
-//! (`ERR_GIT_NOT_REPO`, `ERR_GIT_PATH`, `ERR_GIT_COMMAND`, `ERR_GIT_IDENTITY`,
-//! ...) and a failed command adds its `exit` and `stderr`, as `docs/architecture.md`
-//! §3.6 says. Diffs are capped at 2 MiB so one file cannot freeze the UI.
+//! (`ERR_GIT_ROOT`, `ERR_GIT_NOT_REPO`, `ERR_GIT_PATH`, `ERR_GIT_MESSAGE`,
+//! `ERR_GIT_BRANCH`, `ERR_GIT_COMMAND`, `ERR_GIT_IDENTITY`, `ERR_GIT_TOO_LARGE`,
+//! `ERR_GIT_IO`) and a failed command adds its `exit` and `stderr`, as
+//! `docs/architecture.md` §3.6 says. Diffs are capped at 2 MiB so one file
+//! cannot freeze the UI.
 
 use std::{
     path::{Component, Path, PathBuf},
@@ -696,37 +698,38 @@ fn diff_in(root: &str, path: Option<&str>, staged: bool) -> Result<GitDiff, JsEr
     // An untracked file is not in the index, so `git diff` says nothing:
     // compare it with /dev/null instead (still `git diff`, still no reads
     // outside the workspace except that device).
-    if patch.is_empty() && !staged {
-        if let Some(path) = path.as_deref() {
-            let tracked = run(&root, &["ls-files", "--error-unmatch", "--", path])?.ok;
-            if !tracked {
-                let no_index = run(
-                    &root,
-                    &[
-                        "diff",
-                        "--no-index",
-                        "--no-color",
-                        "--no-ext-diff",
-                        "--",
-                        "/dev/null",
-                        path,
-                    ],
-                )?;
-                // `--no-index` exits 1 when the files differ, as they do.
-                if no_index.ok || no_index.code == 1 {
-                    patch = no_index.stdout;
-                } else {
-                    return Err(git_error(
-                        ERR_COMMAND,
-                        format!(
-                            "`git diff` failed (exit {}): {}",
-                            no_index.code,
-                            first_line(&no_index.stderr)
-                        ),
-                    )
-                    .with("exit", no_index.code as f64)
-                    .with("stderr", no_index.stderr.trim().to_owned()));
-                }
+    if patch.is_empty()
+        && !staged
+        && let Some(path) = path.as_deref()
+    {
+        let tracked = run(&root, &["ls-files", "--error-unmatch", "--", path])?.ok;
+        if !tracked {
+            let no_index = run(
+                &root,
+                &[
+                    "diff",
+                    "--no-index",
+                    "--no-color",
+                    "--no-ext-diff",
+                    "--",
+                    "/dev/null",
+                    path,
+                ],
+            )?;
+            // `--no-index` exits 1 when the files differ, as they do.
+            if no_index.ok || no_index.code == 1 {
+                patch = no_index.stdout;
+            } else {
+                return Err(git_error(
+                    ERR_COMMAND,
+                    format!(
+                        "`git diff` failed (exit {}): {}",
+                        no_index.code,
+                        first_line(&no_index.stderr)
+                    ),
+                )
+                .with("exit", no_index.code as f64)
+                .with("stderr", no_index.stderr.trim().to_owned()));
             }
         }
     }
@@ -894,10 +897,10 @@ fn parse_branches(raw: &str) -> GitBranches {
             branches.local.push(branch);
         }
     }
-    if branches.current.is_empty() {
-        if let Some(current) = branches.local.iter().find(|branch| branch.current) {
-            branches.current = current.name.clone();
-        }
+    if branches.current.is_empty()
+        && let Some(current) = branches.local.iter().find(|branch| branch.current)
+    {
+        branches.current = current.name.clone();
     }
     branches
 }

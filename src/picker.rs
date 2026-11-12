@@ -4,7 +4,8 @@
 //! never builds a shell command from user text. Cancel is `null` (the script
 //! catches AppleScript's `-128`), and a chosen folder comes back as the POSIX
 //! path `osascript` printed, normalized (an absolute path, no trailing slash).
-//! Blocking work runs off the engine thread, as [`crate::fs`] does.
+//! Blocking work runs off the engine thread, as [`crate::fs`] does. Failures
+//! carry `code` (`ERR_PICKER_PLATFORM`, `ERR_PICKER_PATH`, `ERR_PICKER_FAILED`).
 
 use std::process::Command;
 
@@ -44,7 +45,12 @@ fn pick_folder_blocking(prompt: &str) -> Result<Option<String>, JsError> {
         .arg("-e")
         .arg(&script)
         .output()
-        .map_err(|error| picker_error(ERR_FAILED, format!("/usr/bin/osascript did not run: {error}")))?;
+        .map_err(|error| {
+            picker_error(
+                ERR_FAILED,
+                format!("/usr/bin/osascript did not run: {error}"),
+            )
+        })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(picker_error(
@@ -95,7 +101,11 @@ fn parse_picker_output(stdout: &str) -> Result<Option<String>, String> {
     if path.contains('\0') {
         return Err("the picker returned a path with a NUL byte".to_owned());
     }
-    let path = if path.len() > 1 { path.trim_end_matches('/') } else { path };
+    let path = if path.len() > 1 {
+        path.trim_end_matches('/')
+    } else {
+        path
+    };
     let path = if path.is_empty() { "/" } else { path };
     Ok(Some(path.to_owned()))
 }
@@ -133,10 +143,7 @@ mod tests {
             parse_picker_output("/Users/me/Project/\n"),
             Ok(Some("/Users/me/Project".to_owned()))
         );
-        assert_eq!(
-            parse_picker_output("/\n"),
-            Ok(Some("/".to_owned()))
-        );
+        assert_eq!(parse_picker_output("/\n"), Ok(Some("/".to_owned())));
     }
 
     #[test]

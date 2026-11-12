@@ -23,8 +23,8 @@ use std::{
     io::{ErrorKind, Write},
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicU64, Ordering},
         Mutex,
+        atomic::{AtomicU64, Ordering},
     },
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -237,9 +237,9 @@ fn reclaim_stale(path: &Path, seen: &str) {
 /// empty file and would take it for a crash remnant).
 fn create_lock(path: &Path, pid: u32, started_at: f64) -> std::io::Result<()> {
     static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
-    let dir = path.parent().ok_or_else(|| {
-        std::io::Error::new(ErrorKind::InvalidInput, "the lock has no directory")
-    })?;
+    let dir = path
+        .parent()
+        .ok_or_else(|| std::io::Error::new(ErrorKind::InvalidInput, "the lock has no directory"))?;
     let temp = dir.join(format!(
         ".{LOCK_NAME}.{pid}.{}.{}.tmp",
         std::process::id(),
