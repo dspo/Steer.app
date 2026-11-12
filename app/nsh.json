@@ -40,7 +40,8 @@
         "ZU_PORT",
         "ZU_STATE_DIR",
         "MANOX_RUN_LIVE",
-        "ZU_SKIP_LIVE"
+        "ZU_SKIP_LIVE",
+        "ZU_MANOX_GATE"
       ]
     },
     "webview": {

@@ -70,8 +70,10 @@ impl Manox {
     /// same host).
     pub fn start(
         #[args(frame)] on_frame: Callback<ManoxFrame>,
+        hermetic: bool,
         cx: CallCx<'_>,
     ) -> Result<(), String> {
+        crate::real::HERMETIC.store(hermetic, std::sync::atomic::Ordering::Release);
         pump::start(on_frame, cx)
     }
 

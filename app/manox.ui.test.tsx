@@ -1,5 +1,13 @@
 import { expect, open, test } from "nsh/test";
 
+/** Whole-file gate: the manox host boots hermetic (throwaway state roots
+ * via a process env redirect), which only a dedicated invocation may do —
+ * a shared suite runner also runs engine/lsp tests that need the real
+ * HOME. Run with: ZU_MANOX_GATE=1 nsh test <this file>. The fixture calls
+ * setManoxHermetic itself; this gate only keeps the suite inert. */
+const gated = process.env?.["ZU_MANOX_GATE"] === "1";
+const t = gated ? test : test.skip;
+
 /**
  * The manox conversation on the real Workbench, against the real in-proc
  * host (native/manox assembling dspo/manox v0.9.1) — headless, no engine,
@@ -12,7 +20,7 @@ import { expect, open, test } from "nsh/test";
  * this test proves the sheet survives the loop whole. One open: the pump is
  * a per-process singleton and the pack's stores ride on it.
  */
-test("the manox sheet runs the real host loop on the workbench", async () => {
+t("the manox sheet runs the real host loop on the workbench", async () => {
   const app = await open("./fixtures/manox.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:manox-fixture-state");
   await app.waitUntil(

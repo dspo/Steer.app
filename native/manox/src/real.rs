@@ -51,43 +51,36 @@ const NO_MODEL_MESSAGE: &str =
     "no model is configured — add a provider in cx Settings (~/.manox/cx.providers.config.yaml) \
      and try again";
 
-/// Redirects the state roots to a throwaway dir when this process IS the nsh
-/// headless test runner (its binary stem ends with `-test` — e.g.
-/// `nsh-app-zu-app-<hash>-test`); a plain `nsh test` then runs the harness
-/// gates hermetically, with no env prefix on the invocation. `HOME` moves
-/// with it, deliberately: the harness's provider-config lookup
-/// (`manox_harness::provider::default_config_path`) resolves `$HOME/.manox`
-/// directly and does not honor `MANOX_HOME`, so without the HOME redirect a
-/// root-environment runner would read the developer's live credentials — the
-/// model gate would never fire, and a gate meant to be credential-free
-/// would run real model turns. An explicit `MANOX_HOME` always wins (the
-/// caller asked for a specific root); the kernel's own
-/// `test_support::hermetic_home` takes the same shape for the same reason.
-///
-/// Only a process that boots the manox host redirects: the function runs at
-/// [`boot`], which only the harness's tests call. Other tests sharing the
-/// runner process run before or after that boot and see a temp `HOME` —
-/// they use fixtures and temp dirs, never the developer's real store.
-fn apply_runner_isolation() {
-    // An explicit root wins; so does the live-model opt-out — the live gate's
-    // documented run (MANOX_RUN_LIVE=1, no MANOX_HOME) wants the process's own
-    // credentials, which the hermetic redirect would hide (skip, not fail).
-    if std::env::var_os("MANOX_HOME").is_some() || std::env::var("MANOX_RUN_LIVE").as_deref() == Ok("1") {
+/// Whether the TS side asked this process's manox host to run hermetic
+/// (`Manox.start(cb, /* hermetic */ true)` — set by the gate files before the
+/// first connection). The redirect is **opt-in per boot initiator**, never
+/// inferred from the process: a shared headless runner also mounts the real
+/// app, whose engine/lsp/pi tests need the real `HOME` for the whole process
+/// — an unconditional redirect poisons them (rustup resolution, `~/.pi`
+/// scans). The dedicated gate invocation sets the flag and owns the process.
+pub(crate) static HERMETIC: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Redirects the state roots to a throwaway dir when the boot initiator asked
+/// for a hermetic host. `HOME` moves with it, deliberately: the harness's
+/// provider-config lookup (`manox_harness::provider::default_config_path`)
+/// resolves `$HOME/.manox` directly and does not honor `MANOX_HOME`, so
+/// without the HOME redirect a credential-free gate would read the
+/// developer's live credentials — the model gate would never fire, and a
+/// gate meant to be credential-free would run real model turns. An explicit
+/// `MANOX_HOME` always wins (the caller asked for a specific root); the
+/// kernel's own `test_support::hermetic_home` takes the same shape for the
+/// same reason.
+fn apply_requested_isolation() {
+    if !HERMETIC.load(std::sync::atomic::Ordering::Acquire) {
         return;
     }
-    let is_runner = std::env::current_exe()
-        .ok()
-        .and_then(|exe| {
-            exe.file_stem()
-                .map(|stem| stem.to_string_lossy().ends_with("-test"))
-        })
-        .unwrap_or(false);
-    if !is_runner {
+    if std::env::var_os("MANOX_HOME").is_some() {
         return;
     }
     let home = std::env::temp_dir().join(format!("zu-manox-runner-home-{}", std::process::id()));
     let _ = std::fs::create_dir_all(home.join("core"));
-    // SAFETY: runner-process setup, before any kernel initialization in this
+    // SAFETY: gate-process setup, before any kernel initialization in this
     // process; the kernel resolves these at call time.
     unsafe {
         std::env::set_var("MANOX_HOME", &home);
@@ -108,7 +101,7 @@ fn apply_runner_isolation() {
 /// provider registry, thread store, skills/commands/plugins).
 pub(crate) fn boot() -> Result<Arc<AhpRuntime>, String> {
     // The env must land before any kernel initialization reads it.
-    apply_runner_isolation();
+    apply_requested_isolation();
     // The steps below are each process singletons, but their handshake is
     // not atomic: the builder must be installed before `runtime` consumes
     // it, so two concurrent boots could race the install. One lock, and a

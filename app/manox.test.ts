@@ -1,4 +1,5 @@
 import { expect, test, beforeAll } from "nsh/test";
+// `beforeAll` is used through the `setup` shim below (whole-file gate).
 import { Manox } from "manox/native";
 import {
   channels,
@@ -9,6 +10,7 @@ import {
   lastRejection,
   reconnect,
   request,
+  setManoxHermetic,
   startConnection,
 } from "./harness/manox/ahp";
 import {
@@ -27,6 +29,21 @@ import type { SessionState } from "../contracts/ahp/channels-session/state";
 import type { ChatState } from "../contracts/ahp/channels-chat/state";
 import type { Snapshot } from "../contracts/ahp/common/state";
 
+/** Whether this run opted into the live-model turn (real credentials). */
+const live =
+  typeof process !== "undefined" && process.env?.["MANOX_RUN_LIVE"] === "1";
+
+/** Whole-file gate: the manox host boots hermetic (throwaway state roots
+ * via a process env redirect), which only a dedicated invocation may do —
+ * a shared suite runner also runs engine/lsp tests that need the real
+ * HOME. Run with: ZU_MANOX_GATE=1 nsh test <this file>. */
+const gated = process.env?.["ZU_MANOX_GATE"] === "1";
+// Hermetic unless this is the live-model run: the live turn wants the
+// process's own credentials, the hermetic redirect would hide them.
+if (gated && !live) setManoxHermetic();
+const t = gated ? test : test.skip;
+const setup = gated ? beforeAll : (_: unknown) => {};
+
 /**
  * The manox harness's gates, against the REAL in-proc host (native/manox
  * assembling dspo/manox v0.9.1): the §3.5 fold-convergence gate — the
@@ -43,9 +60,6 @@ import type { Snapshot } from "../contracts/ahp/common/state";
  * runs behind MANOX_RUN_LIVE=1 (the last test, skipped by default).
  */
 
-/** Whether this run opted into the live-model turn (real credentials). */
-const live =
-  typeof process !== "undefined" && process.env?.["MANOX_RUN_LIVE"] === "1";
 
 let threadId = "";
 let chatId = "";
@@ -65,7 +79,7 @@ function normalized(value: unknown): unknown {
   return JSON.parse(JSON.stringify(value));
 }
 
-beforeAll(async () => {
+setup(async () => {
   startConnection();
   const created = await createManoxThread();
   threadId = created.threadId;
@@ -73,7 +87,7 @@ beforeAll(async () => {
   chatUri = chatResource(chatId);
 });
 
-test("the real host answers the create flow and the chat snapshot carries the channel", async () => {
+t("the real host answers the create flow and the chat snapshot carries the channel", async () => {
   // The client minted the session uuid; createSession is idempotent by uri —
   // a second create lands on the same channel (the host already holding the
   // channel is the client's "created" answer). One journal per session: the
@@ -90,7 +104,7 @@ test("the real host answers the create flow and the chat snapshot carries the ch
 // Credential-sensitive: its premise is the no-model state the runner
 // isolation provides. A live run (MANOX_RUN_LIVE=1) opts out of that
 // isolation, so this gate would dispatch a real turn instead — skip it there.
-(!live ? test : test.skip)("a model-less dispatch is refused with a visible reason, not a hang", async () => {
+((!live && gated) ? t : test.skip)("a model-less dispatch is refused with a visible reason, not a hang", async () => {
   // No provider exists in the test's state root: the harness's guard refuses
   // the submit before the kernel boots an engine that would die silently.
   // The host echoes the refusal on the channel (a rejection envelope on the
@@ -109,7 +123,7 @@ test("the real host answers the create flow and the chat snapshot carries the ch
   expect(chatOf(chatId)?.turns.length).toBe(before);
 });
 
-test("the fold gate: the envelope-stream leg equals the host's snapshot fold", async () => {
+t("the fold gate: the envelope-stream leg equals the host's snapshot fold", async () => {
   // Plant a refused dispatch first: a rejection travels on the wire like any
   // other envelope, and both legs skip it — the stream leg by the fold's
   // refusal rule, the snapshot by never having folded it. The equality below
@@ -126,7 +140,7 @@ test("the fold gate: the envelope-stream leg equals the host's snapshot fold", a
   expect(normalized(streamed)).toEqual(normalized(snapshot.snapshot.state));
 });
 
-test("a refused dispatch rolls the optimistic state back", async () => {
+t("a refused dispatch rolls the optimistic state back", async () => {
   // The ledger folds the bad dispatch optimistically, before any echo.
   dispatchAction(chatUri, { type: "chat/notARealAction" } as never);
   expect(channels()[chatUri]!.pending.length).toBe(1);
@@ -140,7 +154,7 @@ test("a refused dispatch rolls the optimistic state back", async () => {
   );
 });
 
-test("the archived bit is the folded IsArchived flag", () => {
+t("the archived bit is the folded IsArchived flag", () => {
   const base: SessionState = {
     provider: "",
     title: "thread",
@@ -163,7 +177,7 @@ test("the archived bit is the folded IsArchived flag", () => {
   expect(isArchived(threadId)).toBe(false);
 });
 
-test("the sidebar projection names the container and keeps the default chat", () => {
+t("the sidebar projection names the container and keeps the default chat", () => {
   // The real host announces a session in the root catalogue once its journal
   // materializes (the list scans journal files — a deferred create is not a
   // row yet), so the projection is gated against the catalogue shape the
@@ -189,7 +203,7 @@ test("the sidebar projection names the container and keeps the default chat", ()
 
 // Credential-sensitive by order: a live run's earlier accepted turn holds
 // the activeTurn this drill's sends assume idle. Skip under MANOX_RUN_LIVE=1.
-(!live ? test : test.skip)("an injected host-half panic reads as a transport error and the conversation continues", async () => {
+((!live && gated) ? t : test.skip)("an injected host-half panic reads as a transport error and the conversation continues", async () => {
   expect(Manox.status()).toBe("running");
   Manox.injectPanic();
   await waitUntil(() => connectionStatus() === "error");
@@ -224,7 +238,7 @@ test("the sidebar projection names the container and keeps the default chat", ()
  *
  *   MANOX_RUN_LIVE=1 nsh test app/manox.test.ts
  */
-(live ? test : test.skip)("a live model turn streams a response and settles", async () => {
+((live && gated) ? t : test.skip)("a live model turn streams a response and settles", async () => {
   dispatchAction(chatUri, {
     type: "chat/turnStarted",
     turnId: `live-${Date.now()}`,

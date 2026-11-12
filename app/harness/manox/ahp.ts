@@ -133,6 +133,16 @@ function noteStatus(status: ConnectionStatus, error?: string): void {
  * comes up in-process; nothing here negotiates yet — `initialize` happens in
  * `ensureConnection` so a failing one can be retried.
  */
+/** Whether this VM's manox host boots hermetic (throwaway state roots). Set
+ * by the gate files before the first connection; the app's own mounts boot
+ * against the process's real roots. */
+let hermeticBoot = false;
+
+/**Opts the manox host of this process into the hermetic state roots. */
+export function setManoxHermetic(): void {
+  hermeticBoot = true;
+}
+
 export function startConnection(): void {
   if (started) return;
   started = true;
@@ -150,7 +160,7 @@ export function startConnection(): void {
     } else if (frame.kind === "stopped") {
       noteStatus("idle");
     }
-  });
+  }, hermeticBoot);
 }
 
 /**

@@ -1,4 +1,5 @@
 import { mount, signal, Text, View } from "nsh";
+import { setManoxHermetic } from "../harness/manox/ahp";
 import { Workbench } from "../shell/shell";
 import { registerManoxPack, openManoxChat } from "../harness/manox/register";
 import {
@@ -9,6 +10,10 @@ import {
 import { containerError, loadContainers, setContainerTransport } from "../stores/containers";
 import { error as sessionError } from "../stores/sessions";
 import { phase } from "../stores/engine";
+
+// This fixture runs only under ZU_MANOX_GATE (see manox.ui.test.tsx): its
+// host is the hermetic one.
+setManoxHermetic();
 
 /**
  * The manox conversation fixture: the real Workbench around the real

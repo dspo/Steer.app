@@ -357,7 +357,9 @@ export function ManoxChatBody(props: { id: string }) {
   // The sheet mounts: the connection subscribes (snapshot → immediate render;
   // the journal legs reconcile behind it, §3.5).
   effect(() => {
-    void ensureConnection([sessionResource(parsed.threadId), chatUri()]);
+    // A missing chat (a stale sheet id against a fresh host) surfaces as
+    // the sheet's error status, never an unhandled rejection.
+    void ensureConnection([sessionResource(parsed.threadId), chatUri()]).catch(() => {});
   });
   const chat = () => chatOf(parsed.chatId);
   const status = () => connectionStatus();
