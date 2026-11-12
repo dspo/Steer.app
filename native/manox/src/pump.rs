@@ -6,10 +6,12 @@
 //! task on the engine's own runtime that posts every pump event to TSX with
 //! `Callback::post` (callbacks are engine-thread-only, so the host thread
 //! never touches one). `send` queues a client frame into the session;
-//! `restart` replaces the session (fresh journal — the AHP `reconnect` leg
-//! then answers with snapshots); `stop` ends the runtime thread; and the
-//! panic boundary is `catch_unwind` at the host-half seam, reported to TSX
-//! as a `transport-error` frame event (never an unwind into the engine).
+//! `restart` replaces the session — the real host singleton (and its durable
+//! journal under `~/.manox`) persists, so the AHP `reconnect` leg reconciles
+//! from `lastSeenServerSeq` against the same host; `stop` ends the runtime
+//! thread; and the panic boundary is `catch_unwind` at the host-half seam,
+//! reported to TSX as a `transport-error` frame event (never an unwind into
+//! the engine).
 
 use std::{
     sync::{
@@ -78,7 +80,8 @@ pub(crate) fn start(on_frame: Callback<crate::ManoxFrame>, cx: CallCx<'_>) -> Re
     if guard.is_some() {
         // A live pump belongs to a previous VM's wiring (a hot reload, a test
         // run's next `open`): retire it fully and rewire to the new caller.
-        // The runtime thread is cheap; the journal was the old session's.
+        // The runtime thread is cheap; the kernel's singletons (the host,
+        // the session store, the durable journal) persist across it.
         drop(guard);
         stop()?;
         guard = PUMP
@@ -170,7 +173,8 @@ pub(crate) fn stop() -> Result<(), String> {
 }
 
 /// Replaces the host half in place: the old session reports `stopped`, the
-/// new one starts with a fresh journal (snapshots answer reconnect).
+/// new one opens a fresh connection (the AHP `reconnect` leg answers from
+/// the same host's journal).
 pub(crate) fn restart() -> Result<(), String> {
     let guard = PUMP
         .lock()

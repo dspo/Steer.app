@@ -1,5 +1,5 @@
 import { signal } from "nsh";
-import { ActionType, catalog, channels, createChatOn, createSessionOn, dispatchAction, effectiveState, ensureConnection } from "./ahp";
+import { ActionType, catalog, channels, createSessionOn, dispatchAction, effectiveState, ensureConnection } from "./ahp";
 import type { ChannelCell } from "./ahp";
 import type { SessionSummary } from "../../../contracts/ahp/channels-session/state";
 import type { SessionState } from "../../../contracts/ahp/channels-session/state";
@@ -119,26 +119,31 @@ export function mintId(): string {
 }
 
 /**
- * Creates a thread with its first chat: the client mints both uuids,
- * `createSession` is idempotent by design, and both channels subscribe —
- * after the creates, because a subscribe for a channel the host does not
- * have yet is a refusal, not an empty snapshot. Returns the chat id the
- * sheet opens.
+ * Creates a thread: the client mints the session uuid and `createSession` is
+ * idempotent by design. The real host holds ONE journal per session — the
+ * default chat exists from the create, named by the session's own id — so
+ * there is no `createChat` leg; the chat id is read back from the session
+ * fold once its channel subscribes. Returns the chat id the sheet opens.
  */
 export async function createManoxThread(): Promise<{ threadId: string; chatId: string }> {
   const threadId = mintId();
-  const chatId = mintId();
   await ensureConnection();
-  await createSessionOn(sessionResource(threadId), { provider: "stub" });
-  await createChatOn(sessionResource(threadId), chatResource(chatId));
-  await ensureConnection([sessionResource(threadId), chatResource(chatId)]);
-  return { threadId, chatId };
+  await createSessionOn(sessionResource(threadId), {});
+  await ensureConnection([sessionResource(threadId)]);
+  // The session fold names the default chat (AHP 1.0's one-chat catalogue);
+  // the session id is the fallback while the snapshot is in flight.
+  const state = effectiveState<SessionState>(sessionResource(threadId));
+  const chat = state?.defaultChat ?? state?.chats?.[0]?.resource ?? chatResource(threadId);
+  await ensureConnection([chat]);
+  return { threadId, chatId: chatIdOf(chat) };
 }
 
 /**
  * Sends one user message: the client mints the turn (the protocol's
- * `chat/turnStarted` is client-dispatchable; the host folds and runs its
- * scripted reply). Optimistic: the ledger holds it until the echo.
+ * `chat/turnStarted` is client-dispatchable; the host folds it, the echo
+ * fills the ledger, and the kernel runs the turn — its projection streams
+ * the response parts back on the same channel). Optimistic: the ledger
+ * holds it until the echo.
  */
 export function sendManoxMessage(threadId: string, chatId: string, text: string): void {
   const chat = chatOf(chatId);

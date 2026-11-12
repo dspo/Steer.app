@@ -12,10 +12,13 @@ import { phase } from "../stores/engine";
 
 /**
  * The manox conversation fixture: the real Workbench around the real
- * in-proc stub host (native/manox). No engine — the container store talks
- * to an empty in-memory transport, and the manox pack drives the pump
- * itself. The fixture creates one thread, opens its sheet, and sends the
- * first message, so the test lands mid-script (streaming → tool call).
+ * in-proc host (native/manox assembling dspo/manox). No engine — the
+ * container store talks to an empty in-memory transport, and the manox pack
+ * drives the pump itself. The fixture creates one thread, opens its sheet,
+ * and dispatches the first message; without model credentials in the test's
+ * state root the harness's model gate refuses it, the optimistic row rolls
+ * back, and the calm sheet is the deterministic end state the UI test
+ * asserts.
 
  * The boot order is the containers fixture's: `loadContainers` runs while
  * the engine phase is still `stopped` (its engine probes fail fast and are
@@ -37,8 +40,8 @@ void loadContainers().then(async () => {
   try {
     const { threadId, chatId } = await createManoxThread();
     openManoxChat(threadId, chatId);
-    // Give the sheet a beat to subscribe, then start the scripted turn.
-    sendManoxMessage(threadId, chatId, "trace the stub");
+    // Give the sheet a beat to subscribe, then dispatch the first turn.
+    sendManoxMessage(threadId, chatId, "hello manox");
     fixtureState.set(`ready:${manoxChatSheetId(threadId, chatId)}`);
   } catch (failure) {
     fixtureState.set(`failed:${String(failure)}`);

@@ -17,35 +17,28 @@
 //!   to the engine thread through a channel, and a task started with
 //!   `CallCx::start` posts them to TSX with `Callback::post` (the exact shape
 //!   `zu-app`'s PTY uses — callbacks are engine-thread-only).
-//! - **Build and size**: T0 deliberately pulls **no** manox crates into the
-//!   build graph. The host half is this crate's [`stub`], a scripted in-proc
-//!   host speaking the same wire (initialize/subscribe/dispatchAction/
-//!   reconnect, action envelopes with `serverSeq`/`origin`/`rejectionReason`,
-//!   and one deterministic turn script: streaming text + reasoning, one tool
-//!   call through `toolCallReady` → `toolCallConfirmed` → complete, one
-//!   elicitation through the three answers, pending lanes, cancel).
+//! - **Build and size**: the manox crate chain (ahp / ahp-runtime /
+//!   session-core / agent) enters the build graph as **one git tag** —
+//!   `dspo/manox` `tag = "v0.9.1"`, the rev locked in Cargo.lock — and its
+//!   time/size increment is recorded in the M1 evidence.
 //!
-//! ## The M1 swap point
+//! ## The real host (M1: the T0 stub is gone)
 //!
-//! [`host`] defines the `HostHalf` seam: a session of the host half is
-//! anything that consumes client frames and produces host frames plus
-//! scheduled steps, under the pump's panic boundary. At M1 (manox v3 W4),
-//! `stub.rs` is replaced by a thin adapter that builds manox's real
-//! `manox_ahp_runtime::AhpRuntime` (`install_builder` + `Host::accept` over
-//! the `transport::inproc` pair) on this same runtime thread; the pump, the
-//! frame callback, the catch_unwind boundary and the whole TSX side are
-//! unchanged. The git dependency (`manox-ahp` / `manox-ahp-runtime` +
-//! `manox-session-core`, `tag = "v0.9.1"` or later) lands **then**, per the
-//! design's "Rust 依赖最小化" — a stub T0 must not drag the 181k-line kernel
-//! into the build graph (v0.9.1's protocol host half exists, but its effectful
-//! `Backend` needs the full agent runtime and live provider credentials,
-//! which a deterministic T0 gate cannot assume; see the task report).
+//! [`host`] owns a session of the host half: a task that consumes client
+//! frames and produces host frames under the pump's panic boundary. [`real`]
+//! assembles the kernel's own host — `manox_session_core::agent_server::global`
+//! installs the runtime builder, `manox_ahp_runtime::ahp::runtime::runtime`
+//! builds the [`manox_ahp::Host`] over the journal-projection backend, and
+//! `Host::accept` takes the in-process transport pair whose frames are the
+//! pump's opaque JSON-RPC text strings (the same assembly manox-app's desktop
+//! shell uses, minus GPUI). The pump, the frame callback, the catch_unwind
+//! boundary and the whole TSX side are unchanged from T0.
 
 use nsh_core::prelude::*;
 
 pub mod host;
 pub mod pump;
-pub mod stub;
+pub mod real;
 
 /// One event from the pump to TSX. `kind` is one of `"frame"` (an AHP
 /// JSON-RPC text frame — opaque here, zero protocol semantics at the pump),
@@ -73,7 +66,8 @@ impl Manox {
     /// A second `start` on a live pump retires it fully and rewires to the
     /// new caller — the old wiring belonged to a previous VM (a hot reload, a
     /// test run's next `open`). After `stop` a `start` runs a fresh host
-    /// session (empty journal — TSX then reconnects).
+    /// session (the durable journal persists — TSX reconnects against the
+    /// same host).
     pub fn start(
         #[args(frame)] on_frame: Callback<ManoxFrame>,
         cx: CallCx<'_>,
@@ -95,9 +89,10 @@ impl Manox {
     }
 
     /// Replaces the host half in place: the old session is torn down, a new
-    /// one starts on the same runtime thread. This is the recovery path TSX
-    /// takes after a transport error (its journal is fresh, so AHP
-    /// `reconnect{lastSeenServerSeq}` is answered with snapshots).
+    /// one opens on the same runtime thread. This is the recovery path TSX
+    /// takes after a transport error — the host singleton and its durable
+    /// journal persist, so AHP `reconnect{lastSeenServerSeq}` reconciles
+    /// against the same host (snapshots or replay, per the gap).
     pub fn restart() -> Result<(), String> {
         pump::restart()
     }
