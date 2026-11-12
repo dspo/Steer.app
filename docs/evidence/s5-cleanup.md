@@ -10,7 +10,7 @@
 | C3 | `a4ed5d1` | `launcher.tsx`→`hero.tsx`，`launcher-*` test id、`app.launcher.*` 键、`K` 表分组、`LauncherTool`→`HeroTool`，DESIGN/architecture 的现役行改用 Hero（里程碑史保留当时措辞） |
 | C7 | `f76bb55` | `cargo fmt` 全绿；clippy 实用项修复（6 处 let-chain 折叠、2 处多余 return），`--all-targets` 零告警；四个 native 模块的 `//!` 文档列全错误码（权威在定义处），architecture §3.6 只留索引 |
 | C4 | `d8e1570` + `0a21630` | 会话命名判定收敛到 `sessionHasName`（titles 不再两处比对 id 前缀）；五个工作区 sheet opener（editor/diff/changes/history/problems）补 `noteSheetOpened`——此前最先打开它们时容器标题静默失灵，`titles.test` 新增用例钉住；终端标题的 folder 后缀与容器标题 fallback 统一走 `fs.baseName`；画布关闭规则归一（每 tab 可关，Q69）；claude/codex/copilot 三个死 sheet kind 及其 6 个键删除；`sheetTitle` 的 files/changes/history 分支读自己定义的 SPECS |
-| C5 | `fc9e8dd` | 两处固定 sleep（startup 1.5s、container-hero 2s）删除，各自连跑 3 次绿；steer live 用例对搁浅回合重试一次（全量并行 live 负载下供应商曾 4 跑 3 次静默无输出，单跑恒 18s——被测的是 steer 语义不是供应商时延） |
+| C5 | `fc9e8dd` + steer 收尾提交 | 两处固定 sleep（startup 1.5s、container-hero 2s）删除，各自连跑 3 次绿；steer live 用例三层加固：①搁浅回合重试一次；②计数回合从 400 行降到 100 行（steer 在首个 token 一到就落，窗口足够）；③**根因修复**——session jsonl 的 `stop: error` 空回合暴露出 fresh sidecar 的默认模型按 auth 解析顺序竞速（Q24 的 last-used），可能落到本机凭证已坏的 provider（gpt-6.1-sol，instant error）；用例现在显式 `session.setModel` 钉住 catalog 里的 qwen3.8-flash（用户在菜单里选一次的等价物），被测的是 steer 语义不是默认模型抽奖 |
 | C2 | `5335034`、`2142c72`、`a74abe0`、`ea0bef6`、`1b3237d` | 五批移动：`ui/`（8 模块 + locales）→ `stores/`（21）→ `canvas/`（3）→ `sheets/`（9，含 project-roots）→ `shell/`（3）；`App.tsx` 留在根（nsh 的入口锚点：`nsh check .`、测试的 `open("./App.tsx")`、打包都按根解析）；`tray.svg` 资产 import 随导入者改 `../assets/`。每批独立提交、`nsh check` + 相关套件绿后前进 |
 | C6 | 随 §2.3-16（`d954393`）与本批 | 全部 docs 链接检查通过（docs/*.md、evidence/*.md、README）；decisions 区间改 Q1–Q95；`docs/research` 入档并在 README/architecture 的文档表挂索引；§8.16 的模型 P0 标记已解决；DESIGN §3.4 与 architecture 字体行改为 `assets!()` 机制 |
 
@@ -26,8 +26,10 @@
 
 ## 门禁
 
-`nsh check` ✓、`cargo check --all-targets` ✓（零告警）、`nsh test .` ✓、`script/bundle-mac.sh` ✓。
-C5 的验收「全量连跑 3 次全绿」的执行记录见本文件末尾的更新行。
+`nsh check` ✓、`nsh build` ✓（打包器零告警）、`cargo check --all-targets` ✓（零告警）、
+`script/bundle-mac.sh` ✓（133M app / 53M dmg，字体在包内）。
+C5 的验收「全量连跑 3 次全绿」：修复默认模型竞速后 **3 连跑全绿**（265/265，2m22s / 2m26s / 2m24s，
+2026-11-12）。此前 6 次全量中 steer 用例 4 次搁浅，即上表 C5 的第三层加固的由来。
 
 ## 已知边界
 

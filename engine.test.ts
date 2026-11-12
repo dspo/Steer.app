@@ -543,6 +543,18 @@ test("a steer reaches the running turn and the queue reports it", async () => {
     }
   });
   try {
+    // A fresh sidecar picks the default model by auth-resolution order (Q24's
+    // last-used), and the race can land on a provider whose credentials are
+    // broken on this machine — every turn then ends in an instant error
+    // (run 4 of 2026-11-12: two attempts, `stop: error`, no output). The
+    // test's subject is steering: pin a model the catalog offers, as a user
+    // would from the composer's menu (C5).
+    const catalog = await request("session.models", { sessionId: id }, 60000);
+    const providers = catalog.providers as Array<{ id: string; models: Array<{ id: string }> }>;
+    const pick = providers.find((provider) => provider.models.some((model) => model.id === "qwen3.8-flash"));
+    if (pick) {
+      await request("session.setModel", { sessionId: id, provider: pick.id, id: "qwen3.8-flash" }, 30000);
+    }
     // A live model's first token is the one wait this suite cannot make
     // deterministic: under the full suite's parallel live turns the provider
     // has silently ended a turn with no output — three of four full runs on
@@ -550,7 +562,9 @@ test("a steer reaches the running turn and the queue reports it", async () => {
     // not provider latency, so a stalled turn is retried once (C5).
     let streaming_ = false;
     for (let attempt = 0; attempt < 2 && !streaming_; attempt++) {
-      await send("Count from 1 to 400, one number per line.");
+      // 100 lines: long enough that the steer always lands while streaming,
+      // cheap enough that a rate-limited provider key still starts it (C5).
+      await send("Count from 1 to 100, one number per line.");
       const budget = attempt === 0 ? 180000 : 120000;
       let waited = 0;
       for (; waited < budget; waited += 50) {
