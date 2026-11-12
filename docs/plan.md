@@ -23,8 +23,10 @@
 [evidence/s23-14-brand-icons.md](evidence/s23-14-brand-icons.md)、
 [evidence/s23-15-drag-ghost.md](evidence/s23-15-drag-ghost.md)、
 [evidence/s23-16-lilex.md](evidence/s23-16-lilex.md) 与 `docs/evidence/ui-s2-*.png`。
-**下一个动作是 §5 的整洁化轨道**（C1/C5/C6/C7 可立即插入；Casing II 的功能项 1–16 已全部完成，
-C2/C3 的文件移动不再与功能改写冲突）。
+§5 的整洁化轨道已全部完成（2026-11-12）：C1（`9b72b82`）、C3（`a4ed5d1`）、C7（`f76bb55`）、
+C4（`d8e1570`+`0a21630`）、C5（`fc9e8dd`）、C2 五批（`5335034`、`2142c72`、`a74abe0`、`ea0bef6`、`1b3237d`）、
+文档对齐与代码地图（见 [evidence/s5-cleanup.md](evidence/s5-cleanup.md)）。
+**plan 的全部可执行条目至此落地**；剩余为挂起/不做项（§2.4-18 B2 等可复现样本、§3 不做清单、M13 需 Developer ID）。
 开工前读：本文件 §5 → [architecture.md](architecture.md) §4.2/§4.3/§5.4 → [DESIGN.md](DESIGN.md) §3 →
 [evidence/apis-verified.md](evidence/apis-verified.md)。
 > 架构见 [architecture.md](architecture.md)，视觉规格见 [DESIGN.md](DESIGN.md)，决策台账见 [decisions.md](decisions.md)。
@@ -41,7 +43,7 @@ C2/C3 的文件移动不再与功能改写冲突）。
 | M-C | 一体化外壳与组合（S3） | ✅ 8–13 全部完成 | §2.2 |
 | M-D | 细节（图标、拖拽、字体） | ✅ 14–16 全部完成 | §2.3 |
 | M-E | 独立修复 | ⏸ B2 挂起 | §2.4 |
-| M-F | 代码仓库整洁化（并行轨道） | ⬜ | §5 |
+| M-F | 代码仓库整洁化（并行轨道） | ✅ C1–C7 全部完成（2026-11-12） | §5 |
 
 
 

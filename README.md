@@ -12,7 +12,8 @@ coding agent 的桌面端，TSX 写在 [NSH](https://nsh.dev) 上。工作台形
 **§2.1.1 F2/F3 已完成**（容器内终端资源、原生 Pi TUI），**§2.1-3 已完成**（scratch 画布的页面与铸容器）、**§2.1-4 已完成**（动作可用性矩阵）、**§2.1-5 已完成**（容器标题 S2）、**§2.1-6 已完成**（语言跟随系统）、**§2.1-7 已完成**（无 sheet 自动归档）；
 **§2.1 全部完成**；§2.2 全部完成（S3 外壳、侧栏拖拽 + `settings.*`、移除 picker、composer 仅交互与 11a 斜杆命令、红绿灯、Chrome 页签宽度）；
 **§2.3 全部完成**（第 14 项品牌图标、第 15 项拖拽幽灵 + 落位竖线、第 16 项 Lilex 字体——crate 经 `assets!()` 壳带、引擎首帧前注册，sheet 内容用 Lilex、轮廓系统字体；15 的"源 tab 占位"仍待 nsh 升级，见证据）。
-下一轨道是 [§5 代码仓库整洁化](docs/plan.md)（C1–C7，与功能并行；Casing II 功能项已完，C2/C3 的移动不再冲突）。
+**§5 代码仓库整洁化已完成**（C1 死代码与导出、C2 五层目录 shell/canvas/stores/sheets/ui、C3 Launcher→Hero 统一、
+C4 单一事实源、C5 无条件等待清零、C6 文档与证据、C7 fmt/clippy/错误码表）；挂起项不变（B2 等样本、M13 等账号）。
 门禁：`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` ✓（live 的 steer 用例偶发供应商慢首 token，重跑全绿）、`script/bundle-mac.sh` ✓。证据见
 [docs/evidence/s1-hero-sheet.md](docs/evidence/s1-hero-sheet.md)、
 [docs/evidence/s21-2-switch-hydrate.md](docs/evidence/s21-2-switch-hydrate.md)、
@@ -49,49 +50,85 @@ Composer 接入 pi 斜杆操作、新增代码仓库整洁化并行轨道（[pla
 
 ## 代码地图（app + `engine/` + `src/`）
 
+根上是入口与锚点：`App.tsx`（bootstrap：装滚动条主题、boot 引擎一次、渲染 `Workbench`；nsh 的入口解析它，留在根）、
+`contracts/`（冻结的 wire 契约：`protocol.ts` 类型/命令/事件表/校验 + `protocol.md`）、`engine/`（pi 1.5.0 sidecar）、
+`src/`（Rust native module）、`theme.json`（shadcn 风格 token，light + dark）、`assets/`（托盘图标、Lilex）、测试与 fixtures。
+
+其余模块按层归位（依赖自上而下：shell → sheets/canvas → stores → ui）：
+
+**`shell/`——工作台与生命周期**
+
 | File | What it is |
 |---|---|
-| `App.tsx` | The bootstrap: install the scrollbar theme, boot the engine once, then render `Workbench` |
-| `lifecycle.ts` | The app lifecycle: claim the single-instance lock (desktop only), boot the engine only as the primary instance, release the claim on quit |
-| `lifecycle-ui.tsx` | `LifecycleHost` (tray, close-press → hide, application menu with a real Quit) and the second-instance notice |
-| `notifications.ts` | System notifications for settled turns/subagents: hidden-or-unfocused policy, per-session ids, permission, press → window + sheet |
-| `updates.ts` | The update state machine: development/unconfigured/available, check → download progress → ready → install, honest errors |
-| `updates-ui.tsx` | The Updates dialog (version, notes, progress, install) and the notification permission row |
-| `instance.ts` | The typed face of `zu/native`'s `Instance` claim |
-| `src/instance.rs` | The native single-instance lock: state-dir file, atomic `hard_link` creation, pid liveness, stale reclaim, release |
-| `assets/tray.svg` | The menu bar's template Z icon |
-| `shell.tsx` | The workbench: project/container sidebar, engine bar, controlled `DockArea`, status line |
-| `contracts/` | The frozen wire contract: `protocol.ts` (types, command/event tables, validation) and `protocol.md` |
-| `engine.ts` | The shell's connection, supervised reconnect, snapshot/Ui request plumbing |
-| `ui-host.tsx` | Extension UI host: dialogs, toast stack, status lines, window title |
-| `i18n.ts`, `locales/` | zh-CN/en key tables and the parity test's key list |
-| `containers.ts` | Container store: create/switch/archive, the scratch canvas (in-memory layout), layout stash + zoom restore, the Hero's open/submit paths, sidebar projection |
-| `projects.ts` | Project store: `projects.json` projection, explicit membership, the Hero's project target |
-| `subagents.ts` | Subagent roster store: runs, selection, read-only transcript, note/auto-open wiring |
-| `hero.tsx` | The Hero sheet (`home:{containerId}` / `home:scratch`): project chip, composer, the two tool rows and the project creation dialog |
-| `tab-plus.tsx` | The `+` at each tab bar's right edge (nsh's `DockArea` has no trailing slot): group rectangles from the layout tree and the overlay button |
-| `dock.ts` | Layout data and pure edits: stable session and Hero sheet ids, append/activate/prune, visible-panel set |
-| `sheets.tsx` | The sheet registry: kinds, tab titles and glyphs; `home`/`session`/`terminal`/`files`/`editor`/`diff`/`changes`/`history` have real bodies, the rest mock |
-| `fs.ts` | The typed face of `zu/fs`: entries, versions, failure codes, canonical workspace root |
-| `editors.ts` | Editor documents by stable sheet id, save (`stat` → `write` → read-back), stale conflict, reload, Mod+S target |
-| `files.tsx` | The real Files sheet (lazy tree, compare dialog), Editor sheet (find/replace bar, conflict/read-only states) and two-file Diff sheet |
-| `git.ts` | The typed face of `zu/git` and the per-container Changes/History projection: status, log, branches, staging, commit, checkout, notices |
-| `git-ui.tsx` | The real Changes sheet (grouped status, stage/unstage, `DiffView` in `patch` mode, commit line, identity dialog) and History sheet (log, branch menu) |
-| `browser.ts` | The browser store: one page per `webview:{containerId}:{n}` sheet (the scratch canvas's pages are `webview:scratch:{n}` until a container mints), URL/title/loading/error state, address normalization, `WebView.available()` probe |
-| `browser-ui.tsx` | The real Browser sheet: one `WebView`, address bar, history/reload/stop, loading rail, error panel, default page and the UI-only page-message log |
-| `languages.ts` | The editor/LSP language table (`languageFor`), shared so `editors.ts` and `lsp.ts` agree on a file |
-| `lsp.ts` | The UI LSP client: one server per container/language family, initialize/document sync, diagnostics, hover/definition/completion, request ids/timeouts/cancellation, URI↔path, the diagnostics and Problems stores |
-| `lsp-ui.tsx` | The real Problems sheet (`problems:{containerId}`: severity/file/line, reveal on click, server state/progress/error/restart) and the hover card (`Overlay` + `TextView`) |
-| `src/lsp.rs` | The native `Lsp` class: argv/explicit cwd/no shell, process group, bounded `Content-Length` framing, reader/writer/stderr/waiter threads, `Callback::post`, stop/drop cleanup, coded errors |
-| `file-tree.ts` | Pure file-tree data: sorting, expanded rows, row test ids, sheet-id helpers |
-| `sessions.ts` | Per-session views: folds engine events by session id, rebuilds from a snapshot, reopens by file |
-| `terminals.ts` | PTY store: one `Pty` per terminal resource (`terminal:{containerId}:{n}`, several per container), replay buffer, title/exit mirror, archive close |
-| `src/pty.rs` | The native `Pty` class: `portable-pty` open/write/resize/close, reader/writer/waiter threads, `Callback::post` |
-| `src/fs.rs` | The native `zu/fs` module: path policy, caps, atomic write, BOM, stale check, coded errors |
-| `src/git.rs` | The native `zu/git` module: porcelain v2 status, patch diffs, log, branches, stage/unstage, commit, checkout; root and path policy, coded errors |
-| `ui.tsx` | Canvas glyphs、`Logo`、`Dot`/`Chip`/`SectionTitle`、motion/阴影 token、`applyScrollbarTheme` |
-| `theme.json` | Design tokens (shadcn-style, light + dark) via `nsh.json` `"theme"` |
-| Tests | `App.test.tsx`、`containers.test.ts`、`containers.ui.test.tsx`、`dock.test.ts`、`dock-move.test.tsx`、`contracts.test.ts`、`i18n.test.ts`、`many-sessions.test.tsx`、`projects.test.ts`、`projects.ui.test.tsx`、`subagents.test.ts`、`subagents.ui.test.tsx`、`ui-host.test.tsx`、`external.test.ts`、`external.ui.test.tsx`、`pty.test.ts`、`terminal.ui.test.tsx`、`terminal.claude.test.tsx`、`engine.test.ts`（live）、`fs.test.ts`、`file-tree.test.ts`、`files.ui.test.tsx`、`git.test.ts`、`git.ui.test.tsx`、`browser.test.ts`、`browser.ui.test.tsx`、`browser.live.test.tsx`、`lsp.test.ts`（真实 rust-analyzer）、`lsp.ui.test.tsx`（受控 LSP + 真实 Workbench）、`notifications.test.ts`、`updates.test.ts`、`updates.ui.test.tsx`、`lifecycle.test.ts`、`lifecycle.ui.test.tsx`、`lifecycle.window.test.tsx`、`lifecycle.quit.test.tsx`、`lifecycle.app.test.tsx`、`tab-plus.test.ts`、`models.ui.test.tsx`、`terminals.test.ts`、`titles.test.ts`、`locale.ui.test.tsx`、`hero-terminals.ui.test.tsx`、`auto-archive.ui.test.tsx`、`settings.test.ts`、`vscode.test.ts`、`search.test.ts`、`chat.ui.test.tsx`、`slash.test.ts`、`startup.test.tsx`（`nsh test` 计 262/262，含 44 条 Rust 单测） |
+| `shell/shell.tsx` | The workbench: project/container sidebar, engine bar, controlled `DockArea`, status line |
+| `shell/lifecycle.ts` | The app lifecycle: claim the single-instance lock (desktop only), boot the engine only as the primary instance, release the claim on quit |
+| `shell/lifecycle-ui.tsx` | `LifecycleHost` (tray, close-press → hide, application menu with a real Quit) and the second-instance notice |
+
+**`stores/`——域状态（引擎连接、容器、会话与各 sheet 的数据面）**
+
+| File | What it is |
+|---|---|
+| `stores/engine.ts` | The shell's connection, supervised reconnect, snapshot/Ui request plumbing |
+| `stores/dock.ts` | Layout data and pure edits: stable session and Hero sheet ids, append/activate/prune, visible-panel set |
+| `stores/containers.ts` | Container store: create/switch/archive, the scratch canvas (in-memory layout), layout stash + zoom restore, the Hero's open/submit paths, sidebar projection |
+| `stores/sessions.ts` | Per-session views: folds engine events by session id, rebuilds from a snapshot, reopens by file |
+| `stores/projects.ts` | Project store: `projects.json` projection, explicit membership, the Hero's project target |
+| `stores/editors.ts` | Editor documents by stable sheet id, save (`stat` → `write` → read-back), stale conflict, reload, Mod+S target |
+| `stores/terminals.ts` | PTY store: one `Pty` per terminal resource (`terminal:{containerId}:{n}`, several per container), replay buffer, title/exit mirror, archive close |
+| `stores/browser.ts` | The browser store: one page per `webview:{containerId}:{n}` sheet (the scratch canvas's pages are `webview:scratch:{n}` until a container mints), URL/title/loading/error state, address normalization, `WebView.available()` probe |
+| `stores/git.ts` | The typed face of `zu/git` and the per-container Changes/History projection: status, log, branches, staging, commit, checkout, notices |
+| `stores/lsp.ts` | The UI LSP client: one server per container/language family, initialize/document sync, diagnostics, hover/definition/completion, request ids/timeouts/cancellation, URI↔path, the diagnostics and Problems stores |
+| `stores/fs.ts` | The typed face of `zu/fs`: entries, versions, failure codes, canonical workspace root |
+| `stores/file-tree.ts` | Pure file-tree data: sorting, expanded rows, row test ids, sheet-id helpers |
+| `stores/instance.ts` | The typed face of `zu/native`'s `Instance` claim |
+| `stores/notifications.ts` | System notifications for settled turns/subagents: hidden-or-unfocused policy, per-session ids, permission, press → window + sheet |
+| `stores/updates.ts` | The update state machine: development/unconfigured/available, check → download progress → ready → install, honest errors |
+| `stores/slash.ts` | pi 1.5.0's slash commands mapped to Zu: local store actions, verbatim prompts, unsupported reasons |
+| `stores/search.ts` | Sidebar search matching: `containerMatches`/`sessionMatches` |
+| `stores/settings.ts` | `settings.get`/`settings.put` over `zu/settings.json`: the sidebar width, clamped, atomic |
+| `stores/subagents.ts` | Subagent roster store: runs, selection, read-only transcript, note/auto-open wiring |
+| `stores/vscode.ts` | The VS Code action: the active target's `vscode://file/` URL |
+| `stores/picker.ts` | The typed face of `zu/picker` (the Finder folder picker) |
+
+**`canvas/`——sheet 画布（注册表与标题）**
+
+| File | What it is |
+|---|---|
+| `canvas/sheets.tsx` | The sheet registry: kinds, tab titles and glyphs; `home`/`session`/`terminal`/`files`/`editor`/`diff`/`changes`/`history` have real bodies, the rest mock |
+| `canvas/titles.ts` | The container's title (S2): its earliest-created surviving sheet's `title()`, with folder/captain fallbacks |
+| `canvas/tab-plus.tsx` | The `+` at each tab bar's right edge (nsh's `DockArea` has no trailing slot): group rectangles from the layout tree and the overlay button |
+
+**`sheets/`——各 sheet 的实体界面**
+
+| File | What it is |
+|---|---|
+| `sheets/chat-view.tsx` | The session transcript: streaming Markdown rows, tool cards, the streaming caret |
+| `sheets/composer.tsx` | The composer: model/thinking/context footer, send/stop, slash-command palette |
+| `sheets/files.tsx` | The real Files sheet (lazy tree, compare dialog), Editor sheet (find/replace bar, conflict/read-only states) and two-file Diff sheet |
+| `sheets/git-ui.tsx` | The real Changes sheet (grouped status, stage/unstage, `DiffView` in `patch` mode, commit line, identity dialog) and History sheet (log, branch menu) |
+| `sheets/lsp-ui.tsx` | The real Problems sheet (`problems:{containerId}`: severity/file/line, reveal on click, server state/progress/error/restart) and the hover card (`Overlay` + `TextView`) |
+| `sheets/browser-ui.tsx` | The real Browser sheet: one `WebView`, address bar, history/reload/stop, loading rail, error panel, default page and the UI-only page-message log |
+| `sheets/updates-ui.tsx` | The Updates dialog (version, notes, progress, install) and the notification permission row |
+| `sheets/hero.tsx` | The Hero sheet (`home:{containerId}` / `home:scratch`): project chip, composer, the two tool rows and the project creation dialog |
+| `sheets/project-roots.ts` | The dialog's root-draft rules: Finder paths only, exactly one primary, first chosen wins |
+
+**`ui/`——呈现原语与文案**
+
+| File | What it is |
+|---|---|
+| `ui/ui.tsx` | Canvas glyphs、`Dot`/`Chip`、motion/阴影 token、`applyScrollbarTheme` |
+| `ui/ui-host.tsx` | Extension UI host: dialogs, toast stack, status lines, window title |
+| `ui/fonts.ts` | The Lilex family constant the crate ships (§2.3-16) |
+| `ui/brand-icons.tsx` | The four brand marks (Claude/Codex/Copilot/Pi), pure-tint Canvas fills |
+| `ui/languages.ts` | The editor/LSP language table (`languageFor`), shared so `editors.ts` and `lsp.ts` agree on a file |
+| `ui/i18n.ts`, `ui/locales/` | zh-CN/en key tables and the parity test's key list |
+| `ui/copy.ts` | Shell copy helpers shared by fixtures and tests |
+
+**Rust 侧（`src/`，与上表各 typed face 一一对应）**：`src/lib.rs`（native module 注册面 + Lilex 壳带）、
+`src/instance.rs`（单实例锁）、`src/pty.rs`（PTY）、`src/lsp.rs`（LSP）、`src/fs.rs`（fs 策略）、`src/git.rs`（git 策略）、
+`src/picker.rs`（Finder picker）。错误码见 §3.6 的索引（权威在各模块 `//!` 文档）。
+
+| Tests | 根上的 `*.test.ts(x)`（55 个文件：store 纯逻辑 + headless 真 Workbench + live 引擎/pi/LSP 用例），`nsh test` 计 265/265，含 53 条 Rust 单测 |
 
 交互全部来自 `nsh/base DockArea`：拖 sheet 到另一 panel（移动且状态不丢）、拖到组边缘分栏、拖手缩放、`×` 关闭、Zoom、<600pt compact。
 唯一的例外是每组标题栏右端的 `+`：0.4.0 的 tab bar 没有尾部插槽，`tab-plus.tsx` 按布局几何把它画成覆盖层（见
