@@ -1,9 +1,9 @@
 import { TextView } from "nsh/base";
 import { effect, Overlay, Scroll, token, View, Text, type Bounds } from "nsh";
-import { appendSheet } from "./dock";
-import { activeContainerId, containers, layout, noteSheetOpened, setLayout } from "./containers";
-import { editorSheetId, editorPathFor, openEditorSheet } from "./editors";
-import { relativeTo } from "./fs";
+import { appendSheet } from "./stores/dock";
+import { activeContainerId, containers, layout, noteSheetOpened, setLayout } from "./stores/containers";
+import { editorSheetId, editorPathFor, openEditorSheet } from "./stores/editors";
+import { relativeTo } from "./stores/fs";
 import { K, t } from "./ui/i18n";
 import {
   ensureContainerLsp,
@@ -15,7 +15,7 @@ import {
   restartLsp,
   type LspServerInfo,
   type ProblemRow,
-} from "./lsp";
+} from "./stores/lsp";
 import {
   Dot,
   Glyph,

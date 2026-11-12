@@ -1,9 +1,9 @@
 import { mount } from "nsh";
 import { Workbench } from "../shell";
-import { containerError, loadContainers, setContainerTransport } from "../containers";
-import { phase } from "../engine";
-import { error as sessionError } from "../sessions";
-import { seedSession } from "../sessions";
+import { containerError, loadContainers, setContainerTransport } from "../stores/containers";
+import { phase } from "../stores/engine";
+import { error as sessionError } from "../stores/sessions";
+import { seedSession } from "../stores/sessions";
 
 /**
  * Two containers without an engine: the container store talks to an

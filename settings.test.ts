@@ -8,7 +8,7 @@ import {
   sidebarWidth,
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
-} from "./settings";
+} from "./stores/settings";
 
 // §2.2-9: the sidebar's width is window furniture (`zu/settings.json` via
 // `settings.*`). The shell clamps a drag into 200–360, and a restart reads
@@ -61,7 +61,7 @@ test("settings.get answers the file and settings.put clamps", async () => {
   Engine.setStateDir(`/tmp/zu-settings-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
   Engine.setNoExtensions(true);
   await Engine.start();
-  const { connect, request } = await import("./engine");
+  const { connect, request } = await import("./stores/engine");
   await connect();
   const empty = await request("settings.get", {}, 10000);
   expect(empty.sidebarWidth).toBeUndefined();

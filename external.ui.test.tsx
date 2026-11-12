@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, expect, open, test } from "nsh/test";
 import { Engine } from "zu/native";
-import { connect, request } from "./engine";
+import { connect, request } from "./stores/engine";
 import { copy } from "./ui/copy";
 
 

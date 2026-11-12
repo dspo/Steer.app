@@ -1,8 +1,8 @@
 import { mount } from "nsh";
 import { Workbench } from "../shell";
-import { phase } from "../engine";
-import { sessions } from "../sessions";
-import { activeContainerId } from "../containers";
+import { phase } from "../stores/engine";
+import { sessions } from "../stores/sessions";
+import { activeContainerId } from "../stores/containers";
 
 // 700 sessions, no containers: the sidebar's virtualized list must keep the
 // rendered row set small while scrolling to the end.

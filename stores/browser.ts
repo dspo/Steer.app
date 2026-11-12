@@ -1,7 +1,7 @@
 import { signal, WebView, type WebViewNavigation } from "nsh";
 import { appendSheet, panelIds, replaceSheet } from "./dock";
 import { activeContainerId, layout, noteSheetOpened, setLayout, setScratchSheetTransfer } from "./containers";
-import { K, t } from "./ui/i18n";
+import { K, t } from "../ui/i18n";
 
 /**
  * The browser store: one page per sheet id (`webview:{containerId}:{n}`),

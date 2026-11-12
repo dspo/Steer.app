@@ -1,6 +1,6 @@
 import { signal } from "nsh";
 import { request } from "./engine";
-import type { SettingsData } from "./contracts/protocol";
+import type { SettingsData } from "../contracts/protocol";
 
 /**
  * The shell's window furniture (`zu/settings.json`, via `settings.*`): what

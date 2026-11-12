@@ -1,8 +1,8 @@
 import { expect, test } from "nsh/test";
 import { Engine } from "zu/native";
-import { connect, disconnect, phase, request, snapshot } from "./engine";
-import { closeSheet, createContainer, layout } from "./containers";
-import { panelIds, sessionSheetId } from "./dock";
+import { connect, disconnect, phase, request, snapshot } from "./stores/engine";
+import { closeSheet, createContainer, layout } from "./stores/containers";
+import { panelIds, sessionSheetId } from "./stores/dock";
 
 // A state directory of this run: the user's registry and layouts are never
 // touched by a test. Extensions are skipped too; this file exercises the

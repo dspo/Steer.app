@@ -6,18 +6,18 @@ import {
   layout,
   loadContainers,
   setContainerTransport,
-} from "../containers";
-import { editorDocs, editorSheetId } from "../editors";
-import { phase } from "../engine";
-import { error as sessionError } from "../sessions";
-import { baseName } from "../fs";
+} from "../stores/containers";
+import { editorDocs, editorSheetId } from "../stores/editors";
+import { phase } from "../stores/engine";
+import { error as sessionError } from "../stores/sessions";
+import { baseName } from "../stores/fs";
 import {
   diagnosticsFor,
   lastReveal,
   lspServers,
   problemsFor,
   setLspCommandResolver,
-} from "../lsp";
+} from "../stores/lsp";
 import { M11_UI_CONTAINER, M11_UI_ROOT, M11_UI_SERVER } from "./m11-paths";
 import { HoverCard } from "../lsp-ui";
 

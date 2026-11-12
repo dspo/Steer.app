@@ -1,13 +1,13 @@
 import { mount, Text, View } from "nsh";
 import { Workbench } from "../shell";
-import { activeContainerId, containers, layout, setContainerTransport, syncVisible } from "../containers";
-import { browserPages } from "../browser";
-import { panelIds } from "../dock";
-import { phase } from "../engine";
-import { containerProject, membership, projects, setProjectTransport } from "../projects";
-import { seedSession } from "../sessions";
-import { defaultLayoutForSessions } from "../dock";
-import { setFolderPicker } from "../picker";
+import { activeContainerId, containers, layout, setContainerTransport, syncVisible } from "../stores/containers";
+import { browserPages } from "../stores/browser";
+import { panelIds } from "../stores/dock";
+import { phase } from "../stores/engine";
+import { containerProject, membership, projects, setProjectTransport } from "../stores/projects";
+import { seedSession } from "../stores/sessions";
+import { defaultLayoutForSessions } from "../stores/dock";
+import { setFolderPicker } from "../stores/picker";
 
 // Headless tests never launch Finder: the picker answers with the next
 // folder in this list, so the dialog's add/remove/primary flow is real.

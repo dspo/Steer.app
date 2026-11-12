@@ -1,7 +1,7 @@
 import { expect, test } from "nsh/test";
-import { activeContainerId, containers } from "./containers";
-import { containerProject, membership, projects } from "./projects";
-import { vscodeTarget, vscodeUrl } from "./vscode";
+import { activeContainerId, containers } from "./stores/containers";
+import { containerProject, membership, projects } from "./stores/projects";
+import { vscodeTarget, vscodeUrl } from "./stores/vscode";
 
 // The "open in VS Code" action's rules: which folder it names and what the
 // URL looks like. The target follows the active container's project.

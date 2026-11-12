@@ -6,11 +6,11 @@ import {
   layout,
   loadContainers,
   setContainerTransport,
-} from "../containers";
-import { editorDocs } from "../editors";
-import { phase } from "../engine";
-import { error as sessionError } from "../sessions";
-import { baseName } from "../fs";
+} from "../stores/containers";
+import { editorDocs } from "../stores/editors";
+import { phase } from "../stores/engine";
+import { error as sessionError } from "../stores/sessions";
+import { baseName } from "../stores/fs";
 import { GIT_CONTAINER, GIT_ROOT } from "./m9-paths";
 
 // The M9 acceptance fixture: the real `Workbench` (its top bar is the entry

@@ -3,8 +3,8 @@ import { currentWindow, Menu, Tray, Window, type MenuItem } from "nsh/desktop";
 import trayIcon from "./assets/tray.svg";
 import { K, t } from "./ui/i18n";
 import { instanceClaim, quitApp } from "./lifecycle";
-import { hideMain, mainWindowVisible, showMain, startNotifications } from "./notifications";
-import { openUpdates } from "./updates";
+import { hideMain, mainWindowVisible, showMain, startNotifications } from "./stores/notifications";
+import { openUpdates } from "./stores/updates";
 import { motionStyle, shadowRaised } from "./ui/ui";
 
 /**

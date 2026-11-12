@@ -13,8 +13,8 @@ import {
   shownNotifications,
   subagentNotificationId,
   type Notifier,
-} from "./notifications";
-import { seedSession } from "./sessions";
+} from "./stores/notifications";
+import { seedSession } from "./stores/sessions";
 
 /**
  * The notification policy without an engine or a system notification

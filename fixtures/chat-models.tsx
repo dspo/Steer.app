@@ -1,7 +1,7 @@
 import { mount } from "nsh";
-import { seedSession } from "../sessions";
+import { seedSession } from "../stores/sessions";
 import { SessionBody } from "../sheets";
-import { visiblePanels } from "../dock";
+import { visiblePanels } from "../stores/dock";
 import { installModelTransport, MODEL_SEED } from "./chat-models-data";
 
 // The model picker's data without an engine: `session.models` answers with two

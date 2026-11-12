@@ -1,11 +1,11 @@
 import { mount, Text, View } from "nsh";
 import { locale } from "nsh";
 import { setLocale } from "nsh/i18n";
-import { containerError, loadContainers, setContainerTransport } from "../containers";
+import { containerError, loadContainers, setContainerTransport } from "../stores/containers";
 import { Workbench } from "../shell";
-import { phase } from "../engine";
+import { phase } from "../stores/engine";
 import { followSystemLocale, shellLocale } from "../ui/i18n";
-import { error as sessionError } from "../sessions";
+import { error as sessionError } from "../stores/sessions";
 
 /** A Chinese system: `setLocale` is what the platform reports to `locale()`. */
 setLocale("en-US");

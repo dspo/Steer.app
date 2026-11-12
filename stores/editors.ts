@@ -3,8 +3,8 @@ import { signal, untracked } from "nsh";
 import { closeSheet, containers, layout, noteSheetOpened, setLayout } from "./containers";
 import { appendSheet, visiblePanels } from "./dock";
 import { canonicalRoot, failure, readText, sameVersion, statPath, writeText, type FsFailure } from "./fs";
-import { t, K } from "./ui/i18n";
-import { languageFor } from "./ui/languages";
+import { t, K } from "../ui/i18n";
+import { languageFor } from "../ui/languages";
 import { documentChanged, documentClosed, documentSaved, openLspDocument } from "./lsp";
 
 export { languageFor };

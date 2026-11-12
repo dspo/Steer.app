@@ -1,8 +1,8 @@
 import { signal } from "nsh";
-import type { SessionThinkingLevel } from "./contracts/protocol";
+import type { SessionThinkingLevel } from "../contracts/protocol";
 import { clearSessionView, compactSession, send, setThinkingLevel, viewFor } from "./sessions";
 import { openHero } from "./projects";
-import { K, t } from "./ui/i18n";
+import { K, t } from "../ui/i18n";
 
 /**
  * The `/model` command opens the model menu of one session. The request

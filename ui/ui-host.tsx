@@ -2,7 +2,7 @@ import {
   onEngineEvent,
   requestUITimeout,
   respondUI,
-} from "../engine";
+} from "../stores/engine";
 import { K, t } from "./i18n";
 import { effect, Scroll, signal, Text, token, View } from "nsh";
 import { AlertDialog, Dialog, Input } from "nsh/base";

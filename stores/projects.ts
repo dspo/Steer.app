@@ -1,6 +1,6 @@
 import { signal } from "nsh";
 import { request } from "./engine";
-import type { ContainerRecord, ProjectRecord, ProjectsData } from "./contracts/protocol";
+import type { ContainerRecord, ProjectRecord, ProjectsData } from "../contracts/protocol";
 import { activeCwd, send } from "./sessions";
 import {
   createContainer,

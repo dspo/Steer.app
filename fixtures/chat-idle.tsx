@@ -1,7 +1,7 @@
 import { mount } from "nsh";
-import { seedSession } from "../sessions";
+import { seedSession } from "../stores/sessions";
 import { SessionBody } from "../sheets";
-import { visiblePanels } from "../dock";
+import { visiblePanels } from "../stores/dock";
 
 // A settled conversation: the composer is back to its one accent send.
 seedSession(

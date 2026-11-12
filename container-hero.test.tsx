@@ -1,6 +1,6 @@
 import { expect, open, test } from "nsh/test";
 import { Engine } from "zu/native";
-import { connect, request } from "./engine";
+import { connect, request } from "./stores/engine";
 import { copy, shellCopyLocale } from "./ui/copy";
 import { K, t } from "./ui/i18n";
 

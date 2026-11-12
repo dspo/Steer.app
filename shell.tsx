@@ -2,9 +2,9 @@ import { keymap, List, PanResponder, Scroll, signal, Text, token, View } from "n
 import { DockArea, Input, Menu, MenuItem, MenuSeparator, type DockAreaLayout } from "nsh/base";
 import { Window } from "nsh/desktop";
 import { containerTitle } from "./titles";
-import { loadSettings, setSidebarWidth, sidebarWidth, SIDEBAR_DEFAULT_WIDTH } from "./settings";
-import { setSlashActions } from "./slash";
-import { connect, disconnect, lastError, phase, recovered, retry, type EnginePhase } from "./engine";
+import { loadSettings, setSidebarWidth, sidebarWidth, SIDEBAR_DEFAULT_WIDTH } from "./stores/settings";
+import { setSlashActions } from "./stores/slash";
+import { connect, disconnect, lastError, phase, recovered, retry, type EnginePhase } from "./stores/engine";
 import {
   closeSheet,
   activeContainerId,
@@ -23,7 +23,7 @@ import {
   setZoom,
   switchContainer,
   zoomedPanel,
-} from "./containers";
+} from "./stores/containers";
 import {
   containerProject,
   containersIn,
@@ -31,22 +31,22 @@ import {
   openHero,
   orderedProjects,
   projectError,
-} from "./projects";
+} from "./stores/projects";
 import { ProjectDialog } from "./hero";
-import { panelIds } from "./dock";
-import { error as sessionError, refreshSessions, sessions } from "./sessions";
+import { panelIds } from "./stores/dock";
+import { error as sessionError, refreshSessions, sessions } from "./stores/sessions";
 import { SheetBody, sheetGlyph, sheetTitle } from "./sheets";
-import { externalKindLabel } from "./terminals";
-import { saveActiveEditor } from "./editors";
-import { openChangesSheet, openHistorySheet } from "./git";
+import { externalKindLabel } from "./stores/terminals";
+import { saveActiveEditor } from "./stores/editors";
+import { openChangesSheet, openHistorySheet } from "./stores/git";
 import { openProblemsSheet } from "./lsp-ui";
 import { K, t } from "./ui/i18n";
 import { UIHost, unsupportedMethods } from "./ui/ui-host";
-import { dropBrowserPages, openBrowserSheet } from "./browser";
+import { dropBrowserPages, openBrowserSheet } from "./stores/browser";
 import {
   openActiveInVSCode,
-} from "./vscode";
-import { containerMatches, sessionMatches } from "./search";
+} from "./stores/vscode";
+import { containerMatches, sessionMatches } from "./stores/search";
 import { Chip, Dot, Glyph, type GlyphName, motionStyle, shadowCard, shadowRaised } from "./ui/ui";
 import { TabBarPlus } from "./tab-plus";
 

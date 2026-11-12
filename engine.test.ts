@@ -1,7 +1,7 @@
 import { expect, test } from "nsh/test";
 import { Engine } from "zu/native";
 import { PROTOCOL_VERSION } from "./contracts/protocol";
-import { connect, disconnect, info, lastError, onEngineEvent, phase, recovered, request, snapshot } from "./engine";
+import { connect, disconnect, info, lastError, onEngineEvent, phase, recovered, request, snapshot } from "./stores/engine";
 import {
   activeId,
   activePath,
@@ -16,7 +16,7 @@ import {
   sessions,
   stop,
   streaming,
-} from "./sessions";
+} from "./stores/sessions";
 
 // A previous test file may have pointed the shared runner at an isolated
 // state directory and skipped extensions; M2's live cases want the real

@@ -17,7 +17,7 @@ import {
   updateAvailability,
   type UpdateEnv,
   type UpdateService,
-} from "./updates";
+} from "./stores/updates";
 
 /**
  * The update state machine without a source or a release: the environment

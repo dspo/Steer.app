@@ -1,10 +1,10 @@
 import { expect, test } from "nsh/test";
-import { activeContainerId, containers, layout, noteSheetOpened, setLayout, sheetOrder } from "./containers";
-import { appendSheet, defaultLayoutForSessions, removeSheet, sessionSheetId } from "./dock";
-import { applyBrowserNavigation, browserSheetId, ensureBrowserPage } from "./browser";
-import { seedSession } from "./sessions";
-import { terminalInfo, terminalSheetId } from "./terminals";
-import { editorSheetId } from "./editors";
+import { activeContainerId, containers, layout, noteSheetOpened, setLayout, sheetOrder } from "./stores/containers";
+import { appendSheet, defaultLayoutForSessions, removeSheet, sessionSheetId } from "./stores/dock";
+import { applyBrowserNavigation, browserSheetId, ensureBrowserPage } from "./stores/browser";
+import { seedSession } from "./stores/sessions";
+import { terminalInfo, terminalSheetId } from "./stores/terminals";
+import { editorSheetId } from "./stores/editors";
 import { sheetTitle } from "./sheets";
 import { containerTitle } from "./titles";
 

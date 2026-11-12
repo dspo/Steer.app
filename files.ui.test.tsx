@@ -1,6 +1,6 @@
 import { expect, open, test } from "nsh/test";
 import { Fs } from "zu/native";
-import { fileRowTestId, compareRowTestId } from "./file-tree";
+import { fileRowTestId, compareRowTestId } from "./stores/file-tree";
 import { M8_ROOT } from "./fixtures/m8-paths";
 
 // M8's acceptance, on real files: the Files sheet lists a container's cwd,

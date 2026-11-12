@@ -1,6 +1,6 @@
 import { effect, Scroll, signal, Text, token, View, WebView, type WebViewNavigation, type WebViewRef } from "nsh";
 import { Input } from "nsh/base";
-import { visiblePanels } from "./dock";
+import { visiblePanels } from "./stores/dock";
 import {
   addressErrorMessage,
   applyBrowserNavigation,
@@ -15,7 +15,7 @@ import {
   reportBrowserError,
   setBrowserNavigating,
   setBrowserStopped,
-} from "./browser";
+} from "./stores/browser";
 import { K, t } from "./ui/i18n";
 import { Chip, Glyph, motionStyle, SheetIconButton } from "./ui/ui";
 

@@ -1,7 +1,7 @@
 import { mount } from "nsh";
-import { seedSession, setModelTransport } from "../sessions";
+import { seedSession, setModelTransport } from "../stores/sessions";
 import { SessionBody } from "../sheets";
-import { visiblePanels } from "../dock";
+import { visiblePanels } from "../stores/dock";
 
 // A session on a machine with no usable model: `session.info` carries no
 // model and `session.models` answers with a reason. The first reads are the

@@ -11,7 +11,7 @@ import type {
 } from "nsh/base";
 import { Lsp, type LspExit } from "zu/native";
 import { baseName, canonicalRoot, listDir } from "./fs";
-import { languageFor } from "./ui/languages";
+import { languageFor } from "../ui/languages";
 
 /**
  * The UI's LSP client.

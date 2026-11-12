@@ -1,6 +1,6 @@
 import { expect, test } from "nsh/test";
 import { Engine } from "zu/native";
-import { connect, disconnect, onEngineEvent, phase, request } from "./engine";
+import { connect, disconnect, onEngineEvent, phase, request } from "./stores/engine";
 
 const stateDir = `/tmp/zu-m5-state-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 Engine.setStateDir(stateDir);

@@ -6,10 +6,10 @@ import {
   layout,
   loadContainers,
   setContainerTransport,
-} from "../containers";
-import { phase } from "../engine";
-import { error as sessionError, seedSession } from "../sessions";
-import { terminalInfo } from "../terminals";
+} from "../stores/containers";
+import { phase } from "../stores/engine";
+import { error as sessionError, seedSession } from "../stores/sessions";
+import { terminalInfo } from "../stores/terminals";
 
 /**
  * §2.1.1 F2: a Pi container's Hero opens terminals *of that container*.

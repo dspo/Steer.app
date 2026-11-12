@@ -19,7 +19,7 @@ import {
   reportBrowserError,
   setBrowserNavigating,
   setBrowserStopped,
-} from "./browser";
+} from "./stores/browser";
 import { K, t } from "./ui/i18n";
 
 // The browser store and the address bar, without a web view: the headless

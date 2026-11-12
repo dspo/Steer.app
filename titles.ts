@@ -1,10 +1,10 @@
 import type { ContainerRecord } from "./contracts/protocol";
-import { sessionIdOfSheet } from "./dock";
-import { sheetOrder } from "./containers";
-import { sessionHasName, sessionTitle } from "./sessions";
+import { sessionIdOfSheet } from "./stores/dock";
+import { sheetOrder } from "./stores/containers";
+import { sessionHasName, sessionTitle } from "./stores/sessions";
 import { sheetTitle } from "./sheets";
-import { baseName } from "./fs";
-import { externalKindLabel, terminalSheetId, terminalTitle } from "./terminals";
+import { baseName } from "./stores/fs";
+import { externalKindLabel, terminalSheetId, terminalTitle } from "./stores/terminals";
 
 /**
  * A container's title (S2): the **earliest-created surviving sheet's** title.

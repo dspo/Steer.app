@@ -6,17 +6,17 @@ import {
   editorSheetPath,
   encodePath,
   languageFor,
-} from "./editors";
-import { ROOT_KEY, fileRowKey, fileRows, sortEntries, type DirState } from "./file-tree";
-import { panelIds, removeSheet, visiblePanels, type DockAreaLayout } from "./dock";
+} from "./stores/editors";
+import { ROOT_KEY, fileRowKey, fileRows, sortEntries, type DirState } from "./stores/file-tree";
+import { panelIds, removeSheet, visiblePanels, type DockAreaLayout } from "./stores/dock";
 import {
   activeContainerId,
   containers,
   layout,
   openFilesSheet,
   setContainerTransport,
-} from "./containers";
-import { baseName, relativeTo } from "./fs";
+} from "./stores/containers";
+import { baseName, relativeTo } from "./stores/fs";
 
 // The M8 identities and tree helpers without a screen: an editor sheet id
 // must survive a layout stash (a container id with colons and a path with

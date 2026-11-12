@@ -1,5 +1,5 @@
 import { expect, test } from "nsh/test";
-import { defaultAction, terminalResource, terminalSheetContainer, terminalSheetId } from "./terminals";
+import { defaultAction, terminalResource, terminalSheetContainer, terminalSheetId } from "./stores/terminals";
 
 // A terminal is a resource of a container (`terminal:{containerId}:{n}`), so
 // one container can hold a shell beside an agent TUI. Container ids carry

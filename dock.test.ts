@@ -14,7 +14,7 @@ import {
   pruneLayout,
   sessionIdOfSheet,
   sessionSheetId,
-} from "./dock";
+} from "./stores/dock";
 
 test("a container's default layout holds one sheet per session", () => {
   const layout = defaultLayoutForSessions(["a", "b"]);

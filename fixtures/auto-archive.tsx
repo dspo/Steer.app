@@ -6,10 +6,10 @@ import {
   layout,
   loadContainers,
   setContainerTransport,
-} from "../containers";
-import { panelIds } from "../dock";
-import { phase } from "../engine";
-import { error as sessionError, seedSession } from "../sessions";
+} from "../stores/containers";
+import { panelIds } from "../stores/dock";
+import { phase } from "../stores/engine";
+import { error as sessionError, seedSession } from "../stores/sessions";
 
 /**
  * Q69's own fixture: one Pi container whose canvas is a session and its

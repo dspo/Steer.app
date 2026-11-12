@@ -2,7 +2,7 @@ import { effect, List, type ListRef, reduceMotion, signal, Text, token, View } f
 import { TextView } from "nsh/base";
 import { SHEET_FONT } from "./ui/fonts";
 import { K, t } from "./ui/i18n";
-import { viewFor } from "./sessions";
+import { viewFor } from "./stores/sessions";
 import { ChatComposer } from "./composer";
 import { Glyph } from "./ui/ui";
 

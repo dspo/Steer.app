@@ -1,9 +1,9 @@
 import { DiffView, Dialog, Input, Menu, MenuItem, MenuSeparator, type DiffLayout } from "nsh/base";
 import { effect, List, Scroll, signal, Text, token, untracked, View } from "nsh";
 import type { JSX } from "nsh";
-import { containers } from "./containers";
-import { visiblePanels } from "./dock";
-import { languageFor } from "./editors";
+import { containers } from "./stores/containers";
+import { visiblePanels } from "./stores/dock";
+import { languageFor } from "./stores/editors";
 import { K, t } from "./ui/i18n";
 import {
   changePaths,
@@ -26,7 +26,7 @@ import {
   unstagePaths,
   type GitFailure,
   type GitNotice,
-} from "./git";
+} from "./stores/git";
 import type { GitChange, GitDiff } from "zu/native";
 import { Glyph, motionStyle, SheetAction as Action, SheetIconButton as IconButton, shadowDialog, shadowRaised } from "./ui/ui";
 

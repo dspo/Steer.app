@@ -6,9 +6,9 @@ import {
   layout,
   setContainerTransport,
   setLayout,
-} from "../containers";
-import { panelIds, visiblePanels } from "../dock";
-import { editorDocs, saveActiveEditor } from "../editors";
+} from "../stores/containers";
+import { panelIds, visiblePanels } from "../stores/dock";
+import { editorDocs, saveActiveEditor } from "../stores/editors";
 import { SheetBody } from "../sheets";
 import { M8_ROOT } from "./m8-paths";
 

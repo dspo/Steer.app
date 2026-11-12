@@ -7,16 +7,16 @@ import {
   loadContainers,
   openHomeSheet,
   setContainerTransport,
-} from "../containers";
-import { phase } from "../engine";
-import { error as sessionError } from "../sessions";
+} from "../stores/containers";
+import { phase } from "../stores/engine";
+import { error as sessionError } from "../stores/sessions";
 import {
   applyBrowserNavigation,
   browserPage,
   logBrowserMessage,
   reportBrowserError,
-} from "../browser";
-import { panelIds, visiblePanels } from "../dock";
+} from "../stores/browser";
+import { panelIds, visiblePanels } from "../stores/dock";
 
 /**
  * The M10 browser fixture: the real `Workbench` around one container. The

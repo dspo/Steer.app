@@ -1,6 +1,6 @@
 import { expect, open, test } from "nsh/test";
 import { Engine } from "zu/native";
-import { connect, request } from "./engine";
+import { connect, request } from "./stores/engine";
 
 
 // A state directory of this run: the user's registry is never touched.

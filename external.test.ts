@@ -1,6 +1,6 @@
 import { expect, test } from "nsh/test";
 import { Engine } from "zu/native";
-import { connect, disconnect, phase, request } from "./engine";
+import { connect, disconnect, phase, request } from "./stores/engine";
 
 // External containers are registry records without a pi session: the PTY is
 // the shell's (native module) member and is deliberately not part of the

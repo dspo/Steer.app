@@ -15,13 +15,13 @@ import {
   updateProgress,
   updateStatus,
   updatesOpen,
-} from "./updates";
+} from "./stores/updates";
 import {
   notificationPermission,
   notificationError,
   refreshNotificationPermission,
   requestNotificationPermission,
-} from "./notifications";
+} from "./stores/notifications";
 
 /**
  * The Updates dialog: the tray's "Check for Updates…" and the engine bar's

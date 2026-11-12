@@ -1,10 +1,10 @@
 import { mount, View } from "nsh";
 import { Workbench } from "../shell";
-import { activeContainerId, containers, layout, setContainerTransport, syncVisible } from "../containers";
-import { openSubagents, setSubagentTransport } from "../subagents";
-import { seedSession } from "../sessions";
-import { defaultLayoutForSessions } from "../dock";
-import { phase } from "../engine";
+import { activeContainerId, containers, layout, setContainerTransport, syncVisible } from "../stores/containers";
+import { openSubagents, setSubagentTransport } from "../stores/subagents";
+import { seedSession } from "../stores/sessions";
+import { defaultLayoutForSessions } from "../stores/dock";
+import { phase } from "../stores/engine";
 
 seedSession("s1", [{ role: "assistant", text: "captain body" }], {
   path: "/tmp/captain.jsonl",

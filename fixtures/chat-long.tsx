@@ -1,7 +1,7 @@
 import { mount } from "nsh";
-import { seedSession } from "../sessions";
+import { seedSession } from "../stores/sessions";
 import { Conversation } from "../chat-view";
-import { phase } from "../engine";
+import { phase } from "../stores/engine";
 
 // A long transcript: the list must render only what is near the viewport.
 phase.set("connected");

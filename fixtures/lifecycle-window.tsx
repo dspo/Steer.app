@@ -1,6 +1,6 @@
 import { mount, Text, View } from "nsh";
 import { LifecycleHost } from "../lifecycle-ui";
-import { hideMain, mainWindowVisible, showMain } from "../notifications";
+import { hideMain, mainWindowVisible, showMain } from "../stores/notifications";
 
 /**
  * The primary lifecycle on a desktop: the real `LifecycleHost` (tray,

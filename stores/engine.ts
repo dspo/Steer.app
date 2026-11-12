@@ -1,5 +1,5 @@
 import { signal } from "nsh";
-import { K, t } from "./ui/i18n";
+import { K, t } from "../ui/i18n";
 import { Engine } from "zu/native";
 import {
   PROTOCOL_VERSION,
@@ -11,7 +11,7 @@ import {
   type StateSnapshot,
   type UIMethod,
   type Welcome,
-} from "./contracts/protocol";
+} from "../contracts/protocol";
 
 /**
  * The shell's single connection to the engine sidecar.

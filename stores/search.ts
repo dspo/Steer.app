@@ -1,5 +1,5 @@
-import type { ContainerRecord } from "./contracts/protocol";
-import { containerTitle } from "./titles";
+import type { ContainerRecord } from "../contracts/protocol";
+import { containerTitle } from "../titles";
 import { containerProject, projects } from "./projects";
 import type { SessionMeta } from "./sessions";
 
