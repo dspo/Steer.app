@@ -211,7 +211,7 @@ function endTurn(
     return {
       kind: ResponsePartKind.ToolCall,
       toolCall: {
-        status: ToolCallStatus.Cancelled as const,
+        status: ToolCallStatus.Cancelled,
         ...tcBase(tc),
         invocationMessage: tc.status === ToolCallStatus.Streaming ? (tc.invocationMessage ?? '') : tc.invocationMessage,
         toolInput: tc.status === ToolCallStatus.Streaming ? undefined : tc.toolInput,

@@ -1402,11 +1402,12 @@ export namespace McpServerStatus {
  * @category MCP Server State
  * @nonexhaustive
  */
-export const enum McpAuthRequiredReason {
+export const McpAuthRequiredReason = {
+
   /** No token has been provided yet (HTTP 401, no prior token). */
-  Required = 'required',
+  Required: 'required',
   /** A previously valid token expired or was revoked (HTTP 401). */
-  Expired = 'expired',
+  Expired: 'expired',
   /**
    * Step-up auth: a token is present but its scopes are insufficient for
    * the requested operation (HTTP 403 with
@@ -1425,7 +1426,13 @@ export const enum McpAuthRequiredReason {
    * call so they can present an explicit "grant more access" affordance
    * tied to the blocked tool call.
    */
-  InsufficientScope = 'insufficientScope',
+  InsufficientScope: 'insufficientScope',
+} as const;
+export type McpAuthRequiredReason = (typeof McpAuthRequiredReason)[keyof typeof McpAuthRequiredReason];
+export namespace McpAuthRequiredReason {
+  export type Required = (typeof McpAuthRequiredReason)["Required"];
+  export type Expired = (typeof McpAuthRequiredReason)["Expired"];
+  export type InsufficientScope = (typeof McpAuthRequiredReason)["InsufficientScope"];
 }
 
 /**

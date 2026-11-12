@@ -65,11 +65,17 @@ export namespace AutomationRunStatus {
  * @category Automation Run State
  * @exhaustive
  */
-export const enum AutomationRunOriginKind {
+export const AutomationRunOriginKind = {
+
   /** A client explicitly invoked {@link RunAutomationParams | runAutomation}. */
-  Manual = 'manual',
+  Manual: 'manual',
   /** An automatic schedule or event trigger fired. */
-  Trigger = 'trigger',
+  Trigger: 'trigger',
+} as const;
+export type AutomationRunOriginKind = (typeof AutomationRunOriginKind)[keyof typeof AutomationRunOriginKind];
+export namespace AutomationRunOriginKind {
+  export type Manual = (typeof AutomationRunOriginKind)["Manual"];
+  export type Trigger = (typeof AutomationRunOriginKind)["Trigger"];
 }
 
 /**

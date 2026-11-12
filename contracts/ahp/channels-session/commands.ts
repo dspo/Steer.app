@@ -179,13 +179,18 @@ export interface FetchTurnsResult {}
  * @category Commands
  * @nonexhaustive
  */
-export const enum CompletionItemKind {
+export const CompletionItemKind = {
+
   /**
    * Completions for the text of a {@link Message} the user is composing.
    * Each returned item carries an attachment that gets associated with the
    * message when accepted.
    */
-  UserMessage = 'userMessage',
+  UserMessage: 'userMessage',
+} as const;
+export type CompletionItemKind = (typeof CompletionItemKind)[keyof typeof CompletionItemKind];
+export namespace CompletionItemKind {
+  export type UserMessage = (typeof CompletionItemKind)["UserMessage"];
 }
 
 /**

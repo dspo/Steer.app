@@ -116,22 +116,30 @@ export interface ChangesetCapabilities {
  * @category Changesets
  * @nonexhaustive
  */
-export const enum ChangesetStatus {
+export const ChangesetStatus = {
+
   /** The server is computing this changeset for the first time. */
-  Computing = 'computing',
+  Computing: 'computing',
   /**
    * The server is recomputing this changeset. {@link ChangesetState.files}
    * remains the previous completed result while recomputation is in progress,
    * including when that result is an empty array.
    */
-  Recomputing = 'recomputing',
+  Recomputing: 'recomputing',
   /** The changeset has been fully computed and is up-to-date. */
-  Ready = 'ready',
+  Ready: 'ready',
   /**
    * Computation failed. The cause is described by
    * {@link ChangesetState.error}.
    */
-  Error = 'error',
+  Error: 'error',
+} as const;
+export type ChangesetStatus = (typeof ChangesetStatus)[keyof typeof ChangesetStatus];
+export namespace ChangesetStatus {
+  export type Computing = (typeof ChangesetStatus)["Computing"];
+  export type Recomputing = (typeof ChangesetStatus)["Recomputing"];
+  export type Ready = (typeof ChangesetStatus)["Ready"];
+  export type Error = (typeof ChangesetStatus)["Error"];
 }
 
 /**
@@ -212,23 +220,31 @@ export interface ChangesetFile {
  * @category Changesets
  * @nonexhaustive
  */
-export const enum ChangesetOperationStatus {
+export const ChangesetOperationStatus = {
+
   /**
    * The operation is ready to be invoked. This is the default when
    * {@link ChangesetOperation.status} is omitted.
    */
-  Idle = 'idle',
+  Idle: 'idle',
   /** An invocation of this operation is currently in flight. */
-  Running = 'running',
+  Running: 'running',
   /**
    * The most recent invocation failed. The cause is described by
    * {@link ChangesetOperation.error}.
    */
-  Error = 'error',
+  Error: 'error',
   /**
    * The operation is currently disabled and cannot be invoked.
    */
-  Disabled = 'disabled',
+  Disabled: 'disabled',
+} as const;
+export type ChangesetOperationStatus = (typeof ChangesetOperationStatus)[keyof typeof ChangesetOperationStatus];
+export namespace ChangesetOperationStatus {
+  export type Idle = (typeof ChangesetOperationStatus)["Idle"];
+  export type Running = (typeof ChangesetOperationStatus)["Running"];
+  export type Error = (typeof ChangesetOperationStatus)["Error"];
+  export type Disabled = (typeof ChangesetOperationStatus)["Disabled"];
 }
 
 /**

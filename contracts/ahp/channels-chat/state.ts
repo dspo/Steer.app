@@ -1135,19 +1135,30 @@ export interface SystemNotificationResponsePart {
  * @category Tool Call Types
  * @nonexhaustive
  */
-export const enum ToolCallStatus {
-  Streaming = 'streaming',
-  PendingConfirmation = 'pending-confirmation',
-  Running = 'running',
+export const ToolCallStatus = {
+
+  Streaming: 'streaming',
+  PendingConfirmation: 'pending-confirmation',
+  Running: 'running',
   /**
    * Running paused because the MCP server backing this call needs
    * authentication (typically step-up auth for insufficient scope,
    * surfacing mid-execution). See {@link ToolCallAuthRequiredState}.
    */
-  AuthRequired = 'auth-required',
-  PendingResultConfirmation = 'pending-result-confirmation',
-  Completed = 'completed',
-  Cancelled = 'cancelled',
+  AuthRequired: 'auth-required',
+  PendingResultConfirmation: 'pending-result-confirmation',
+  Completed: 'completed',
+  Cancelled: 'cancelled',
+} as const;
+export type ToolCallStatus = (typeof ToolCallStatus)[keyof typeof ToolCallStatus];
+export namespace ToolCallStatus {
+  export type Streaming = (typeof ToolCallStatus)["Streaming"];
+  export type PendingConfirmation = (typeof ToolCallStatus)["PendingConfirmation"];
+  export type Running = (typeof ToolCallStatus)["Running"];
+  export type AuthRequired = (typeof ToolCallStatus)["AuthRequired"];
+  export type PendingResultConfirmation = (typeof ToolCallStatus)["PendingResultConfirmation"];
+  export type Completed = (typeof ToolCallStatus)["Completed"];
+  export type Cancelled = (typeof ToolCallStatus)["Cancelled"];
 }
 
 /**

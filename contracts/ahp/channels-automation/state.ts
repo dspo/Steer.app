@@ -49,13 +49,20 @@ import type {
  * @category Automation State
  * @nonexhaustive
  */
-export const enum AutomationOperation {
+export const AutomationOperation = {
+
   /** Replace editable fields using {@link AutomationUpdateRequestedAction | `automation/updateRequested`}. */
-  Update = 'update',
+  Update: 'update',
   /** Permanently remove the automation using {@link AutomationRemovedAction | `automation/removed`}. */
-  Remove = 'remove',
+  Remove: 'remove',
   /** Start a manual run using {@link RunAutomationParams | runAutomation}. */
-  Run = 'run',
+  Run: 'run',
+} as const;
+export type AutomationOperation = (typeof AutomationOperation)[keyof typeof AutomationOperation];
+export namespace AutomationOperation {
+  export type Update = (typeof AutomationOperation)["Update"];
+  export type Remove = (typeof AutomationOperation)["Remove"];
+  export type Run = (typeof AutomationOperation)["Run"];
 }
 
 /**
@@ -127,11 +134,17 @@ export namespace AutomationMisfirePolicy {
  * @category Automation State
  * @exhaustive
  */
-export const enum AutomationTriggerKind {
+export const AutomationTriggerKind = {
+
   /** A portable recurring {@link AutomationSchedule}. */
-  Schedule = 'schedule',
+  Schedule: 'schedule',
   /** A host-defined external event discovered from trigger definitions. */
-  Event = 'event',
+  Event: 'event',
+} as const;
+export type AutomationTriggerKind = (typeof AutomationTriggerKind)[keyof typeof AutomationTriggerKind];
+export namespace AutomationTriggerKind {
+  export type Schedule = (typeof AutomationTriggerKind)["Schedule"];
+  export type Event = (typeof AutomationTriggerKind)["Event"];
 }
 
 /**
