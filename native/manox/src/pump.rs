@@ -101,6 +101,21 @@ pub(crate) fn start(on_frame: Callback<crate::ManoxFrame>, cx: CallCx<'_>) -> Re
         thread::Builder::new()
             .name("manox-host".to_owned())
             .spawn(move || {
+                // The boot runs BEFORE the runtime context exists: boot() (via
+                // `agent_server::global`) block_on's the kernel's own global
+                // runtime, and a block_on from inside this thread's
+                // current-thread runtime is the "cannot start a runtime from
+                // within a runtime" panic — deterministic, not environmental.
+                // boot() is the process singleton (try_runtime short-circuits),
+                // so the sessions spawned inside supervise only reuse it.
+                if let Err(error) = (|| {
+                    std::panic::catch_unwind(crate::real::boot)
+                        .unwrap_or_else(|panic| Err(format!("the manox boot panicked: {panic:?}")))
+                        .map(|_| ())
+                })() {
+                    let _ = events.blocking_send(PumpEvent::TransportError(error));
+                    return;
+                }
                 let runtime = match tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()
