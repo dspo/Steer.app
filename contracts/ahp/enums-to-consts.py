@@ -23,7 +23,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent
 
-ENUM_RE = re.compile(r"export const enum (\w+) \{")
+ENUM_RE = re.compile(r"export (?:const )?enum (\w+) \{")
 MEMBER_RE = re.compile(r"^(\s*)(\w+)\s*=\s*(.+?),?\s*(//.*)?$")
 BARE_RE = re.compile(r"^(\s*)(\w+),?\s*(//.*)?$")
 

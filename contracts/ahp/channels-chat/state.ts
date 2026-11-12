@@ -700,23 +700,32 @@ export interface ActiveTurn {
  * @category Turn Types
  * @nonexhaustive
  */
-export enum MessageKind {
+export const MessageKind = {
+
   /** Sent directly by the user. */
-  User = 'user',
+  User: 'user',
   /**
    * Produced by the agent itself rather than the user — for example, an agent
    * that seeds the first message of a chat it spawned.
    */
-  Agent = 'agent',
+  Agent: 'agent',
   /**
    * Produced by a tool rather than the user — for example, a tool that spawns a
    * worker chat whose first message carries a seed prompt.
    */
-  Tool = 'tool',
+  Tool: 'tool',
   /** Emitted automatically when an automation run starts a session. */
-  Automation = 'automation',
+  Automation: 'automation',
   /** A system-generated notification rather than a direct user message. */
-  SystemNotification = 'systemNotification',
+  SystemNotification: 'systemNotification',
+} as const;
+export type MessageKind = (typeof MessageKind)[keyof typeof MessageKind];
+export namespace MessageKind {
+  export type User = (typeof MessageKind)["User"];
+  export type Agent = (typeof MessageKind)["Agent"];
+  export type Tool = (typeof MessageKind)["Tool"];
+  export type Automation = (typeof MessageKind)["Automation"];
+  export type SystemNotification = (typeof MessageKind)["SystemNotification"];
 }
 
 /**
