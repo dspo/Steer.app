@@ -4,8 +4,8 @@
 
 **当前进度（2026-11-12）**：§2.1-1（`a58e0ad`）、§2.1-2（`bcd4004`）、§2.1.1 F1（`4293eb7`）已提交；
 §2.0 的 P0-1 / P0-2（模型注册与无模型界面）已完成，证据见 [evidence/s20-models.md](evidence/s20-models.md)；
-四条调整已并入（`b1f4937`）。门禁全绿（`nsh check` ✓、`cargo check --all-targets` ✓、`nsh test` ✓、
-`script/bundle-mac.sh` ✓），证据见 [evidence/s1-hero-sheet.md](evidence/s1-hero-sheet.md)、
+四条调整已并入（`b1f4937`）。门禁全绿（`nsh check` ✓、`cargo check --all-targets` ✓ 零告警、`nsh test` 265/265 且连跑 3 次全绿、
+`nsh build` ✓、`script/bundle-mac.sh` ✓ 133M/53M），证据见 [evidence/s1-hero-sheet.md](evidence/s1-hero-sheet.md)、
 [evidence/s21-2-switch-hydrate.md](evidence/s21-2-switch-hydrate.md)、
 [evidence/s21-1-hero-actions.md](evidence/s21-1-hero-actions.md)、
 [evidence/s211-f2f3-container-terminals.md](evidence/s211-f2f3-container-terminals.md)、
