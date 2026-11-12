@@ -69,7 +69,10 @@ const NO_MODEL_MESSAGE: &str =
 /// runner process run before or after that boot and see a temp `HOME` —
 /// they use fixtures and temp dirs, never the developer's real store.
 fn apply_runner_isolation() {
-    if std::env::var_os("MANOX_HOME").is_some() {
+    // An explicit root wins; so does the live-model opt-out — the live gate's
+    // documented run (MANOX_RUN_LIVE=1, no MANOX_HOME) wants the process's own
+    // credentials, which the hermetic redirect would hide (skip, not fail).
+    if std::env::var_os("MANOX_HOME").is_some() || std::env::var("MANOX_RUN_LIVE").as_deref() == Ok("1") {
         return;
     }
     let is_runner = std::env::current_exe()
