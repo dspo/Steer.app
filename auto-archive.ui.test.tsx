@@ -20,7 +20,7 @@ test("closing a container's last sheets archives it, with the row's exit", async
   // The archive reached the transport and the canvas (no container left)
   // lands on the scratch Hero; the sidebar animates the row out (§3.8) and
   // then has nothing to show.
-  await app.waitFor("id:launcher-input", { timeout: 5000 });
+  await app.waitFor("id:hero-input", { timeout: 5000 });
   const state = () => app.texts().find((text) => text.startsWith("panels=")) ?? "";
   await app.waitUntil(() => state().includes("rows=0") && state().includes("container.archive:c1"), {
     timeout: 5000,

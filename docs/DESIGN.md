@@ -11,7 +11,7 @@
 
 - 颜色只从 `theme.json` 的语义 token 取；`*.tsx` 里没有 raw hex / `rgb()` / `black` / `white`。
 - 半径来自有限阶梯：8（控件）、10（行）、12（表面/对话框/composer）。
-- 阴影只给浮起的东西：选中行、Launcher/对话框、菜单、toast。平面区域靠背景和 hairline 分界。
+- 阴影只给浮起的东西：选中行、Hero/对话框、菜单、toast。平面区域靠背景和 hairline 分界。
 - 字体走 12 / 12.5 / 13 / 14 / 14.5 / 15 / 18 的窄阶梯；正文 14.5 / 22，次要信息 10.5–12。
 - 动效只解释变化：120ms 颜色/透明度，180ms 背景 + 阴影。没有装饰性动画。
 
@@ -24,7 +24,7 @@
 | `background` | `#ffffff` | `#131316` | 画布、composer 外沿 |
 | `card` | `#ffffff` | `#1b1b1f` | 选中行、composer 卡片、对话框 |
 | `sidebar` | `#fafafd` | `#171719` | 项目/会话栏 |
-| `inset` | `#f7f7f9` | `#101013` | 页签条、Launcher 底、工具卡 |
+| `inset` | `#f7f7f9` | `#101013` | 页签条、Hero 底、工具卡 |
 | `popover` | `#ffffff` | `#1e1e23` | 菜单/弹出层 |
 | `toast` | `#ffffff` | `#1e1e23` | toast 面 |
 | `foreground` | `#1d1d1f` | `#e8e8ea` | 主文字 |
@@ -46,7 +46,7 @@
 
 ```ts
 shadowCard()    // 0 1px 2px shadow                    选中行
-shadowRaised()  // 0 1px 2px + 0 8px 24px shadow      Launcher / 菜单 / toast
+shadowRaised()  // 0 1px 2px + 0 8px 24px shadow      Hero / 菜单 / toast
 shadowDialog()  // 0 2px 6px + 0 18px 44px shadow-strong  对话框
 motion.fast     // 120ms ease-out：background/opacity/color/border
 motion.medium   // 180ms ease-out：background/opacity/box-shadow
@@ -191,8 +191,8 @@ Terminal/Claude/Codex/Copilot/Pi 的定义来源）：
 - **Composer**：外层 `border-t + line`，卡片 `bg-card`、`border-border`、半径 12、
   `shadowCard()`；输入区无边框，焦点用 caret 表达；footer 左侧 10.5pt 提示，右侧 30pt
   圆形发送（primary / destructive / muted 三态）。
-- **Launcher / 项目对话框**：同一张白卡：半径 12、`border-border`、20pt 内边距、15pt 标题、
-  12pt 标签、10pt 输入半径、8pt 按钮；Launcher 用 `shadowRaised()`，对话框用
+- **Hero / 项目对话框**：同一张白卡：半径 12、`border-border`、20pt 内边距、15pt 标题、
+  12pt 标签、10pt 输入半径、8pt 按钮；Hero 用 `shadowRaised()`，对话框用
   `shadowDialog()`；backdrop 用 `bg-scrim`。
 - **Menu**：`bg-popover`、半径 12、`border-border`、`popupStyle` + `shadowRaised()`；行
   半径 8、10pt 横内边距、hover/focus `bg-hover`、pressed `bg-accent`。所有菜单共用一套。
@@ -262,7 +262,7 @@ selected/dark/900 断点；过渡中间帧与 streaming/menu/dialog 动画需在
    选择框此前贴在窗口左上角。这是 M6 发现并修掉的既有缺陷。
 5. **悬停/按下/焦点成对出现。** 行加 hover + pressed + focus-visible；图标按钮统一
    radius 8 与 outline focus；菜单行加 focus/pressed。焦点用 outline，避开选中行内联阴影。
-6. **所有浮层共用一套表面。** 菜单、toast、Launcher、两种对话框都用 12 半径 +
+6. **所有浮层共用一套表面。** 菜单、toast、Hero、两种对话框都用 12 半径 +
    `border-border` + 同一组 `shadow*`；没有第二套菜单样式。
 7. **滚动条主题化。** `Scrollbar.setTheme` 是唯一入口，thumb 颜色来自 token，随
    light/dark 切换。

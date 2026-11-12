@@ -32,7 +32,7 @@ import {
   orderedProjects,
   projectError,
 } from "./projects";
-import { ProjectDialog } from "./launcher";
+import { ProjectDialog } from "./hero";
 import { panelIds } from "./dock";
 import { error as sessionError, refreshSessions, sessions } from "./sessions";
 import { SheetBody, sheetGlyph, sheetTitle } from "./sheets";

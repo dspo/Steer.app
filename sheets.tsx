@@ -21,7 +21,7 @@ import {
   terminalTitle,
 } from "./terminals";
 import { K, t } from "./i18n";
-import { HeroSheet } from "./launcher";
+import { HeroSheet } from "./hero";
 import { Chip, Dot, Glyph, type GlyphName } from "./ui";
 import { DiffBody, EditorBody, FilesBody } from "./files";
 import { browserTabTitle } from "./browser";

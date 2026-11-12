@@ -187,20 +187,20 @@ export function HeroSheet(props: { id: string }) {
     <View class="flex-1 items-center justify-center bg-background" style={{ paddingHorizontal: 32, paddingVertical: 32 }}>
       <View style={{ width: "100%", maxWidth: 720, gap: 18 }}>
         <Text class="text-[15px] font-bold text-foreground" style={{ textAlign: "center" }}>
-          {t(K.launcher.title)}
+          {t(K.hero.title)}
         </Text>
 
         {/* The same bare composer as an empty session's hero: no card, no
             shadow, no bubble around the input. */}
         <View style={{ gap: 6 }}>
           <Input
-            testID="launcher-input"
+            testID="hero-input"
             value={draft()}
             onChange={({ value }) => draft.set(value)}
             multiline
             submitBehavior="submit"
             autoFocus
-            placeholder={t(K.launcher.placeholder)}
+            placeholder={t(K.hero.placeholder)}
             onSubmit={submit}
             onFocus={() => focused.set(true)}
             onBlur={() => focused.set(false)}
@@ -220,7 +220,7 @@ export function HeroSheet(props: { id: string }) {
           />
           <View class="flex-row items-center gap-2 border-t border-line" style={{ paddingTop: 8 }}>
             <View class="flex-row items-center gap-1.5">
-              <Text class="text-[10.5px] font-medium text-faint">{t(K.launcher.project)}</Text>
+              <Text class="text-[10.5px] font-medium text-faint">{t(K.hero.project)}</Text>
               <If
                 when={locked()}
                 else={
@@ -228,8 +228,8 @@ export function HeroSheet(props: { id: string }) {
                     trigger={
                       <View
                         role="button"
-                        testID="launcher-project"
-                        accessibilityLabel={t(K.launcher.project)}
+                        testID="hero-project"
+                        accessibilityLabel={t(K.hero.project)}
                         class="h-6 flex-row items-center gap-1 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
                         style={{ ...motionStyle("fast") }}
                       >
@@ -248,7 +248,7 @@ export function HeroSheet(props: { id: string }) {
                     <Each of={projects()} key={(project) => project.id}>
                       {(project) => (
                         <MenuItem
-                          testID={`launcher-project-${project().id}`}
+                          testID={`hero-project-${project().id}`}
                           class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
                           onSelect={() => heroProjectId.set(project().id)}
                         >
@@ -258,7 +258,7 @@ export function HeroSheet(props: { id: string }) {
                     </Each>
                     <MenuSeparator class="my-1 h-px bg-line" />
                     <MenuItem
-                      testID="launcher-new-project"
+                      testID="hero-new-project"
                       class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
                       onSelect={() => openProjectDialog((project) => heroProjectId.set(project.id))}
                     >
@@ -271,8 +271,8 @@ export function HeroSheet(props: { id: string }) {
               </If>
             </View>
             <View style={{ flex: 1 }} />
-            <Text class="text-[10px] text-faint" testID="launcher-hint">
-              {starting() ? t(K.launcher.starting) : t(K.launcher.hint, { shortcut: hint() })}
+            <Text class="text-[10px] text-faint" testID="hero-hint">
+              {starting() ? t(K.hero.starting) : t(K.hero.hint, { shortcut: hint() })}
             </Text>
           </View>
         </View>
@@ -281,7 +281,7 @@ export function HeroSheet(props: { id: string }) {
             the labels are the actions. */}
         <View style={{ gap: 6, alignItems: "flex-start" }}>
           <View class="flex-row items-center gap-4">
-            <LauncherTool
+            <HeroTool
               testID="external-terminal"
               label={t(K.external.terminal)}
               glyph={EXTERNAL_GLYPH.Terminal}
@@ -289,8 +289,8 @@ export function HeroSheet(props: { id: string }) {
               busy={busy() === "Terminal"}
               onPress={() => void startExternal("Terminal")}
             />
-            <LauncherTool
-              testID="launcher-browser"
+            <HeroTool
+              testID="hero-browser"
               label={t(K.browser.open)}
               glyph="globe"
               disabled={starting()}
@@ -302,7 +302,7 @@ export function HeroSheet(props: { id: string }) {
               {(action) => {
                 const value = action();
                 return (
-                  <LauncherTool
+                  <HeroTool
                     testID={`external-${value.kind.toLowerCase()}`}
                     label={t(K.external[value.key])}
                     brand={value.brand}
@@ -313,8 +313,8 @@ export function HeroSheet(props: { id: string }) {
                 );
               }}
             </Each>
-            <LauncherTool
-              testID="launcher-pi"
+            <HeroTool
+              testID="hero-pi"
               label={t(K.external.pi)}
               brand="pi"
               disabled={starting() || !readyToCreate() || needsProject()}
@@ -335,7 +335,7 @@ export function HeroSheet(props: { id: string }) {
 }
 
 /** One direct tool below the hero composer. */
-function LauncherTool(props: {
+function HeroTool(props: {
   testID: string;
   label: string;
   glyph?: GlyphName;
@@ -380,7 +380,7 @@ const projectDialogError = signal<string | null>(null);
 const projectPicking = signal(false);
 let projectCreated: ((project: ProjectRecord) => void) | null = null;
 
-/** Opens the project dialog; `onCreated` adopts the new project (the Launcher's chip). */
+/** Opens the project dialog; `onCreated` adopts the new project (the Hero's chip). */
 function openProjectDialog(onCreated?: (project: ProjectRecord) => void): void {
   projectNameDraft.set("");
   projectRootsDraft.set([]);

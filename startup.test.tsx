@@ -48,7 +48,7 @@ test("startup shows the registry's active container and hydrates its conversatio
   await app.waitUntil(() => app.count("id:user-message") > 0, { timeout: 30000 });
   expect(app.texts()).toContain("startup marker alpha");
   // The canvas is A's sheet, not B's and not a page.
-  expect(app.shows("id:launcher-input")).toBe(false);
+  expect(app.shows("id:hero-input")).toBe(false);
   expect(b.container.id).not.toBe(aId);
 }, 240000);
 
@@ -59,18 +59,18 @@ test("the scratch Hero's Pi and agent actions open their sheets", async () => {
   const made = await request("project.create", { name: "S21", roots: [{ path: "/tmp", primary: true }] }, 20000);
   const app = await open("./App.tsx", { network: "live", width: 1280, height: 800 });
   await app.waitFor(`label:${copy("运行中", "Running")}`, { timeout: 20000 });
-  await app.waitFor("id:launcher-pi", { timeout: 20000 });
-  await app.press("id:launcher-project");
-  await app.waitFor(`id:launcher-project-${made.project.id}`, { timeout: 20000 });
-  await app.press(`id:launcher-project-${made.project.id}`);
-  await app.waitUntil(() => app.enabled("id:launcher-pi"), { timeout: 20000 });
+  await app.waitFor("id:hero-pi", { timeout: 20000 });
+  await app.press("id:hero-project");
+  await app.waitFor(`id:hero-project-${made.project.id}`, { timeout: 20000 });
+  await app.press(`id:hero-project-${made.project.id}`);
+  await app.waitUntil(() => app.enabled("id:hero-pi"), { timeout: 20000 });
 
   // Pi: the native `pi` CLI, opened as a terminal of the container the
   // scratch Hero mints (§2.1.1 F3). The Zu session is the composer's lane.
-  await app.press("id:launcher-pi");
+  await app.press("id:hero-pi");
   await app.waitUntil(() => app.shows("id:terminal-view"), { timeout: 60000 });
   expect(app.texts().some((text) => text.startsWith("Pi · "))).toBe(true);
-  expect(app.shows("id:launcher-input")).toBe(false);
+  expect(app.shows("id:hero-input")).toBe(false);
 
   // Each TUI action leaves the scratch canvas for its terminal sheet. New
   // starts on Chats (no project), so each pass picks the project again.
@@ -80,13 +80,13 @@ test("the scratch Hero's Pi and agent actions open their sheets", async () => {
     ["external-copilot", "GitHub Copilot"],
   ] as const) {
     await app.press("id:new-container");
-    await app.waitFor("id:launcher-input", { timeout: 20000 });
-    await app.press("id:launcher-project");
-    await app.waitFor(`id:launcher-project-${made.project.id}`, { timeout: 20000 });
-    await app.press(`id:launcher-project-${made.project.id}`);
+    await app.waitFor("id:hero-input", { timeout: 20000 });
+    await app.press("id:hero-project");
+    await app.waitFor(`id:hero-project-${made.project.id}`, { timeout: 20000 });
+    await app.press(`id:hero-project-${made.project.id}`);
     await app.press(`id:${tool}`);
     await app.waitUntil(() => app.shows("id:terminal-view"), { timeout: 30000 });
-    expect(app.shows("id:launcher-input")).toBe(false);
+    expect(app.shows("id:hero-input")).toBe(false);
     // The container's kind is its label: in the tab and the sidebar row.
     expect(app.texts().some((text) => text.includes(label))).toBe(true);
   }

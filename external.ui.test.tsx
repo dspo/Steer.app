@@ -33,10 +33,10 @@ afterAll(async () => {
 async function pickProject(app: any): Promise<void> {
   await connect();
   const made = await request("project.create", { name: "M7", roots: [{ path: "/tmp", primary: true }] }, 20000);
-  await app.waitFor("id:launcher-input", { timeout: 20000 });
-  await app.press("id:launcher-project");
-  await app.waitFor(`id:launcher-project-${made.project.id}`, { timeout: 20000 });
-  await app.press(`id:launcher-project-${made.project.id}`);
+  await app.waitFor("id:hero-input", { timeout: 20000 });
+  await app.press("id:hero-project");
+  await app.waitFor(`id:hero-project-${made.project.id}`, { timeout: 20000 });
+  await app.press(`id:hero-project-${made.project.id}`);
 }
 
 test("the Hero opens an external terminal container without a composer", async () => {
@@ -82,7 +82,7 @@ test("a terminal's own exit archives its container", async () => {
   await app.type("id:terminal-view", "exit");
   await app.keyboard.press("enter");
   await app.waitUntil(() => !app.shows("id:terminal-view"), { timeout: 20000 });
-  await app.waitFor("id:launcher-input", { timeout: 20000 });
+  await app.waitFor("id:hero-input", { timeout: 20000 });
   expect(app.shows("id:terminal-view")).toBe(false);
 }, 60000);
 

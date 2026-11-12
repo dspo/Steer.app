@@ -238,7 +238,7 @@ function Hero(props: { id: string }) {
     >
       <View style={{ width: "100%", maxWidth: 720, gap: 20 }}>
         <Text class="text-[16px] font-black text-foreground" style={{ textAlign: "center" }}>
-          {t(K.launcher.title)}
+          {t(K.hero.title)}
         </Text>
         <ChatComposer sessionId={props.id} autofocus />
       </View>

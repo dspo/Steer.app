@@ -136,13 +136,13 @@ export const K = {
     aborted: "app.subagents.aborted",
     interrupted: "app.subagents.interrupted",
   },
-  launcher: {
-    title: "app.launcher.title",
-    subtitle: "app.launcher.subtitle",
-    placeholder: "app.launcher.placeholder",
-    project: "app.launcher.project",
-    starting: "app.launcher.starting",
-    hint: "app.launcher.hint",
+  hero: {
+    title: "app.hero.title",
+    subtitle: "app.hero.subtitle",
+    placeholder: "app.hero.placeholder",
+    project: "app.hero.project",
+    starting: "app.hero.starting",
+    hint: "app.hero.hint",
   },
   container: {
     title: "app.container.title",

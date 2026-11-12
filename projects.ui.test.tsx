@@ -57,12 +57,12 @@ test("the Hero starts a conversation and then shows its container", async () => 
   // tab bar's own `+` is the proof the tree is there, not a page).
   await app.waitFor("id:tab-plus-home:scratch");
   expect(app.texts()).toContain("开始");
-  await app.type("id:launcher-input", "hello from launcher");
+  await app.type("id:hero-input", "hello from launcher");
   // Enter sends; there is no Start button.
-  expect(app.count("id:launcher-send")).toBe(0);
+  expect(app.count("id:hero-send")).toBe(0);
   expect(app.texts().some((text) => text.includes("Shift+Enter 换行"))).toBe(true);
-  expect(app.count("id:launcher-hint")).toBe(1);
-  await app.submit("id:launcher-input");
+  expect(app.count("id:hero-hint")).toBe(1);
+  await app.submit("id:hero-input");
   await app.waitUntil(() => !app.texts().includes("开始你的对话"));
   expect(app.texts()).toContain("Chat");
   expect(app.texts()).toContain("hello from launcher");
@@ -72,16 +72,16 @@ test("New reaches the scratch canvas from a container, by button and by Cmd+N", 
   const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:alpha body");
   await app.press("id:new-container");
-  await app.waitFor("id:launcher-input");
+  await app.waitFor("id:hero-input");
   await app.waitFor("id:tab-plus-home:scratch");
   // Asking again keeps one Hero sheet on the canvas.
   await app.press("id:new-container");
-  expect(app.count("id:launcher-input")).toBe(1);
+  expect(app.count("id:hero-input")).toBe(1);
   // Leaving scratch and coming back keeps the same scratch canvas.
   await app.press("id:container-row-c1");
   await app.waitFor("text:alpha body");
   await app.keyboard.press("mod+n");
-  await app.waitFor("id:launcher-input");
+  await app.waitFor("id:hero-input");
   await app.waitFor("id:tab-plus-home:scratch");
   await shot(app, "ui-s2-scratch-hero");
 });
@@ -113,8 +113,8 @@ test("the Hero's project menu creates a project from Finder-picked roots", async
   // Creation is reached from the Hero's project chip, not the sidebar.
   await app.press("id:new-container");
   await app.waitFor("text:开始你的对话");
-  await app.press("id:launcher-project");
-  await app.press("id:launcher-new-project");
+  await app.press("id:hero-project");
+  await app.press("id:hero-new-project");
   await app.waitFor("text:新建项目");
   // No roots yet: the dialog cannot create, and there is no free-form field.
   expect(app.enabled("id:project-create")).toBe(false);
@@ -150,11 +150,11 @@ test("the Hero's tools are two left-aligned rows with plain labels", async () =>
   await shot(app, "ui-s23-14-brand-icons");
   for (const id of [
     "external-terminal",
-    "launcher-browser",
+    "hero-browser",
     "external-claude",
     "external-codex",
     "external-copilot",
-    "launcher-pi",
+    "hero-pi",
   ]) {
     expect(app.count(`id:${id}`)).toBe(1);
   }
@@ -174,11 +174,11 @@ test("Enter sends, Cmd+Enter sends and an empty composer never starts", async ()
   await app.press("id:new-container");
   await app.waitFor("text:开始你的对话");
   // Return on an empty draft does nothing.
-  await app.submit("id:launcher-input");
+  await app.submit("id:hero-input");
   await app.wait(100);
   expect(app.shows("text:开始你的对话")).toBe(true);
   // Cmd+Enter is the explicit lane; the focused composer binds it.
-  await app.type("id:launcher-input", "sent with command return");
+  await app.type("id:hero-input", "sent with command return");
   await app.keyboard.press("mod+enter");
   await app.waitUntil(() => !app.texts().includes("开始你的对话"));
   expect(app.texts()).toContain("sent with command return");
@@ -207,14 +207,14 @@ test("the scratch canvas holds a browser page and moves it into the container it
 
   // New → the scratch canvas's Hero; the project chip picks the target.
   await app.press("id:new-container");
-  await app.waitFor("id:launcher-input");
-  await app.press("id:launcher-project");
-  await app.waitFor("id:launcher-project-p2");
-  await app.press("id:launcher-project-p2");
+  await app.waitFor("id:hero-input");
+  await app.press("id:hero-project");
+  await app.waitFor("id:hero-project-p2");
+  await app.press("id:hero-project-p2");
 
   // The browser works before a container exists: its page is staged on the
   // scratch canvas (and the Hero's tab, being consumed, is gone).
-  await app.press("id:launcher-browser");
+  await app.press("id:hero-browser");
   await app.waitFor("id:browser-address");
   await app.type("id:browser-address", "example.org");
   await app.submit("id:browser-address");
@@ -226,17 +226,17 @@ test("the scratch canvas holds a browser page and moves it into the container it
   await app.press("id:container-row-c1");
   await app.waitFor("text:alpha body");
   await app.press("id:new-container");
-  await app.waitFor("id:launcher-input");
+  await app.waitFor("id:hero-input");
   expect(scratchState(app).panels).toContain("webview:scratch:1");
   expect(scratchState(app).active).toBe("scratch");
 
   // Submit: the Hero mints a container in the chosen project, and the page
   // moves with it — re-keyed to the container, address intact.
-  await app.press("id:launcher-project");
-  await app.waitFor("id:launcher-project-p2");
-  await app.press("id:launcher-project-p2");
-  await app.type("id:launcher-input", "mint from scratch");
-  await app.submit("id:launcher-input");
+  await app.press("id:hero-project");
+  await app.waitFor("id:hero-project-p2");
+  await app.press("id:hero-project-p2");
+  await app.type("id:hero-input", "mint from scratch");
+  await app.submit("id:hero-input");
   await app.waitUntil(() => scratchState(app).active === "c3", { timeout: 10000 });
   const state = scratchState(app);
   expect(state.panels).toContain("webview:c3:1");
@@ -263,8 +263,8 @@ test("a container's Hero and titlebar offer every action", async () => {
   // The container's Hero (the tab bar's `+`): every tool is live, and so are
   // the workspace sheets in the titlebar.
   await app.press("id:tab-plus-session:s1");
-  await app.waitFor("id:launcher-input");
-  for (const id of ["external-terminal", "launcher-browser", "external-claude", "launcher-pi"]) {
+  await app.waitFor("id:hero-input");
+  for (const id of ["external-terminal", "hero-browser", "external-claude", "hero-pi"]) {
     expect(app.enabled(`id:${id}`)).toBe(true);
   }
   await titlebarTools(app);
@@ -277,11 +277,11 @@ test("a scratch canvas with a project offers the actions but not the workspace s
   const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:alpha body");
   await app.press("id:new-container");
-  await app.waitFor("id:launcher-input");
-  await app.press("id:launcher-project");
-  await app.waitFor("id:launcher-project-p1");
-  await app.press("id:launcher-project-p1");
-  for (const id of ["external-terminal", "launcher-browser", "launcher-pi"]) {
+  await app.waitFor("id:hero-input");
+  await app.press("id:hero-project");
+  await app.waitFor("id:hero-project-p1");
+  await app.press("id:hero-project-p1");
+  for (const id of ["external-terminal", "hero-browser", "hero-pi"]) {
     expect(app.enabled(`id:${id}`)).toBe(true);
   }
   await titlebarTools(app);
@@ -297,10 +297,10 @@ test("a scratch canvas without a project keeps the browser and the chip", async 
   // New starts on Chats: no workspace target, so the minting tools wait for
   // a project; the browser and the chip still work.
   await app.press("id:new-container");
-  await app.waitFor("id:launcher-input");
-  expect(app.enabled("id:launcher-browser")).toBe(true);
-  expect(app.enabled("id:launcher-project")).toBe(true);
-  for (const id of ["external-terminal", "external-claude", "launcher-pi"]) {
+  await app.waitFor("id:hero-input");
+  expect(app.enabled("id:hero-browser")).toBe(true);
+  expect(app.enabled("id:hero-project")).toBe(true);
+  for (const id of ["external-terminal", "external-claude", "hero-pi"]) {
     expect(app.enabled(`id:${id}`)).toBe(false);
   }
   await titlebarTools(app);

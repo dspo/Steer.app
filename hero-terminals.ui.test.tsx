@@ -15,19 +15,19 @@ function stateOf(app: { texts: () => string[] }): { panels: string; containers: 
 
 test("a container's Hero opens its terminals inside that container", async () => {
   const app = await open("./fixtures/hero-terminals.tsx", { width: 1200, height: 800 });
-  await app.waitFor("id:launcher-input", { timeout: 20000 });
+  await app.waitFor("id:hero-input", { timeout: 20000 });
   expect(stateOf(app).panels).toBe("home:c1");
 
   // Terminal: a shell in c1. The Hero's tab becomes the terminal's.
   await app.press("id:external-terminal");
   await app.waitUntil(() => stateOf(app).panels === "terminal:c1:1", { timeout: 20000 });
   expect(app.shows("id:terminal-view")).toBe(true);
-  expect(app.shows("id:launcher-input")).toBe(false);
+  expect(app.shows("id:hero-input")).toBe(false);
   expect(stateOf(app).containers).toBe(1);
 
   // The Hero is gone from the tree; `+` on the tab bar brings it back.
   await app.press("id:tab-plus-terminal:c1:1");
-  await app.waitFor("id:launcher-input", { timeout: 10000 });
+  await app.waitFor("id:hero-input", { timeout: 10000 });
   await app.press("id:external-claude");
   await app.waitUntil(() => stateOf(app).panels.includes("terminal:c1:2"), { timeout: 20000 });
   // Two terminal resources of one container; the sidebar still has one row.
@@ -50,10 +50,10 @@ test("a container's Hero opens its terminals inside that container", async () =>
 // the container; the Zu session is only ever reached through the composer.
 test("the Hero's Pi opens the native TUI, and the composer owns the Zu session", async () => {
   const app = await open("./fixtures/hero-terminals.tsx", { width: 1200, height: 800 });
-  await app.waitFor("id:launcher-input", { timeout: 20000 });
+  await app.waitFor("id:hero-input", { timeout: 20000 });
   expect(stateOf(app).panels).toBe("home:c1");
 
-  await app.press("id:launcher-pi");
+  await app.press("id:hero-pi");
   await app.waitUntil(() => stateOf(app).panels === "terminal:c1:1", { timeout: 20000 });
   expect(app.texts().some((text) => text.startsWith("Pi · "))).toBe(true);
   // The Zu session sheet did not come up: Pi as an action is the CLI.
@@ -63,17 +63,17 @@ test("the Hero's Pi opens the native TUI, and the composer owns the Zu session",
   // The composer is the Zu session's lane: its submit puts the session sheet
   // on the canvas (the prompt itself needs an engine this fixture has none of).
   await app.press("id:tab-plus-terminal:c1:1");
-  await app.waitFor("id:launcher-input", { timeout: 10000 });
-  await app.type("id:launcher-input", "start the conversation");
-  await app.submit("id:launcher-input");
+  await app.waitFor("id:hero-input", { timeout: 10000 });
+  await app.type("id:hero-input", "start the conversation");
+  await app.submit("id:hero-input");
   await app.waitUntil(() => stateOf(app).panels.includes("session:s1"), { timeout: 20000 });
   expect(app.shows("id:session-input")).toBe(true);
 
   // Pi again, this time with a Zu session open: the TUI joins the canvas as
   // its own tab and leaves the session sheet where it was.
   await app.press("id:tab-plus-terminal:c1:1");
-  await app.waitFor("id:launcher-input", { timeout: 10000 });
-  await app.press("id:launcher-pi");
+  await app.waitFor("id:hero-input", { timeout: 10000 });
+  await app.press("id:hero-pi");
   await app.waitUntil(() => stateOf(app).panels.includes("terminal:c1:2"), { timeout: 20000 });
   expect(stateOf(app).panels.includes("session:s1")).toBe(true);
   expect(stateOf(app).pty).toBe(2);

@@ -38,16 +38,16 @@ test("switching to a container with a conversation shows its transcript, not the
   await app.press(`id:container-row-${a.container.id}`);
   await app.waitFor("id:session-transcript", { timeout: 30000 });
   expect(app.texts()).toContain("hello A");
-  expect(app.texts()).not.toContain(t(K.launcher.title, { locale: shellCopyLocale() }));
+  expect(app.texts()).not.toContain(t(K.hero.title, { locale: shellCopyLocale() }));
 
   await app.press(`id:container-row-${b.container.id}`);
   await app.waitFor("id:session-hero", { timeout: 30000 });
   // B is empty: its start page is correct there.
-  expect(app.texts()).toContain(t(K.launcher.title, { locale: shellCopyLocale() }));
+  expect(app.texts()).toContain(t(K.hero.title, { locale: shellCopyLocale() }));
 
   await app.press(`id:container-row-${a.container.id}`);
   await app.waitFor("id:session-transcript", { timeout: 30000 });
-  expect(app.texts()).not.toContain(t(K.launcher.title, { locale: shellCopyLocale() }));
+  expect(app.texts()).not.toContain(t(K.hero.title, { locale: shellCopyLocale() }));
   expect(aSession.length).toBeGreaterThan(0);
   expect(bSession.length).toBeGreaterThan(0);
 }, 240000);

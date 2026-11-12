@@ -22,12 +22,12 @@ test("the top bar opens browser sheets, and the address bar normalizes a domain"
   // The Hero's Browser action is an entry too: it opens the sheet in the
   // active container and becomes a tab beside it.
   await app.press("id:open-hero");
-  await app.waitFor("id:launcher-browser");
-  await app.press("id:launcher-browser");
+  await app.waitFor("id:hero-browser");
+  await app.press("id:hero-browser");
   await app.waitFor("id:browser-address");
-  expect(app.shows("id:launcher-browser")).toBe(false);
+  expect(app.shows("id:hero-browser")).toBe(false);
   // The browser took the Hero's tab; the Hero is gone, not beside it.
-  expect(app.count("id:launcher-input")).toBe(0);
+  expect(app.count("id:hero-input")).toBe(0);
 
   // The default page says what may load and where page messages go.
   expect(app.count("id:browser-empty")).toBe(1);

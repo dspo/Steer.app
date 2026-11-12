@@ -80,7 +80,7 @@ export function shadowCard(): string {
   return `0 1px 2px ${token("shadow")}`;
 }
 
-/** A surface that sits above the page: menus, launcher cards, toasts. */
+/** A surface that sits above the page: menus, hero cards, toasts. */
 export function shadowRaised(): string {
   return `0 1px 2px ${token("shadow")}, 0 8px 24px ${token("shadow")}`;
 }

@@ -68,7 +68,7 @@ Composer 接入 pi 斜杆操作、新增代码仓库整洁化并行轨道（[pla
 | `containers.ts` | Container store: create/switch/archive, the scratch canvas (in-memory layout), layout stash + zoom restore, the Hero's open/submit paths, sidebar projection |
 | `projects.ts` | Project store: `projects.json` projection, explicit membership, the Hero's project target |
 | `subagents.ts` | Subagent roster store: runs, selection, read-only transcript, note/auto-open wiring |
-| `launcher.tsx` | The Hero sheet (`home:{containerId}` / `home:scratch`): project chip, composer, the two tool rows and the project creation dialog |
+| `hero.tsx` | The Hero sheet (`home:{containerId}` / `home:scratch`): project chip, composer, the two tool rows and the project creation dialog |
 | `tab-plus.tsx` | The `+` at each tab bar's right edge (nsh's `DockArea` has no trailing slot): group rectangles from the layout tree and the overlay button |
 | `dock.ts` | Layout data and pure edits: stable session and Hero sheet ids, append/activate/prune, visible-panel set |
 | `sheets.tsx` | The sheet registry: kinds, tab titles and glyphs; `home`/`session`/`terminal`/`files`/`editor`/`diff`/`changes`/`history` have real bodies, the rest mock |

@@ -283,7 +283,7 @@ M3 落地的注册表记录（`registry.json` 的 `containers[]`）：
 `runs[]` 记活跃 run（`{ id, containerId, sessionId, startedAt }`），进程启动时清空；`activeContainerId` 记上次活跃容器。
 
 - **类型由 0 号决定**：Pi 型 = captain AgentSession；external 型 = PTY 一号进程。
-- **GUI 映射**：侧栏一行 = 容器；主对话 sheet = captain 转录投影；subagents/统计等 = 成员投影（视图类）；容器内拉起的终端 = 资源；侧栏/Launcher 直接拉起的终端 = 独立 external 容器。
+- **GUI 映射**：侧栏一行 = 容器；主对话 sheet = captain 转录投影；subagents/统计等 = 成员投影（视图类）；容器内拉起的终端 = 资源；侧栏/Hero 直接拉起的终端 = 独立 external 容器。
 - **只两级对话树**：captain + subagents；子会话只收 captain 的消息，GUI 不开人类直连入口。
 
 ### 5.4 生命周期
