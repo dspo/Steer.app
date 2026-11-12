@@ -63,6 +63,18 @@ export interface ChannelCell {
   pending: Array<{ clientSeq: number; action: StateAction }>;
 }
 
+/**
+ * The host's last refusal of one of THIS client's dispatches, as the echo
+ * carried it (`rejectionReason` on the channel's numbered stream). The §3.4
+ * rejection 回报 face: the fold skips refusals and the ledger rolls back, so
+ * this signal is the one place the reason stays readable.
+ */
+export const lastRejection = signal<{
+  uri: URI;
+  actionType: string;
+  reason: string;
+} | null>(null);
+
 /** A server-originated catalog fact about a session (root channel). */
 export const catalog = signal<Record<string, SessionSummary>>({});
 /** The connection status line the conversation sheet shows. */
@@ -152,7 +164,11 @@ export async function ensureConnection(subscribeUris: URI[] = []): Promise<void>
   if (!clientId) clientId = newId();
   try {
     noteStatus("connecting");
-    const uris = [...new Set([...subscriptions, ...wanted])];
+    // The root channel is always subscribed: the catalogue notifications
+    // (`root/sessionAdded` and friends) fan out to root subscribers only.
+    // The stub era broadcast them unconditionally; the real host filters by
+    // subscription, so the sidebar's catalog dies without this leg.
+    const uris = [...new Set(["ahp-root://", ...subscriptions, ...wanted])];
     await request("initialize", {
       channel: "ahp-root://",
       protocolVersions: ["1.0.0"],
@@ -180,17 +196,25 @@ async function subscribe(uri: URI): Promise<void> {
 /**
  * Creates a channel this client owns (`createSession` for a session, `createChat`
  * for a chat — the pairing is the protocol's only parent link). Recorded so
- * `reconnect` can re-issue them against a rebuilt transport; both commands are
- * idempotent by uri, so a retried create lands on the same channel.
+ * `reconnect` can re-issue them against a rebuilt transport. Both are
+ * idempotent by uri at the CLIENT: the real host refuses a re-create of a
+ * channel it already holds ("session already exists") — the same fact a
+ * successful create would state — so that refusal is adopted, not thrown.
  */
 export async function createSessionOn(uri: URI, params: Record<string, unknown> = {}): Promise<void> {
   creations.set(uri, params);
-  await request("createSession", { channel: uri, ...params });
+  await request("createSession", { channel: uri, ...params }).catch(alreadyExistsAsCreated);
 }
 
 export async function createChatOn(sessionUri: URI, chatUri: URI): Promise<void> {
   creations.set(chatUri, { channel: sessionUri, chat: chatUri });
-  await request("createChat", { channel: sessionUri, chat: chatUri });
+  await request("createChat", { channel: sessionUri, chat: chatUri }).catch(alreadyExistsAsCreated);
+}
+
+/** A channel create the host already holds is a create that succeeded earlier. */
+function alreadyExistsAsCreated(failure: unknown): void {
+  if (String(failure).includes("already exists")) return;
+  throw failure;
 }
 
 /** Applies one `Snapshot`: the snapshot leg's whole state. */
@@ -290,9 +314,9 @@ export async function reconnect(): Promise<void> {
     // (idempotent by uri) before asking for the gap.
     for (const [uri, params] of creations) {
       if (uri.startsWith("ahp-session:/")) {
-        await request("createSession", { channel: uri, ...params });
+        await createSessionOn(uri, params);
       } else if (uri.startsWith("ahp-chat:/")) {
-        await request("createChat", params);
+        await createChatOn(params.channel as URI, uri);
       }
     }
     const result = await request<{ type: string; snapshots?: Snapshot[] }>("reconnect", {
@@ -334,6 +358,7 @@ export function stopConnection(): void {
   catalog.set({});
   pendingRequests.clear();
   pendingByClientSeq.clear();
+  lastRejection.set(null);
   creations.clear();
 }
 
@@ -381,7 +406,13 @@ function receive(text: string): void {
       }
       if (claimed && envelope.rejectionReason) {
         // Optimistic state rolls back: the pending entry is already gone
-        // from the ledger, so `effectiveState` folds it no more.
+        // from the ledger, so `effectiveState` folds it no more. The reason
+        // stays readable here.
+        lastRejection.set({
+          uri: envelope.channel,
+          actionType: (envelope.action as { type?: string })?.type ?? "",
+          reason: envelope.rejectionReason,
+        });
       }
     }
     applyEnvelope(envelope);
