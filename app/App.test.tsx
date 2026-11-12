@@ -23,14 +23,13 @@ test("the shell is a Steer titlebar over the project sidebar, with no status bar
   expect(app.count("id:new-container")).toBe(0);
   await app.press("id:sidebar-toggle");
   await app.waitUntil(() => app.count("id:new-container") === 1, { timeout: 5000 });
-  // There is no bottom status bar, and the engine's normal connected state
-  // is a quiet dot: the phase words appear only while it is not connected.
+  // There is no bottom status bar — and since the cutover there is no
+  // engine indicator either: the ACP transport has no resident process whose
+  // phase could show, quiet or otherwise. Reading the user's real ~/.pi as
+  // the backing store is the boot's long-standing behavior; nothing here
+  // names its contents.
   expect(app.count("id:status-bar")).toBe(0);
-  expect(app.count("id:engine-state")).toBe(1);
-  await app.waitFor(`label:${copy("运行中", "Running")}`, { timeout: 20000 });
-  await app.press("id:titlebar-tools");
-  await app.press("id:engine-stop");
-  await app.waitFor(`label:${copy("未启动", "Stopped")}`, { timeout: 10000 });
+  expect(app.count("id:engine-state")).toBe(0);
 });
 
 test("a conversation renders history, tool lines and prose", async () => {

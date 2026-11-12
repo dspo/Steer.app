@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, expect, open, test } from "nsh/test";
 import { Engine } from "zu/native";
-import { connect, request } from "./stores/engine";
+import { createProject } from "./stores/projects";
 import { copy } from "./ui/copy";
 
 
@@ -31,17 +31,18 @@ afterAll(async () => {
  * each case gives the scratch canvas one and picks it from the chip.
  */
 async function pickProject(app: any): Promise<void> {
-  await connect();
-  const made = await request("project.create", { name: "M7", roots: [{ path: "/tmp", primary: true }] }, 20000);
+  // The projects file is the UI's fold (zu/state): the store writes it, the
+  // app's own fold reads it — no sidecar anywhere.
+  const made = await createProject("M7", [{ path: "/tmp", primary: true }]);
   await app.waitFor("id:hero-input", { timeout: 20000 });
   await app.press("id:hero-project");
-  await app.waitFor(`id:hero-project-${made.project.id}`, { timeout: 20000 });
-  await app.press(`id:hero-project-${made.project.id}`);
+  await app.waitFor(`id:hero-project-${made?.id}`, { timeout: 20000 });
+  await app.press(`id:hero-project-${made?.id}`);
 }
 
 test("the Hero opens an external terminal container without a composer", async () => {
   const app = await open("./App.tsx", { network: "live", width: 1200, height: 800 });
-  await app.waitFor(`label:${copy("运行中", "Running")}`, { timeout: 20000 });
+  // The ACP boot mounts the folds at once; no phase label exists to wait on.
   // No containers: the canvas is the scratch canvas, whose only sheet is
   // the Hero (a tab of the tree, not a page beside it).
   await app.waitFor("id:external-terminal");
@@ -63,14 +64,12 @@ test("the Hero opens an external terminal container without a composer", async (
   await app.press(`label:${copy("归档容器", "Archive container")} ${title}`);
   await app.waitUntil(() => !app.texts().some((text) => text === title), { timeout: 10000 });
   expect(app.shows("id:terminal-view")).toBe(false);
-  await app.press("id:titlebar-tools");
-  await app.press("id:engine-stop");
-  await app.waitFor(`label:${copy("未启动", "Stopped")}`, { timeout: 10000 });
+  // No engine-stop tail: the cutover's boot starts no engine, and the
+  // titlebar carries no engine controls in the ACP transport.
 }, 60000);
 
 test("a terminal's own exit archives its container", async () => {
   const app = await open("./App.tsx", { network: "live", width: 1200, height: 800 });
-  await app.waitFor(`label:${copy("运行中", "Running")}`, { timeout: 20000 });
   await app.waitFor("id:external-terminal");
   await pickProject(app);
   await app.waitUntil(() => app.enabled("id:external-terminal"), { timeout: 20000 });

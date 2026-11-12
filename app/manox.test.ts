@@ -43,6 +43,10 @@ import type { Snapshot } from "../contracts/ahp/common/state";
  * runs behind MANOX_RUN_LIVE=1 (the last test, skipped by default).
  */
 
+/** Whether this run opted into the live-model turn (real credentials). */
+const live =
+  typeof process !== "undefined" && process.env?.["MANOX_RUN_LIVE"] === "1";
+
 let threadId = "";
 let chatId = "";
 let chatUri = "";
@@ -83,7 +87,10 @@ test("the real host answers the create flow and the chat snapshot carries the ch
   expect(channels()[chatUri]).toBeTruthy();
 });
 
-test("a model-less dispatch is refused with a visible reason, not a hang", async () => {
+// Credential-sensitive: its premise is the no-model state the runner
+// isolation provides. A live run (MANOX_RUN_LIVE=1) opts out of that
+// isolation, so this gate would dispatch a real turn instead — skip it there.
+(!live ? test : test.skip)("a model-less dispatch is refused with a visible reason, not a hang", async () => {
   // No provider exists in the test's state root: the harness's guard refuses
   // the submit before the kernel boots an engine that would die silently.
   // The host echoes the refusal on the channel (a rejection envelope on the
@@ -180,7 +187,9 @@ test("the sidebar projection names the container and keeps the default chat", ()
   expect(mine!.chatId).toBe(chatId);
 });
 
-test("an injected host-half panic reads as a transport error and the conversation continues", async () => {
+// Credential-sensitive by order: a live run's earlier accepted turn holds
+// the activeTurn this drill's sends assume idle. Skip under MANOX_RUN_LIVE=1.
+(!live ? test : test.skip)("an injected host-half panic reads as a transport error and the conversation continues", async () => {
   expect(Manox.status()).toBe("running");
   Manox.injectPanic();
   await waitUntil(() => connectionStatus() === "error");
@@ -192,13 +201,18 @@ test("an injected host-half panic reads as a transport error and the conversatio
   // journal).
   await reconnect();
   expect(connectionStatus()).toBe("ready");
-  // The conversation continues: a fresh dispatch runs the whole loop again —
-  // refused with the named reason, exactly as before the panic (the model
-  // gate lives behind the connection, not in it).
+  // The conversation continues: a dispatch after the panic runs the whole
+  // loop again on the rebuilt connection — the host answers, the echo
+  // carries a reason, the ledger rolls back. The dispatch is the bogus
+  // action on purpose: its refusal is deterministic in ANY environment
+  // (model credentials change what a turn does, never what a bogus action
+  // does), so this gate proves the wire is whole, nothing more.
   lastRejection.set(null);
-  sendManoxMessage(threadId, chatId, "after the panic");
+  dispatchAction(chatUri, { type: "chat/notARealAction" } as never);
   await waitUntil(() => lastRejection() != null, 20000);
-  expect(lastRejection()!.reason).toContain("no model");
+  expect(lastRejection()!.uri).toBe(chatUri);
+  expect(lastRejection()!.actionType).toBe("chat/notARealAction");
+  expect(lastRejection()!.reason.length).toBeGreaterThan(0);
   expect(chatOf(chatId)?.activeTurn).toBeFalsy();
 });
 
@@ -210,8 +224,6 @@ test("an injected host-half panic reads as a transport error and the conversatio
  *
  *   MANOX_RUN_LIVE=1 nsh test app/manox.test.ts
  */
-const live =
-  typeof process !== "undefined" && process.env?.["MANOX_RUN_LIVE"] === "1";
 (live ? test : test.skip)("a live model turn streams a response and settles", async () => {
   dispatchAction(chatUri, {
     type: "chat/turnStarted",

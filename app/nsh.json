@@ -38,7 +38,9 @@
     "process": {
       "env": [
         "ZU_PORT",
-        "ZU_STATE_DIR"
+        "ZU_STATE_DIR",
+        "MANOX_RUN_LIVE",
+        "ZU_SKIP_LIVE"
       ]
     },
     "webview": {

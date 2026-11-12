@@ -630,10 +630,14 @@ async function reconcile(state: StateSnapshot): Promise<void> {
         patchView(id, { streaming: false, interrupted: true, error: String(failure) });
       }
     }
-    await refreshSessions();
   } finally {
     reconciling = false;
   }
+  // The sidebar list is a side dish of the reopen, not part of its lock:
+  // the fold's cold first scan is seconds of off-thread walking, and a
+  // reconnect snapshot that lands inside that window must still be able to
+  // reopen its own views.
+  void refreshSessions();
 }
 
 function project(data: any): Msg[] {
@@ -729,8 +733,13 @@ export function openSession(path: string): Promise<SessionView | undefined> {
         const meta = sessions().find((row) => row.path === path);
         // The load's cwd must equal the file's own: guess nothing (the
         // harness process would start in a folder the session never lived
-        // in, and the distro refuses the mismatch). The fold feeds it.
-        if (!meta?.cwd) throw new Error("the session list has not loaded yet; try again");
+        // in, and the distro refuses the mismatch). The fold feeds it —
+        // and while the first scan is still walking, the boot's post-fold
+        // hydration retries this open; a "not yet" is quiet, not an error.
+        if (!meta?.cwd) {
+          error.set(null);
+          return undefined;
+        }
         const { updates } = await loadTranscript({ cwd: meta.cwd, sessionId: id });
         const view = blankView(id, {
           path,

@@ -28,6 +28,11 @@ ahp-types = "=1.0.0"
 # The kernel's Py tool (RustPython) needs one malachite-bigint: `pymath`
 # declares `version = "0"` and unifies onto 0.14 unless held back — the exact
 # single-copy resolution the manox workspace lock carries (0.12.0 only).
+# NOTE: the generated workspace lock (app/.nsh/rust/Cargo.lock, untracked) is
+# re-resolved whenever tracked .nsh files change, and a fresh resolve gives
+# pymath the newest `0`-range malachite-bigint (0.14), which does not
+# compile against it. Recovery, in app/.nsh/rust:
+#   cargo update -p malachite-bigint@0.14.0 --precise 0.12.0
 malachite-bigint = "=0.12.0"
 
 [dev-dependencies]

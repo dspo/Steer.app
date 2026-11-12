@@ -319,17 +319,20 @@ export async function loadContainers(): Promise<void> {
         scratchLayout.set(withScratchHero(scratchLayout()));
         showScratch();
       }
-      await refreshSessions();
+      // No session fold here: a transport-driven store is a fixture's
+      // projection, and the fold's cold first scan (a real directory walk)
+      // would hold every test's canvas hostage for seconds.
     } else {
       const file = await readState<RegistryFile>("registry.json");
       const rows = (file?.containers ?? []).filter((row) => !!row && typeof row.id === "string");
       containers.set(rows);
       const id = file?.activeContainerId ?? liveContainers()[0]?.id ?? null;
-      // The fold's rows feed the sessions' loads (a load needs the row's cwd
-      // to match the file), so the first scan lands before the hydrating
-      // switch. The scan runs off-thread and caches by watermark; what the
-      // engine's session.list cost on a cold start, this costs too.
-      await refreshSessions();
+      // The canvas comes first: switching needs the registry and the layout
+      // file only. The session fold starts at once (off-thread, cached by
+      // watermark) and the visible sessions hydrate AFTER it — a session's
+      // load needs its fold row's cwd to match the file, and a hydration
+      // that races the fold fails quietly.
+      const folding = refreshSessions();
       if (id && rows.some((row) => row.id === id && !row.archived)) {
         await switchContainer(id, true);
       } else if (liveContainers()[0]) {
@@ -339,6 +342,9 @@ export async function loadContainers(): Promise<void> {
         scratchLayout.set(withScratchHero(scratchLayout()));
         showScratch();
       }
+      await folding;
+      const shown = containers().find((row) => row.id === activeContainerId());
+      if (shown) await hydrateVisible(shown);
     }
   } catch (failure) {
     containerError.set(String(failure));
