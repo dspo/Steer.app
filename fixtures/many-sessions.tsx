@@ -1,5 +1,5 @@
 import { mount } from "nsh";
-import { Workbench } from "../shell";
+import { Workbench } from "../shell/shell";
 import { phase } from "../stores/engine";
 import { sessions } from "../stores/sessions";
 import { activeContainerId } from "../stores/containers";

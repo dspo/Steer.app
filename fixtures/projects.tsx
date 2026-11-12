@@ -1,5 +1,5 @@
 import { mount, Text, View } from "nsh";
-import { Workbench } from "../shell";
+import { Workbench } from "../shell/shell";
 import { activeContainerId, containers, layout, setContainerTransport, syncVisible } from "../stores/containers";
 import { browserPages } from "../stores/browser";
 import { panelIds } from "../stores/dock";

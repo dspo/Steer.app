@@ -1,8 +1,8 @@
 import { effect, mount, View } from "nsh";
 import { Window } from "nsh/desktop";
-import { Workbench } from "./shell";
-import { AlreadyRunning, LifecycleHost } from "./lifecycle-ui";
-import { lifecycleMode, startLifecycle } from "./lifecycle";
+import { Workbench } from "./shell/shell";
+import { AlreadyRunning, LifecycleHost } from "./shell/lifecycle-ui";
+import { lifecycleMode, startLifecycle } from "./shell/lifecycle";
 import { followSystemLocale } from "./ui/i18n";
 import { applyScrollbarTheme } from "./ui/ui";
 

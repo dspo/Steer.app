@@ -1,9 +1,9 @@
 import { signal } from "nsh";
 import { Application, Tray, Window, isAvailable as desktopAvailable } from "nsh/desktop";
-import { claimInstance, releaseInstance, type InstanceClaim } from "./stores/instance";
-import { flushNotificationIntents } from "./stores/notifications";
+import { claimInstance, releaseInstance, type InstanceClaim } from "../stores/instance";
+import { flushNotificationIntents } from "../stores/notifications";
 import { bootShell } from "./shell";
-import { K, t } from "./ui/i18n";
+import { K, t } from "../ui/i18n";
 
 /**
  * The app's lifecycle: one instance per state directory, and the decision

@@ -1,7 +1,7 @@
 import { mount, signal, Text, View } from "nsh";
 import { Menu } from "nsh/desktop";
 import { Instance } from "zu/native";
-import { quitApp } from "../lifecycle";
+import { quitApp } from "../shell/lifecycle";
 
 /**
  * The application menu's Quit on a desktop, with the claim observable: the

@@ -1,11 +1,11 @@
 import { cleanup, effect, platform, Text, View } from "nsh";
 import { currentWindow, Menu, Tray, Window, type MenuItem } from "nsh/desktop";
-import trayIcon from "./assets/tray.svg";
-import { K, t } from "./ui/i18n";
+import trayIcon from "../assets/tray.svg";
+import { K, t } from "../ui/i18n";
 import { instanceClaim, quitApp } from "./lifecycle";
-import { hideMain, mainWindowVisible, showMain, startNotifications } from "./stores/notifications";
-import { openUpdates } from "./stores/updates";
-import { motionStyle, shadowRaised } from "./ui/ui";
+import { hideMain, mainWindowVisible, showMain, startNotifications } from "../stores/notifications";
+import { openUpdates } from "../stores/updates";
+import { motionStyle, shadowRaised } from "../ui/ui";
 
 /**
  * The desktop half of the lifecycle: the tray, the window's close button

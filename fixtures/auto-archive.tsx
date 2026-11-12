@@ -1,5 +1,5 @@
 import { mount, Text, View } from "nsh";
-import { Workbench } from "../shell";
+import { Workbench } from "../shell/shell";
 import {
   activeContainerId,
   containerError,

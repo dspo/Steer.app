@@ -2,7 +2,7 @@ import { mount, Text, View } from "nsh";
 import { locale } from "nsh";
 import { setLocale } from "nsh/i18n";
 import { containerError, loadContainers, setContainerTransport } from "../stores/containers";
-import { Workbench } from "../shell";
+import { Workbench } from "../shell/shell";
 import { phase } from "../stores/engine";
 import { followSystemLocale, shellLocale } from "../ui/i18n";
 import { error as sessionError } from "../stores/sessions";

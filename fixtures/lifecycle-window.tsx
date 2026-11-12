@@ -1,5 +1,5 @@
 import { mount, Text, View } from "nsh";
-import { LifecycleHost } from "../lifecycle-ui";
+import { LifecycleHost } from "../shell/lifecycle-ui";
 import { hideMain, mainWindowVisible, showMain } from "../stores/notifications";
 
 /**

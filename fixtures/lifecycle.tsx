@@ -1,6 +1,6 @@
 import { mount } from "nsh";
-import { AlreadyRunning } from "../lifecycle-ui";
-import { instanceClaim, lifecycleMode } from "../lifecycle";
+import { AlreadyRunning } from "../shell/lifecycle-ui";
+import { instanceClaim, lifecycleMode } from "../shell/lifecycle";
 
 /**
  * The second instance's notice without a second process: the claim a real
