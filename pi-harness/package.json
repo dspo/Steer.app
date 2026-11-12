@@ -8,8 +8,11 @@
   },
   "scripts": {
     "dev": "bun run src/server.ts",
-    "build": "bun run check-version && bun build --compile --target=bun-darwin-arm64 src/server.ts --outfile dist/pi-engine && cp node_modules/@silvia-odwyer/photon-node/photon_rs_bg.wasm dist/ && cp node_modules/quickjs-wasi/quickjs.wasm dist/",
+    "dev:acp": "bun run src/acp-main.ts",
+    "build": "bun run check-version && bun build --compile --target=bun-darwin-arm64 src/server.ts --outfile dist/pi-engine && bun build --compile --target=bun-darwin-arm64 src/acp-main.ts --outfile dist/pi-acp && cp node_modules/@silvia-odwyer/photon-node/photon_rs_bg.wasm dist/ && cp node_modules/quickjs-wasi/quickjs.wasm dist/",
     "check-version": "bun scripts/check-version.mjs",
-    "models:parity": "bun run scripts/models-parity.mjs"
+    "models:parity": "bun run scripts/models-parity.mjs",
+    "test": "bun test",
+    "smoke": "bun run scripts/acp-smoke.ts"
   }
 }
