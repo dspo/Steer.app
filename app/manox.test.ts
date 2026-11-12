@@ -192,13 +192,18 @@ test("an injected host-half panic reads as a transport error and the conversatio
   // journal).
   await reconnect();
   expect(connectionStatus()).toBe("ready");
-  // The conversation continues: a fresh dispatch runs the whole loop again —
-  // refused with the named reason, exactly as before the panic (the model
-  // gate lives behind the connection, not in it).
+  // The conversation continues: a dispatch after the panic runs the whole
+  // loop again on the rebuilt connection — the host answers, the echo
+  // carries a reason, the ledger rolls back. The dispatch is the bogus
+  // action on purpose: its refusal is deterministic in ANY environment
+  // (model credentials change what a turn does, never what a bogus action
+  // does), so this gate proves the wire is whole, nothing more.
   lastRejection.set(null);
-  sendManoxMessage(threadId, chatId, "after the panic");
+  dispatchAction(chatUri, { type: "chat/notARealAction" } as never);
   await waitUntil(() => lastRejection() != null, 20000);
-  expect(lastRejection()!.reason).toContain("no model");
+  expect(lastRejection()!.uri).toBe(chatUri);
+  expect(lastRejection()!.actionType).toBe("chat/notARealAction");
+  expect(lastRejection()!.reason.length).toBeGreaterThan(0);
   expect(chatOf(chatId)?.activeTurn).toBeFalsy();
 });
 
