@@ -3,8 +3,8 @@ import { Window } from "nsh/desktop";
 import { Workbench } from "./shell";
 import { AlreadyRunning, LifecycleHost } from "./lifecycle-ui";
 import { lifecycleMode, startLifecycle } from "./lifecycle";
-import { followSystemLocale } from "./i18n";
-import { applyScrollbarTheme } from "./ui";
+import { followSystemLocale } from "./ui/i18n";
+import { applyScrollbarTheme } from "./ui/ui";
 
 /** The app: claim the state directory, boot the engine once, then render the workbench. */
 let booted = false;

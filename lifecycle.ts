@@ -3,7 +3,7 @@ import { Application, Tray, Window, isAvailable as desktopAvailable } from "nsh/
 import { claimInstance, releaseInstance, type InstanceClaim } from "./instance";
 import { flushNotificationIntents } from "./notifications";
 import { bootShell } from "./shell";
-import { K, t } from "./i18n";
+import { K, t } from "./ui/i18n";
 
 /**
  * The app's lifecycle: one instance per state directory, and the decision

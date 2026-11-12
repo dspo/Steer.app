@@ -1,7 +1,7 @@
 import { expect, test } from "nsh/test";
-import { K, localeToShellLocale, SHELL_KEYS, t } from "./i18n";
-import { en } from "./locales/en";
-import { zhCN } from "./locales/zh-CN";
+import { K, localeToShellLocale, SHELL_KEYS, t } from "./ui/i18n";
+import { en } from "./ui/locales/en";
+import { zhCN } from "./ui/locales/zh-CN";
 
 // Parity is structural: the two tables and the shell's key list must be the
 // same set, and no Chinese entry may be a copy of its English one (which is

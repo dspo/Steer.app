@@ -4,7 +4,7 @@ import type { JSX } from "nsh";
 import { containers } from "./containers";
 import { visiblePanels } from "./dock";
 import { languageFor } from "./editors";
-import { K, t } from "./i18n";
+import { K, t } from "./ui/i18n";
 import {
   changePaths,
   changes,
@@ -28,7 +28,7 @@ import {
   type GitNotice,
 } from "./git";
 import type { GitChange, GitDiff } from "zu/native";
-import { Glyph, motionStyle, SheetAction as Action, SheetIconButton as IconButton, shadowDialog, shadowRaised } from "./ui";
+import { Glyph, motionStyle, SheetAction as Action, SheetIconButton as IconButton, shadowDialog, shadowRaised } from "./ui/ui";
 
 /**
  * The repository sheets: Changes (branch, staged/unstaged/untracked groups,

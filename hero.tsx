@@ -1,6 +1,6 @@
 import { effect, keymap, signal, Text, token, View } from "nsh";
 import { Dialog, Input, Menu, MenuItem, MenuSeparator } from "nsh/base";
-import { K, t } from "./i18n";
+import { K, t } from "./ui/i18n";
 import { baseName } from "./fs";
 import {
   containerProject,
@@ -26,9 +26,9 @@ import type { TerminalAction } from "./terminals";
 import { homeSheetContainer } from "./dock";
 import { openBrowserSheet } from "./browser";
 import type { ContainerKind, ProjectRecord } from "./contracts/protocol";
-import type { BrandName } from "./brand-icons";
-import { Glyph, motionStyle, shadowDialog, shadowRaised, type GlyphName } from "./ui";
-import { BrandIcon } from "./brand-icons";
+import type { BrandName } from "./ui/brand-icons";
+import { Glyph, motionStyle, shadowDialog, shadowRaised, type GlyphName } from "./ui/ui";
+import { BrandIcon } from "./ui/brand-icons";
 import { pickFolder } from "./picker";
 import {
   addProjectRoot,

@@ -40,14 +40,14 @@ import { externalKindLabel } from "./terminals";
 import { saveActiveEditor } from "./editors";
 import { openChangesSheet, openHistorySheet } from "./git";
 import { openProblemsSheet } from "./lsp-ui";
-import { K, t } from "./i18n";
-import { UIHost, unsupportedMethods } from "./ui-host";
+import { K, t } from "./ui/i18n";
+import { UIHost, unsupportedMethods } from "./ui/ui-host";
 import { dropBrowserPages, openBrowserSheet } from "./browser";
 import {
   openActiveInVSCode,
 } from "./vscode";
 import { containerMatches, sessionMatches } from "./search";
-import { Chip, Dot, Glyph, type GlyphName, motionStyle, shadowCard, shadowRaised } from "./ui";
+import { Chip, Dot, Glyph, type GlyphName, motionStyle, shadowCard, shadowRaised } from "./ui/ui";
 import { TabBarPlus } from "./tab-plus";
 
 /**

@@ -16,8 +16,8 @@ import {
   setBrowserNavigating,
   setBrowserStopped,
 } from "./browser";
-import { K, t } from "./i18n";
-import { Chip, Glyph, motionStyle, SheetIconButton } from "./ui";
+import { K, t } from "./ui/i18n";
+import { Chip, Glyph, motionStyle, SheetIconButton } from "./ui/ui";
 
 /**
  * The real browser sheet: an address bar over one native `WebView`, with the

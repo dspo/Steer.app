@@ -4,7 +4,7 @@ import { appendSheet } from "./dock";
 import { activeContainerId, containers, layout, noteSheetOpened, setLayout } from "./containers";
 import { editorSheetId, editorPathFor, openEditorSheet } from "./editors";
 import { relativeTo } from "./fs";
-import { K, t } from "./i18n";
+import { K, t } from "./ui/i18n";
 import {
   ensureContainerLsp,
   lspContainerState,
@@ -23,7 +23,7 @@ import {
   shadowRaised,
   SheetAction as Action,
   SheetIconButton as IconButton,
-} from "./ui";
+} from "./ui/ui";
 
 /**
  * The LSP surfaces: the hover card over an editor and the Problems sheet.

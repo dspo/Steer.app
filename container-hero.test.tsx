@@ -1,8 +1,8 @@
 import { expect, open, test } from "nsh/test";
 import { Engine } from "zu/native";
 import { connect, request } from "./engine";
-import { copy, shellCopyLocale } from "./copy";
-import { K, t } from "./i18n";
+import { copy, shellCopyLocale } from "./ui/copy";
+import { K, t } from "./ui/i18n";
 
 
 Engine.setStateDir(`/tmp/zu-hero-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);

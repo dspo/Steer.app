@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, expect, open, test } from "nsh/test";
 import { Engine } from "zu/native";
 import { connect, request } from "./engine";
-import { copy } from "./copy";
+import { copy } from "./ui/copy";
 
 
 // §2.1-2's acceptance: the app opens on the registry's active container and

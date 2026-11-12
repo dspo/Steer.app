@@ -1,7 +1,7 @@
 import { effect, Scroll, Text, token, View } from "nsh";
 import { Dialog, Progress } from "nsh/base";
-import { K, t } from "./i18n";
-import { motionStyle, shadowDialog, shadowRaised } from "./ui";
+import { K, t } from "./ui/i18n";
+import { motionStyle, shadowDialog, shadowRaised } from "./ui/ui";
 import {
   availableUpdate,
   checkNow,

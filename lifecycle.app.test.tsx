@@ -1,6 +1,6 @@
 import { expect, open, test } from "nsh/test";
 import { Engine, Instance } from "zu/native";
-import { copy } from "./copy";
+import { copy } from "./ui/copy";
 
 
 // The claim and the engine state go to this test's own directory: the

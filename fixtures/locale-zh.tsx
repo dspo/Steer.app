@@ -4,7 +4,7 @@ import { setLocale } from "nsh/i18n";
 import { containerError, loadContainers, setContainerTransport } from "../containers";
 import { Workbench } from "../shell";
 import { phase } from "../engine";
-import { followSystemLocale, shellLocale } from "../i18n";
+import { followSystemLocale, shellLocale } from "../ui/i18n";
 import { error as sessionError } from "../sessions";
 
 /** A Chinese system: `setLocale` is what the platform reports to `locale()`. */

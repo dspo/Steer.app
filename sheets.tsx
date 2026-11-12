@@ -20,9 +20,9 @@ import {
   terminalSheetContainer,
   terminalTitle,
 } from "./terminals";
-import { K, t } from "./i18n";
+import { K, t } from "./ui/i18n";
 import { HeroSheet } from "./hero";
-import { Chip, Dot, Glyph, type GlyphName } from "./ui";
+import { Chip, Dot, Glyph, type GlyphName } from "./ui/ui";
 import { DiffBody, EditorBody, FilesBody } from "./files";
 import { browserTabTitle } from "./browser";
 import { BrowserBody } from "./browser-ui";
@@ -30,7 +30,7 @@ import { ChangesBody, HistoryBody } from "./git-ui";
 import { ProblemsBody } from "./lsp-ui";
 import { diffSheetPaths, editorSheetPath } from "./editors";
 import { baseName } from "./fs";
-import { SHEET_FONT } from "./fonts";
+import { SHEET_FONT } from "./ui/fonts";
 
 /** The color tokens the registry tints glyphs with. */
 type TintToken = "brand" | "warn" | "up" | "info" | "muted-foreground" | "primary-foreground" | "faint";

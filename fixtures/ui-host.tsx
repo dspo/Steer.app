@@ -1,5 +1,5 @@
 import { mount, signal, Text, View } from "nsh";
-import { enqueueUIRequest, pushToast, UIHost } from "../ui-host";
+import { enqueueUIRequest, pushToast, UIHost } from "../ui/ui-host";
 
 // The extension UI host without an engine: presses ask for each kind of
 // request and the answers render as rows, so a headless test can walk the

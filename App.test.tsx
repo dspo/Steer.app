@@ -1,5 +1,5 @@
 import { expect, open, test } from "nsh/test";
-import { copy } from "./copy";
+import { copy } from "./ui/copy";
 
 test("the shell is a Steer titlebar over the project sidebar, with no status bar", async () => {
   const app = await open("./App.tsx", { network: "live", width: 1200, height: 800 });

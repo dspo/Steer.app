@@ -1,7 +1,7 @@
 import { signal } from "nsh";
 import { Pty } from "zu/native";
 import type { ContainerKind, ContainerRecord } from "./contracts/protocol";
-import { t, K } from "./i18n";
+import { t, K } from "./ui/i18n";
 import { panelIds } from "./dock";
 import { baseName } from "./fs";
 import type { DockAreaLayout } from "./dock";

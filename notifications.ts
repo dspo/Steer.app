@@ -6,7 +6,7 @@ import { containersLoaded, openPath, switchContainer } from "./containers";
 import { sessions, sessionTitle, views } from "./sessions";
 import { openSubagents, selectRun } from "./subagents";
 import type { SubagentRun } from "./contracts/protocol";
-import { K, t } from "./i18n";
+import { K, t } from "./ui/i18n";
 
 /**
  * System notifications for settled turns and settled subagent runs.

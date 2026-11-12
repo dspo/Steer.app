@@ -9,7 +9,7 @@ import { signal } from "nsh";
 import { activeContainerId, containers, layout, noteSheetOpened, setLayout } from "./containers";
 import { appendSheet } from "./dock";
 import { editorDocs, reloadEditor } from "./editors";
-import { K, t } from "./i18n";
+import { K, t } from "./ui/i18n";
 
 /**
  * The Changes and History sheets' data: `zu/git` in Rust owns the repository

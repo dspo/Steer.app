@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, expect, open, test } from "nsh/test";
 import { Engine } from "zu/native";
 import { connect, request } from "./engine";
-import { copy } from "./copy";
+import { copy } from "./ui/copy";
 
 
 // The shell's external-container path: the Hero's action row creates a

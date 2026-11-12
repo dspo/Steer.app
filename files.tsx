@@ -19,7 +19,7 @@ import {
   setEditorText,
 } from "./editors";
 import { baseName, canonicalRoot, failure, formatBytes, listDir, readText, relativeTo, type FsFailure } from "./fs";
-import { SHEET_FONT } from "./fonts";
+import { SHEET_FONT } from "./ui/fonts";
 import {
   ROOT_KEY,
   compareRowTestId,
@@ -43,8 +43,8 @@ import {
   type LspCompletionResult,
 } from "./lsp";
 import { HoverCard } from "./lsp-ui";
-import { K, t } from "./i18n";
-import { Glyph, motionStyle, shadowDialog, SheetAction as Action, SheetIconButton as IconButton } from "./ui";
+import { K, t } from "./ui/i18n";
+import { Glyph, motionStyle, shadowDialog, SheetAction as Action, SheetIconButton as IconButton } from "./ui/ui";
 
 /**
  * The workspace sheets: the file tree, one editor per file, and a two-file

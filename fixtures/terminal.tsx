@@ -4,7 +4,7 @@ import { activeContainerId, containers } from "../containers";
 import { visiblePanels } from "../dock";
 import { TerminalBody } from "../sheets";
 import { closeTerminal, terminalInfo, terminalRef, terminalSheetId, terminalSize } from "../terminals";
-import { Glyph } from "../ui";
+import { Glyph } from "../ui/ui";
 
 // A headless acceptance fixture for the real terminal sheet: one external
 // container, its PTY store and `nsh/base`'s Terminal. The status lines read

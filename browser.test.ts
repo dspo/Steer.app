@@ -20,7 +20,7 @@ import {
   setBrowserNavigating,
   setBrowserStopped,
 } from "./browser";
-import { K, t } from "./i18n";
+import { K, t } from "./ui/i18n";
 
 // The browser store and the address bar, without a web view: the headless
 // host draws none, so its UI test covers rendering while these cover the

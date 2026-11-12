@@ -1,5 +1,5 @@
 import { expect, test } from "nsh/test";
-import { SHEET_FONT } from "./fonts";
+import { SHEET_FONT } from "./ui/fonts";
 
 // §2.3-16 (DESIGN §3.4): sheet content names the family the crate ships
 // (`src/lib.rs`); its test guards the literal against the font files —

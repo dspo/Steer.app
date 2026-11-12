@@ -1,5 +1,5 @@
 import { expect, open, test } from "nsh/test";
-import { K, t } from "./i18n";
+import { K, t } from "./ui/i18n";
 
 // The browser sheet in the real Workbench, headless. The headless host
 // draws no web view (`WebView.available()` is still true, but no page loads
