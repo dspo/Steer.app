@@ -1,0 +1,25 @@
+// Vendored from dspo's AHP spec checkout (microsoft/agent-host-protocol):
+//   repo:    ~/projects/github/agent-host-protocol  (remote: https://github.com/microsoft/agent-host-protocol.git)
+//   commit:  296b25e7b698a4a84a0ee5a28d9573e70048a0bf  (working tree clean at vendoring time)
+//   spec:    v0.9.0 (clients/typescript package.json version), LAST_SYNCED_COMMIT file said 20c6b266 (not resolvable locally)
+//   pin:     contracts/ahp/PIN.md — read it before syncing; do not edit these files by hand.
+// The only transform applied at vendoring time: relative import specifiers lost
+// their `.js` suffix (upstream ships ESM `.js` extensions; this app resolves
+// extensionless TS). Everything else is byte-identical to the pinned commit.
+/**
+ * Reducer Functions — Aggregator shim that re-exports the channel-organized
+ * pure state reducers and dispatch helpers.
+ *
+ * @module reducers
+ */
+
+export { rootReducer } from './channels-root/reducer';
+export { sessionReducer } from './channels-session/reducer';
+export { chatReducer } from './channels-chat/reducer';
+export { terminalReducer } from './channels-terminal/reducer';
+export { changesetReducer } from './channels-changeset/reducer';
+export { annotationsReducer } from './channels-annotations/reducer';
+export { resourceWatchReducer } from './channels-resource-watch/reducer';
+export { automationReducer } from './channels-automation/reducer';
+export { automationRunReducer } from './channels-automation-run/reducer';
+export { softAssertNever, isClientDispatchable } from './common/reducer-helpers';
