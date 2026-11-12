@@ -565,10 +565,13 @@ impl StubCore {
                 None
             }
             "chat/inputAnswerChanged" => {
-                // Client-owned draft state; folded by the echo alone.
+                // Client-owned draft state: accepted, and folded by the echo
+                // — here into the host's own mirror, so its fold (the
+                // snapshot leg) matches the journal's replay leg.
                 if !self.chats.contains_key(channel) {
                     return Some("the chat does not exist".to_owned());
                 }
+                self.apply_host_action(channel, action);
                 None
             }
             "chat/inputCompleted" => {
@@ -648,7 +651,10 @@ impl StubCore {
                 self.schedule(now, 15, channel, json!({"type": "chat/turnCancelled", "turnId": active_turn, "duration": duration}));
                 None
             }
-            // Accepted, no host work, folded by the echo (drafts, lanes).
+            // Accepted, no host work, folded by the echo (drafts, lanes):
+            // the echo folds into the host's own mirror too, so its fold —
+            // the snapshot leg, and the queue drain's source — matches the
+            // journal's replay leg.
             "chat/draftChanged"
             | "chat/pendingMessageSet"
             | "chat/pendingMessageRemoved"
@@ -657,6 +663,7 @@ impl StubCore {
                 if !self.chats.contains_key(channel) {
                     return Some("the chat does not exist".to_owned());
                 }
+                self.apply_host_action(channel, action);
                 None
             }
             // Server-produced and not served: fail closed with a reason.
@@ -686,8 +693,11 @@ impl StubCore {
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_owned();
+            // The turn's message is the entry's message — the entry itself
+            // is the lane record ({id, message}), not a message.
+            let message = first.get("message").cloned().unwrap_or_else(|| json!({}));
             self.turn_counter += 1;
-            (id, first, self.turn_counter)
+            (id, message, self.turn_counter)
         };
         let turn_id = format!("turn-{turn_number}");
         let started_at = iso_now();

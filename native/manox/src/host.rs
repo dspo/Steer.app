@@ -205,3 +205,160 @@ async fn post_frames(events: PumpSender, frames: Vec<String>) {
 fn post_frames_sync(events: PumpSender, frames: Vec<String>) {
     tokio::spawn(async move { post_frames(events, frames).await });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Ctl, Session, SessionEnd};
+    use crate::pump::{PumpEvent, PumpSender};
+    use crate::stub::INJECTED_PANIC;
+    use serde_json::{Value, json};
+    use std::time::Duration;
+
+    /// One end of the pump's event channel, read with a timeout so a broken
+    /// wire fails the test instead of hanging it.
+    struct EventReader {
+        rx: tokio::sync::mpsc::Receiver<PumpEvent>,
+    }
+
+    impl EventReader {
+        async fn next(&mut self, what: &str) -> PumpEvent {
+            tokio::time::timeout(Duration::from_secs(10), self.rx.recv())
+                .await
+                .unwrap_or_else(|_| panic!("timed out waiting for {what}"))
+                .expect("the pump's event channel is open")
+        }
+
+        /// Collects `Frame` events until `want` is satisfied (or 10s pass).
+        async fn frames_until(&mut self, want: impl Fn(&[Value]) -> bool) -> Vec<Value> {
+            let mut frames = Vec::new();
+            loop {
+                if want(&frames) {
+                    return frames;
+                }
+                match self.next("a frame").await {
+                    PumpEvent::Frame(text) => frames.push(serde_json::from_str(&text).unwrap()),
+                    PumpEvent::TransportError(error) => panic!("the host half died: {error}"),
+                    PumpEvent::Stopped => panic!("the host half stopped mid-turn"),
+                }
+            }
+        }
+    }
+
+    fn spawn_session() -> (Session, EventReader) {
+        let (tx, rx) = tokio::sync::mpsc::channel(1024);
+        (Session::spawn(PumpSender { tx }), EventReader { rx })
+    }
+
+    /// Frames cross both ways: a client frame in, the host's JSON-RPC answer
+    /// and its scripted stream back out — the pump's one job, end to end.
+    #[tokio::test]
+    async fn a_session_answers_frames_and_streams_the_script() {
+        let (session, mut events) = spawn_session();
+        let chat_uri = "ahp-chat:/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+        let session_uri = "ahp-session:/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+        for frame in [
+            json!({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                   "params": {"channel": "ahp-root://", "protocolVersions": ["1.0.0"],
+                              "clientId": "pump-test"}}),
+            json!({"jsonrpc": "2.0", "id": 2, "method": "createSession",
+                   "params": {"channel": session_uri}}),
+            json!({"jsonrpc": "2.0", "id": 3, "method": "createChat",
+                   "params": {"channel": session_uri, "chat": chat_uri}}),
+            // The dispatch: the echo comes straight back, the script on timers.
+            json!({"jsonrpc": "2.0", "method": "dispatchAction", "params": {"channel": chat_uri,
+                   "clientSeq": 1, "action": {"type": "chat/turnStarted", "turnId": "t1",
+                   "startedAt": "2025-03-10T18:42:03.123Z",
+                   "message": {"text": "through the pump", "origin": {"kind": "user"}}}}}),
+        ] {
+            session.inbound.send(frame.to_string()).unwrap();
+        }
+        let frames = events
+            .frames_until(|frames| {
+                frames.iter().any(|frame| {
+                    frame["method"] == "action"
+                        && frame["params"]["action"]["type"] == "chat/toolCallReady"
+                })
+            })
+            .await;
+        // The requests were answered…
+        assert!(
+            frames.iter().any(|frame| frame["id"] == 1 && frame["result"].is_object()),
+            "initialize answered"
+        );
+        // …the dispatch echoed with the client's origin…
+        assert!(
+            frames.iter().any(|frame| {
+                frame["method"] == "action"
+                    && frame["params"]["action"]["type"] == "chat/turnStarted"
+                    && frame["params"]["origin"]["clientId"] == "pump-test"
+                    && frame["params"]["origin"]["clientSeq"] == 1
+            }),
+            "the turn echoed"
+        );
+        // …and the script parked at the confirmation, on schedule.
+        assert!(
+            frames.iter().any(|frame| {
+                frame["method"] == "action"
+                    && frame["params"]["action"]["type"] == "chat/toolCallReady"
+            }),
+            "the script reached toolCallReady"
+        );
+    }
+
+    /// The panic boundary: a panic planted inside the host half comes out as
+    /// exactly one transport-error event and a clean session end — never an
+    /// unwind into the caller (the engine), the §3.4 contract.
+    #[tokio::test]
+    async fn an_injected_panic_becomes_one_transport_error() {
+        let (session, mut events) = spawn_session();
+        session.ctl.send(Ctl::InjectPanic).unwrap();
+        match events.next("the end event").await {
+            PumpEvent::TransportError(error) => {
+                assert!(error.contains("caught at the pump boundary"), "{error}");
+                assert!(error.contains(INJECTED_PANIC), "{error}");
+            }
+            other => panic!("expected a transport error, got {other:?}"),
+        }
+        // The session retires cleanly after the event: a restart waits on
+        // `ended` so old and new frames never interleave.
+        tokio::time::timeout(Duration::from_secs(5), session.ended)
+            .await
+            .expect("the session retired after its end event")
+            .expect("the oneshot is intact");
+        // The wire is quiet: no second end event, no stray frames (the
+        // channel closing is fine — the watcher is gone after its one send).
+        match tokio::time::timeout(Duration::from_millis(100), events.rx.recv()).await {
+            Err(_elapsed) => {}
+            Ok(None) => {}
+            Ok(Some(stray)) => panic!("a second event arrived: {stray:?}"),
+        }
+    }
+
+    /// A session whose pump-side handles drop ends clean — the shape a
+    /// restart's teardown takes.
+    #[tokio::test]
+    async fn a_session_whose_senders_drop_ends_stopped() {
+        let (session, mut events) = spawn_session();
+        drop(session.inbound);
+        drop(session.ctl);
+        match events.next("the end event").await {
+            PumpEvent::Stopped => {}
+            other => panic!("expected a clean stop, got {other:?}"),
+        }
+    }
+
+    /// `SessionEnd` maps to the one event shape TSX sees.
+    #[test]
+    fn session_ends_map_to_their_events() {
+        assert!(matches!(
+            SessionEnd::Clean.into_event(),
+            PumpEvent::Stopped
+        ));
+        let PumpEvent::TransportError(text) =
+            SessionEnd::TransportError("boom".to_owned()).into_event()
+        else {
+            panic!("expected a transport error");
+        };
+        assert_eq!(text, "boom");
+    }
+}

@@ -1,5 +1,5 @@
 import { signal } from "nsh";
-import { ActionType, catalog, channels, dispatchAction, effectiveState, ensureConnection, request } from "./ahp";
+import { ActionType, catalog, channels, createChatOn, createSessionOn, dispatchAction, effectiveState, ensureConnection } from "./ahp";
 import type { ChannelCell } from "./ahp";
 import type { SessionSummary } from "../../../contracts/ahp/channels-session/state";
 import type { SessionState } from "../../../contracts/ahp/channels-session/state";
@@ -120,25 +120,19 @@ export function mintId(): string {
 
 /**
  * Creates a thread with its first chat: the client mints both uuids,
- * `createSession` is idempotent by design, and both channels subscribe.
- * Returns the chat id the sheet opens.
+ * `createSession` is idempotent by design, and both channels subscribe —
+ * after the creates, because a subscribe for a channel the host does not
+ * have yet is a refusal, not an empty snapshot. Returns the chat id the
+ * sheet opens.
  */
 export async function createManoxThread(): Promise<{ threadId: string; chatId: string }> {
   const threadId = mintId();
   const chatId = mintId();
   await ensureConnection();
-  await ensureConnection([sessionResource(threadId), chatResource(chatId)]);
-  await createSessionOn(sessionResource(threadId));
+  await createSessionOn(sessionResource(threadId), { provider: "stub" });
   await createChatOn(sessionResource(threadId), chatResource(chatId));
+  await ensureConnection([sessionResource(threadId), chatResource(chatId)]);
   return { threadId, chatId };
-}
-
-async function createSessionOn(uri: URI): Promise<void> {
-  await request("createSession", { channel: uri, provider: "stub" });
-}
-
-async function createChatOn(sessionUri: URI, chatUri: URI): Promise<void> {
-  await request("createChat", { channel: sessionUri, chat: chatUri });
 }
 
 /**

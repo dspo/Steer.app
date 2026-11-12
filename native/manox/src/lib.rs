@@ -66,14 +66,14 @@ pub struct Manox;
 
 #[module]
 impl Manox {
-    /// Starts the pump unless it is already running: the dedicated runtime
-    /// thread comes up, the host half singleton starts on it, and every host
-    /// frame from then on is posted to `on_frame`.
+    /// Starts the pump: the dedicated runtime thread comes up, the host half
+    /// singleton starts on it (its frames answer `initialize` from then on),
+    /// and every host frame from then on is posted to `on_frame`.
     ///
-    /// Idempotent: a second `start` on a live pump does nothing (the callback
-    /// of the first call stays the one wired). After `stop` a `start` runs a
-    /// fresh host session (empty journal — TSX then reconnects with
-    /// snapshots).
+    /// A second `start` on a live pump retires it fully and rewires to the
+    /// new caller — the old wiring belonged to a previous VM (a hot reload, a
+    /// test run's next `open`). After `stop` a `start` runs a fresh host
+    /// session (empty journal — TSX then reconnects).
     pub fn start(
         #[args(frame)] on_frame: Callback<ManoxFrame>,
         cx: CallCx<'_>,

@@ -79,6 +79,9 @@ interface Pending {
 
 const pendingRequests = new Map<number, Pending>();
 const pendingByClientSeq = new Map<number, { uri: URI; action: StateAction }>();
+/** The channel creations this client performed (uri → params), so a rebuilt
+ * transport re-issues them (idempotent by uri) before its reconnect leg. */
+const creations = new Map<URI, Record<string, unknown>>();
 let nextRequestId = 1;
 let nextClientSeq = 1;
 /** The id `initialize` carries; reconnect reuses it (the spec's contract). */
@@ -174,6 +177,22 @@ async function subscribe(uri: URI): Promise<void> {
   if (result?.snapshot) applySnapshot(result.snapshot);
 }
 
+/**
+ * Creates a channel this client owns (`createSession` for a session, `createChat`
+ * for a chat — the pairing is the protocol's only parent link). Recorded so
+ * `reconnect` can re-issue them against a rebuilt transport; both commands are
+ * idempotent by uri, so a retried create lands on the same channel.
+ */
+export async function createSessionOn(uri: URI, params: Record<string, unknown> = {}): Promise<void> {
+  creations.set(uri, params);
+  await request("createSession", { channel: uri, ...params });
+}
+
+export async function createChatOn(sessionUri: URI, chatUri: URI): Promise<void> {
+  creations.set(chatUri, { channel: sessionUri, chat: chatUri });
+  await request("createChat", { channel: sessionUri, chat: chatUri });
+}
+
 /** Applies one `Snapshot`: the snapshot leg's whole state. */
 function applySnapshot(snapshot: Snapshot): void {
   const cell = channels()[snapshot.resource];
@@ -245,22 +264,37 @@ export function dispatchAction(uri: URI, action: StateAction): void {
 }
 
 /**
- * Reconnects after a transport error: the pump restarted the host half (its
- * journal is fresh), so the answer is fresh snapshots for what we had
- * subscribed to. Optimistic ledger entries replay as dispatches.
+ * Reconnects after a transport error (the M1 drill's both cases, §3.4/§5:
+ * a pump transport reset, or a caught host-half panic). The pump rebuilds the
+ * transport first (`Manox.restart()` — a fresh host half with a fresh
+ * journal), we re-issue the channel creations (idempotent: against a real
+ * host half the durable journal restores the same channels), then the
+ * reconnect leg reconciles from `lastSeenServerSeq` — snapshots when the gap
+ * predates the host's buffer, the missed envelopes folded in order when the
+ * whole gap is there. Optimistic ledger entries replay as dispatches; the
+ * client's fold survives a leg that has nothing to replay.
  */
 export async function reconnect(): Promise<void> {
   startConnection();
   if (!clientId) clientId = newId();
   noteStatus("connecting");
   try {
+    Manox.restart();
     await request("initialize", {
       channel: "ahp-root://",
       protocolVersions: ["1.0.0"],
       clientId,
       initialSubscriptions: subscriptions,
     });
-    // Ask the reconnect leg first; a fresh host answers with snapshots.
+    // The rebuilt host half may not know our channels yet; re-create them
+    // (idempotent by uri) before asking for the gap.
+    for (const [uri, params] of creations) {
+      if (uri.startsWith("ahp-session:/")) {
+        await request("createSession", { channel: uri, ...params });
+      } else if (uri.startsWith("ahp-chat:/")) {
+        await request("createChat", params);
+      }
+    }
     const result = await request<{ type: string; snapshots?: Snapshot[] }>("reconnect", {
       channel: "ahp-root://",
       clientId,
@@ -300,6 +334,7 @@ export function stopConnection(): void {
   catalog.set({});
   pendingRequests.clear();
   pendingByClientSeq.clear();
+  creations.clear();
 }
 
 /** Routes one wire frame: responses pair by id; notifications fold. */

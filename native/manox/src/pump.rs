@@ -40,7 +40,8 @@ pub(crate) enum PumpEvent {
 /// task owns the receiver; when the last sender drops, the task ends.
 #[derive(Clone)]
 pub(crate) struct PumpSender {
-    tx: mpsc::Sender<PumpEvent>,
+    /// Visible to the crate so the host-half tests can drive a session.
+    pub(crate) tx: mpsc::Sender<PumpEvent>,
 }
 
 impl PumpSender {
@@ -67,13 +68,22 @@ struct PumpHandle {
 
 static PUMP: Mutex<Option<PumpHandle>> = Mutex::new(None);
 
-/// Starts the pump (idempotent while running).
+/// Starts the pump. A second `start` while one is live retires it fully and
+/// rewires to the new caller: the old session was the previous VM's (a hot
+/// reload, a test run's next `open`), and its callback points at dead code.
 pub(crate) fn start(on_frame: Callback<crate::ManoxFrame>, cx: CallCx<'_>) -> Result<(), String> {
     let mut guard = PUMP
         .lock()
         .map_err(|_| "manox pump lock poisoned".to_owned())?;
     if guard.is_some() {
-        return Ok(());
+        // A live pump belongs to a previous VM's wiring (a hot reload, a test
+        // run's next `open`): retire it fully and rewire to the new caller.
+        // The runtime thread is cheap; the journal was the old session's.
+        drop(guard);
+        stop()?;
+        guard = PUMP
+            .lock()
+            .map_err(|_| "manox pump lock poisoned".to_owned())?;
     }
     let (commands, commands_rx) = mpsc::unbounded_channel::<Command>();
     let (events, events_rx) = mpsc::channel::<PumpEvent>(1024);
@@ -210,7 +220,12 @@ async fn supervise(
     events: mpsc::Sender<PumpEvent>,
     alive: std::sync::Arc<AtomicBool>,
 ) {
-    let mut session: Option<host::Session> = None;
+    // The first host session comes up with the supervisor: `start` promises a
+    // live host half (its frames answer `initialize` from then on), not a
+    // quiet wire until the first `restart`.
+    let mut session: Option<host::Session> = Some(host::Session::spawn(PumpSender {
+        tx: events.clone(),
+    }));
     while let Some(command) = commands_rx.recv().await {
         match command {
             Command::Frame(text) => {

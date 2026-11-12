@@ -136,7 +136,7 @@ function ToolCallCard(props: { chatId: string; turnId: string; part: ToolCallRes
         <View class="flex-row items-center justify-end gap-2" style={{ paddingTop: 2 }}>
           <View
             role="button"
-            testID={`manox-deny-${toolCall().toolCallId}`}
+            testID="manox-deny"
             accessibilityLabel={t(K.manox.deny)}
             class="h-7 flex-row items-center rounded-lg border border-line px-3 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
             style={{ ...motionStyle("fast") }}
@@ -146,7 +146,7 @@ function ToolCallCard(props: { chatId: string; turnId: string; part: ToolCallRes
           </View>
           <View
             role="button"
-            testID={`manox-approve-${toolCall().toolCallId}`}
+            testID="manox-approve"
             accessibilityLabel={t(K.manox.approve)}
             class="h-7 flex-row items-center rounded-lg bg-primary px-3 hover:bg-primary/90 active:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
             style={{ ...motionStyle("fast") }}
