@@ -29,7 +29,7 @@ let loading = false;
 export async function loadSubagents(containerId?: string): Promise<void> {
   const target = containerId ?? activeContainerId();
   if (!target || loading) return;
-  if (piTransport() === "acp") {
+  if (piTransport() === "acp" && transport === null) {
     // The distro carries no dispatch extension yet (v2 §12 P3): the roster
     // says so instead of spinning an empty list or inventing runs.
     runs.set([]);

@@ -14,6 +14,8 @@
 pending=""
 while IFS= read -r line; do
   id=$(printf '%s' "$line" | grep -o '"id":[0-9]*' | head -n 1 | tr -dc '0-9')
+  sid=$(printf '%s' "$line" | grep -o '"sessionId":"[^"]*"' | head -n 1 | cut -d'"' -f4)
+  : "${sid:=stub-0000-0002}"
 
   case "$line" in
     *'"method":"initialize"'*)
@@ -28,8 +30,8 @@ while IFS= read -r line; do
       ;;
     *'"method":"session/load"'*)
       if [ -n "$STUB_LOAD_REPLAY" ]; then
-        printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"stub-0000-0002","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"earlier question"}}}}\n'
-        printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"stub-0000-0002","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"earlier answer"}}}}\n'
+        printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"'$sid'","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"earlier question"}}}}\n'
+        printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"'$sid'","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"earlier answer"}}}}\n'
       fi
       printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id"
       ;;
@@ -42,9 +44,9 @@ while IFS= read -r line; do
         continue
       fi
       if [ -n "$STUB_PROMPT_UPDATES" ]; then
-        printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"stub-0000-0001","update":{"sessionUpdate":"tool_call","toolCallId":"tc1","title":"read x","name":"read","kind":"read","status":"in_progress"}}}\n'
-        printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"stub-0000-0001","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hello from the stub"}}}}\n'
-        printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"stub-0000-0001","update":{"sessionUpdate":"tool_call_update","toolCallId":"tc1","status":"completed"}}}\n'
+        printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"%s","update":{"sessionUpdate":"tool_call","toolCallId":"tc1","title":"read x","name":"read","kind":"read","status":"in_progress"}}}\n' "$sid"
+        printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"%s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hello from the stub"}}}}\n' "$sid"
+        printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"%s","update":{"sessionUpdate":"tool_call_update","toolCallId":"tc1","status":"completed"}}}\n' "$sid"
       fi
       printf '{"jsonrpc":"2.0","id":%s,"result":{"stopReason":"end_turn"}}\n' "$pending"
       pending=""

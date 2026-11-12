@@ -59,15 +59,17 @@ test("a turn streams its updates live", async () => {
   expect(kinds).toContain("tool_call_update");
 });
 
-test("the transport switch defaults to the engine and pins for tests", () => {
+test("the transport switch defaults to the ACP harness and pins for tests", () => {
   setPiTransport(null);
-  // The headless runner's env is not ours to mutate; the default stands.
-  expect(piTransport()).toBe("engine");
-  setPiTransport("acp");
+  // The headless runner's env is not ours to mutate; the default stands
+  // (the cutover's flip: ACP unless ZU_PI_TRANSPORT=engine).
   expect(piTransport()).toBe("acp");
   setPiTransport("engine");
   expect(piTransport()).toBe("engine");
+  setPiTransport("acp");
+  expect(piTransport()).toBe("acp");
   setPiTransport(null);
+  expect(piTransport()).toBe("acp");
 });
 
 test("the native pump frames ndjson lines both ways", async () => {
@@ -250,4 +252,21 @@ test("the store-level ACP branch follows the pinned transport", () => {
 test("leaves the transport unpinned", () => {
   setPiTransport(null);
   expect(activeTurn("nothing")).toBeNull();
+});
+
+test("a held prompt on a loaded session is cancelled too", async () => {
+  const handle = startTurn({
+    cwd: "/tmp",
+    text: "count slowly",
+    sessionId: "stub-0000-0002",
+    command: "/bin/sh",
+    args: [STUB],
+    env: { STUB_HOLD_PROMPT: "1" },
+    hooks: { onUpdate: () => {}, onNotice: () => {} },
+  });
+  await until("the turn to register", () => handle.sessionId !== null && isTurnActive(handle.sessionId!));
+  handle.cancel();
+  const result = await handle.done;
+  expect(result.stopReason).toBe("cancelled");
+  expect(isTurnActive(result.sessionId)).toBe(false);
 });

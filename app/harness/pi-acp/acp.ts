@@ -20,18 +20,20 @@ import { JsonrpcChannel, JsonrpcFailure, type ServerMessage } from "./jsonrpc";
  * modes/models, steering) degrade above this module, in the stores.
  */
 
-/** Which transport pi sessions ride. `engine` until the cutover (B3). */
+/** Which transport pi sessions ride. Since the cutover the ACP harness is
+ * the default; `ZU_PI_TRANSPORT=engine` opts a dev run back into the legacy
+ * engine while it still exists. */
 export type PiTransport = "engine" | "acp";
 
 /** The pinned transport, when a test or a fixture set one. */
 let transportOverride: PiTransport | null = null;
 
 /** The transport for new pi-session work: an explicit pin, else the
- * `ZU_PI_TRANSPORT` env (`acp` | anything else = engine). */
+ * `ZU_PI_TRANSPORT` env (`engine` | anything else = the ACP default). */
 export function piTransport(): PiTransport {
   if (transportOverride) return transportOverride;
   const value = (process.env.ZU_PI_TRANSPORT ?? "").trim().toLowerCase();
-  return value === "acp" ? "acp" : "engine";
+  return value === "engine" ? "engine" : "acp";
 }
 
 /** Pins the transport for this process (tests and fixtures; `null` resumes
@@ -81,7 +83,15 @@ class HarnessConnection {
       (text: string) => this.note(text),
       (exit: AcpExit) => {
         this.exited = true;
-        if (this.exitListener) this.exitListener(exit);
+        if (this.exitListener) {
+          this.exitListener(exit);
+          return;
+        }
+        // Nobody listens yet (a cancel or a death during the handshake): the
+        // pending handshake fails now instead of riding its watchdog.
+        const why = `the harness exited before it was ready (exit ${exit.code === null ? String(exit.signal ?? "unknown") : exit.code})`;
+        this.channel.failAll(why);
+        this.note(`${why}\n`);
       },
     );
     this.channel = new JsonrpcChannel((line) => {
@@ -110,6 +120,14 @@ class HarnessConnection {
 
   /** Spawns and shakes hands; a silent harness is a failed start, with stderr. */
   static async start(options: { cwd: string; command?: string; args?: string[]; env?: Record<string, string> }): Promise<HarnessConnection> {
+    const override: { command?: string; args?: string[]; env?: Record<string, string> } = commandOverride ?? {};
+    const merged: { cwd: string; command?: string; args?: string[]; env?: Record<string, string> } = {
+      cwd: options.cwd,
+      command: options.command ?? override.command,
+      args: options.args ?? override.args,
+      env: { ...(override.env ?? {}), ...(options.env ?? {}) },
+    };
+    options = merged;
     let connection: HarnessConnection;
     try {
       connection = new HarnessConnection(options);
@@ -167,14 +185,23 @@ class HarnessConnection {
     return replay;
   }
 
-  /** Runs one prompt; `onUpdate` sees each streamed update; resolves settled. */
-  async prompt(sessionId: string, text: string, onUpdate: (update: AcpUpdate) => void): Promise<string> {
+  /** Runs one prompt; `onUpdate` sees each streamed update and `onSent`
+   * fires once the request is on the wire (a cancel requested during the
+   * bind lands here, where the agent can actually act on it); resolves
+   * settled. */
+  async prompt(
+    sessionId: string,
+    text: string,
+    onUpdate: (update: AcpUpdate) => void,
+    onSent?: () => void,
+  ): Promise<string> {
     this.updateSink = (_bound, update) => onUpdate(update);
     try {
       // No timeout: a turn is as long as it is. The process's death and the
       // explicit stop are the other ways out.
-      const reply = await this.channel.request("session/prompt", { sessionId, prompt: [{ type: "text", text }] });
-      return String(reply?.stopReason ?? "end_turn");
+      const reply = this.channel.request("session/prompt", { sessionId, prompt: [{ type: "text", text }] });
+      onSent?.();
+      return String((await reply)?.stopReason ?? "end_turn");
     } catch (failure) {
       throw new Error(describe(failure));
     } finally {
@@ -330,12 +357,18 @@ export function startTurn(options: {
     }
     if (settled) throw new Error("the turn was cancelled while binding");
 
-    activeTurns.set(sessionId, { connection, sessionId });
-    // A cancel that arrived while the bind was still in flight.
-    if (cancelled) connection.cancel(sessionId);
+    const boundId: string = sessionId;
+    activeTurns.set(boundId, { connection, sessionId: boundId });
+    // A cancel that arrived while the bind was still in flight is retried
+    // once the prompt is actually on the wire — a cancel for a prompt that
+    // was never sent is a no-op on the agent side, and the turn would hold.
+    const cancelIfRequested = () => {
+      if (cancelled) connection?.cancel(boundId);
+    };
+    if (cancelled) connection.cancel(boundId);
 
     try {
-      const stopReason = await connection.prompt(sessionId, options.text, options.hooks.onUpdate);
+      const stopReason = await connection.prompt(sessionId, options.text, options.hooks.onUpdate, cancelIfRequested);
       return { sessionId, stopReason };
     } finally {
       finish();
@@ -353,6 +386,23 @@ export function startTurn(options: {
       else connection?.kill("the turn was cancelled before it started");
     },
   };
+}
+
+/** The test/fixture override for the harness binary: when set, turns and
+ * transcript loads spawn this program instead of resolving `pi-acp`. The
+ * packaged app never calls this. */
+let commandOverride: { command: string; args?: string[]; env?: Record<string, string> } | null = null;
+
+export function setAcpCommandOverride(
+  override: { command: string; args?: string[]; env?: Record<string, string> } | null,
+): void {
+  commandOverride = override;
+}
+
+/** The harness spawn options for a production call (the resolved `pi-acp`)
+ * or a test's stub. */
+function harnessSpawn(): { command?: string; args?: string[]; env?: Record<string, string> } {
+  return commandOverride ?? {};
 }
 
 /**

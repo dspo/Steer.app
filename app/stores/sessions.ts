@@ -138,6 +138,15 @@ export function acpEnabled(): boolean {
   return piTransport() === "acp";
 }
 
+/**
+ * Whether the ACP branch owns the session commands: the transport says so
+ * and no fixture transport is installed (the tests' seams ride the same
+ * shapes the engine did, whatever the production transport is).
+ */
+function useAcpBranch(): boolean {
+  return acpEnabled() && sessionTransport === null && modelTransport === null;
+}
+
 /** Resolves a pi session id (or alias) to the view key it folds into. */
 function viewKeyFor(id: string | null | undefined): string | null {
   if (!id) return null;
@@ -223,6 +232,13 @@ async function pumpAcpQueue(key: string): Promise<void> {
   if (next) runAcpTurn(key, next);
 }
 
+/** Whether a store-level turn is in flight for `id` (the tests' busy read;
+ * the optimistic row also flips `streaming`, which is not the turn's truth). */
+export function turnActive(id: string | null | undefined): boolean {
+  const key = viewKeyFor(id) ?? id;
+  return !!key && acpTurns.has(key);
+}
+
 /** The ACP send: a running turn queues the text; an idle view starts one. */
 function acpSend(key: string, text: string): void {
   const busy = acpTurns.has(key) || (views()[key]?.streaming ?? false);
@@ -268,7 +284,7 @@ export function setSessionPathObserver(next: ((id: string, path: string) => void
  * mode this stays empty rather than pretending, and the composer renders
  * without those gauges. */
 export async function refreshSessionInfo(id: string): Promise<void> {
-  if (!id || acpEnabled()) return;
+  if (!id || useAcpBranch()) return;
   try {
     const data = await request("session.info", { sessionId: id }, 30000);
     applySessionInfo(id, data as SessionInfoData);
@@ -323,7 +339,7 @@ function patchModels(id: string, next: SessionModelsState): void {
  */
 export async function loadSessionModels(id: string, force = false): Promise<void> {
   if (!id) return;
-  if (acpEnabled()) {
+  if (useAcpBranch()) {
     // The distro does not serve a model table yet; the picker says so
     // instead of an empty list or a silent spin.
     patchModels(id, { status: "error", error: t(K.session.acpModelsUnavailable) });
@@ -349,7 +365,7 @@ export async function loadSessionModels(id: string, force = false): Promise<void
  */
 export async function chooseSessionModel(id: string, provider: string, modelId: string): Promise<boolean> {
   if (!id || !provider || !modelId) return false;
-  if (acpEnabled()) {
+  if (useAcpBranch()) {
     patchModels(id, { ...(sessionModels()[id] ?? { status: "error" as const }), status: "error", error: t(K.session.acpModelsUnavailable) });
     return false;
   }
@@ -491,19 +507,20 @@ function foldStoreEvent(rawId: string | undefined, type: string, data: unknown):
     case "tool.end": {
       if (!id) return;
       const payload = (data ?? {}) as any;
-      const label = String(payload.toolName ?? "tool");
       const callId = payload.toolCallId ? String(payload.toolCallId) : undefined;
       const current = views()[id] ?? blankView(id);
       const list = current.messages;
+      const index = callId
+        ? list.map((message) => message.tool?.id).lastIndexOf(callId)
+        : list.map((message) => message.role).lastIndexOf("tool");
+      // A tool_call_update carries no name: the card it settles keeps its own.
+      const label = String(payload.toolName ?? (index >= 0 ? list[index]?.tool?.name : undefined) ?? "tool");
       if (type === "tool.start") {
         patchView(id, {
           messages: [...list, { role: "tool", text: label, tool: { id: callId, name: label, state: "running" } }],
         });
       } else {
         const state: ToolState = payload.isError ? "failed" : "done";
-        const index = callId
-          ? list.map((message) => message.tool?.id).lastIndexOf(callId)
-          : list.map((message) => message.role).lastIndexOf("tool");
         const row = { role: "tool" as const, text: label, tool: { id: callId, name: label, state } };
         const messages =
           index >= 0
@@ -635,6 +652,15 @@ function project(data: any): Msg[] {
  * the read path, whether or not one is running.
  */
 export async function refreshSessions(): Promise<void> {
+  if (sessionTransport) {
+    try {
+      const data = await sessionTransport("session.list", {}, 30000);
+      sessions.set((data?.sessions ?? []) as SessionMeta[]);
+    } catch (failure) {
+      error.set(String(failure));
+    }
+    return;
+  }
   try {
     const scan = await State.scanSessions(sessionScan?.watermark ?? 0);
     if (!scan.changed) return;
@@ -697,15 +723,18 @@ export function openSession(path: string): Promise<SessionView | undefined> {
   if (inFlight) return inFlight;
   const requestOpen = (async () => {
     try {
-      if (acpEnabled()) {
+      if (useAcpBranch()) {
         const id = piSessionIdOfPath(path);
         if (!id) throw new Error(`not a pi session file: ${path}`);
         const meta = sessions().find((row) => row.path === path);
-        const cwd = meta?.cwd || path.split("/").slice(0, -1).join("/") || "/";
-        const { updates } = await loadTranscript({ cwd, sessionId: id });
+        // The load's cwd must equal the file's own: guess nothing (the
+        // harness process would start in a folder the session never lived
+        // in, and the distro refuses the mismatch). The fold feeds it.
+        if (!meta?.cwd) throw new Error("the session list has not loaded yet; try again");
+        const { updates } = await loadTranscript({ cwd: meta.cwd, sessionId: id });
         const view = blankView(id, {
           path,
-          cwd,
+          cwd: meta.cwd,
           name: meta?.name ?? "",
           messages: transcriptFromReplay(updates),
           loaded: true,
@@ -747,7 +776,7 @@ function piSessionIdOfPath(path: string): string | null {
  * session and records it under `piId`. The key stays stable for the dock.
  */
 export async function createSession(cwd: string): Promise<string> {
-  if (acpEnabled()) {
+  if (useAcpBranch()) {
     const key = `acp-local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     patchView(key, { id: key, cwd, loaded: true });
     activeId.set(key);
@@ -787,7 +816,7 @@ export async function send(text: string, sessionId?: string): Promise<void> {
   const trimmed = text.trim();
   const view = viewFor(id);
   if (!id || !trimmed || !view) return;
-  if (acpEnabled()) {
+  if (useAcpBranch()) {
     acpSend(viewKeyFor(id) ?? id, trimmed);
     return;
   }
@@ -814,7 +843,7 @@ export async function followUp(text: string, sessionId?: string): Promise<void> 
   const trimmed = text.trim();
   const view = viewFor(id);
   if (!id || !trimmed || !view) return;
-  if (acpEnabled()) {
+  if (useAcpBranch()) {
     acpSend(viewKeyFor(id) ?? id, trimmed);
     return;
   }
@@ -838,7 +867,7 @@ export async function steer(text: string, sessionId?: string): Promise<void> {
   const trimmed = text.trim();
   const view = viewFor(id);
   if (!id || !trimmed || !view) return;
-  if (acpEnabled()) {
+  if (useAcpBranch()) {
     acpSend(viewKeyFor(id) ?? id, trimmed);
     return;
   }
@@ -862,7 +891,7 @@ export async function interrupt(text: string, sessionId?: string): Promise<void>
   const trimmed = text.trim();
   const view = viewFor(id);
   if (!id || !trimmed || !view) return;
-  if (acpEnabled()) {
+  if (useAcpBranch()) {
     const key = viewKeyFor(id) ?? id;
     // The stop is best-effort; `acpSend` queues the text behind whatever the
     // cancelled turn takes to settle, and its user row goes in once.
@@ -890,7 +919,7 @@ export async function interrupt(text: string, sessionId?: string): Promise<void>
 export async function stop(sessionId?: string): Promise<void> {
   const id = sessionId ?? activeId();
   if (!id) return;
-  if (acpEnabled()) {
+  if (useAcpBranch()) {
     const key = viewKeyFor(id) ?? id;
     acpTurns.get(key)?.cancel();
     return;
@@ -906,7 +935,7 @@ export async function stop(sessionId?: string): Promise<void> {
  * ACP mode: thinking levels are session modes on the distro, which does not
  * expose them yet — refused with the reason, never guessed. */
 export async function setThinkingLevel(id: string, level: SessionThinkingLevel): Promise<boolean> {
-  if (acpEnabled()) {
+  if (useAcpBranch()) {
     patchView(id, { error: t(K.session.acpThinkingUnavailable) });
     return false;
   }
@@ -924,7 +953,7 @@ export async function setThinkingLevel(id: string, level: SessionThinkingLevel):
  * mode: the distro has no compaction trigger yet (v2 §5.3 x-zu/compact) —
  * refused with the reason. */
 export async function compactSession(id: string, instructions?: string): Promise<boolean> {
-  if (acpEnabled()) {
+  if (useAcpBranch()) {
     patchView(id, { error: t(K.session.acpCompactUnavailable) });
     return false;
   }

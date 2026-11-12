@@ -7,12 +7,19 @@ import {
   liveContainers,
   openScratch,
   setMembershipWriter,
+  setProjectCwdResolver,
 } from "./containers";
 
-// The container store mints membership rows when it creates a container;
-// the map itself lives here. The writer seam avoids a store import cycle.
+// The container store mints membership rows when it creates a container and
+// snapshots a project's primary cwd; both facts live here. The seams avoid
+// a store import cycle.
 setMembershipWriter((containerId, projectId) => {
   void setContainerProject(containerId, projectId);
+});
+setProjectCwdResolver((projectId) => {
+  const project = projects().find((row) => row.id === projectId);
+  const primary = project?.roots.find((root) => root.primary) ?? project?.roots[0];
+  return primary?.path ?? null;
 });
 
 /**

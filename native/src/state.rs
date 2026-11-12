@@ -153,6 +153,16 @@ impl State {
         in_task(move || scan_sessions_in(watermark)).await
     }
 
+    /// The user's home folder, when the platform reports one. The UI has no
+    /// environment of its own (its `process.env` is a narrow capability
+    /// view), and "start anywhere" needs one honest folder.
+    pub fn home_dir() -> Option<String> {
+        std::env::var("HOME")
+            .ok()
+            .map(|home| home.trim().to_owned())
+            .filter(|home| !home.is_empty())
+    }
+
     /// Points pi's home for the session index at `path`; an empty string
     /// restores `~/.pi/agent`. Tests use it to scan a fixture directory.
     pub fn set_agent_dir(path: String) {

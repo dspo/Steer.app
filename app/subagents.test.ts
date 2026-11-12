@@ -1,4 +1,9 @@
 import { expect, test } from "nsh/test";
+import { setPiTransport } from "./harness/pi-acp/acp";
+
+// The roster's engine-fed projection: pinned to the legacy transport, which
+// the cutover made opt-in (the ACP harness has no dispatch yet).
+setPiTransport("engine");
 import { Engine } from "zu/native";
 import { connect, disconnect, onEngineEvent, phase, request } from "./stores/engine";
 
@@ -131,4 +136,8 @@ test("leaves the shared runner clean", async () => {
   await disconnect();
   Engine.setStateDir("");
   Engine.setNoExtensions(false);
+});
+
+test("leaves the transport pinned for the next file", () => {
+  setPiTransport(null);
 });

@@ -1,6 +1,7 @@
 import { LayoutAnimation, signal, untracked } from "nsh";
 import type { DockAreaRef } from "nsh/base";
 import { readState, writeState, layoutName } from "./zu-state";
+import { State as NativeState } from "zu/native";
 import type {
   ContainerKind,
   ContainerListData,
@@ -324,10 +325,11 @@ export async function loadContainers(): Promise<void> {
       const rows = (file?.containers ?? []).filter((row) => !!row && typeof row.id === "string");
       containers.set(rows);
       const id = file?.activeContainerId ?? liveContainers()[0]?.id ?? null;
-      // The canvas comes first: switching needs the registry and the layout
-      // file only, while the session fold scans every session on disk and
-      // would otherwise leave an empty canvas (or the scratch Hero) on
-      // startup.
+      // The fold's rows feed the sessions' loads (a load needs the row's cwd
+      // to match the file), so the first scan lands before the hydrating
+      // switch. The scan runs off-thread and caches by watermark; what the
+      // engine's session.list cost on a cold start, this costs too.
+      await refreshSessions();
       if (id && rows.some((row) => row.id === id && !row.archived)) {
         await switchContainer(id, true);
       } else if (liveContainers()[0]) {
@@ -337,7 +339,6 @@ export async function loadContainers(): Promise<void> {
         scratchLayout.set(withScratchHero(scratchLayout()));
         showScratch();
       }
-      await refreshSessions();
     }
   } catch (failure) {
     containerError.set(String(failure));
@@ -399,7 +400,7 @@ export async function createContainer(cwd?: string, projectId?: string | null): 
       // The legacy transport (fixtures): the engine minted the row and the
       // captain together; this store only projected it.
       const payload: Record<string, unknown> = {};
-      const target = cwd ?? activeCwd() ?? undefined;
+      const target = cwd || activeCwd() || undefined;
       if (target) payload.cwd = target;
       if (projectId !== undefined) payload.projectId = projectId;
       const data = await transport("container.create", payload, 120000);
@@ -426,7 +427,9 @@ export async function createContainer(cwd?: string, projectId?: string | null): 
       return null;
     }
     const active = containers().find((row) => row.id === activeContainerId());
-    const target = cwd ?? activeCwd() ?? active?.cwd ?? undefined;
+    // `||`, not `??`: the active session's cwd is "" before any view is
+    // open, and an empty folder name is no folder.
+    const target = cwd || projectCwd(projectId) || activeCwd() || active?.cwd || homeFallback();
     if (!target) throw new Error("no folder to start the conversation in");
     const sessionId = await createSession(target);
     const view = viewFor(sessionId);
@@ -464,12 +467,35 @@ export async function createContainer(cwd?: string, projectId?: string | null): 
   }
 }
 
+/** The last-resort folder when nothing names a workspace yet (the engine's
+ * old fallback was its own process cwd — the app's launch directory — which
+ * meant "/" from Finder; the home folder is the honest "start anywhere"). */
+function homeFallback(): string | undefined {
+  const home = NativeState.homeDir();
+  return home === null || home === undefined ? undefined : home;
+}
+
 /** The membership writer, installed by the projects store (its signal). */
 let membershipWriter: ((containerId: string, projectId: string | null) => void) | null = null;
 
 /** Installs the membership writer (avoids a store import cycle). */
 export function setMembershipWriter(next: ((containerId: string, projectId: string | null) => void) | null): void {
   membershipWriter = next;
+}
+
+/** The project-cwd resolver, installed by the projects store: a container
+ * created under a project snapshots the primary root (the engine's old
+ * rule), and the roots live there. */
+let projectCwdResolver: ((projectId: string) => string | null) | null = null;
+
+/** Installs the project-cwd resolver (avoids a store import cycle). */
+export function setProjectCwdResolver(next: ((projectId: string) => string | null) | null): void {
+  projectCwdResolver = next;
+}
+
+function projectCwd(projectId: string | null | undefined): string | undefined {
+  if (!projectId) return undefined;
+  return projectCwdResolver?.(projectId) ?? undefined;
 }
 
 function noteMembership(containerId: string, projectId: string | null): void {
@@ -515,7 +541,10 @@ export async function createExternalContainer(
       return container.id;
     }
     const current = containers().find((row) => row.id === activeContainerId());
-    const target = projectId === null ? current?.cwd ?? activeCwd() ?? undefined : undefined;
+    const target =
+      projectId === null
+        ? current?.cwd || activeCwd() || homeFallback()
+        : projectCwd(projectId) || current?.cwd || homeFallback();
     if (!target) throw new Error("no folder to start the terminal in");
     const now = Date.now();
     const container: ContainerRecord = {
@@ -680,18 +709,31 @@ export async function openPath(path: string): Promise<void> {
       }
       return;
     }
-    const container = containers().find((row) => row.id === target);
-    if (!container) throw new Error("container not found");
     const meta = sessions().find((row) => row.path === path);
     const sessionId = meta?.id ?? sessionIdOfPath(path) ?? path;
-    if (!container.sessions.some((session) => session.sessionId === sessionId)) {
-      const attached: ContainerRecord = {
+    let container = containers().find((row) => row.id === target);
+    if (container && container.sessions.length === 1 && !container.sessions[0].path) {
+      // A fresh ACP captain (no file, no turn yet) yields the container to
+      // the attached file: the session IS the captain, as the engine's old
+      // `pi:<sessionId>` rows were.
+      const promoted: ContainerRecord = {
+        ...container,
+        id: `pi:${sessionId}`,
+        sessions: [{ sessionId, path, name: meta?.name ?? "" }],
+        updatedAt: Date.now(),
+      };
+      containers.set(containers().map((row) => (row.id === container!.id ? promoted : row)));
+      void saveRegistry();
+      container = promoted;
+    } else if (container && !container.sessions.some((session) => session.sessionId === sessionId)) {
+      container = {
         ...container,
         sessions: [...container.sessions, { sessionId, path, name: meta?.name ?? "" }],
         updatedAt: Date.now(),
       };
-      upsertContainer(attached);
+      upsertContainer(container);
     }
+    if (!container) throw new Error("container not found");
     const view = await openSession(path);
     if (view) {
       const id = sessionSheetId(view.id);
