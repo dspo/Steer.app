@@ -5,7 +5,10 @@
 //   pin:     contracts/ahp/PIN.md — read it before syncing; do not edit these files by hand.
 // The only transform applied at vendoring time: relative import specifiers lost
 // their `.js` suffix (upstream ships ESM `.js` extensions; this app resolves
-// extensionless TS). Everything else is byte-identical to the pinned commit.
+// extensionless TS). A second transform (contracts/ahp/enums-to-consts.py,
+// see PIN.md) rewrites `export const enum` into const objects + unions +
+// namespaces: the nsh bundler's oxc cannot transform TS enums. Everything
+// else is byte-identical to the pinned commit.
 /**
  * Action Types — Aggregator shim that re-exports channel-organized action
  * declarations. New code should import directly from the per-channel files

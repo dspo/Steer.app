@@ -5,7 +5,10 @@
 //   pin:     contracts/ahp/PIN.md — read it before syncing; do not edit these files by hand.
 // The only transform applied at vendoring time: relative import specifiers lost
 // their `.js` suffix (upstream ships ESM `.js` extensions; this app resolves
-// extensionless TS). Everything else is byte-identical to the pinned commit.
+// extensionless TS). A second transform (contracts/ahp/enums-to-consts.py,
+// see PIN.md) rewrites `export const enum` into const objects + unions +
+// namespaces: the nsh bundler's oxc cannot transform TS enums. Everything
+// else is byte-identical to the pinned commit.
 /**
  * Terminal State Types — Per-terminal state and content parts exposed on
  * `ahp-terminal:` channels.
@@ -41,9 +44,15 @@ export interface TerminalInfo {
  * @category Terminal Types
  * @exhaustive
  */
-export const enum TerminalLifecycleStatus {
-  Running = 'running',
-  Exited = 'exited',
+export const TerminalLifecycleStatus = {
+
+  Running: 'running',
+  Exited: 'exited',
+} as const;
+export type TerminalLifecycleStatus = (typeof TerminalLifecycleStatus)[keyof typeof TerminalLifecycleStatus];
+export namespace TerminalLifecycleStatus {
+  export type Running = (typeof TerminalLifecycleStatus)["Running"];
+  export type Exited = (typeof TerminalLifecycleStatus)["Exited"];
 }
 
 /**
@@ -81,9 +90,15 @@ export type TerminalLifecycleState =
  * @category Terminal Types
  * @exhaustive
  */
-export const enum TerminalClaimKind {
-  Client = 'client',
-  Session = 'session',
+export const TerminalClaimKind = {
+
+  Client: 'client',
+  Session: 'session',
+} as const;
+export type TerminalClaimKind = (typeof TerminalClaimKind)[keyof typeof TerminalClaimKind];
+export namespace TerminalClaimKind {
+  export type Client = (typeof TerminalClaimKind)["Client"];
+  export type Session = (typeof TerminalClaimKind)["Session"];
 }
 
 /**

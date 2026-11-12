@@ -5,7 +5,10 @@
 //   pin:     contracts/ahp/PIN.md — read it before syncing; do not edit these files by hand.
 // The only transform applied at vendoring time: relative import specifiers lost
 // their `.js` suffix (upstream ships ESM `.js` extensions; this app resolves
-// extensionless TS). Everything else is byte-identical to the pinned commit.
+// extensionless TS). A second transform (contracts/ahp/enums-to-consts.py,
+// see PIN.md) rewrites `export const enum` into const objects + unions +
+// namespaces: the nsh bundler's oxc cannot transform TS enums. Everything
+// else is byte-identical to the pinned commit.
 /**
  * Chat Channel Commands — `createChat` and `disposeChat`.
  *
@@ -22,11 +25,17 @@ import type { Message, SideChatSelection } from './state';
  * How a new chat uses its source chat and turn.
  * @nonexhaustive
  */
-export const enum ChatSourceKind {
+export const ChatSourceKind = {
+
   /** Copy source history through the referenced turn into the new chat. */
-  Fork = 'fork',
+  Fork: 'fork',
   /** Supply source context without copying it into the new chat's visible history. */
-  SideChat = 'sideChat',
+  SideChat: 'sideChat',
+} as const;
+export type ChatSourceKind = (typeof ChatSourceKind)[keyof typeof ChatSourceKind];
+export namespace ChatSourceKind {
+  export type Fork = (typeof ChatSourceKind)["Fork"];
+  export type SideChat = (typeof ChatSourceKind)["SideChat"];
 }
 
 /**

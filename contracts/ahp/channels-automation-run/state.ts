@@ -5,7 +5,10 @@
 //   pin:     contracts/ahp/PIN.md — read it before syncing; do not edit these files by hand.
 // The only transform applied at vendoring time: relative import specifiers lost
 // their `.js` suffix (upstream ships ESM `.js` extensions; this app resolves
-// extensionless TS). Everything else is byte-identical to the pinned commit.
+// extensionless TS). A second transform (contracts/ahp/enums-to-consts.py,
+// see PIN.md) rewrites `export const enum` into const objects + unions +
+// namespaces: the nsh bundler's oxc cannot transform TS enums. Everything
+// else is byte-identical to the pinned commit.
 /**
  * Automation Run Channel State Types for `ahp-automation-run:`.
  *
@@ -34,17 +37,26 @@ import type { SessionState } from '../channels-session/state';
  * @category Automation Run State
  * @exhaustive
  */
-export const enum AutomationRunStatus {
+export const AutomationRunStatus = {
+
   /** The durable run record exists but execution has not started. */
-  Pending = 'pending',
+  Pending: 'pending',
   /** One or more linked sessions are executing or awaiting interaction. */
-  Running = 'running',
+  Running: 'running',
   /** Execution finished successfully. */
-  Completed = 'completed',
+  Completed: 'completed',
   /** Execution ended with an error. */
-  Failed = 'failed',
+  Failed: 'failed',
   /** Execution ended because cancellation was accepted. */
-  Cancelled = 'cancelled',
+  Cancelled: 'cancelled',
+} as const;
+export type AutomationRunStatus = (typeof AutomationRunStatus)[keyof typeof AutomationRunStatus];
+export namespace AutomationRunStatus {
+  export type Pending = (typeof AutomationRunStatus)["Pending"];
+  export type Running = (typeof AutomationRunStatus)["Running"];
+  export type Completed = (typeof AutomationRunStatus)["Completed"];
+  export type Failed = (typeof AutomationRunStatus)["Failed"];
+  export type Cancelled = (typeof AutomationRunStatus)["Cancelled"];
 }
 
 /**

@@ -5,7 +5,10 @@
 //   pin:     contracts/ahp/PIN.md — read it before syncing; do not edit these files by hand.
 // The only transform applied at vendoring time: relative import specifiers lost
 // their `.js` suffix (upstream ships ESM `.js` extensions; this app resolves
-// extensionless TS). Everything else is byte-identical to the pinned commit.
+// extensionless TS). A second transform (contracts/ahp/enums-to-consts.py,
+// see PIN.md) rewrites `export const enum` into const objects + unions +
+// namespaces: the nsh bundler's oxc cannot transform TS enums. Everything
+// else is byte-identical to the pinned commit.
 /**
  * Common Command Types — Connection-level commands (handshake, ping,
  * reconnect, subscribe/unsubscribe, dispatchAction) plus the filesystem
@@ -401,9 +404,15 @@ export interface PingParams extends BaseParams {
  * @category Commands
  * @exhaustive
  */
-export const enum ReconnectResultType {
-  Replay = 'replay',
-  Snapshot = 'snapshot',
+export const ReconnectResultType = {
+
+  Replay: 'replay',
+  Snapshot: 'snapshot',
+} as const;
+export type ReconnectResultType = (typeof ReconnectResultType)[keyof typeof ReconnectResultType];
+export namespace ReconnectResultType {
+  export type Replay = (typeof ReconnectResultType)["Replay"];
+  export type Snapshot = (typeof ReconnectResultType)["Snapshot"];
 }
 
 /**
@@ -591,9 +600,15 @@ export interface DispatchActionParams {
  * @category Commands
  * @exhaustive
  */
-export const enum ContentEncoding {
-  Base64 = 'base64',
-  Utf8 = 'utf-8',
+export const ContentEncoding = {
+
+  Base64: 'base64',
+  Utf8: 'utf-8',
+} as const;
+export type ContentEncoding = (typeof ContentEncoding)[keyof typeof ContentEncoding];
+export namespace ContentEncoding {
+  export type Base64 = (typeof ContentEncoding)["Base64"];
+  export type Utf8 = (typeof ContentEncoding)["Utf8"];
 }
 
 /**
@@ -682,10 +697,17 @@ export interface ResourceReadResult {
  * @category Commands
  * @exhaustive
  */
-export const enum ResourceWriteMode {
-  Truncate = 'truncate',
-  Append = 'append',
-  Insert = 'insert',
+export const ResourceWriteMode = {
+
+  Truncate: 'truncate',
+  Append: 'append',
+  Insert: 'insert',
+} as const;
+export type ResourceWriteMode = (typeof ResourceWriteMode)[keyof typeof ResourceWriteMode];
+export namespace ResourceWriteMode {
+  export type Truncate = (typeof ResourceWriteMode)["Truncate"];
+  export type Append = (typeof ResourceWriteMode)["Append"];
+  export type Insert = (typeof ResourceWriteMode)["Insert"];
 }
 
 /**
@@ -997,10 +1019,17 @@ export interface ResourceMoveResult {
  * @category Commands
  * @nonexhaustive
  */
-export const enum ResourceType {
-  File = 'file',
-  Directory = 'directory',
-  Symlink = 'symlink',
+export const ResourceType = {
+
+  File: 'file',
+  Directory: 'directory',
+  Symlink: 'symlink',
+} as const;
+export type ResourceType = (typeof ResourceType)[keyof typeof ResourceType];
+export namespace ResourceType {
+  export type File = (typeof ResourceType)["File"];
+  export type Directory = (typeof ResourceType)["Directory"];
+  export type Symlink = (typeof ResourceType)["Symlink"];
 }
 
 /**

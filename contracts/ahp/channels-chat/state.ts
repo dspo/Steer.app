@@ -5,7 +5,10 @@
 //   pin:     contracts/ahp/PIN.md — read it before syncing; do not edit these files by hand.
 // The only transform applied at vendoring time: relative import specifiers lost
 // their `.js` suffix (upstream ships ESM `.js` extensions; this app resolves
-// extensionless TS). Everything else is byte-identical to the pinned commit.
+// extensionless TS). A second transform (contracts/ahp/enums-to-consts.py,
+// see PIN.md) rewrites `export const enum` into const objects + unions +
+// namespaces: the nsh bundler's oxc cannot transform TS enums. Everything
+// else is byte-identical to the pinned commit.
 /**
  * Chat State Types — Per-chat turns, messages, response parts, tool calls,
  * and elicitation/input requests exposed on `ahp-chat:` channels.
@@ -174,15 +177,23 @@ export interface ChatSummary {
  * @category Chat State
  * @nonexhaustive
  */
-export const enum ChatOriginKind {
+export const ChatOriginKind = {
+
   /** User created the chat explicitly (e.g. via the host UI). */
-  User = 'user',
+  User: 'user',
   /** Forked from an existing chat at a specific turn. */
-  Fork = 'fork',
+  Fork: 'fork',
   /** Created as an independent side conversation from a specific turn. */
-  SideChat = 'sideChat',
+  SideChat: 'sideChat',
   /** Spawned by a tool call running in another chat (e.g. a sub-agent delegation). */
-  Tool = 'tool',
+  Tool: 'tool',
+} as const;
+export type ChatOriginKind = (typeof ChatOriginKind)[keyof typeof ChatOriginKind];
+export namespace ChatOriginKind {
+  export type User = (typeof ChatOriginKind)["User"];
+  export type Fork = (typeof ChatOriginKind)["Fork"];
+  export type SideChat = (typeof ChatOriginKind)["SideChat"];
+  export type Tool = (typeof ChatOriginKind)["Tool"];
 }
 
 /**
@@ -258,13 +269,20 @@ export type ChatOrigin =
  * @category Chat State
  * @exhaustive
  */
-export const enum ChatInteractivity {
+export const ChatInteractivity = {
+
   /** User can send messages and watch (default when absent) */
-  Full = 'full',
+  Full: 'full',
   /** User can watch but not send messages */
-  ReadOnly = 'read-only',
+  ReadOnly: 'read-only',
   /** Internal worker not shown in UI at all */
-  Hidden = 'hidden',
+  Hidden: 'hidden',
+} as const;
+export type ChatInteractivity = (typeof ChatInteractivity)[keyof typeof ChatInteractivity];
+export namespace ChatInteractivity {
+  export type Full = (typeof ChatInteractivity)["Full"];
+  export type ReadOnly = (typeof ChatInteractivity)["ReadOnly"];
+  export type Hidden = (typeof ChatInteractivity)["Hidden"];
 }
 
 // ─── Pending Message Types ───────────────────────────────────────────────────
@@ -275,11 +293,17 @@ export const enum ChatInteractivity {
  * @category Pending Message Types
  * @exhaustive
  */
-export const enum PendingMessageKind {
+export const PendingMessageKind = {
+
   /** Injected into the current turn at a convenient point */
-  Steering = 'steering',
+  Steering: 'steering',
   /** Sent automatically as a new turn after the current turn finishes */
-  Queued = 'queued',
+  Queued: 'queued',
+} as const;
+export type PendingMessageKind = (typeof PendingMessageKind)[keyof typeof PendingMessageKind];
+export namespace PendingMessageKind {
+  export type Steering = (typeof PendingMessageKind)["Steering"];
+  export type Queued = (typeof PendingMessageKind)["Queued"];
 }
 
 /**
@@ -307,10 +331,17 @@ export interface PendingMessage {
  * @category Chat Input Types
  * @exhaustive
  */
-export const enum ChatInputResponseKind {
-  Accept = 'accept',
-  Decline = 'decline',
-  Cancel = 'cancel',
+export const ChatInputResponseKind = {
+
+  Accept: 'accept',
+  Decline: 'decline',
+  Cancel: 'cancel',
+} as const;
+export type ChatInputResponseKind = (typeof ChatInputResponseKind)[keyof typeof ChatInputResponseKind];
+export namespace ChatInputResponseKind {
+  export type Accept = (typeof ChatInputResponseKind)["Accept"];
+  export type Decline = (typeof ChatInputResponseKind)["Decline"];
+  export type Cancel = (typeof ChatInputResponseKind)["Cancel"];
 }
 
 /**
@@ -319,13 +350,23 @@ export const enum ChatInputResponseKind {
  * @category Chat Input Types
  * @nonexhaustive
  */
-export const enum ChatInputQuestionKind {
-  Text = 'text',
-  Number = 'number',
-  Integer = 'integer',
-  Boolean = 'boolean',
-  SingleSelect = 'single-select',
-  MultiSelect = 'multi-select',
+export const ChatInputQuestionKind = {
+
+  Text: 'text',
+  Number: 'number',
+  Integer: 'integer',
+  Boolean: 'boolean',
+  SingleSelect: 'single-select',
+  MultiSelect: 'multi-select',
+} as const;
+export type ChatInputQuestionKind = (typeof ChatInputQuestionKind)[keyof typeof ChatInputQuestionKind];
+export namespace ChatInputQuestionKind {
+  export type Text = (typeof ChatInputQuestionKind)["Text"];
+  export type Number = (typeof ChatInputQuestionKind)["Number"];
+  export type Integer = (typeof ChatInputQuestionKind)["Integer"];
+  export type Boolean = (typeof ChatInputQuestionKind)["Boolean"];
+  export type SingleSelect = (typeof ChatInputQuestionKind)["SingleSelect"];
+  export type MultiSelect = (typeof ChatInputQuestionKind)["MultiSelect"];
 }
 
 /**
@@ -456,12 +497,21 @@ export interface ChatInputRequest {
  * @category Chat Input Types
  * @nonexhaustive
  */
-export const enum ChatInputAnswerValueKind {
-  Text = 'text',
-  Number = 'number',
-  Boolean = 'boolean',
-  Selected = 'selected',
-  SelectedMany = 'selected-many',
+export const ChatInputAnswerValueKind = {
+
+  Text: 'text',
+  Number: 'number',
+  Boolean: 'boolean',
+  Selected: 'selected',
+  SelectedMany: 'selected-many',
+} as const;
+export type ChatInputAnswerValueKind = (typeof ChatInputAnswerValueKind)[keyof typeof ChatInputAnswerValueKind];
+export namespace ChatInputAnswerValueKind {
+  export type Text = (typeof ChatInputAnswerValueKind)["Text"];
+  export type Number = (typeof ChatInputAnswerValueKind)["Number"];
+  export type Boolean = (typeof ChatInputAnswerValueKind)["Boolean"];
+  export type Selected = (typeof ChatInputAnswerValueKind)["Selected"];
+  export type SelectedMany = (typeof ChatInputAnswerValueKind)["SelectedMany"];
 }
 
 /**
@@ -525,10 +575,17 @@ export interface ChatInputSkipped {
  * @category Chat Input Types
  * @exhaustive
  */
-export const enum ChatInputAnswerState {
-  Draft = 'draft',
-  Submitted = 'submitted',
-  Skipped = 'skipped',
+export const ChatInputAnswerState = {
+
+  Draft: 'draft',
+  Submitted: 'submitted',
+  Skipped: 'skipped',
+} as const;
+export type ChatInputAnswerState = (typeof ChatInputAnswerState)[keyof typeof ChatInputAnswerState];
+export namespace ChatInputAnswerState {
+  export type Draft = (typeof ChatInputAnswerState)["Draft"];
+  export type Submitted = (typeof ChatInputAnswerState)["Submitted"];
+  export type Skipped = (typeof ChatInputAnswerState)["Skipped"];
 }
 
 /**
@@ -547,10 +604,17 @@ export type ChatInputAnswer = ChatInputAnswered | ChatInputSkipped;
  * @category Turn Types
  * @exhaustive
  */
-export const enum TurnState {
-  Complete = 'complete',
-  Cancelled = 'cancelled',
-  Error = 'error',
+export const TurnState = {
+
+  Complete: 'complete',
+  Cancelled: 'cancelled',
+  Error: 'error',
+} as const;
+export type TurnState = (typeof TurnState)[keyof typeof TurnState];
+export namespace TurnState {
+  export type Complete = (typeof TurnState)["Complete"];
+  export type Cancelled = (typeof TurnState)["Cancelled"];
+  export type Error = (typeof TurnState)["Error"];
 }
 
 /**
@@ -559,17 +623,26 @@ export const enum TurnState {
  * @category Turn Types
  * @nonexhaustive
  */
-export const enum MessageAttachmentKind {
+export const MessageAttachmentKind = {
+
   /** A simple, opaque attachment whose representation is described by the producer. */
-  Simple = 'simple',
+  Simple: 'simple',
   /** An attachment whose data is embedded inline as a base64 string. */
-  EmbeddedResource = 'embeddedResource',
+  EmbeddedResource: 'embeddedResource',
   /** An attachment that references a resource by URI. */
-  Resource = 'resource',
+  Resource: 'resource',
   /** An attachment that references annotations on an annotations channel. */
-  Annotations = 'annotations',
+  Annotations: 'annotations',
   /** An attachment that references a bounded transcript from another chat. */
-  Chat = 'chat',
+  Chat: 'chat',
+} as const;
+export type MessageAttachmentKind = (typeof MessageAttachmentKind)[keyof typeof MessageAttachmentKind];
+export namespace MessageAttachmentKind {
+  export type Simple = (typeof MessageAttachmentKind)["Simple"];
+  export type EmbeddedResource = (typeof MessageAttachmentKind)["EmbeddedResource"];
+  export type Resource = (typeof MessageAttachmentKind)["Resource"];
+  export type Annotations = (typeof MessageAttachmentKind)["Annotations"];
+  export type Chat = (typeof MessageAttachmentKind)["Chat"];
 }
 
 /**
@@ -890,14 +963,25 @@ export type MessageAttachment =
  * @category Response Parts
  * @nonexhaustive
  */
-export const enum ResponsePartKind {
-  Markdown = 'markdown',
-  ContentRef = 'contentRef',
-  ToolCall = 'toolCall',
-  Reasoning = 'reasoning',
-  SystemNotification = 'systemNotification',
-  InputRequest = 'inputRequest',
-  Error = 'error',
+export const ResponsePartKind = {
+
+  Markdown: 'markdown',
+  ContentRef: 'contentRef',
+  ToolCall: 'toolCall',
+  Reasoning: 'reasoning',
+  SystemNotification: 'systemNotification',
+  InputRequest: 'inputRequest',
+  Error: 'error',
+} as const;
+export type ResponsePartKind = (typeof ResponsePartKind)[keyof typeof ResponsePartKind];
+export namespace ResponsePartKind {
+  export type Markdown = (typeof ResponsePartKind)["Markdown"];
+  export type ContentRef = (typeof ResponsePartKind)["ContentRef"];
+  export type ToolCall = (typeof ResponsePartKind)["ToolCall"];
+  export type Reasoning = (typeof ResponsePartKind)["Reasoning"];
+  export type SystemNotification = (typeof ResponsePartKind)["SystemNotification"];
+  export type InputRequest = (typeof ResponsePartKind)["InputRequest"];
+  export type Error = (typeof ResponsePartKind)["Error"];
 }
 
 /**
@@ -1076,10 +1160,17 @@ export const enum ToolCallStatus {
  * @category Tool Call Types
  * @nonexhaustive
  */
-export const enum ToolCallConfirmationReason {
-  NotNeeded = 'not-needed',
-  UserAction = 'user-action',
-  Setting = 'setting',
+export const ToolCallConfirmationReason = {
+
+  NotNeeded: 'not-needed',
+  UserAction: 'user-action',
+  Setting: 'setting',
+} as const;
+export type ToolCallConfirmationReason = (typeof ToolCallConfirmationReason)[keyof typeof ToolCallConfirmationReason];
+export namespace ToolCallConfirmationReason {
+  export type NotNeeded = (typeof ToolCallConfirmationReason)["NotNeeded"];
+  export type UserAction = (typeof ToolCallConfirmationReason)["UserAction"];
+  export type Setting = (typeof ToolCallConfirmationReason)["Setting"];
 }
 
 /**
@@ -1088,8 +1179,13 @@ export const enum ToolCallConfirmationReason {
  * @category Tool Call Types
  * @nonexhaustive
  */
-export const enum ToolCallRiskAssessmentKind {
-  Judge = 'judge',
+export const ToolCallRiskAssessmentKind = {
+
+  Judge: 'judge',
+} as const;
+export type ToolCallRiskAssessmentKind = (typeof ToolCallRiskAssessmentKind)[keyof typeof ToolCallRiskAssessmentKind];
+export namespace ToolCallRiskAssessmentKind {
+  export type Judge = (typeof ToolCallRiskAssessmentKind)["Judge"];
 }
 
 /**
@@ -1098,9 +1194,15 @@ export const enum ToolCallRiskAssessmentKind {
  * @category Tool Call Types
  * @nonexhaustive
  */
-export const enum ToolCallRiskAssessmentStatus {
-  Loading = 'loading',
-  Complete = 'complete',
+export const ToolCallRiskAssessmentStatus = {
+
+  Loading: 'loading',
+  Complete: 'complete',
+} as const;
+export type ToolCallRiskAssessmentStatus = (typeof ToolCallRiskAssessmentStatus)[keyof typeof ToolCallRiskAssessmentStatus];
+export namespace ToolCallRiskAssessmentStatus {
+  export type Loading = (typeof ToolCallRiskAssessmentStatus)["Loading"];
+  export type Complete = (typeof ToolCallRiskAssessmentStatus)["Complete"];
 }
 
 interface ToolCallRiskAssessmentBase {
@@ -1141,10 +1243,17 @@ export type ToolCallRiskAssessment =
  * @category Tool Call Types
  * @exhaustive
  */
-export const enum ToolCallCancellationReason {
-  Denied = 'denied',
-  Skipped = 'skipped',
-  ResultDenied = 'result-denied',
+export const ToolCallCancellationReason = {
+
+  Denied: 'denied',
+  Skipped: 'skipped',
+  ResultDenied: 'result-denied',
+} as const;
+export type ToolCallCancellationReason = (typeof ToolCallCancellationReason)[keyof typeof ToolCallCancellationReason];
+export namespace ToolCallCancellationReason {
+  export type Denied = (typeof ToolCallCancellationReason)["Denied"];
+  export type Skipped = (typeof ToolCallCancellationReason)["Skipped"];
+  export type ResultDenied = (typeof ToolCallCancellationReason)["ResultDenied"];
 }
 
 /**
@@ -1153,9 +1262,15 @@ export const enum ToolCallCancellationReason {
  * @category Tool Call Types
  * @nonexhaustive
  */
-export const enum ConfirmationOptionKind {
-  Approve = 'approve',
-  Deny = 'deny',
+export const ConfirmationOptionKind = {
+
+  Approve: 'approve',
+  Deny: 'deny',
+} as const;
+export type ConfirmationOptionKind = (typeof ConfirmationOptionKind)[keyof typeof ConfirmationOptionKind];
+export namespace ConfirmationOptionKind {
+  export type Approve = (typeof ConfirmationOptionKind)["Approve"];
+  export type Deny = (typeof ConfirmationOptionKind)["Deny"];
 }
 
 /**
@@ -1188,9 +1303,15 @@ export interface ConfirmationOption {
  * @category Tool Call Types
  * @nonexhaustive
  */
-export const enum ToolCallContributorKind {
-  Client = 'client',
-  MCP = 'mcp',
+export const ToolCallContributorKind = {
+
+  Client: 'client',
+  MCP: 'mcp',
+} as const;
+export type ToolCallContributorKind = (typeof ToolCallContributorKind)[keyof typeof ToolCallContributorKind];
+export namespace ToolCallContributorKind {
+  export type Client = (typeof ToolCallContributorKind)["Client"];
+  export type MCP = (typeof ToolCallContributorKind)["MCP"];
 }
 
 export interface ToolCallClientContributor {
@@ -1494,13 +1615,23 @@ export type ToolCallConfirmationState =
  * @category Tool Result Content
  * @nonexhaustive
  */
-export const enum ToolResultContentType {
-  Text = 'text',
-  EmbeddedResource = 'embeddedResource',
-  Resource = 'resource',
-  FileEdit = 'fileEdit',
-  Terminal = 'terminal',
-  Subagent = 'subagent',
+export const ToolResultContentType = {
+
+  Text: 'text',
+  EmbeddedResource: 'embeddedResource',
+  Resource: 'resource',
+  FileEdit: 'fileEdit',
+  Terminal: 'terminal',
+  Subagent: 'subagent',
+} as const;
+export type ToolResultContentType = (typeof ToolResultContentType)[keyof typeof ToolResultContentType];
+export namespace ToolResultContentType {
+  export type Text = (typeof ToolResultContentType)["Text"];
+  export type EmbeddedResource = (typeof ToolResultContentType)["EmbeddedResource"];
+  export type Resource = (typeof ToolResultContentType)["Resource"];
+  export type FileEdit = (typeof ToolResultContentType)["FileEdit"];
+  export type Terminal = (typeof ToolResultContentType)["Terminal"];
+  export type Subagent = (typeof ToolResultContentType)["Subagent"];
 }
 
 /**

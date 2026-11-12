@@ -5,7 +5,10 @@
 //   pin:     contracts/ahp/PIN.md — read it before syncing; do not edit these files by hand.
 // The only transform applied at vendoring time: relative import specifiers lost
 // their `.js` suffix (upstream ships ESM `.js` extensions; this app resolves
-// extensionless TS). Everything else is byte-identical to the pinned commit.
+// extensionless TS). A second transform (contracts/ahp/enums-to-consts.py,
+// see PIN.md) rewrites `export const enum` into const objects + unions +
+// namespaces: the nsh bundler's oxc cannot transform TS enums. Everything
+// else is byte-identical to the pinned commit.
 /**
  * Session State Types — Per-session coordination state exposed on `ahp-session:` channels.
  *
@@ -44,10 +47,17 @@ import type {
  * @category Session State
  * @nonexhaustive
  */
-export const enum SessionLifecycle {
-  Creating = 'creating',
-  Ready = 'ready',
-  Failed = 'failed',
+export const SessionLifecycle = {
+
+  Creating: 'creating',
+  Ready: 'ready',
+  Failed: 'failed',
+} as const;
+export type SessionLifecycle = (typeof SessionLifecycle)[keyof typeof SessionLifecycle];
+export namespace SessionLifecycle {
+  export type Creating = (typeof SessionLifecycle)["Creating"];
+  export type Ready = (typeof SessionLifecycle)["Ready"];
+  export type Failed = (typeof SessionLifecycle)["Failed"];
 }
 
 /**
@@ -60,19 +70,29 @@ export const enum SessionLifecycle {
  * @category Session State
  * @nonexhaustive
  */
-export const enum SessionStatus {
+export const SessionStatus = {
+
   /** Session is idle — no turn is active. */
-  Idle = 1,
+  Idle: 1,
   /** Session ended with an error. */
-  Error = 1 << 1,
+  Error: 1 << 1,
   /** A turn is actively streaming. */
-  InProgress = 1 << 3,
+  InProgress: 1 << 3,
   /** A turn is in progress but blocked waiting for user input or tool confirmation. */
-  InputNeeded = (1 << 3) | (1 << 4),
+  InputNeeded: (1 << 3) | (1 << 4),
   /** The client has viewed this session since its last modification. */
-  IsRead = 1 << 5,
+  IsRead: 1 << 5,
   /** The session has been archived by the client. */
-  IsArchived = 1 << 6,
+  IsArchived: 1 << 6,
+} as const;
+export type SessionStatus = (typeof SessionStatus)[keyof typeof SessionStatus];
+export namespace SessionStatus {
+  export type Idle = (typeof SessionStatus)["Idle"];
+  export type Error = (typeof SessionStatus)["Error"];
+  export type InProgress = (typeof SessionStatus)["InProgress"];
+  export type InputNeeded = (typeof SessionStatus)["InputNeeded"];
+  export type IsRead = (typeof SessionStatus)["IsRead"];
+  export type IsArchived = (typeof SessionStatus)["IsArchived"];
 }
 
 /**
@@ -81,9 +101,14 @@ export const enum SessionStatus {
  * @category Session State
  * @nonexhaustive
  */
-export const enum SessionOriginKind {
+export const SessionOriginKind = {
+
   /** The session was created as part of an automation run. */
-  Automation = 'automation',
+  Automation: 'automation',
+} as const;
+export type SessionOriginKind = (typeof SessionOriginKind)[keyof typeof SessionOriginKind];
+export namespace SessionOriginKind {
+  export type Automation = (typeof SessionOriginKind)["Automation"];
 }
 
 /**
@@ -298,15 +323,23 @@ export interface SessionActiveClient {
  * @category Session Input Types
  * @nonexhaustive
  */
-export const enum SessionInputRequestKind {
+export const SessionInputRequestKind = {
+
   /** A user-facing elicitation mirrored from an unresolved chat response part. */
-  ChatInput = 'chatInput',
+  ChatInput: 'chatInput',
   /** A tool call awaiting parameter- or result-confirmation. */
-  ToolConfirmation = 'toolConfirmation',
+  ToolConfirmation: 'toolConfirmation',
   /** A running tool the session wants an active client to execute. */
-  ToolClientExecution = 'toolClientExecution',
+  ToolClientExecution: 'toolClientExecution',
   /** A tool call blocked on MCP authentication mid-execution. */
-  ToolAuthentication = 'toolAuthentication',
+  ToolAuthentication: 'toolAuthentication',
+} as const;
+export type SessionInputRequestKind = (typeof SessionInputRequestKind)[keyof typeof SessionInputRequestKind];
+export namespace SessionInputRequestKind {
+  export type ChatInput = (typeof SessionInputRequestKind)["ChatInput"];
+  export type ToolConfirmation = (typeof SessionInputRequestKind)["ToolConfirmation"];
+  export type ToolClientExecution = (typeof SessionInputRequestKind)["ToolClientExecution"];
+  export type ToolAuthentication = (typeof SessionInputRequestKind)["ToolAuthentication"];
 }
 
 /**
@@ -722,15 +755,27 @@ export interface ToolAnnotations {
  * @category Customization Types
  * @nonexhaustive
  */
-export const enum CustomizationType {
-  Plugin = 'plugin',
-  Directory = 'directory',
-  Agent = 'agent',
-  Skill = 'skill',
-  Prompt = 'prompt',
-  Rule = 'rule',
-  Hook = 'hook',
-  McpServer = 'mcpServer',
+export const CustomizationType = {
+
+  Plugin: 'plugin',
+  Directory: 'directory',
+  Agent: 'agent',
+  Skill: 'skill',
+  Prompt: 'prompt',
+  Rule: 'rule',
+  Hook: 'hook',
+  McpServer: 'mcpServer',
+} as const;
+export type CustomizationType = (typeof CustomizationType)[keyof typeof CustomizationType];
+export namespace CustomizationType {
+  export type Plugin = (typeof CustomizationType)["Plugin"];
+  export type Directory = (typeof CustomizationType)["Directory"];
+  export type Agent = (typeof CustomizationType)["Agent"];
+  export type Skill = (typeof CustomizationType)["Skill"];
+  export type Prompt = (typeof CustomizationType)["Prompt"];
+  export type Rule = (typeof CustomizationType)["Rule"];
+  export type Hook = (typeof CustomizationType)["Hook"];
+  export type McpServer = (typeof CustomizationType)["McpServer"];
 }
 
 /**
@@ -739,10 +784,17 @@ export const enum CustomizationType {
  * @category Customization Types
  * @nonexhaustive
  */
-export const enum CustomizationEnablementKind {
-  Global = 'global',
-  Workspace = 'workspace',
-  Session = 'session',
+export const CustomizationEnablementKind = {
+
+  Global: 'global',
+  Workspace: 'workspace',
+  Session: 'session',
+} as const;
+export type CustomizationEnablementKind = (typeof CustomizationEnablementKind)[keyof typeof CustomizationEnablementKind];
+export namespace CustomizationEnablementKind {
+  export type Global = (typeof CustomizationEnablementKind)["Global"];
+  export type Workspace = (typeof CustomizationEnablementKind)["Workspace"];
+  export type Session = (typeof CustomizationEnablementKind)["Session"];
 }
 
 /** A single explicit enablement decision. */
@@ -814,11 +866,19 @@ interface CustomizationBase {
  * @category Customization Types
  * @exhaustive
  */
-export const enum CustomizationLoadStatus {
-  Loading = 'loading',
-  Loaded = 'loaded',
-  Degraded = 'degraded',
-  Error = 'error',
+export const CustomizationLoadStatus = {
+
+  Loading: 'loading',
+  Loaded: 'loaded',
+  Degraded: 'degraded',
+  Error: 'error',
+} as const;
+export type CustomizationLoadStatus = (typeof CustomizationLoadStatus)[keyof typeof CustomizationLoadStatus];
+export namespace CustomizationLoadStatus {
+  export type Loading = (typeof CustomizationLoadStatus)["Loading"];
+  export type Loaded = (typeof CustomizationLoadStatus)["Loaded"];
+  export type Degraded = (typeof CustomizationLoadStatus)["Degraded"];
+  export type Error = (typeof CustomizationLoadStatus)["Error"];
 }
 
 /**
@@ -1306,11 +1366,12 @@ export type Customization =
  * @category MCP Server State
  * @nonexhaustive
  */
-export const enum McpServerStatus {
+export const McpServerStatus = {
+
   /** Server has been registered but is not yet running. */
-  Starting = 'starting',
+  Starting: 'starting',
   /** Server is running and serving requests. */
-  Ready = 'ready',
+  Ready: 'ready',
   /**
    * Server is reachable but requires additional authentication before it
    * can start, or before it can serve a particular request. Carries the
@@ -1318,11 +1379,19 @@ export const enum McpServerStatus {
    * token; the client then pushes the token via the existing
    * `authenticate` command.
    */
-  AuthRequired = 'authRequired',
+  AuthRequired: 'authRequired',
   /** Server failed to start, crashed, or otherwise transitioned to a fatal error. */
-  Error = 'error',
+  Error: 'error',
   /** Server has been shut down. */
-  Stopped = 'stopped',
+  Stopped: 'stopped',
+} as const;
+export type McpServerStatus = (typeof McpServerStatus)[keyof typeof McpServerStatus];
+export namespace McpServerStatus {
+  export type Starting = (typeof McpServerStatus)["Starting"];
+  export type Ready = (typeof McpServerStatus)["Ready"];
+  export type AuthRequired = (typeof McpServerStatus)["AuthRequired"];
+  export type Error = (typeof McpServerStatus)["Error"];
+  export type Stopped = (typeof McpServerStatus)["Stopped"];
 }
 
 /**

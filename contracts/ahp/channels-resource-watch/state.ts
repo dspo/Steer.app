@@ -5,7 +5,10 @@
 //   pin:     contracts/ahp/PIN.md — read it before syncing; do not edit these files by hand.
 // The only transform applied at vendoring time: relative import specifiers lost
 // their `.js` suffix (upstream ships ESM `.js` extensions; this app resolves
-// extensionless TS). Everything else is byte-identical to the pinned commit.
+// extensionless TS). A second transform (contracts/ahp/enums-to-consts.py,
+// see PIN.md) rewrites `export const enum` into const objects + unions +
+// namespaces: the nsh bundler's oxc cannot transform TS enums. Everything
+// else is byte-identical to the pinned commit.
 /**
  * Resource-Watch Channel State Types — Per-watch state exposed on
  * `ahp-resource-watch:` channels.
@@ -64,10 +67,17 @@ export interface ResourceWatchState {
  * @category Resource Watch Types
  * @exhaustive
  */
-export const enum ResourceChangeType {
-  Added = 'added',
-  Updated = 'updated',
-  Deleted = 'deleted',
+export const ResourceChangeType = {
+
+  Added: 'added',
+  Updated: 'updated',
+  Deleted: 'deleted',
+} as const;
+export type ResourceChangeType = (typeof ResourceChangeType)[keyof typeof ResourceChangeType];
+export namespace ResourceChangeType {
+  export type Added = (typeof ResourceChangeType)["Added"];
+  export type Updated = (typeof ResourceChangeType)["Updated"];
+  export type Deleted = (typeof ResourceChangeType)["Deleted"];
 }
 
 /**

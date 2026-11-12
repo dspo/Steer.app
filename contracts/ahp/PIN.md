@@ -49,6 +49,18 @@ Relative import specifiers lost their `.js` suffix (upstream ships ESM-style
 else is byte-identical to the pinned commit; each file carries a provenance
 header.
 
+## Transform (the second edit)
+
+`export const enum` declarations became `const` objects + type unions +
+member-type namespaces. The nsh bundler's oxc (0.153) cannot transform TS
+enums (`nsh run` panics: `SemanticBuilder::with_enum_eval(true)` required),
+and the spec ships const enums throughout. The mechanical transform —
+`contracts/ahp/enums-to-consts.py`, run after every sync — preserves value
+semantics (members become properties; the `as const` + union keeps type
+positions; the namespace keeps `X.Member` legal in type positions, which
+the reconnect discriminants use). The fold gate (`manox.test.ts`) pins
+reducer behavior across the transform.
+
 ## Sync procedure (M1 and later)
 
 1. In the spec repo: `git pull`, note `HEAD` and confirm the working tree is

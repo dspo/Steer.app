@@ -5,7 +5,10 @@
 //   pin:     contracts/ahp/PIN.md — read it before syncing; do not edit these files by hand.
 // The only transform applied at vendoring time: relative import specifiers lost
 // their `.js` suffix (upstream ships ESM `.js` extensions; this app resolves
-// extensionless TS). Everything else is byte-identical to the pinned commit.
+// extensionless TS). A second transform (contracts/ahp/enums-to-consts.py,
+// see PIN.md) rewrites `export const enum` into const objects + unions +
+// namespaces: the nsh bundler's oxc cannot transform TS enums. Everything
+// else is byte-identical to the pinned commit.
 /**
  * Changeset Channel Commands — `invokeChangesetOperation`.
  *
@@ -25,11 +28,17 @@ import type { BaseParams } from '../common/commands';
  * @category Commands
  * @nonexhaustive
  */
-export const enum ChangesetOperationTargetKind {
+export const ChangesetOperationTargetKind = {
+
   /** Operation acts on a single file. */
-  Resource = 'resource',
+  Resource: 'resource',
   /** Operation acts on a line range within a single file. */
-  Range = 'range',
+  Range: 'range',
+} as const;
+export type ChangesetOperationTargetKind = (typeof ChangesetOperationTargetKind)[keyof typeof ChangesetOperationTargetKind];
+export namespace ChangesetOperationTargetKind {
+  export type Resource = (typeof ChangesetOperationTargetKind)["Resource"];
+  export type Range = (typeof ChangesetOperationTargetKind)["Range"];
 }
 
 /**

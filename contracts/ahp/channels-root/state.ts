@@ -5,7 +5,10 @@
 //   pin:     contracts/ahp/PIN.md — read it before syncing; do not edit these files by hand.
 // The only transform applied at vendoring time: relative import specifiers lost
 // their `.js` suffix (upstream ships ESM `.js` extensions; this app resolves
-// extensionless TS). Everything else is byte-identical to the pinned commit.
+// extensionless TS). A second transform (contracts/ahp/enums-to-consts.py,
+// see PIN.md) rewrites `export const enum` into const objects + unions +
+// namespaces: the nsh bundler's oxc cannot transform TS enums. Everything
+// else is byte-identical to the pinned commit.
 /**
  * Root State Types — Global state exposed on the `ahp-root://` channel.
  *
@@ -30,10 +33,17 @@ import type { Customization } from '../channels-session/state';
  * @category Root State
  * @exhaustive
  */
-export const enum PolicyState {
-  Enabled = 'enabled',
-  Disabled = 'disabled',
-  Unconfigured = 'unconfigured',
+export const PolicyState = {
+
+  Enabled: 'enabled',
+  Disabled: 'disabled',
+  Unconfigured: 'unconfigured',
+} as const;
+export type PolicyState = (typeof PolicyState)[keyof typeof PolicyState];
+export namespace PolicyState {
+  export type Enabled = (typeof PolicyState)["Enabled"];
+  export type Disabled = (typeof PolicyState)["Disabled"];
+  export type Unconfigured = (typeof PolicyState)["Unconfigured"];
 }
 
 /**

@@ -5,7 +5,10 @@
 //   pin:     contracts/ahp/PIN.md — read it before syncing; do not edit these files by hand.
 // The only transform applied at vendoring time: relative import specifiers lost
 // their `.js` suffix (upstream ships ESM `.js` extensions; this app resolves
-// extensionless TS). Everything else is byte-identical to the pinned commit.
+// extensionless TS). A second transform (contracts/ahp/enums-to-consts.py,
+// see PIN.md) rewrites `export const enum` into const objects + unions +
+// namespaces: the nsh bundler's oxc cannot transform TS enums. Everything
+// else is byte-identical to the pinned commit.
 /**
  * Automation Catalogue Channel State Types for `ahp-automations://`.
  *
@@ -102,14 +105,20 @@ export interface AutomationSchedule {
  * @category Automation State
  * @nonexhaustive
  */
-export const enum AutomationMisfirePolicy {
+export const AutomationMisfirePolicy = {
+
   /** Discard missed occurrences and wait for the next future occurrence. */
-  Skip = 'skip',
+  Skip: 'skip',
   /**
    * Start at most one catch-up run when execution becomes available, regardless
    * of how many occurrences were missed.
    */
-  RunOnce = 'runOnce',
+  RunOnce: 'runOnce',
+} as const;
+export type AutomationMisfirePolicy = (typeof AutomationMisfirePolicy)[keyof typeof AutomationMisfirePolicy];
+export namespace AutomationMisfirePolicy {
+  export type Skip = (typeof AutomationMisfirePolicy)["Skip"];
+  export type RunOnce = (typeof AutomationMisfirePolicy)["RunOnce"];
 }
 
 /**
@@ -204,11 +213,17 @@ export type AutomationTrigger =
  * @category Automation State
  * @exhaustive
  */
-export const enum AutomationDisableConditionKind {
+export const AutomationDisableConditionKind = {
+
   /** Stop scheduling after a fixed number of scheduled runs. */
-  AfterRuns = 'afterRuns',
+  AfterRuns: 'afterRuns',
   /** Stop scheduling once a wall-clock date passes. */
-  AfterDate = 'afterDate',
+  AfterDate: 'afterDate',
+} as const;
+export type AutomationDisableConditionKind = (typeof AutomationDisableConditionKind)[keyof typeof AutomationDisableConditionKind];
+export namespace AutomationDisableConditionKind {
+  export type AfterRuns = (typeof AutomationDisableConditionKind)["AfterRuns"];
+  export type AfterDate = (typeof AutomationDisableConditionKind)["AfterDate"];
 }
 
 /**
