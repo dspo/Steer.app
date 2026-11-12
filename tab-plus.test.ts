@@ -1,6 +1,6 @@
 import { expect, test } from "nsh/test";
 import type { DockAreaLayout, DockNode } from "./stores/dock";
-import { tabBarBoxes } from "./tab-plus";
+import { tabBarBoxes } from "./canvas/tab-plus";
 
 /**
  * The `+` overlay's placement is pure layout data: a tab bar is as wide as

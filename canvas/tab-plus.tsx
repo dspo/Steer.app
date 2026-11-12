@@ -1,7 +1,7 @@
 import { token, View } from "nsh";
-import { activePanelIds, type DockAreaLayout, type DockNode } from "./stores/dock";
-import { K, t } from "./ui/i18n";
-import { Glyph, motionStyle } from "./ui/ui";
+import { activePanelIds, type DockAreaLayout, type DockNode } from "../stores/dock";
+import { K, t } from "../ui/i18n";
+import { Glyph, motionStyle } from "../ui/ui";
 
 /**
  * The `+` at the right edge of every tab bar: it opens the canvas's Hero

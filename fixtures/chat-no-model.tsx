@@ -1,6 +1,6 @@
 import { mount } from "nsh";
 import { seedSession, setModelTransport } from "../stores/sessions";
-import { SessionBody } from "../sheets";
+import { SessionBody } from "../canvas/sheets";
 import { visiblePanels } from "../stores/dock";
 
 // A session on a machine with no usable model: `session.info` carries no

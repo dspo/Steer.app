@@ -1,6 +1,6 @@
 import { mount } from "nsh";
 import { seedSession } from "../stores/sessions";
-import { SessionBody } from "../sheets";
+import { SessionBody } from "../canvas/sheets";
 import { visiblePanels } from "../stores/dock";
 
 // A turn in flight: the assistant's Markdown is streaming and the composer

@@ -2,7 +2,7 @@ import { mount, signal, Text, View, token } from "nsh";
 import type { ContainerRecord } from "../contracts/protocol";
 import { activeContainerId, containers } from "../stores/containers";
 import { visiblePanels } from "../stores/dock";
-import { TerminalBody } from "../sheets";
+import { TerminalBody } from "../canvas/sheets";
 import { closeTerminal, terminalInfo, terminalRef, terminalSheetId, terminalSize } from "../stores/terminals";
 import { Glyph } from "../ui/ui";
 

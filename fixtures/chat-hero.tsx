@@ -1,6 +1,6 @@
 import { mount } from "nsh";
 import { seedSession } from "../stores/sessions";
-import { SessionBody } from "../sheets";
+import { SessionBody } from "../canvas/sheets";
 import { visiblePanels } from "../stores/dock";
 
 // An empty session with a model and context window already known: the start

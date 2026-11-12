@@ -1,6 +1,6 @@
 import { mount } from "nsh";
 import { seedSession } from "../stores/sessions";
-import { SessionBody } from "../sheets";
+import { SessionBody } from "../canvas/sheets";
 import { visiblePanels } from "../stores/dock";
 import { installModelTransport, MODEL_SEED } from "./chat-models-data";
 

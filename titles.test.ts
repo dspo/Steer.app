@@ -5,8 +5,8 @@ import { applyBrowserNavigation, browserSheetId, ensureBrowserPage } from "./sto
 import { seedSession } from "./stores/sessions";
 import { terminalInfo, terminalSheetId } from "./stores/terminals";
 import { editorSheetId } from "./stores/editors";
-import { sheetTitle } from "./sheets";
-import { containerTitle } from "./titles";
+import { sheetTitle } from "./canvas/sheets";
+import { containerTitle } from "./canvas/titles";
 
 // §2.1-5 (S2): a container's title is its earliest-created surviving sheet's,
 // and each kind names itself — a session its name, a terminal its OSC title,

@@ -1,10 +1,10 @@
 import { Terminal, type TerminalRef } from "nsh/base";
 import { cleanup, effect, Scroll, signal, Text, token, View } from "nsh";
-import { sessionTitle, viewFor } from "./stores/sessions";
-import { abortRun, loadSubagents, runs, selectedRunId, selectRun, transcript, subagentError } from "./stores/subagents";
-import { visiblePanels } from "./stores/dock";
-import { ChatView, MessageRow } from "./chat-view";
-import { closeSheet, containers } from "./stores/containers";
+import { sessionTitle, viewFor } from "../stores/sessions";
+import { abortRun, loadSubagents, runs, selectedRunId, selectRun, transcript, subagentError } from "../stores/subagents";
+import { visiblePanels } from "../stores/dock";
+import { ChatView, MessageRow } from "../chat-view";
+import { closeSheet, containers } from "../stores/containers";
 import {
   attachTerminal,
   bindTerminalRef,
@@ -19,18 +19,18 @@ import {
   terminalInfo,
   terminalSheetContainer,
   terminalTitle,
-} from "./stores/terminals";
-import { K, t } from "./ui/i18n";
-import { HeroSheet } from "./hero";
-import { Chip, Dot, Glyph, type GlyphName } from "./ui/ui";
-import { DiffBody, EditorBody, FilesBody } from "./files";
-import { browserTabTitle } from "./stores/browser";
-import { BrowserBody } from "./browser-ui";
-import { ChangesBody, HistoryBody } from "./git-ui";
-import { ProblemsBody } from "./lsp-ui";
-import { diffSheetPaths, editorSheetPath } from "./stores/editors";
-import { baseName } from "./stores/fs";
-import { SHEET_FONT } from "./ui/fonts";
+} from "../stores/terminals";
+import { K, t } from "../ui/i18n";
+import { HeroSheet } from "../hero";
+import { Chip, Dot, Glyph, type GlyphName } from "../ui/ui";
+import { DiffBody, EditorBody, FilesBody } from "../files";
+import { browserTabTitle } from "../stores/browser";
+import { BrowserBody } from "../browser-ui";
+import { ChangesBody, HistoryBody } from "../git-ui";
+import { ProblemsBody } from "../lsp-ui";
+import { diffSheetPaths, editorSheetPath } from "../stores/editors";
+import { baseName } from "../stores/fs";
+import { SHEET_FONT } from "../ui/fonts";
 
 /** The color tokens the registry tints glyphs with. */
 type TintToken = "brand" | "warn" | "up" | "info" | "muted-foreground" | "primary-foreground" | "faint";

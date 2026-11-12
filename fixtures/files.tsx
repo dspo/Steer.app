@@ -9,7 +9,7 @@ import {
 } from "../stores/containers";
 import { panelIds, visiblePanels } from "../stores/dock";
 import { editorDocs, saveActiveEditor } from "../stores/editors";
-import { SheetBody } from "../sheets";
+import { SheetBody } from "../canvas/sheets";
 import { M8_ROOT } from "./m8-paths";
 
 // A headless acceptance fixture for M8: one Pi container whose cwd is a real

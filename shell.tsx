@@ -1,7 +1,7 @@
 import { keymap, List, PanResponder, Scroll, signal, Text, token, View } from "nsh";
 import { DockArea, Input, Menu, MenuItem, MenuSeparator, type DockAreaLayout } from "nsh/base";
 import { Window } from "nsh/desktop";
-import { containerTitle } from "./titles";
+import { containerTitle } from "./canvas/titles";
 import { loadSettings, setSidebarWidth, sidebarWidth, SIDEBAR_DEFAULT_WIDTH } from "./stores/settings";
 import { setSlashActions } from "./stores/slash";
 import { connect, disconnect, lastError, phase, recovered, retry, type EnginePhase } from "./stores/engine";
@@ -35,7 +35,7 @@ import {
 import { ProjectDialog } from "./hero";
 import { panelIds } from "./stores/dock";
 import { error as sessionError, refreshSessions, sessions } from "./stores/sessions";
-import { SheetBody, sheetGlyph, sheetTitle } from "./sheets";
+import { SheetBody, sheetGlyph, sheetTitle } from "./canvas/sheets";
 import { externalKindLabel } from "./stores/terminals";
 import { saveActiveEditor } from "./stores/editors";
 import { openChangesSheet, openHistorySheet } from "./stores/git";
@@ -48,7 +48,7 @@ import {
 } from "./stores/vscode";
 import { containerMatches, sessionMatches } from "./stores/search";
 import { Chip, Dot, Glyph, type GlyphName, motionStyle, shadowCard, shadowRaised } from "./ui/ui";
-import { TabBarPlus } from "./tab-plus";
+import { TabBarPlus } from "./canvas/tab-plus";
 
 /**
  * Zu's shell: the titlebar, the project/container sidebar, the canvas and the
