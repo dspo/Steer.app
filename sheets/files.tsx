@@ -2,7 +2,7 @@ import { Dialog, DiffView, Editor, Input, type DiffStats, type EditorRef, type E
 import { cleanup, effect, keymap, List, signal, Text, token, untracked, View } from "nsh";
 import type { Bounds } from "nsh";
 import type { DiffLayout } from "nsh/base";
-import { containers } from "./stores/containers";
+import { containers } from "../stores/containers";
 import {
   closeEditor,
   diffSheetPaths,
@@ -17,9 +17,9 @@ import {
   reloadEditor,
   saveEditor,
   setEditorText,
-} from "./stores/editors";
-import { baseName, canonicalRoot, failure, formatBytes, listDir, readText, relativeTo, type FsFailure } from "./stores/fs";
-import { SHEET_FONT } from "./ui/fonts";
+} from "../stores/editors";
+import { baseName, canonicalRoot, failure, formatBytes, listDir, readText, relativeTo, type FsFailure } from "../stores/fs";
+import { SHEET_FONT } from "../ui/fonts";
 import {
   ROOT_KEY,
   compareRowTestId,
@@ -30,8 +30,8 @@ import {
   sortEntries,
   type DirState,
   type FileRow,
-} from "./stores/file-tree";
-import { visiblePanels } from "./stores/dock";
+} from "../stores/file-tree";
+import { visiblePanels } from "../stores/dock";
 import {
   clearPendingReveal,
   diagnosticsFor,
@@ -41,10 +41,10 @@ import {
   pendingReveals,
   requestReveal,
   type LspCompletionResult,
-} from "./stores/lsp";
+} from "../stores/lsp";
 import { HoverCard } from "./lsp-ui";
-import { K, t } from "./ui/i18n";
-import { Glyph, motionStyle, shadowDialog, SheetAction as Action, SheetIconButton as IconButton } from "./ui/ui";
+import { K, t } from "../ui/i18n";
+import { Glyph, motionStyle, shadowDialog, SheetAction as Action, SheetIconButton as IconButton } from "../ui/ui";
 
 /**
  * The workspace sheets: the file tree, one editor per file, and a two-file

@@ -1,10 +1,10 @@
 import { effect, List, type ListRef, reduceMotion, signal, Text, token, View } from "nsh";
 import { TextView } from "nsh/base";
-import { SHEET_FONT } from "./ui/fonts";
-import { K, t } from "./ui/i18n";
-import { viewFor } from "./stores/sessions";
+import { SHEET_FONT } from "../ui/fonts";
+import { K, t } from "../ui/i18n";
+import { viewFor } from "../stores/sessions";
 import { ChatComposer } from "./composer";
-import { Glyph } from "./ui/ui";
+import { Glyph } from "../ui/ui";
 
 /**
  * The conversation column, clean-room after the NSH gallery's chat: an

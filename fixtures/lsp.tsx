@@ -19,7 +19,7 @@ import {
   setLspCommandResolver,
 } from "../stores/lsp";
 import { M11_UI_CONTAINER, M11_UI_ROOT, M11_UI_SERVER } from "./m11-paths";
-import { HoverCard } from "../lsp-ui";
+import { HoverCard } from "../sheets/lsp-ui";
 
 // The M11 UI acceptance fixture: the real `Workbench` around one container
 // whose cwd is a real /tmp project. The language server is a **controlled

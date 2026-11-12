@@ -3,7 +3,7 @@ import { cleanup, effect, Scroll, signal, Text, token, View } from "nsh";
 import { sessionTitle, viewFor } from "../stores/sessions";
 import { abortRun, loadSubagents, runs, selectedRunId, selectRun, transcript, subagentError } from "../stores/subagents";
 import { visiblePanels } from "../stores/dock";
-import { ChatView, MessageRow } from "../chat-view";
+import { ChatView, MessageRow } from "../sheets/chat-view";
 import { closeSheet, containers } from "../stores/containers";
 import {
   attachTerminal,
@@ -21,13 +21,13 @@ import {
   terminalTitle,
 } from "../stores/terminals";
 import { K, t } from "../ui/i18n";
-import { HeroSheet } from "../hero";
+import { HeroSheet } from "../sheets/hero";
 import { Chip, Dot, Glyph, type GlyphName } from "../ui/ui";
-import { DiffBody, EditorBody, FilesBody } from "../files";
+import { DiffBody, EditorBody, FilesBody } from "../sheets/files";
 import { browserTabTitle } from "../stores/browser";
-import { BrowserBody } from "../browser-ui";
-import { ChangesBody, HistoryBody } from "../git-ui";
-import { ProblemsBody } from "../lsp-ui";
+import { BrowserBody } from "../sheets/browser-ui";
+import { ChangesBody, HistoryBody } from "../sheets/git-ui";
+import { ProblemsBody } from "../sheets/lsp-ui";
 import { diffSheetPaths, editorSheetPath } from "../stores/editors";
 import { baseName } from "../stores/fs";
 import { SHEET_FONT } from "../ui/fonts";

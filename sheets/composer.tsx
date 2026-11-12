@@ -1,8 +1,8 @@
 import { effect, Scroll, signal, Text, token, View } from "nsh";
 import { Input, Menu, MenuItem, Submenu } from "nsh/base";
-import { K, t } from "./ui/i18n";
-import type { SessionModelsReason } from "./contracts/protocol";
-import { openModelMenuRequest, runSlash, slashCandidates, type SlashOutcome } from "./stores/slash";
+import { K, t } from "../ui/i18n";
+import type { SessionModelsReason } from "../contracts/protocol";
+import { openModelMenuRequest, runSlash, slashCandidates, type SlashOutcome } from "../stores/slash";
 import {
   chooseSessionModel,
   followUp,
@@ -11,8 +11,8 @@ import {
   sessionModels,
   stop,
   viewFor,
-} from "./stores/sessions";
-import { Glyph, motionStyle, shadowRaised, type GlyphName } from "./ui/ui";
+} from "../stores/sessions";
+import { Glyph, motionStyle, shadowRaised, type GlyphName } from "../ui/ui";
 
 /**
  * The composer: a bare input over one footer row, all right-aligned (DESIGN

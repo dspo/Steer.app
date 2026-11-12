@@ -1,6 +1,6 @@
 import { mount, signal, Text, View } from "nsh";
 import type { NotificationPermission } from "nsh";
-import { UpdatesDialog } from "../updates-ui";
+import { UpdatesDialog } from "../sheets/updates-ui";
 import { openUpdates, setUpdateService, type UpdateEnv } from "../stores/updates";
 import { setNotifier } from "../stores/notifications";
 

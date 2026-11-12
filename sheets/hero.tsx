@@ -1,7 +1,7 @@
 import { effect, keymap, signal, Text, token, View } from "nsh";
 import { Dialog, Input, Menu, MenuItem, MenuSeparator } from "nsh/base";
-import { K, t } from "./ui/i18n";
-import { baseName } from "./stores/fs";
+import { K, t } from "../ui/i18n";
+import { baseName } from "../stores/fs";
 import {
   containerProject,
   createProject,
@@ -12,7 +12,7 @@ import {
   projectError,
   projects,
   startFromScratch,
-} from "./stores/projects";
+} from "../stores/projects";
 import {
   activeContainerId,
   containers,
@@ -21,15 +21,15 @@ import {
   createExternalContainer,
   openTerminalSheet,
   startInContainer,
-} from "./stores/containers";
-import type { TerminalAction } from "./stores/terminals";
-import { homeSheetContainer } from "./stores/dock";
-import { openBrowserSheet } from "./stores/browser";
-import type { ContainerKind, ProjectRecord } from "./contracts/protocol";
-import type { BrandName } from "./ui/brand-icons";
-import { Glyph, motionStyle, shadowDialog, shadowRaised, type GlyphName } from "./ui/ui";
-import { BrandIcon } from "./ui/brand-icons";
-import { pickFolder } from "./stores/picker";
+} from "../stores/containers";
+import type { TerminalAction } from "../stores/terminals";
+import { homeSheetContainer } from "../stores/dock";
+import { openBrowserSheet } from "../stores/browser";
+import type { ContainerKind, ProjectRecord } from "../contracts/protocol";
+import type { BrandName } from "../ui/brand-icons";
+import { Glyph, motionStyle, shadowDialog, shadowRaised, type GlyphName } from "../ui/ui";
+import { BrandIcon } from "../ui/brand-icons";
+import { pickFolder } from "../stores/picker";
 import {
   addProjectRoot,
   removeProjectRoot,

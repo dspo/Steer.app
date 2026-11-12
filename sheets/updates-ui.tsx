@@ -1,7 +1,7 @@
 import { effect, Scroll, Text, token, View } from "nsh";
 import { Dialog, Progress } from "nsh/base";
-import { K, t } from "./ui/i18n";
-import { motionStyle, shadowDialog, shadowRaised } from "./ui/ui";
+import { K, t } from "../ui/i18n";
+import { motionStyle, shadowDialog, shadowRaised } from "../ui/ui";
 import {
   availableUpdate,
   checkNow,
@@ -15,13 +15,13 @@ import {
   updateProgress,
   updateStatus,
   updatesOpen,
-} from "./stores/updates";
+} from "../stores/updates";
 import {
   notificationPermission,
   notificationError,
   refreshNotificationPermission,
   requestNotificationPermission,
-} from "./stores/notifications";
+} from "../stores/notifications";
 
 /**
  * The Updates dialog: the tray's "Check for Updates…" and the engine bar's

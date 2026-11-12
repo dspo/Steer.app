@@ -32,14 +32,14 @@ import {
   orderedProjects,
   projectError,
 } from "./stores/projects";
-import { ProjectDialog } from "./hero";
+import { ProjectDialog } from "./sheets/hero";
 import { panelIds } from "./stores/dock";
 import { error as sessionError, refreshSessions, sessions } from "./stores/sessions";
 import { SheetBody, sheetGlyph, sheetTitle } from "./canvas/sheets";
 import { externalKindLabel } from "./stores/terminals";
 import { saveActiveEditor } from "./stores/editors";
 import { openChangesSheet, openHistorySheet } from "./stores/git";
-import { openProblemsSheet } from "./lsp-ui";
+import { openProblemsSheet } from "./sheets/lsp-ui";
 import { K, t } from "./ui/i18n";
 import { UIHost, unsupportedMethods } from "./ui/ui-host";
 import { dropBrowserPages, openBrowserSheet } from "./stores/browser";

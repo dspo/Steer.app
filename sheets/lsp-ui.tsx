@@ -1,10 +1,10 @@
 import { TextView } from "nsh/base";
 import { effect, Overlay, Scroll, token, View, Text, type Bounds } from "nsh";
-import { appendSheet } from "./stores/dock";
-import { activeContainerId, containers, layout, noteSheetOpened, setLayout } from "./stores/containers";
-import { editorSheetId, editorPathFor, openEditorSheet } from "./stores/editors";
-import { relativeTo } from "./stores/fs";
-import { K, t } from "./ui/i18n";
+import { appendSheet } from "../stores/dock";
+import { activeContainerId, containers, layout, noteSheetOpened, setLayout } from "../stores/containers";
+import { editorSheetId, editorPathFor, openEditorSheet } from "../stores/editors";
+import { relativeTo } from "../stores/fs";
+import { K, t } from "../ui/i18n";
 import {
   ensureContainerLsp,
   lspContainerState,
@@ -15,7 +15,7 @@ import {
   restartLsp,
   type LspServerInfo,
   type ProblemRow,
-} from "./stores/lsp";
+} from "../stores/lsp";
 import {
   Dot,
   Glyph,
@@ -23,7 +23,7 @@ import {
   shadowRaised,
   SheetAction as Action,
   SheetIconButton as IconButton,
-} from "./ui/ui";
+} from "../ui/ui";
 
 /**
  * The LSP surfaces: the hover card over an editor and the Problems sheet.
