@@ -34,7 +34,6 @@ test("startup shows the registry's active container and hydrates its conversatio
   // The user's own message is on disk as soon as the prompt is accepted, so
   // the conversation is non-empty without waiting for (or paying for) a reply.
   await request("session.prompt", { sessionId: aSession, text: "startup marker alpha" }, 30000);
-  await sleep(1500);
   // Another container is created (and becomes the engine's active one), then
   // A is made active again: A is the registry's starting container.
   const b = await request("container.create", { cwd: "/tmp/zu-startup-b" }, 120000);

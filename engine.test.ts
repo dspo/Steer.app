@@ -543,23 +543,34 @@ test("a steer reaches the running turn and the queue reports it", async () => {
     }
   });
   try {
-    await send("Count from 1 to 400, one number per line.");
     // A live model's first token is the one wait this suite cannot make
-    // deterministic: under the full suite's parallel load the sidecar and
-    // the provider have taken over 90 s twice (2026-11-12), and a tight
-    // budget turns that into a false failure (C5). 180 s stays inside the
-    // test's own 480 s even with the stream-end wait at its worst.
-    let waited = 0;
-    for (; waited < 180000; waited += 50) {
-      if (streaming() && messages().some((message) => message.role === "assistant" && message.text.length > 0)) break;
-      await sleep(50);
+    // deterministic: under the full suite's parallel live turns the provider
+    // has silently ended a turn with no output — three of four full runs on
+    // 2026-11-12 (18 s alone every time). The test's subject is steering,
+    // not provider latency, so a stalled turn is retried once (C5).
+    let streaming_ = false;
+    for (let attempt = 0; attempt < 2 && !streaming_; attempt++) {
+      await send("Count from 1 to 400, one number per line.");
+      const budget = attempt === 0 ? 180000 : 120000;
+      let waited = 0;
+      for (; waited < budget; waited += 50) {
+        streaming_ = streaming() && messages().some((message) => message.role === "assistant" && message.text.length > 0);
+        if (streaming_) break;
+        await sleep(50);
+      }
+      if (!streaming_ && attempt === 0) {
+        // Abandon the stalled turn (stop it if it still holds the session)
+        // so the retry starts from idle.
+        await request("session.stop", { sessionId: id }, 30000).catch(() => {});
+        for (let calm = 0; calm < 30000 && streaming(); calm += 100) await sleep(100);
+      }
     }
-    if (!streaming()) {
+    if (!streaming_) {
       // A turn that ended before its first token is a model/provider failure,
       // not a steering result: say which one instead of "false !== true".
       const rows = messages().map((message) => `${message.role}:${message.text.length}`).join(" ");
       throw new Error(
-        `the turn ended after ${waited} ms; error=${sessionError() ?? lastError() ?? "none"} view=${viewFor(id)?.error ?? "none"} rows=[${rows}] interrupted=${interrupted()} events=${JSON.stringify(failures).slice(0, 400)}`,
+        `no first token after two attempts; error=${sessionError() ?? lastError() ?? "none"} view=${viewFor(id)?.error ?? "none"} rows=[${rows}] interrupted=${interrupted()} events=${JSON.stringify(failures).slice(0, 400)}`,
       );
     }
     expect(streaming()).toBe(true);
@@ -576,4 +587,4 @@ test("a steer reaches the running turn and the queue reports it", async () => {
     stopListening();
     await stop();
   }
-}, 480000);
+}, 600000);

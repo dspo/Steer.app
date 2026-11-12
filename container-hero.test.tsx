@@ -17,7 +17,6 @@ test("switching to a container with a conversation shows its transcript, not the
   // The user's own message is on disk as soon as the prompt is accepted, so
   // the session is non-empty without waiting for (or paying for) a reply.
   await request("session.prompt", { sessionId: aSession, text: "hello A" }, 30000);
-  await sleep(2000);
   const b = await request("container.create", { cwd: "/tmp/zu-hero-b" }, 120000);
   const bSession = String(b.session?.sessionId ?? b.container.sessions[0].sessionId);
 
