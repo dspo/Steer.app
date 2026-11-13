@@ -211,7 +211,6 @@ export const en: Record<string, string> = {
   "app.browser.invalidAddress": "That doesn’t look like a web address.",
   "app.browser.unsupportedAddress": "Only http and https addresses open here.",
   "app.browser.unavailable": "This platform doesn’t show web pages.",
-  "app.browser.hidden": "Hidden: the web view is unloaded and reloads its address when shown.",
   "app.browser.open": "Browser",
   "app.browser.view": "View",
   "app.sheet.session.title": "Pi Session",

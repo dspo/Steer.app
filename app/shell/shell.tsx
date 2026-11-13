@@ -738,6 +738,7 @@ function Canvas() {
           // switcher layer's, traveling between tabs, not this box's
           // background. Hover washes an unselected tab only.
           <View
+            testID={`tab-${tab.panel}`}
             class={`relative min-w-0 ${tab.active ? "" : "hover:bg-hover"}`}
             style={switcherTab()}
           >

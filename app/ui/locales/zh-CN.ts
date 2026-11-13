@@ -211,7 +211,6 @@ export const zhCN: Record<string, string> = {
   "app.browser.invalidAddress": "这不像一个网址。",
   "app.browser.unsupportedAddress": "这里只打开 http 与 https 地址。",
   "app.browser.unavailable": "这个平台不能显示网页。",
-  "app.browser.hidden": "已隐藏：web view 被卸载，显示时按地址重新加载。",
   "app.browser.open": "浏览器",
   "app.browser.view": "视图",
   "app.sheet.session.title": "Pi 会话",
