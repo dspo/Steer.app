@@ -2,12 +2,36 @@
 # Bundles Zu: the app from nsh, the pi harness into Contents/Helpers,
 # ad-hoc signatures over both, and a dmg.
 #
-# Usage: script/bundle-mac.sh [out-dir]   (default: build)
+# Usage: script/bundle-mac.sh [options] [out-dir]   (out-dir default: build)
+#   -i    install Zu.app to /Applications once the bundle is complete
+#   -o    open Zu.app once the bundle is complete (the /Applications copy
+#         when combined with -i)
+#   -h    show this help
 #        NSH=/path/to/nsh script/bundle-mac.sh
 set -eu
 
+usage() {
+  echo "Usage: script/bundle-mac.sh [-i] [-o] [out-dir]"
+  echo "  -i    install Zu.app to /Applications once the bundle is complete"
+  echo "  -o    open Zu.app once the bundle is complete (the /Applications copy with -i)"
+  echo "  -h    show this help"
+  echo "  NSH=/path/to/nsh overrides the nsh binary (default: nsh)"
+}
+
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-OUT=${1:-"$ROOT/build"}
+OUT="$ROOT/build"
+INSTALL_RESULT=false
+OPEN_RESULT=false
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -i) INSTALL_RESULT=true ;;
+    -o) OPEN_RESULT=true ;;
+    -h|--help) usage; exit 0 ;;
+    -*) echo "error: unknown option '$1'" >&2; usage >&2; exit 1 ;;
+    *) OUT=$1 ;;
+  esac
+  shift
+done
 NSH=${NSH:-nsh}
 APP="$OUT/Zu.app"
 
@@ -65,6 +89,22 @@ if [ "${NSH_UPDATE_ARCHIVE:-0}" = "1" ]; then
   echo "  release: nsh update-manifest "$ARCHIVE" --notes CHANGES.md --key keys/update.secret"
 else
   echo "  (set NSH_UPDATE_ARCHIVE=1 to write the whole-app archive an update needs)"
+fi
+
+# Install and open come after every bundle step, so /Applications gets
+# exactly the signed bundle the dmg was built from — never a half-built copy.
+if [ "$INSTALL_RESULT" = true ]; then
+  INSTALL_DEST="/Applications/Zu.app"
+  echo "→ install $INSTALL_DEST"
+  rm -rf "$INSTALL_DEST"
+  cp -R "$APP" "$INSTALL_DEST"
+  echo "✓ installed $INSTALL_DEST"
+  APP="$INSTALL_DEST"
+fi
+
+if [ "$OPEN_RESULT" = true ]; then
+  echo "→ open $APP"
+  open "$APP"
 fi
 
 echo "✓ $APP"
