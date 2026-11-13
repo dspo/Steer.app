@@ -4,7 +4,8 @@
 > 的验收清单为准，未跑的真机/live 项在 §11 明确标注。
 > 门禁（2026-11-13）：`nsh check app` ✓、`node script/check-layers.mjs` ✓、
 > `ZU_SKIP_LIVE=1 nsh test app` 219 用例 211 通过 / 8 skip、`pi-harness bun test` 41 ✓、
-> distro `bun run build` ✓、`bun run smoke`（ACP offline）✓、`script/bundle-mac.sh` ✓。
+> distro `bun run build` ✓、`bun run smoke`（ACP offline）✓、`bun run acceptance:live`（真机，两轮）✓、
+> `LIVE_CRASH_ONLY=1 bun run acceptance:live` ✓、`script/bundle-mac.sh` ✓。
 > 关系：本文是 Pi 模块的**目标实现**。当前系统形态见 [architecture.md](architecture.md)；
 > 协议映射与 P0–P4 的历史裁决见 [pi-acp-PROTOCOL.md](pi-acp-PROTOCOL.md)；
 > 扩展机制（sheet 模块、能力域）见 [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md)；
