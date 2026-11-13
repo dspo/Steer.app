@@ -1,0 +1,79 @@
+# Zu — CNB 云原生构建（参照 manox-app 的 GitHub CI 结构：lint → build → test）。
+#
+# 触发：main push + PR（创建 / 重开 / 源分支 push，即「MR 更新」）。
+# 单条流水线串行执行，任一 stage 失败即红，失败定位直接看 stage 名。
+#
+# 不含 bundle：script/bundle-mac.sh 依赖 macOS（AppKit 宿主、bun
+# --target=bun-darwin-arm64、codesign），CNB SAAS 只有 Linux 节点；
+# 打包冒烟留在 macOS 本地（README「Run it」）。若日后接入自托管 mac
+# runner（runner.namespace + runner.tags），再把 bundle 加为独立 pipeline。
+#
+# 环境要点（都是实测出来的约束，改镜像/依赖前先读）：
+# - nsh CLI 用预编译发行版（linux x86_64 only → runner 固定 amd64），
+#   NSH_VERSION 与 native/Cargo.toml 的 nsh git pin（506b5392 = 0.4.0）严格一致。
+# - nsh 的 Linux 运行时按 pinned checkout 源码构建，无条件依赖 GTK4/GStreamer
+#   开发包（nsh-platform-linux 的 target.'cfg(target_os = "linux")' 段），
+#   因此镜像用 rust:slim-trixie（glibc 2.41 ≥ 发行版要求的 2.39，GTK 4.18 ≥ 4.14；
+#   bookworm 的 glibc 2.36 / GTK 4.8 都不够）并 apt 安装两组 -dev。
+# - ZU_SKIP_LIVE=1 是 README「完整门禁」的口径：跳过 live 模型/LSP。
+#
+# 缓存：docker.volumes 默认 copy-on-write，流水线成功后合并回共享卷；
+# push 与 PR 事件共用同一组卷（PR 并发写安全，由 COW 解决）。
+
+.check-and-test: &check-and-test
+  name: check-and-test
+  runner:
+    tags: cnb:arch:amd64
+  docker:
+    image: rust:slim-trixie
+    volumes:
+      - /usr/local/cargo          # rust:slim 的 CARGO_HOME（registry + git 依赖）
+      - /root/.nsh                # nsh 发行版 + tsc 原生编译器
+      - /root/.bun/install/cache  # bun 全局安装缓存
+      - ./native/target           # native 工作区 target
+  env:
+    NSH_VERSION: v0.4.0
+    ZU_SKIP_LIVE: "1"
+    PATH: /usr/local/cargo/bin:/root/.local/bin:/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+  stages:
+    # ── toolchain：apt 系统依赖 + nsh/bun。镜像自带 Rust（含 rustfmt/clippy）。──
+    - name: toolchain
+      script: |
+        set -eu
+        apt-get update -qq
+        apt-get install -y -qq --no-install-recommends \
+          git pkg-config clang unzip nodejs \
+          libgtk-4-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+        curl -fsSL https://nsh.dev/install.sh | sh   # → ~/.local/bin/nsh
+        curl -fsSL https://bun.sh/install | bash     # → ~/.bun/bin/bun
+        nsh --version && bun --version && node --version
+
+    # ── lint：sheet-module 依赖门禁（core/shell 不许 import modules 等，
+    #    docs/sheet-module-ARCHITECTURE.md §11；新违规立即红）。零编译，秒级。──
+    - name: lint (layer gate)
+      script: node script/check-layers.mjs
+
+    # ── build：crate check + TSX typecheck（nsh check 是唯一的类型检查口）。──
+    - name: build (nsh check)
+      script: nsh check app
+
+    # ── test：cargo test（native + manox）+ TSX headless 测试。──
+    - name: test (nsh test)
+      script: nsh test app
+
+    # ── pi-harness 自检：版本台账守卫（src/version.ts = package.json pin）+ bun 测试。
+    #    不跑 bun run build：其编译目标 pin 了 bun-darwin-arm64，Linux 上不适用。──
+    - name: pi-harness
+      script: |
+        set -eu
+        cd pi-harness
+        bun install --frozen-lockfile
+        bun run check-version
+        bun test
+
+main:
+  push:
+    - *check-and-test
+  pull_request:
+    - *check-and-test
