@@ -312,9 +312,12 @@ Casing II；C8 三包布局；ACP cutover（P0–P4：distro ACP 入口、`zu/ac
 **待做**：
 
 1. **打包产物真机启动**：脚本已绿；发布前跑一轮真实 turn。
-2. **Pi × ACP 的真机/live 验收**：真实模型下的模型切换、`/compact`、审批放行/拒绝、扩展 confirm、
-   子代理、崩溃后 resume、进程表无残留；性能基准只测不设限。代码级门禁见
-   [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §11。
+
+**Pi × ACP 真机 live 验收（2026-11-13）**：模型/档位切换与 resume 保留、`/compact`（151k→46k）、
+审批放行/拒绝、扩展 confirm/select/input、子代理 settle/abort/重启读转录、SIGKILL 后 resume、
+进程收尾、冷启动/首 token/RSS 记录均通过。记录见
+[evidence/pi-acp-live-2026-11-13.md](evidence/pi-acp-live-2026-11-13.md)；
+验收项见 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §11。
 
 **已知问题（非决策）**：
 

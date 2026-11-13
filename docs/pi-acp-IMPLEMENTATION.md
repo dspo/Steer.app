@@ -462,7 +462,7 @@ app/modules/pi/
 | distro 单元 | model/thought 选项生成；命令分派；权限策略矩阵；tool_call 阻断；UI bridge 映射；错误码 |
 | host 单元 | 单飞 ensure、状态机、sheet 关闭→结束、崩溃→resume、退出收尾、背压 |
 | 客户端 UI | composer 状态、审批卡、对话框、命令候选、错误/恢复文案（fixtures 用 stub agent） |
-| 产品 E2E | 真实模型：模型切换、档位、`/compact`、审批放行/拒绝、扩展 confirm、子代理、重启恢复 |
+| 产品 E2E | 真实模型：模型切换、档位、`/compact`、审批放行/拒绝、扩展 confirm/select/input、子代理、重启恢复、SIGKILL 后 resume（脚本 `pi-harness/scripts/acp-live-acceptance.ts`） |
 | 性能 | 冷启动/resume 首 token/同会话第二轮首 token/RSS 记录（只测不设限） |
 
 ### 11.2 验收清单
@@ -480,14 +480,19 @@ app/modules/pi/
 - [x] grep 门禁：无 `ZU_PI_MODEL`、`acpModelsUnavailable`、静态 unsupported 斜杆表、no-op `uiContext`。
 - [x] 文档：PROTOCOL 的缺席清单标记被取代；plan 的 A–F 关闭。
 
-未跑（需真机/真实模型，发布前补）：
+真机 live（2026-11-13，`bun run scripts/acp-live-acceptance.ts`；记录见
+[evidence/pi-acp-live-2026-11-13.md](evidence/pi-acp-live-2026-11-13.md)）：
 
-- [ ] 会话内切模型/档位在 resume 后保留（distro 以 `persist:false` 切换，是否进 session 头待实测）。
-- [ ] `/compact` 的 compaction 更新在真实长会话里缩短 context。
-- [ ] destructive 工具的真实审批放行/拒绝（stub 只验证协议往返）。
-- [ ] 子代理真实模型 dispatch → settle → abort；重启后读 settled 转录。
-- [ ] 归档容器/退出 app 后无残留进程（生命周期已接线，未跑进程表断言）。
-- [ ] 冷启动/resume 首 token/RSS 记录（只测不设限）。
+- [x] 会话内切模型/档位：`deepseek-flash` → `deepseek-v4-pro` + `high`，下一轮 `end_turn`。
+- [x] resume 后保留：新进程 resume 同一 session，模型与档位都在，首 token 207 ms。
+- [x] `/compact`：compaction 完成，context 151,389 → 46,463（4 条大消息；单条巨大消息无法切分）。
+- [x] 审批放行/拒绝：真实 `bash` 调用；允许的文件存在，拒绝的文件不存在，两轮都 `end_turn`。
+- [x] 扩展 UI：confirm（接受/拒绝）、select、input 的真实答案都回到扩展。
+- [x] 子代理：真实模型 `scout` settle（5 行转录）；`worker` abort 被接受；重启后 captain resume 仍能读同一 run 与转录。
+- [x] kill 进程：`LIVE_CRASH_ONLY=1` 下 SIGKILL 中途 turn 拒绝，同 session resume 后回答。
+- [x] 进程收尾：`session/close` + stdin EOF 后无 `pi-acp` 残留；容器归档/退出 app 调用同一组
+  `closeContainerSessions`/`closeAllSessions`（GUI 菜单未手动驱动）。
+- [x] 性能记录（不设限）：冷启动 336 ms、首个 token 849 ms、resume 首 token 207 ms、RSS 165.9 MB。
 
 ## 12. 实施工作包与顺序
 

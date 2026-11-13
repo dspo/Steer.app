@@ -13,6 +13,7 @@
     "check-version": "bun scripts/check-version.mjs",
     "models:parity": "bun run scripts/models-parity.mjs",
     "test": "bun test",
-    "smoke": "bun run scripts/acp-smoke.ts"
+    "smoke": "bun run scripts/acp-smoke.ts",
+    "acceptance:live": "bun run scripts/acp-live-acceptance.ts"
   }
 }

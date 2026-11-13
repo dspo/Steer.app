@@ -22,7 +22,10 @@
 门禁：`nsh check app` ✓、`check-layers` ✓、`nsh test app` 219 用例 211 通过 / 8 skip、
 `pi-harness bun test` 41 ✓、`bun run smoke` ✓、`script/bundle-mac.sh` ✓。
 
-下一批是**发布前真机验收**（见 §2 末尾），不再有结构性迁移。
+真机 live 验收已完成（2026-11-13，`pi-harness/scripts/acp-live-acceptance.ts`，记录见
+[evidence/pi-acp-live-2026-11-13.md](evidence/pi-acp-live-2026-11-13.md)）。剩余只有发布前的打包真机启动。
+
+下一批是**打包产物真机启动**，不再有结构性迁移。
 
 ## 1. sheet 模块化（已完成）
 
@@ -46,13 +49,15 @@
 | C0 | `SessionView` 收口；删 env/静态斜杆/假不可用/旧 transport | ✅ |
 | D0 | permission + elicitation + 扩展 UI + 审批卡/对话框 | ✅ |
 | E0 | dispatch 扩展 + `_zu/subagents/*` + 持久索引 + 名册 | ✅ |
-| F0 | 协议/宿主/UI 测试、死代码删除、文档销账 | ✅（live/性能见下） |
+| F0 | 协议/宿主/UI 测试、死代码删除、文档销账、真机 live 验收 | ✅ |
 
-**发布前仍需真机/live 验收**（代码级门禁已绿）：
+**真机 live 验收（2026-11-13）**：真实模型切换、档位 `high` + resume 保留、`/compact`
+151k→46k、审批放行/拒绝、扩展 confirm/select/input、子代理 settle/abort/重启读转录、SIGKILL 后
+resume、进程收尾、冷启动/首 token/RSS 记录。详见
+[evidence/pi-acp-live-2026-11-13.md](evidence/pi-acp-live-2026-11-13.md)。
 
-- 真实模型：模型/档位切换、`/compact`、审批放行/拒绝、扩展 confirm、子代理 dispatch→settle→abort。
-- 崩溃后 `resume`、归档容器/退出 app 后进程表无残留。
-- 冷启动/resume 首 token/RSS 只记录、不设限。
+仍需发布前做：**G4 打包产物真机启动/真实 turn**（脚本已绿，GUI 未手点）。容器归档/退出 app 的
+GUI 菜单未逐一手动驱动；它们调用已实测的 `closeContainerSessions`/`closeAllSessions`。
 
 **G4（打包真机冒烟）** 不依赖本设计，留在发布清单：脚本已绿，真机启动未验。
 
