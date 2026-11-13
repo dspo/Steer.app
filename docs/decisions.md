@@ -1,7 +1,11 @@
 # 决策台账
 
 > 决策文档。Zu 的全部已定决策，Q 编号是唯一编号。每条给「问题 → 裁决 → 落点 → 一句话理由」。
-> 设计正文见 [architecture.md](architecture.md)；决策过程与论证见 [evidence/decision-log.md](evidence/decision-log.md)。
+> 设计正文见 [architecture.md](architecture.md)。
+>
+> **读法**：每条是裁决**当时**的记录，落点路径不随重构回改——`engine/` 在 C8 后是 `pi-harness/`，
+> ACP cutover 后 pi 的控制面在 `app/harness/pi-acp/`，manox 的落点是 `native/manox` 与 `app/harness/manox/`。
+> 当前代码地图以 [README 的代码地图](../README.md) 为准；被后续裁决取代的条目在行内注明。
 
 ## 引擎与后端
 
@@ -129,7 +133,7 @@
 | Q72 | 字体 | **仅 sheet 内容**用 Lilex（`Lilex-Light` 300 + `Lilex-Medium` 500，同 family，就近取字面）；轮廓保持系统字体 | arch §6、design §3.4 |
 | Q73 | 外壳 | **一体化**：窗口一层 `sidebar` 底，顶栏与侧栏同材质无分隔；内容区是内嵌白色圆角卡片（radius 14，四周 8–10pt） | arch §4.1、design §2 |
 | Q74 | tab 宽度 | **Chrome 式**：`maxWidth 240`、`minWidth 72`、`flexShrink 1`、`flexGrow 0`，panel 变窄/增多时均匀挤压 | design §3.2 |
-| Q75 | 顶栏 picker | **三态**：常态纯文本标题（无框无底）／hover 凹槽（`bg-inset` + inset 阴影 + radius 6）／展开下拉从凹槽下沿接出；宽 360pt | design §3.3 |
+| Q75 | 顶栏 picker | **三态**：常态纯文本标题（无框无底）／hover 凹槽（`bg-inset` + inset 阴影 + radius 6）／展开下拉从凹槽下沿接出；宽 360pt。**已由 Q90 整体移除** | design §3.3 |
 | Q76 | 工具行图标 | 用各 CLI **品牌图标**：Claude/Codex/Copilot 取自 manox-app 的 `assets/icons/*.svg`；Pi 用 `pi-coding-agent.svg`；注入 tint 适配两外观 | design §3.5 |
 | Q77 | composer | **对齐 Steer（仅交互）**：分割线只与 composer 同宽；模型/thinking/context 右对齐；idle=↑发送、streaming=■停止（同位置）；排队/引导/打断收进 `⋯` 菜单，**不接线** | design §3.6 |
 | Q78 | 拖拽 tab | **抽象物 + 落位指示**：源 tab 变占位，幽灵为 tab 形状跟随指针；用 `DockDropIndicator.index` 在两 tab 间画 2pt brand 竖线 | design §3.7 |
@@ -157,8 +161,27 @@
 |---|---|---|---|
 | Q96 | 前端工程文件裸在仓库根，三块如何归位 | **三包 + 一共享面**：`app/`（nsh 应用：`nsh.json`/`App.tsx`/五层/测试与 fixtures 全在其中，nsh 命令一律以 `app` 为应用目录）、`native/`（`zu-native` crate，`app/nsh.json` 以 `"rust": "../native"` 指向——CLI 按 canonicalize 解析该字段，允许 crate 在 app 目录之外）、`pi-harness/`（完整 pi 发行版，原 `engine/`）、`contracts/` 留根（UI↔harness 的共享面不属于任何一侧；两侧导入深度恰好对称，都是 `../../contracts/`）。资产按归属拆：Lilex 随 crate（`assets!()` 要求资产在 crate 自己的 `assets/`）→ `native/assets/fonts`；托盘图标是 TSX 资产 → `app/assets/`。dev 模式 sidecar 按 `CARGO_MANIFEST_DIR` 回退 `../pi-harness/dist/pi-engine`；`script/bundle-mac.sh` 的 `nsh package` 改为从 `app/` 目录执行 | `app/nsh.json`、`native/src/lib.rs`、`app/tsconfig.json`、`.gitignore`、`script/bundle-mac.sh`；arch §3.6/§3.8 |
 
+## 双 harness 与 sheet 模块（2026-11-13）
+
+| # | 问题 | 裁决 | 落点 |
+|---|---|---|---|
+| Q97 | pi 的传输形态 | **ACP over stdio，轮级子进程**：每条 turn spawn 一个 `pi-acp`，`initialize` → `session/new`/`load` → `prompt` → `update` 流 → settle 退出；恢复 = 再 spawn。旧 loopback engine（`contracts/protocol.ts` + `stores/engine.ts`）仅 `ZU_PI_TRANSPORT=engine` 回退，P4 删除 | `pi-harness/src/acp/`、`app/harness/pi-acp/`、`native/src/acp.rs`；[pi-acp-ARCHITECTURE.md](pi-acp-ARCHITECTURE.md) |
+| Q98 | manox 的接入形态与范围 | **in-proc AHP 单例**（`native/manox` 装配 manox v0.9.1 宿主半边）；泵边界 `catch_unwind` 把 panic 转 transport error，UI 走 restart + reconnect；折叠对账门禁保留。范围 = 「能对话」最小回路，不扩到 Steer 产品面 | `native/manox/`、`app/harness/manox/`；arch §3.3 |
+| Q99 | pi 与 manox 的地位 | **同级公民**：都是容器里的 sheet（`session` / `manox-chat`），harness 属于 sheet 的 kind，不属于容器或壳；pi 不再享有「内置」特判，Manox 不再是「扩展」 | [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md) |
+| Q100 | 扩展单位 | **sheet 模块**：模块拥有 kind（可多个）、呈现、自己的 store、Hero/侧栏/命令/搜索贡献、能力声明与 intent；壳只渲染 registry，未知 kind 降级占位；模块之间禁止 import | 同上 §4、§7 |
+| Q101 | native 的粒度 | **能力域，不是每 sheet 一个 crate**：`fs`/`git`/`pty`/`lsp`/`acp`/`state`/`pimodels`/`manox`；一个域服务多张 sheet；只有 `app/domains/` 可以 import `zu/native`；纯 TS 能做的（浏览器、SVG 预览）不碰 native | 同上 §5；`native/src/lib.rs` 的单一注册面 |
+| Q102 | 容器模型 | **去 harness 身份**：容器 = `{ id, cwd, projectId, sheetOrder }`，`kind` 与 `sessions[]` 消失；容器标题仍由最早存活的 sheet 推导；「外部终端容器」变成 terminal 模块的 intent；pi 的多会话变成模块内投影 | arch §5.3；迁移 S3 |
+| Q103 | 文档治理 | **权威链 + 状态锚点**：architecture（当前）/ sheet-module（目标）/ pi-acp（协议）/ DESIGN（视觉）/ decisions（裁决）/ plan（执行）；只有 plan §0 与 architecture §7 写状态；`docs/evidence/` 只放可再生的验证产物，过程叙事删除、历史留 git | [plan.md](plan.md) §5 |
+
 ## 决策编号说明
 
-- Q1–Q96 覆盖全部已讨论的问题，**无未决项**。曾悬空的横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、引擎监督与重连（§3.3/§5.4，M2）、文件读写归属（Q56/§3.6 的 `zu/fs`）、git 执行与根/路径边界（Q58/§3.6 的 `zu/git`）、协议版本与幂等（§3.3）、归档可达性（Q34）、模型选择入口（§3.5 的写回规则）、i18n 键表（M2）、浏览器的能力/链接策略与非可见降级（Q61/Q62/§4.3）、LSP 的传输/全文同步/语言映射（Q64/§3.6）、单实例锁与关窗/托盘/通知策略（Q65/Q66/§4.6）、更新源缺失时的诚实状态与发布配置（Q67/§3.7）、模型注册表的归属与「无模型」的表达（Q81）、容器内终端资源与 Pi TUI（Q82）、scratch 的页面归属与铸容器语义（Q83）、动作可用性矩阵（Q84）、容器标题的 S2 细则（Q85）、语言跟随系统（Q86）、无 sheet 自动归档的路径（Q87）、S3 外壳的几何落地（Q88）、侧栏宽度的持久化（Q89）、顶栏 picker 移除的收尾（Q90）、composer 仅交互的收尾（Q91）、斜杆命令的三类映射（Q92）、红绿灯与页签宽度（Q93）、品牌图标（Q94）、拖拽 tab 的抽象物（Q95）、仓库三包布局（Q96）。
+- Q1–Q103 覆盖全部已讨论的问题，**无未决项**。历史横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、
+  文件读写归属（Q56）、git 执行与根/路径边界（Q58）、协议版本与幂等（旧 §3.3）、归档可达性（Q34）、
+  浏览器能力/降级（Q61/Q62）、LSP 传输/同步（Q64）、单实例与通知（Q65/Q66）、更新源（Q67）、
+  模型注册表（Q81）、容器内终端资源（Q82）、scratch 与铸容器（Q83）、动作矩阵（Q84）、容器标题（Q85）、
+  语言跟随系统（Q86）、自动归档（Q87）、S3 几何（Q88）、侧栏宽度（Q89）、picker 移除（Q90）、
+  composer 收尾（Q91）、斜杠映射（Q92）、红绿灯/页签（Q93）、品牌图标（Q94）、拖拽抽象物（Q95）、
+  三包布局（Q96）、ACP 传输（Q97）、manox 接入（Q98）、双 harness 同级（Q99）、sheet 模块（Q100）、
+  native 能力域（Q101）、容器去 harness 身份（Q102）、文档治理（Q103）。
 - 原 engine/ui/domain 三份文档里的 E/U 编号已废弃，统一并入本表。
-- 已完成的和下一批工作见 [plan.md](plan.md)；条件性里程碑（M-tty / M-arch / M-web）的触发条件也记在那里。
+- 已完成与下一批工作见 [plan.md](plan.md)；条件性里程碑（M-tty / M-arch / M-web）的触发条件也记在那里。

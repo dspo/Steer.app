@@ -28,8 +28,8 @@ t("the manox sheet runs the real host loop on the workbench", async () => {
     { timeout: 60000 },
   );
 
-  // The sidebar group and the sheet are the pack's own surfaces.
-  await app.waitFor("id:contributed-group-manox");
+  // The sheet is the pack's own surface (the sidebar group was removed
+  // with its seam — the Hero's harness segment is the manox entry).
   await app.waitFor("id:manox-input");
 
   // The refused dispatch rolled back: the composer idles (the send is up,

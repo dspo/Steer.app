@@ -281,7 +281,6 @@ export const zhCN: Record<string, string> = {
   "app.updates.development": "开发构建不检查更新；打包后的应用才会读取 nsh.json 的安装源。",
   "app.updates.unconfigured": "这个应用没有配置更新源（nsh.json 无 updater）；发布时才会配置。",
   "app.manox.newThread": "新建 manox 会话",
-  "app.manox.sidebarTitle": "manox 会话",
   "app.manox.chatTitle": "manox 会话",
   "app.manox.empty": "开始你的 manox 对话。",
   "app.manox.placeholder": "给 manox 发消息…",

@@ -2,8 +2,6 @@ import { K, t } from "../../ui/i18n";
 import {
   registerHeroSubmitter,
   registerSheetKind,
-  setSidebarSection,
-  type ContributedSection,
 } from "../../shell/contrib";
 import { ManoxChatBody } from "./conversation";
 import {
@@ -11,10 +9,9 @@ import {
   manoxChatSheetId,
   parseManoxChatSheet,
   sendManoxMessage,
-  sidebarRows,
 } from "./stores";
 import { chatOf } from "./stores";
-import { activeContainerId, layout, noteSheetOpened, setLayout } from "../../stores/containers";
+import { layout, noteSheetOpened, setLayout } from "../../stores/containers";
 import { appendSheet } from "../../stores/dock";
 import { effectiveState } from "./ahp";
 import { manoxModelRef, usableModels } from "../../stores/pi-models";
@@ -62,25 +59,6 @@ export function registerManoxPack(): void {
       sendManoxMessage(threadId, chatId, text);
     },
   });
-  setSidebarSection(manoxSection());
-}
-
-/** The sidebar's manox group: one row per live thread. */
-function manoxSection(): ContributedSection {
-  return {
-    key: "manox",
-    title: () => t(K.manox.sidebarTitle),
-    rows: () =>
-      sidebarRows(null).map((row) => ({
-        id: row.id,
-        glyph: "chat" as const,
-        testID: `manox-thread-${row.threadId}`,
-        title: () => row.title,
-        subtitle: () => row.subtitle,
-        active: () => activeContainerId() === row.id,
-        onPress: () => openManoxChat(row.threadId, row.chatId),
-      })),
-  };
 }
 
 /** Opens (or focuses) a thread's chat sheet on the current canvas. */

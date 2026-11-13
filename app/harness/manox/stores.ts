@@ -237,34 +237,6 @@ export function answerManoxInput(
   } as never);
 }
 
-/**
- * The sidebar projection: one row per live thread (archived ones drop — the
- * archived bit is the folded `IsArchived` flag). The shell renders what this
- * contributes through the neutral seam; the pack owns the vocabulary.
- */
-export interface ManoxSidebarRow {
-  id: string;
-  title: string;
-  subtitle: string;
-  active: boolean;
-  threadId: string;
-  chatId: string;
-}
-
-export function sidebarRows(activeContainerId: string | null): ManoxSidebarRow[] {
-  return threads()
-    .filter((thread) => !thread.archived)
-    .filter((thread) => thread.defaultChatId != null)
-    .map((thread) => ({
-      id: threadContainerId(thread.threadId),
-      title: thread.title,
-      subtitle: thread.subtitle,
-      active: activeContainerId === threadContainerId(thread.threadId),
-      threadId: thread.threadId,
-      chatId: thread.defaultChatId!,
-    }));
-}
-
 /** Test seam: resets the stores' fold state (fixtures start fresh). */
 export function resetStoresForTest(): void {
   channels.set({});

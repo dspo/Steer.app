@@ -36,39 +36,8 @@ export function contributedHeroTools(): ContributedTool[] {
 }
 
 /** One sidebar row of a contributed group. */
-export interface ContributedRow {
-  id: string;
-  title: () => string;
-  subtitle: () => string;
-  glyph: GlyphName;
-  testID: string;
-  active: () => boolean;
-  onPress: () => void;
-}
 
 /** A group of rows under one header (a pack's containers, say). */
-export interface ContributedSection {
-  key: string;
-  title: () => string;
-  rows: () => ContributedRow[];
-}
-
-const sidebarSections = signal<Record<string, ContributedSection>>({});
-
-/** Installs (or clears, with `null`) one contributed sidebar group. */
-export function setSidebarSection(section: ContributedSection | null): void {
-  const key = section?.key;
-  const next = { ...sidebarSections() };
-  if (section && key) next[key] = section;
-  else if (key) delete next[key];
-  sidebarSections.set(next);
-}
-
-/** The contributed sidebar groups, in registration order. */
-export function contributedSidebarSections(): ContributedSection[] {
-  return Object.values(sidebarSections());
-}
-
 /** A sheet kind a pack owns: its body, tab title and glyph. */
 export interface ContributedSheet {
   kind: string;

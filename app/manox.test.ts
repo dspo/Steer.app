@@ -20,9 +20,7 @@ import {
   isArchived,
   sendManoxMessage,
   sessionResource,
-  sidebarRows,
 } from "./harness/manox/stores";
-import { catalog } from "./harness/manox/ahp";
 import { sessionReducer } from "../contracts/ahp/reducers";
 import { SessionStatus, SessionLifecycle } from "../contracts/ahp/channels-session/state";
 import type { SessionState } from "../contracts/ahp/channels-session/state";
@@ -175,30 +173,6 @@ t("the archived bit is the folded IsArchived flag", () => {
   expect((lifted.status ?? 0) & SessionStatus.IsArchived).toBeFalsy();
   // The projection reads the fold, so a live thread reads not-archived.
   expect(isArchived(threadId)).toBe(false);
-});
-
-t("the sidebar projection names the container and keeps the default chat", () => {
-  // The real host announces a session in the root catalogue once its journal
-  // materializes (the list scans journal files — a deferred create is not a
-  // row yet), so the projection is gated against the catalogue shape the
-  // host sends, seeded here.
-  catalog.set({
-    [sessionResource(threadId)]: {
-      provider: "",
-      title: "the created thread",
-      status: SessionStatus.Idle,
-      resource: sessionResource(threadId),
-      createdAt: new Date().toISOString(),
-      modifiedAt: new Date().toISOString(),
-      chats: [{ resource: chatResource(chatId), title: "the created thread" }],
-      defaultChat: chatResource(chatId),
-    },
-  });
-  const rows = sidebarRows(null);
-  const mine = rows.find((row) => row.threadId === threadId);
-  expect(mine).toBeTruthy();
-  expect(mine!.id).toBe(`manox:${threadId}`);
-  expect(mine!.chatId).toBe(chatId);
 });
 
 // Credential-sensitive by order: a live run's earlier accepted turn holds

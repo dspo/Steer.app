@@ -281,7 +281,6 @@ export const en: Record<string, string> = {
   "app.updates.development": "A development build does not check for updates; a packaged app reads the source in nsh.json.",
   "app.updates.unconfigured": "This app has no update source (nsh.json has no updater); that is configured at release time.",
   "app.manox.newThread": "New manox thread",
-  "app.manox.sidebarTitle": "manox threads",
   "app.manox.chatTitle": "manox chat",
   "app.manox.empty": "Start a manox conversation.",
   "app.manox.placeholder": "Message manox…",

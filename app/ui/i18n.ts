@@ -423,7 +423,6 @@ export const K = {
   },
   manox: {
     newThread: "app.manox.newThread",
-    sidebarTitle: "app.manox.sidebarTitle",
     chatTitle: "app.manox.chatTitle",
     empty: "app.manox.empty",
     placeholder: "app.manox.placeholder",
