@@ -82,25 +82,37 @@ motionStyle()   // 用户在系统里减少动态效果时返回 {}
 ### 3.2 页签（段落切换器）
 
 外壳的 sheet 页签条取画廊 `look/tabs.tsx` 的 `tabsLook`（"A section switcher"）：一条沉入卡片的
-胶囊轨道，选中的页签是一枚浮起的药丸。实现在 `ui/ui.tsx` 的 `switcherTrack()` / `switcherPill()`
-（`SWITCHER_HEIGHT` / `SWITCHER_PILL`），`shell/shell.tsx` 的 `DockArea` 两处消费。
+胶囊轨道，选中的页签是**一枚**浮起的药丸，在两个页签之间弹簧移动。
+
+分工：`ui/ui.tsx` 出几何与外观（`switcher` 常量表、`switcherTrack()`、`switcherBar()`、
+`switcherTab()`、`switcherTabFrame()`、`switcherPill()`）；`canvas/tab-switcher.tsx` 画轨道和那枚
+药丸；`shell/shell.tsx` 只把 `DockArea` 的 bar 交给 `switcherBar()`（排布，不画）。
 
 | 项 | 值 |
 |---|---|
 | 轨道 | 高 34、`radius 17`、`inset` 底、1pt `border`、`shadowInset()` 内阴影；内边距 3、页签间距 2 |
-| 药丸 | 高 26、`radius 13`；选中 `card` 底 + `border` 边 + `shadowCard()`，未选透明（保留 1pt 透明边，选中时尺寸不变） |
+| 药丸 | 高 26、`radius 13`；`card` 底 + `border` 边 + `shadowCard()`；位置 = 选中索引 × （页签宽 + 间距），按 `motion.move`（504 / 38）弹簧过去，reduce motion 时直接落位 |
 | 宽度 | **均分轨道**（画廊的 `fill`）：`switcherTabFrame()` 给每个页签 `flexGrow 1` + `flexBasis 0`，下限 72；页签增多时一起挤压，标题 13pt/500 截断 |
-| 图标 | 12pt，两档 tint 交叉淡入（未选 `faint`、选中 `foreground`，120ms） |
+| 图标与标题 | 12pt；两档 tint 交叉、标题 `muted-foreground` → `foreground`，与药丸同一枚弹簧（画廊的 `TabTitle`） |
 | 悬停 | 未选页签 `hover` 底；选中不动 |
+| 分层 | 轨道与药丸在 `DockArea` **之前**声明、`pointerEvents: none`：页签的标签画在它上面，卡片画在它下面。`groupClass` 因此不铺底色（内容框自己铺 `background`） |
 | 关闭控件 | 右侧 20pt 热区，`opacity 0` → hover 1，图标 `close` 10pt |
 | 新增页签 | 轨道的右端留 34pt 给常驻 `+`（在轨道内，像 macOS 分段控件的尾部动作），在该 panel 打开 `home:{containerId}`（Hero） |
 
 `+` 是 20pt 的 ghost 按钮（图标 11pt、`muted-foreground`），垂直居中于组标题栏。nsh 0.4.0 的
 tab bar 没有尾部插槽，它由 app 覆盖层画在每组右端（[architecture.md](architecture.md) §4.2）。
 
-画廊的选中药丸是一枚由内核 spring 移到下一格的 indicator；`DockArea` 自己摆放页签、不向 app
-报告各页签的 bounds，所以这里用两格之间的 180ms 交叉淡化代替位移动画——观感一致，少一个交互。
-**不要**为了位移动画自己接管 tab bar：拖拽换位、分组、`+` 的几何都在 `DockArea` 里。
+为什么药丸不在 `renderTab` 里：`DockArea` 把每个页签画在自己的 bar 之上，一个页签的
+`background` 画不出跨越兄弟的位移——跨页签的位移只能来自比页签更低、比 bar 更高的一层。
+所以轨道与药丸由覆盖层画，页签只剩标签。**不要**把轨道搬回 bar：bar 一旦自己铺底，就把
+覆盖层的药丸盖住。
+
+**不要**为了位移动画自己接管 tab bar：拖拽换位、分组、`+` 的几何都在 `DockArea` 里；
+覆盖层只读 `layout()`，不参与命中。
+
+验收：静态看截图（轨道、药丸、标签对齐）；位移看 `--trace` 里药丸的 `(Transform(0), n)`
+原生绑定，以及把弹簧临时调慢（如 3 / 1.5）后的逐帧截图——测试宿主的步骤会等动画落定，
+按 504 / 38 的实际速度抓不到中间帧。
 
 ### 3.3 顶栏无 picker（2026-11-11 调整）
 

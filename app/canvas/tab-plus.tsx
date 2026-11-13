@@ -17,7 +17,7 @@ import { Glyph, motionStyle } from "../ui/ui";
  */
 
 /** A visible tab group's tab bar, in the canvas's coordinates. */
-type TabBarBox = {
+export type TabBarBox = {
   x: number;
   y: number;
   width: number;
@@ -26,6 +26,10 @@ type TabBarBox = {
   anchor: string;
   /** The group's first panel, so the box keeps its identity across switches. */
   key: string;
+  /** The group's tabs, in order: the switcher shares the track by them. */
+  panels: string[];
+  /** Which of `panels` the group displays. */
+  active: number;
 };
 
 /** nsh's split handle (`handleClass="basis-px"`). */
@@ -37,24 +41,18 @@ function hasPanels(node: DockNode): boolean {
   return node.type === "tabs" ? node.panels.length > 0 : node.children.some(hasPanels);
 }
 
-/** The first panel of the group holding `panel`. */
-function groupAnchor(node: DockNode, panel: string): string | null {
-  if (node.type === "tabs") {
-    return node.panels.includes(panel) ? (node.panels[0] ?? null) : null;
-  }
-  for (const child of node.children) {
-    const found = groupAnchor(child, panel);
-    if (found) return found;
-  }
-  return null;
-}
-
 type Rect = { x: number; y: number; width: number; height: number };
 
 function walk(node: DockNode, rect: Rect, out: TabBarBox[]): void {
   if (!hasPanels(node)) return;
   if (node.type === "tabs") {
-    out.push({ ...rect, anchor: node.panels[0], key: node.panels[0] });
+    out.push({
+      ...rect,
+      anchor: node.panels[0],
+      key: node.panels[0],
+      panels: [...node.panels],
+      active: node.activeIndex ?? 0,
+    });
     return;
   }
   const slots = node.children
@@ -91,19 +89,15 @@ export function tabBarBoxes(
   zoomed: string | null = null,
 ): TabBarBox[] {
   if (width <= 0 || height <= 0) return [];
-  // A zoomed group takes the whole area; only its bar is on screen.
-  const zoomAnchor = zoomed ? groupAnchor(layout.center, zoomed) : null;
-  if (zoomed) {
-    return zoomAnchor ? [{ x: 0, y: 0, width, height, anchor: zoomAnchor, key: zoomAnchor }] : [];
-  }
-  // Compact shows one group at a time: the plus belongs to the displayed one.
-  if (width < COMPACT_WIDTH) {
-    const shown = activePanelIds(layout)[0];
-    const anchor = shown ? groupAnchor(layout.center, shown) : null;
-    return anchor ? [{ x: 0, y: 0, width, height, anchor, key: anchor }] : [];
-  }
   const boxes: TabBarBox[] = [];
   walk(layout.center, { x: 0, y: 0, width, height }, boxes);
+  // A zoomed group takes the whole area; so does the one compact presents.
+  // Only its own group's bar is on screen, full width.
+  const only = zoomed ? zoomed : width < COMPACT_WIDTH ? activePanelIds(layout)[0] : null;
+  if (only) {
+    const found = boxes.find((box) => box.panels.includes(only));
+    return found ? [{ ...found, x: 0, y: 0, width, height }] : [];
+  }
   return boxes;
 }
 

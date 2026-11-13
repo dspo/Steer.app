@@ -13,7 +13,7 @@ const tabs = (...panels: string[]): DockNode => ({ type: "tabs", panels, activeI
 test("one group's bar spans the canvas", () => {
   const layout: DockAreaLayout = { center: tabs("a", "b") };
   expect(tabBarBoxes(layout, 1000, 800)).toEqual([
-    { x: 0, y: 0, width: 1000, height: 800, anchor: "a", key: "a" },
+    { x: 0, y: 0, width: 1000, height: 800, anchor: "a", key: "a", panels: ["a", "b"], active: 0 },
   ]);
 });
 
@@ -55,10 +55,10 @@ test("a zoomed group owns the area, and compact shows the displayed group", () =
     center: { type: "split", axis: "horizontal", children: [tabs("a"), tabs("b")] },
   };
   expect(tabBarBoxes(layout, 1000, 800, "b")).toEqual([
-    { x: 0, y: 0, width: 1000, height: 800, anchor: "b", key: "b" },
+    { x: 0, y: 0, width: 1000, height: 800, anchor: "b", key: "b", panels: ["b"], active: 0 },
   ]);
   expect(tabBarBoxes(layout, 560, 800)).toEqual([
-    { x: 0, y: 0, width: 560, height: 800, anchor: "a", key: "a" },
+    { x: 0, y: 0, width: 560, height: 800, anchor: "a", key: "a", panels: ["a"], active: 0 },
   ]);
 });
 
