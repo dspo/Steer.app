@@ -1,6 +1,6 @@
 import { K, t } from "../../ui/i18n";
 import {
-  registerHeroTool,
+  registerHeroSubmitter,
   registerSheetKind,
   setSidebarSection,
   type ContributedSection,
@@ -10,6 +10,7 @@ import {
   createManoxThread,
   manoxChatSheetId,
   parseManoxChatSheet,
+  sendManoxMessage,
   sidebarRows,
 } from "./stores";
 import { chatOf } from "./stores";
@@ -22,7 +23,8 @@ import { chatResource, sessionResource } from "./stores";
 
 /**
  * The manox pack's registration (the assembly point is `App.tsx`, the only
- * file allowed to import a pack): the Hero's 「新建 manox 会话」 tool row, the
+ * file allowed to import a pack): the Hero's manox submitter (the harness
+ * segment's Manox arm), the
  * sidebar's manox group, and the `manox-chat:` sheet kind. Registration is
  * idempotent — `App` renders once, but a hot reload must not throw.
  */
@@ -39,16 +41,18 @@ export function registerManoxPack(): void {
     title: manoxChatTitle,
     body: (id) => <ManoxChatBody id={id} />,
   });
-  registerHeroTool({
-    id: "manox-new-thread",
-    label: t(K.manox.newThread),
-    glyph: "chat",
-    testID: "hero-manox",
-    disabled: () => false,
-    onPress: () => {
-      void createManoxThread().then(({ threadId, chatId }) => {
-        openManoxChat(threadId, chatId);
+  // The Hero's harness segment carries manox now (v2 Hero redesign): the
+  // submitter takes the composer's first message; a bare tool row is gone.
+  registerHeroSubmitter({
+    id: "manox",
+    label: "Manox",
+    submit: async (text, context) => {
+      const { threadId, chatId } = await createManoxThread({
+        cwd: context.cwd,
+        model: context.model,
       });
+      openManoxChat(threadId, chatId);
+      sendManoxMessage(threadId, chatId, text);
     },
   });
   setSidebarSection(manoxSection());

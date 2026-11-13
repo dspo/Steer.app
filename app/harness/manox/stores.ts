@@ -125,10 +125,18 @@ export function mintId(): string {
  * there is no `createChat` leg; the chat id is read back from the session
  * fold once its channel subscribes. Returns the chat id the sheet opens.
  */
-export async function createManoxThread(): Promise<{ threadId: string; chatId: string }> {
+export async function createManoxThread(
+  options: { cwd?: string | null; model?: string | null } = {},
+): Promise<{ threadId: string; chatId: string }> {
   const threadId = mintId();
   await ensureConnection();
-  await createSessionOn(sessionResource(threadId), {});
+  // The Hero's context rides createSession: the project's primary root as the
+  // working directory (none for Chats — the kernel anchors on home), and the
+  // selected model as the session config (the machine's pi list, not cx's).
+  await createSessionOn(sessionResource(threadId), {
+    ...(options.cwd ? { workingDirectories: [`file://${options.cwd}`] } : {}),
+    ...(options.model ? { config: { model: options.model } } : {}),
+  });
   await ensureConnection([sessionResource(threadId)]);
   // The session fold names the default chat (AHP 1.0's one-chat catalogue);
   // the session id is the fallback while the snapshot is in flight.

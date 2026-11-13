@@ -98,3 +98,29 @@ export function contributedSheetKind(id: string): string | null {
 export function contributedSheet(kind: string): ContributedSheet | undefined {
   return sheetKinds.get(kind);
 }
+
+/** A conversation starter a pack contributes to the Hero: the harness the
+ * first message goes to. The shell's own starter (Pi, the built-in distro)
+ * is not a contribution — submitters are the *other* harnesses. */
+export interface HeroSubmitter {
+  /** The harness id the segmented control switches on (`manox`). */
+  id: string;
+  /** The control's label (`Manox`). */
+  label: string;
+  /** Starts the conversation: creates the session, opens its sheet and
+   * dispatches the first message. `cwd` is the chosen project's primary
+   * root (null for Chats); `model` is the selected `provider/model` id. */
+  submit: (text: string, context: { cwd: string | null; model: string | null; sheetId: string }) => Promise<void>;
+}
+
+const heroSubmitters = new Map<string, HeroSubmitter>();
+
+/** Registers one Hero submitter (last registration per id wins). */
+export function registerHeroSubmitter(submitter: HeroSubmitter): void {
+  heroSubmitters.set(submitter.id, submitter);
+}
+
+/** The contributed submitters, in registration order. */
+export function contributedHeroSubmitters(): HeroSubmitter[] {
+  return [...heroSubmitters.values()];
+}

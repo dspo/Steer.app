@@ -27,6 +27,7 @@ mod git;
 mod instance;
 mod lsp;
 mod picker;
+mod pimodels;
 mod pty;
 mod state;
 
@@ -40,6 +41,7 @@ pub use git::{Git, GitBranch, GitBranches, GitChange, GitCommit, GitDiff, GitSta
 pub use instance::{Instance, InstanceClaim};
 pub use lsp::{Lsp, LspExit, LspOptions};
 pub use picker::Picker;
+pub use pimodels::{PiModelInfo, PiModels, PiProvider};
 pub use state::{ScanSession, SessionScan, State, StateRead, StateWrite};
 pub use pty::{Pty, PtyExit, PtyOptions};
 
@@ -375,6 +377,7 @@ fn native(registry: &mut Registry) {
         .module::<Git>()
         .module::<Instance>()
         .module::<Picker>()
+        .module::<PiModels>()
         .module::<State>()
         .class::<Acp>()
         .class::<Lsp>()

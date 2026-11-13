@@ -142,7 +142,9 @@ export const K = {
     placeholder: "app.hero.placeholder",
     project: "app.hero.project",
     starting: "app.hero.starting",
-    hint: "app.hero.hint",
+    model: "app.hero.model",
+    modelNone: "app.hero.modelNone",
+    orOpen: "app.hero.orOpen",
   },
   container: {
     title: "app.container.title",

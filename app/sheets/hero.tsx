@@ -28,7 +28,14 @@ import { openBrowserSheet } from "../stores/browser";
 import type { ContainerKind, ProjectRecord } from "../../contracts/protocol";
 import type { BrandName } from "../ui/brand-icons";
 import { Glyph, motionStyle, shadowDialog, shadowRaised, type GlyphName } from "../ui/ui";
-import { contributedHeroTools } from "../shell/contrib";
+import { contributedHeroSubmitters, contributedHeroTools } from "../shell/contrib";
+import {
+  loadPiModels,
+  modelId,
+  modelLabel,
+  piModelsError,
+  usableModels,
+} from "../stores/pi-models";
 import { BrandIcon } from "../ui/brand-icons";
 import { pickFolder } from "../stores/picker";
 import {
@@ -73,10 +80,20 @@ const EXTERNAL_ACTION: Record<Exclude<ContainerKind, "Pi">, TerminalAction> = {
  * Hero is that container's start page — its chip shows where the container
  * lives, and the composer goes to the container's captain session.
  */
+/** The harness the Hero's composer addresses: the shell's Pi or a
+ * contributed submitter (manox). In-memory for now; a settings key lands
+ * with the settings batch. */
+const heroHarness = signal<string>("pi");
+/** The selected model id (`provider/model`), from the machine's pi list. */
+const heroModelId = signal<string | null>(null);
+
 export function HeroSheet(props: { id: string }) {
   const draft = signal("");
   const focused = signal(false);
   const busy = signal<string | null>(null);
+  effect(() => {
+    void loadPiModels();
+  });
   const containerId = () => homeSheetContainer(props.id);
   const container = () => containers().find((row) => row.id === containerId());
   const scratch = () => containerId() === null;
@@ -102,6 +119,20 @@ export function HeroSheet(props: { id: string }) {
   // a project first; only the browser and the chip work without one.
   const needsProject = () => scratch() && heroProjectId() === null;
   const canStart = () => draft().trim().length > 0 && !starting() && readyToCreate();
+  // A contributed harness goes through its submitter whatever the canvas: a
+  // manox thread is its own container, not this canvas's session.
+  const submitter = () => contributedHeroSubmitters().find((row) => row.id === heroHarness()) ?? null;
+  const chosenModel = () => {
+    const id = heroModelId();
+    if (id) return id;
+    return usableModels()[0] ? modelId(usableModels()[0].provider.id, usableModels()[0].model.id) : null;
+  };
+  const projectCwd = () => {
+    const id = projectOf();
+    if (id === null) return null;
+    const record = projects().find((project) => project.id === id);
+    return record?.roots.find((root) => root.primary)?.path ?? record?.roots[0]?.path ?? null;
+  };
   const submit = () => {
     if (!canStart()) return;
     const text = draft();
@@ -109,6 +140,14 @@ export function HeroSheet(props: { id: string }) {
     draft.set("");
     busy.set("send");
     const done = () => busy.set(null);
+    const harness = submitter();
+    if (harness) {
+      void harness
+        .submit(text, { cwd: projectCwd(), model: chosenModel(), sheetId: props.id })
+        .catch(() => {})
+        .finally(done);
+      return;
+    }
     if (id && hostsPi()) void startInContainer(id, text, props.id).finally(done);
     else void startFromScratch(text, scratch() ? undefined : piTarget()).finally(done);
   };
@@ -170,7 +209,6 @@ export function HeroSheet(props: { id: string }) {
     if (id === null) return t(K.project.chats);
     return projects().find((project) => project.id === id)?.name ?? t(K.project.title);
   };
-  const hint = () => keymap.label("mod+enter");
   // A browser works on either canvas: on the scratch one its page is held
   // there until the Hero mints a container, then it moves with it.
   const browse = () => {
@@ -192,9 +230,70 @@ export function HeroSheet(props: { id: string }) {
           {t(K.hero.title)}
         </Text>
 
-        {/* The same bare composer as an empty session's hero: no card, no
-            shadow, no bubble around the input. */}
-        <View style={{ gap: 6 }}>
+        {/* The project chip sits ABOVE the composer, left-aligned: it names
+            where the first message lands before any typing (2026-11-13
+            redesign). A container's chip is a fact, the scratch one picks. */}
+        <View class="flex-row items-center" style={{ gap: 0 }}>
+          <View class="flex-row items-center gap-1.5">
+            <Glyph name="folder" size={12} tint={token("muted-foreground")} />
+            <If
+              when={locked()}
+              else={
+                <Menu
+                  trigger={
+                    <View
+                      role="button"
+                      testID="hero-project"
+                      accessibilityLabel={t(K.hero.project)}
+                      class="h-7 flex-row items-center gap-1 rounded-lg px-2 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+                      style={{ ...motionStyle("fast") }}
+                    >
+                      <Text class="text-[12px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
+                        {selectedName()}
+                      </Text>
+                      <Glyph name="caret-down" size={9} tint={token("faint")} />
+                    </View>
+                  }
+                  popupClass="rounded-xl border border-border bg-popover p-1"
+                  popupStyle={{ boxShadow: shadowRaised() }}
+                >
+                  <MenuItem class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => heroProjectId.set(null)}>
+                    <Text class="text-[12px] text-foreground">{t(K.project.chats)}</Text>
+                  </MenuItem>
+                  <Each of={projects()} key={(project) => project.id}>
+                    {(project) => (
+                      <MenuItem
+                        testID={`hero-project-${project().id}`}
+                        class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+                        onSelect={() => heroProjectId.set(project().id)}
+                      >
+                        <Text class="text-[12px] text-foreground">{project().name}</Text>
+                      </MenuItem>
+                    )}
+                  </Each>
+                  <MenuSeparator class="my-1 h-px bg-line" />
+                  <MenuItem
+                    testID="hero-new-project"
+                    class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+                    onSelect={() => openProjectDialog((project) => heroProjectId.set(project.id))}
+                  >
+                    <Text class="text-[12px] text-foreground">{t(K.project.create)}</Text>
+                  </MenuItem>
+                </Menu>
+              }
+            >
+              <Text class="text-[12px] font-medium text-muted-foreground">{selectedName()}</Text>
+            </If>
+          </View>
+        </View>
+
+        {/* The composer as a card: a quiet rounded surface, generous padding
+            (the 2026-11-13 redesign references Steer's hero — the input is
+            the page's focal point, so it earns a box here). */}
+        <View
+          class="rounded-2xl border border-border bg-card"
+          style={{ paddingHorizontal: 16, paddingVertical: 14, boxShadow: shadowRaised() }}
+        >
           <Input
             testID="hero-input"
             value={draft()}
@@ -207,9 +306,9 @@ export function HeroSheet(props: { id: string }) {
             onFocus={() => focused.set(true)}
             onBlur={() => focused.set(false)}
             style={{
-              minHeight: 72,
-              paddingHorizontal: 2,
-              paddingVertical: 4,
+              minHeight: 88,
+              paddingHorizontal: 0,
+              paddingVertical: 0,
               fontSize: 14,
               lineHeight: 21,
               color: token("foreground"),
@@ -220,132 +319,105 @@ export function HeroSheet(props: { id: string }) {
               borderWidth: 0,
             }}
           />
-          <View class="flex-row items-center gap-2 border-t border-line" style={{ paddingTop: 8 }}>
-            <View class="flex-row items-center gap-1.5">
-              <Text class="text-[10.5px] font-medium text-faint">{t(K.hero.project)}</Text>
-              <If
-                when={locked()}
-                else={
-                  <Menu
-                    trigger={
-                      <View
-                        role="button"
-                        testID="hero-project"
-                        accessibilityLabel={t(K.hero.project)}
-                        class="h-6 flex-row items-center gap-1 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-                        style={{ ...motionStyle("fast") }}
-                      >
-                        <Text class="text-[11px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
-                          {selectedName()}
-                        </Text>
-                        <Glyph name="caret-down" size={9} tint={token("faint")} />
-                      </View>
-                    }
-                    popupClass="rounded-xl border border-border bg-popover p-1"
-                    popupStyle={{ boxShadow: shadowRaised() }}
-                  >
-                    <MenuItem class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => heroProjectId.set(null)}>
-                      <Text class="text-[12px] text-foreground">{t(K.project.chats)}</Text>
-                    </MenuItem>
-                    <Each of={projects()} key={(project) => project.id}>
-                      {(project) => (
-                        <MenuItem
-                          testID={`hero-project-${project().id}`}
-                          class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-                          onSelect={() => heroProjectId.set(project().id)}
-                        >
-                          <Text class="text-[12px] text-foreground">{project().name}</Text>
-                        </MenuItem>
-                      )}
-                    </Each>
-                    <MenuSeparator class="my-1 h-px bg-line" />
-                    <MenuItem
-                      testID="hero-new-project"
-                      class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-                      onSelect={() => openProjectDialog((project) => heroProjectId.set(project.id))}
-                    >
-                      <Text class="text-[12px] text-foreground">{t(K.project.create)}</Text>
-                    </MenuItem>
-                  </Menu>
-                }
-              >
-                <Text class="text-[11px] font-medium text-muted-foreground">{selectedName()}</Text>
-              </If>
-            </View>
-            <View style={{ flex: 1 }} />
-            <Text class="text-[10px] text-faint" testID="hero-hint">
-              {starting() ? t(K.hero.starting) : t(K.hero.hint, { shortcut: hint() })}
-            </Text>
-          </View>
         </View>
 
-        {/* Direct tools, left-aligned in two rows. No heading, no suffix:
-            the labels are the actions. */}
-        <View style={{ gap: 6, alignItems: "flex-start" }}>
-          <View class="flex-row items-center gap-4">
-            <HeroTool
-              testID="external-terminal"
-              label={t(K.external.terminal)}
-              glyph={EXTERNAL_GLYPH.Terminal}
-              disabled={starting() || !readyToCreate() || needsProject()}
-              busy={busy() === "Terminal"}
-              onPress={() => void startExternal("Terminal")}
-            />
-            <HeroTool
-              testID="hero-browser"
-              label={t(K.browser.open)}
-              glyph="globe"
-              disabled={starting()}
-              onPress={browse}
-            />
-          </View>
-          <View class="flex-row flex-wrap items-center gap-4">
-            <Each of={AGENT_ACTIONS} key={(action) => action.kind}>
-              {(action) => {
-                const value = action();
-                return (
-                  <HeroTool
-                    testID={`external-${value.kind.toLowerCase()}`}
-                    label={t(K.external[value.key])}
-                    brand={value.brand}
-                    disabled={starting() || !readyToCreate() || needsProject()}
-                    busy={busy() === value.kind}
-                    onPress={() => void startExternal(value.kind)}
-                  />
-                );
-              }}
-            </Each>
-            <HeroTool
-              testID="hero-pi"
-              label={t(K.external.pi)}
-              brand="pi"
-              disabled={starting() || !readyToCreate() || needsProject()}
-              busy={busy() === "pi"}
-              onPress={() => void startPi()}
-            />
-            <Each of={contributedHeroTools()} key={(tool) => tool.id}>
-              {(tool) => (
-                <View
-                  role="button"
-                  testID={tool().testID}
-                  accessibilityLabel={tool().label}
-                  disabled={tool().disabled()}
-                  class={
-                    tool().disabled()
-                      ? "h-6 flex-row items-center gap-1.5 rounded-md px-2 opacity-40"
-                      : "h-6 flex-row items-center gap-1.5 rounded-md px-2 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-                  }
-                  style={{ ...motionStyle("fast") }}
-                  onPress={() => {
-                    if (!tool().disabled()) tool().onPress();
-                  }}
-                >
-                  <Glyph name={tool().glyph} size={11} tint={token("faint")} />
-                  <Text class="text-[11.5px] font-medium text-muted-foreground">{tool().label}</Text>
-                </View>
+        {/* Below the composer, left-aligned: the harness segment (Pi — the
+            built-in distro over ACP — or a contributed one, today Manox
+            in-proc) and the model picker. One model list for every harness:
+            the machine's pi configuration (cx's provider set is not used). */}
+        <View class="flex-row items-center gap-2.5">
+          <View
+            class="flex-row items-center rounded-lg border border-line bg-inset p-0.5"
+            style={{ ...motionStyle("fast") }}
+          >
+            <HarnessOption testID="hero-harness-pi" label="Pi" active={heroHarness() === "pi"} onPress={() => heroHarness.set("pi")} />
+            <Each of={contributedHeroSubmitters()} key={(row) => row.id}>
+              {(row) => (
+                <HarnessOption
+                  testID={`hero-harness-${row().id}`}
+                  label={row().label}
+                  active={heroHarness() === row().id}
+                  onPress={() => heroHarness.set(row().id)}
+                />
               )}
             </Each>
           </View>
+          <ModelPicker
+            testID="hero-model"
+            selected={chosenModel()}
+            onSelect={(id) => heroModelId.set(id)}
+            refresh={() => void loadPiModels()}
+          />
+          <View style={{ flex: 1 }} />
+        </View>
+
+        {/* Or-open divider, then the direct entries as generous pills. */}
+        <View class="flex-row items-center gap-3" style={{ marginTop: 6 }}>
+          <View style={{ flex: 1, height: 1, backgroundColor: token("line") }} />
+          <Text class="text-[10.5px] text-faint">{t(K.hero.orOpen)}</Text>
+          <View style={{ flex: 1, height: 1, backgroundColor: token("line") }} />
+        </View>
+        <View class="flex-row flex-wrap items-center gap-3">
+          <HeroTool
+            testID="external-terminal"
+            label={t(K.external.terminal)}
+            glyph={EXTERNAL_GLYPH.Terminal}
+            disabled={starting() || !readyToCreate() || needsProject()}
+            busy={busy() === "Terminal"}
+            onPress={() => void startExternal("Terminal")}
+          />
+          <HeroTool
+            testID="hero-browser"
+            label={t(K.browser.open)}
+            glyph="globe"
+            disabled={starting()}
+            onPress={browse}
+          />
+          <Each of={AGENT_ACTIONS} key={(action) => action.kind}>
+            {(action) => {
+              const value = action();
+              return (
+                <HeroTool
+                  testID={`external-${value.kind.toLowerCase()}`}
+                  label={t(K.external[value.key])}
+                  brand={value.brand}
+                  disabled={starting() || !readyToCreate() || needsProject()}
+                  busy={busy() === value.kind}
+                  onPress={() => void startExternal(value.kind)}
+                />
+              );
+            }}
+          </Each>
+          <HeroTool
+            testID="hero-pi"
+            label={t(K.external.pi)}
+            brand="pi"
+            disabled={starting() || !readyToCreate() || needsProject()}
+            busy={busy() === "pi"}
+            onPress={() => void startPi()}
+          />
+          <Each of={contributedHeroTools()} key={(tool) => tool.id}>
+            {(tool) => (
+              <View
+                role="button"
+                testID={tool().testID}
+                accessibilityLabel={tool().label}
+                disabled={tool().disabled()}
+                class={
+                  tool().disabled()
+                    ? "h-11 flex-row items-center gap-2 rounded-xl border border-line bg-card px-4 opacity-40"
+                    : "h-11 flex-row items-center gap-2 rounded-xl border border-line bg-card px-4 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+                }
+                style={{ ...motionStyle("fast") }}
+                onPress={() => {
+                  if (!tool().disabled()) tool().onPress();
+                }}
+              >
+                <Glyph name={tool().glyph} size={15} tint={token("muted-foreground")} />
+                <Text class="text-[12.5px] font-medium text-foreground">{tool().label}</Text>
+              </View>
+            )}
+          </Each>
         </View>
 
         <If when={!!projectError()}>
@@ -377,8 +449,8 @@ function HeroTool(props: {
       disabled={disabled()}
       class={
         disabled()
-          ? "h-6 flex-row items-center gap-1.5 rounded-md px-2 opacity-40"
-          : "h-6 flex-row items-center gap-1.5 rounded-md px-2 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+          ? "h-11 flex-row items-center gap-2 rounded-xl border border-line bg-card px-4 opacity-40"
+          : "h-11 flex-row items-center gap-2 rounded-xl border border-line bg-card px-4 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
       }
       style={{ ...motionStyle("fast") }}
       onPress={() => {
@@ -386,11 +458,11 @@ function HeroTool(props: {
       }}
     >
       {props.brand ? (
-        <BrandIcon brand={props.brand} size={13} tint={token("muted-foreground")} />
+        <BrandIcon brand={props.brand} size={15} tint={token("muted-foreground")} />
       ) : (
-        <Glyph name={props.glyph ?? "file"} size={11} tint={token("faint")} />
+        <Glyph name={props.glyph ?? "file"} size={15} tint={token("muted-foreground")} />
       )}
-      <Text class="text-[11.5px] font-medium text-muted-foreground">{props.busy ? "…" : props.label}</Text>
+      <Text class="text-[12.5px] font-medium text-foreground">{props.busy ? "…" : props.label}</Text>
     </View>
   );
 }
@@ -579,5 +651,90 @@ export function ProjectDialog() {
         </View>
       </View>
     </Dialog>
+  );
+}
+
+/** One arm of the harness segment: the active arm reads as a raised chip. */
+function HarnessOption(props: { testID: string; label: string; active: boolean; onPress: () => void }) {
+  return (
+    <View
+      role="button"
+      testID={props.testID}
+      accessibilityLabel={props.label}
+      class={
+        props.active
+          ? "h-6.5 min-w-13 items-center justify-center rounded-md border border-border bg-background px-2.5"
+          : "h-6.5 min-w-13 items-center justify-center rounded-md px-2.5"
+      }
+      style={{ ...motionStyle("fast") }}
+      onPress={props.onPress}
+    >
+      <Text class={props.active ? "text-[11.5px] font-semibold text-foreground" : "text-[11.5px] font-medium text-muted-foreground"}>
+        {props.label}
+      </Text>
+    </View>
+  );
+}
+
+/** The model picker: the machine's pi list (providers with credentials
+ * first), one menu, the chosen `provider/model` on the trigger. An empty
+ * list states why instead of pretending. */
+function ModelPicker(props: { testID: string; selected: string | null; onSelect: (id: string) => void; refresh: () => void }) {
+  const rows = () => usableModels();
+  const error = () => piModelsError();
+  const label = () => {
+    const id = props.selected;
+    const hit = rows().find((row) => modelId(row.provider.id, row.model.id) === id);
+    if (hit) return `${hit.provider.name || hit.provider.id} · ${modelLabel(hit)}`;
+    return t(K.hero.model);
+  };
+  return (
+    <Menu
+      trigger={
+        <View
+          role="button"
+          testID={props.testID}
+          accessibilityLabel={t(K.hero.model)}
+          class="h-7 flex-row items-center gap-1 rounded-lg px-2 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+          style={{ ...motionStyle("fast") }}
+          onPress={props.refresh}
+        >
+          <Glyph name="chat" size={11} tint={token("faint")} />
+          <Text class="text-[11.5px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
+            {label()}
+          </Text>
+          <Glyph name="caret-down" size={9} tint={token("faint")} />
+        </View>
+      }
+      popupClass="rounded-xl border border-border bg-popover p-1"
+      popupStyle={{ boxShadow: shadowRaised() }}
+    >
+      <If
+        when={rows().length > 0}
+        else={
+          <MenuItem class="rounded-lg px-2.5 py-1.5" disabled>
+            <Text class="text-[11.5px] text-faint">{error() ?? t(K.hero.modelNone)}</Text>
+          </MenuItem>
+        }
+      >
+        <Each of={rows()} key={(row) => modelId(row.provider.id, row.model.id)}>
+          {(row) => {
+            const value = row();
+            const id = modelId(value.provider.id, value.model.id);
+            return (
+              <MenuItem
+                testID={`hero-model-${value.provider.id}-${value.model.id}`}
+                class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+                onSelect={() => props.onSelect(id)}
+              >
+                <Text class="text-[12px] text-foreground">
+                  {`${value.provider.name || value.provider.id} · ${modelLabel(value)}`}
+                </Text>
+              </MenuItem>
+            );
+          }}
+        </Each>
+      </If>
+    </Menu>
   );
 }

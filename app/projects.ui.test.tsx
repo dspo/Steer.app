@@ -60,8 +60,12 @@ test("the Hero starts a conversation and then shows its container", async () => 
   await app.type("id:hero-input", "hello from launcher");
   // Enter sends; there is no Start button.
   expect(app.count("id:hero-send")).toBe(0);
-  expect(app.texts().some((text) => text.includes("Shift+Enter 换行"))).toBe(true);
-  expect(app.count("id:hero-hint")).toBe(1);
+  // The 2026-11-13 Hero redesign removed the shortcut hint line and its
+  // text with it; the harness segment and the model picker took its place.
+  expect(app.count("id:hero-hint")).toBe(0);
+  expect(app.texts().some((text) => text.includes("Shift+Enter 换行"))).toBe(false);
+  expect(app.count("id:hero-harness-pi")).toBe(1);
+  expect(app.count("id:hero-model")).toBe(1);
   await app.submit("id:hero-input");
   await app.waitUntil(() => !app.texts().includes("开始你的对话"));
   expect(app.texts()).toContain("Chat");
@@ -159,11 +163,14 @@ test("the Hero's tools are two left-aligned rows with plain labels", async () =>
     expect(app.count(`id:${id}`)).toBe(1);
   }
   const texts = app.texts();
-  // Row 1: terminal, browser. Row 2: the agents, with no heading or suffix.
+  // The 2026-11-13 redesign: one wrapped row of generous pills behind an
+  // or-open divider, order unchanged, still no heading or suffix.
+  expect(texts).toContain("或直接打开");
   expect(texts.indexOf("终端")).toBeLessThan(texts.indexOf("浏览器"));
   expect(texts.indexOf("Claude Code")).toBeLessThan(texts.indexOf("Codex"));
   expect(texts.indexOf("Codex")).toBeLessThan(texts.indexOf("GitHub Copilot"));
-  expect(texts.indexOf("GitHub Copilot")).toBeLessThan(texts.indexOf("Pi"));
+  // No ordering assert against "Pi" text: the harness segment carries its
+  // own "Pi" label above the pills (hero-pi presence is counted earlier).
   expect(texts).not.toContain("外部终端");
   expect(texts.some((text) => text.includes("TUI"))).toBe(false);
 });

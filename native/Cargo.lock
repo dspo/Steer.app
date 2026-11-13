@@ -2885,6 +2885,7 @@ dependencies = [
  "nsh-base",
  "nsh-core",
  "portable-pty",
+ "serde",
  "serde_json",
  "tokio",
 ]
