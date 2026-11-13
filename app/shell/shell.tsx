@@ -37,7 +37,7 @@ import { setShellActions } from "../core/shell-actions";
 import { K, t } from "../ui/i18n";
 import { openActiveInVSCode } from "./vscode";
 import { containerMatches } from "./search";
-import { Chip, Dot, Glyph, type GlyphName, motionStyle, shadowCard, shadowRaised } from "../ui/ui";
+import { Chip, Dot, Glyph, type GlyphName, motionStyle, shadowCard, shadowRaised, switcherPill, switcherTabFrame, switcherTrack } from "../ui/ui";
 import { TabBarPlus } from "../canvas/tab-plus";
 
 /**
@@ -613,6 +613,24 @@ function canvasPanels(): Array<{ id: string; closable: boolean }> {
 }
 
 /**
+ * A switcher tab's glyph, two tints crossing over (the gallery's
+ * `TabTitle`): the quiet one fades out as the selected one fades in, both
+ * drawn in the same box so nothing shifts.
+ */
+function SwitcherGlyph(props: { panel: string; active: boolean }) {
+  return (
+    <View style={{ width: 12, height: 12, flexShrink: 0 }}>
+      <View style={{ position: "absolute", opacity: props.active ? 0 : 1, ...motionStyle("fast") }}>
+        <Glyph name={sheetGlyph(props.panel)} size={12} tint={token("faint")} />
+      </View>
+      <View style={{ position: "absolute", opacity: props.active ? 1 : 0, ...motionStyle("fast") }}>
+        <Glyph name={sheetGlyph(props.panel)} size={12} tint={token("foreground")} />
+      </View>
+    </View>
+  );
+}
+
+/**
  * The canvas: the sheet tree and nothing else. Every surface here is a sheet
  * — a container's conversation, terminal, browser, Hero, or the scratch
  * canvas's Hero — so there is no page state to fall out of step with the
@@ -654,22 +672,24 @@ function Canvas() {
         onZoomChange={({ panel }) => setZoom(panel)}
         onPanelActiveChange={({ panel, active }) => onPanelActive(panel, active)}
         groupClass="flex-1 bg-background overflow-hidden"
-        tabBarClass="flex-row items-end gap-0.5 border-b border-line bg-card px-2"
-        // The right strip is the `+`'s: a tab never ends under the overlay.
-        tabBarStyle={{ height: 34, paddingRight: 30 }}
-        tabClass="group focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-1px] active:opacity-80"
+        // The switcher's capsule track (DESIGN §3.2): the bar is the track,
+        // sunk into the card, and the `+` sits in its right end (the
+        // trailing padding is the overlay's strip, so no tab ends under it).
+        // 2–3pt of card around the capsule: it is a control on the surface,
+        // not the surface's edge (the card's own corners clip at 14).
+        tabBarClass="flex-row"
+        tabBarStyle={{ ...switcherTrack(), marginLeft: 3, marginTop: 2, marginBottom: 2, paddingRight: 3 + 34 }}
+        tabStyle={switcherTabFrame()}
+        tabClass="group focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-0 active:opacity-80"
         contentClass="flex-1 bg-background overflow-hidden"
         handleClass="basis-px bg-line"
         dropIndicatorClass="rounded-lg border-2 border-brand bg-brand-tint"
         renderDragPreview={(tab) => (
           // The ghost: a tab's shape that follows the pointer (DESIGN §3.7) —
           // card, shadow, its own icon and title.
-          <View
-            class="h-8 flex-row items-center gap-1.5 rounded-lg px-2.5 bg-card"
-            style={{ width: 144, boxShadow: shadowCard() }}
-          >
-            <Glyph name={sheetGlyph(tab.panel)} size={11.5} tint={token("foreground")} />
-            <Text class="text-[12.5px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
+          <View class="bg-card" style={{ width: 144, ...switcherPill(true) }}>
+            <Glyph name={sheetGlyph(tab.panel)} size={12} tint={token("foreground")} />
+            <Text class="text-[13px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
               {sheetTitle(tab.panel)}
             </Text>
           </View>
@@ -684,25 +704,18 @@ function Canvas() {
           )
         }
         renderTab={(tab) => (
-          // Chrome-style widths (DESIGN §3.2): 72–240, squeezed evenly when
-          // the panel narrows or tabs multiply; the title truncates.
+          // A switcher tab (DESIGN §3.2, the gallery's `tabsLook`): the
+          // selected one a pill standing off the track, the others bare until
+          // the pointer. The tabs share the track equally (`switcherTabFrame`)
+          // and squeeze together at 72pt, where the title truncates.
           <View
-            class={`relative h-8 flex-row items-center gap-1.5 rounded-lg px-2.5 ${tab.active ? "bg-card" : "hover:bg-hover"}`}
-            style={{
-              minWidth: 72,
-              maxWidth: 240,
-              flexGrow: 0,
-              flexShrink: 1,
-              borderRadius: 8,
-              backgroundColor: tab.active ? token("card") : "transparent",
-              boxShadow: tab.active ? shadowCard() : "none",
-              ...motionStyle("medium"),
-            }}
+            class={`relative min-w-0 ${tab.active ? "" : "hover:bg-hover"}`}
+            style={switcherPill(tab.active)}
           >
-            <Glyph name={sheetGlyph(tab.panel)} size={11.5} tint={tab.active ? token("foreground") : token("faint")} />
+            <SwitcherGlyph panel={tab.panel} active={tab.active} />
             <Text
-              class={`min-w-0 flex-1 text-[12.5px] font-medium ${tab.active ? "text-foreground" : "text-muted-foreground"}`}
-              style={{ numberOfLines: 1 }}
+              class="min-w-0 flex-1 text-[13px] font-medium"
+              style={{ numberOfLines: 1, color: tab.active ? token("foreground") : token("muted-foreground"), ...motionStyle("fast") }}
             >
               {sheetTitle(tab.panel)}
             </Text>
@@ -714,15 +727,12 @@ function Canvas() {
                 role="button"
                 testID={`tab-close-${tab.panel}`}
                 accessibilityLabel={t(K.canvas.closeSheet, { name: sheetTitle(tab.panel) })}
-                class="absolute right-1 top-1.5 size-5 items-center justify-center rounded-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-raised"
+                class="absolute right-0.5 top-[3px] size-5 items-center justify-center rounded-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-raised"
                 onPress={() => void closeSheet(tab.panel)}
               >
                 <Glyph name="close" size={10} tint={token("muted-foreground")} />
               </View>
             </If>
-            {tab.active ? (
-              <View class="absolute bottom-[-1px] left-2.5 right-2.5 h-0.5 rounded-full bg-primary" style={{ pointerEvents: "none" }} />
-            ) : null}
           </View>
         )}
         renderPanel={(panel) => <SheetBody id={panel.id} />}

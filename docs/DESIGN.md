@@ -79,19 +79,28 @@ motionStyle()   // 用户在系统里减少动态效果时返回 {}
 
 一张卡片包住该容器的整个画布：页签条在卡片顶部，panels 与 composer 在卡片内。卡片本身 `overflow: hidden` + radius，panels 的分割线只画在卡片内部。切容器时卡片内容整体替换，窗口其余部分不动。
 
-### 3.2 页签（Chrome 式）
+### 3.2 页签（段落切换器）
+
+外壳的 sheet 页签条取画廊 `look/tabs.tsx` 的 `tabsLook`（"A section switcher"）：一条沉入卡片的
+胶囊轨道，选中的页签是一枚浮起的药丸。实现在 `ui/ui.tsx` 的 `switcherTrack()` / `switcherPill()`
+（`SWITCHER_HEIGHT` / `SWITCHER_PILL`），`shell/shell.tsx` 的 `DockArea` 两处消费。
 
 | 项 | 值 |
 |---|---|
-| 宽度 | `maxWidth 240`、`minWidth 72`、`flexShrink 1`、`flexGrow 0`：panel 变窄或页签增多时**均匀挤压**，标题截断 |
-| 高度 | 32pt，die 圆角 8 |
-| 活动态 | `card` 底 + `shadowCard` + 底部 2pt `primary` 指示器 |
-| 关闭控件 | 右侧 18pt 热区，`opacity 0` → hover 1，图标 `close` 10pt |
-| 新增页签 | 页签条最右常驻 `+`，在该 panel 打开 `home:{containerId}`（Hero） |
+| 轨道 | 高 34、`radius 17`、`inset` 底、1pt `border`、`shadowInset()` 内阴影；内边距 3、页签间距 2 |
+| 药丸 | 高 26、`radius 13`；选中 `card` 底 + `border` 边 + `shadowCard()`，未选透明（保留 1pt 透明边，选中时尺寸不变） |
+| 宽度 | **均分轨道**（画廊的 `fill`）：`switcherTabFrame()` 给每个页签 `flexGrow 1` + `flexBasis 0`，下限 72；页签增多时一起挤压，标题 13pt/500 截断 |
+| 图标 | 12pt，两档 tint 交叉淡入（未选 `faint`、选中 `foreground`，120ms） |
+| 悬停 | 未选页签 `hover` 底；选中不动 |
+| 关闭控件 | 右侧 20pt 热区，`opacity 0` → hover 1，图标 `close` 10pt |
+| 新增页签 | 轨道的右端留 34pt 给常驻 `+`（在轨道内，像 macOS 分段控件的尾部动作），在该 panel 打开 `home:{containerId}`（Hero） |
 
-`+` 是 20pt 的 ghost 按钮（图标 11pt、`muted-foreground`），垂直居中于组标题栏，标题栏右侧留 30pt
-给它——tab 只挤压到这条带之前。nsh 0.4.0 的 tab bar 没有尾部插槽，它由 app 覆盖层画在每组右端
-（[architecture.md](architecture.md) §4.2）。
+`+` 是 20pt 的 ghost 按钮（图标 11pt、`muted-foreground`），垂直居中于组标题栏。nsh 0.4.0 的
+tab bar 没有尾部插槽，它由 app 覆盖层画在每组右端（[architecture.md](architecture.md) §4.2）。
+
+画廊的选中药丸是一枚由内核 spring 移到下一格的 indicator；`DockArea` 自己摆放页签、不向 app
+报告各页签的 bounds，所以这里用两格之间的 180ms 交叉淡化代替位移动画——观感一致，少一个交互。
+**不要**为了位移动画自己接管 tab bar：拖拽换位、分组、`+` 的几何都在 `DockArea` 里。
 
 ### 3.3 顶栏无 picker（2026-11-11 调整）
 
