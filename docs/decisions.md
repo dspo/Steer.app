@@ -5,7 +5,7 @@
 >
 > **读法**：每条是裁决**当时**的记录，落点路径不随重构回改——`engine/` 在 C8 后是 `pi-harness/`，
 > ACP cutover 后 pi 的控制面在 `app/harness/pi-acp/`，manox 的落点是 `native/manox` 与 `app/harness/manox/`。
-> 当前代码地图以 [README 的代码地图](../README.md) 为准；被后续裁决取代的条目在行内注明。
+> 当前代码地图以 [architecture.md §4.1 的分层](architecture.md) 为准；被后续裁决取代的条目在行内注明。
 
 ## 引擎与后端
 
