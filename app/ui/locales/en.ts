@@ -386,12 +386,12 @@ export const en: Record<string, string> = {
     "pi found no model catalog. Check ~/.pi/agent/models.json, then try again.",
   "app.session.modelsNoChat":
     "A provider is signed in but lists no chat model. Check its entry in ~/.pi/agent/models.json, then try again.",
-  "app.session.acpModelsUnavailable":
-    "Model switching is not available over the ACP harness yet: the distro does not expose a model table.",
-  "app.session.acpThinkingUnavailable":
-    "Thinking levels are not available over the ACP harness yet: the distro does not expose session modes.",
-  "app.session.acpCompactUnavailable":
-    "Manual compaction is not available over the ACP harness yet; automatic compaction still runs.",
-  "app.session.acpSubagentsUnavailable":
-    "Subagents are not available over the ACP harness yet: the dispatch extension is a later distro stage.",
+  "app.session.approvalTitle": "Approval needed",
+  "app.session.approvalAllowOnce": "Allow once",
+  "app.session.approvalAllowAlways": "Always allow",
+  "app.session.approvalReject": "Reject",
+  "app.session.elicitationTitle": "Extension input",
+  "app.session.waitingApproval": "Waiting for your confirmation",
+  "app.session.permissions": "Permissions",
+  "app.session.queued": "%{count} queued",
 };

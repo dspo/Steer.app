@@ -54,7 +54,7 @@ import { TabBarPlus } from "../canvas/tab-plus";
 /**
  * Boots the shell: loads the containers, the projects and the settings. There
  * is no process to start and no socket to dial — every read is a `zu/state`
- * file and every conversation is a per-turn harness process owned by a module.
+ * file and each conversation's persistent harness process is owned by a module.
  */
 export async function bootShell(): Promise<void> {
   await loadContainers();

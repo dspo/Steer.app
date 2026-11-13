@@ -133,8 +133,9 @@ Hero 的两排动作使用各 CLI 的品牌图标（24pt 光学尺寸）：
 | 分割线 | 只与 composer 同宽（卡片内 24pt 边距之间），**不铺满 panel** |
 | 布局 | 输入框一行；下一行右侧：`模型 · thinking`、`context%`、主按钮 |
 | 主按钮 | idle：↑ 发送（`primary` 圆钮 32pt）；streaming：■ 停止（同位置、`destructive`） |
-| 排队/引导/打断 | 输入框右上 `⋯` 菜单；**仅交互，不接线** |
-| 斜杆命令 | 输入 `/` 在输入框上方弹出候选（命令 + 一句说明），样式与 Menu 同套；选中后本地执行（模型/思考/清屏/压缩/会话）或按原文提交，未知命令给明确提示 |
+| 权限 | 模型菜单底部的「权限」小节：Ask / Auto / Read-only，当前值带勾；切换走 `session/set_mode` |
+| 排队/引导/打断 | 运行中：输入框右上 `⋯` 菜单；排队走本地队列（`排队 N 条` 行），审批/询问时发送暂缓 |
+| 斜杆命令 | 输入 `/` 在输入框上方弹出候选（name + 一句说明），样式与 Menu 同套；本地命令本地执行，distro 的命令表按原文提交 |
 | 移除 | 项目目录、访问模式、语音（保持移除） |
 
 斜杆命令的映射（pi 1.5.0 为准；表即 `slash.ts` 的实现，候选弹层逐条列"命令 + 一句说明"）：
@@ -142,21 +143,16 @@ Hero 的两排动作使用各 CLI 的品牌图标（24pt 光学尺寸）：
 | 命令 | Zu 的做法 |
 |---|---|
 | `/model` | **本地**：打开 composer 的模型菜单（`openModelMenuRequest`） |
-| `/thinking` | **本地**：循环下一个思考档位（`session.setThinking`，pi 记进 transcript） |
-| `/compact` | **本地**：手动压缩（`session.compact`，进度走 `compaction.*` 事件） |
+| `/thinking` | **本地**：循环下一个思考档位（`session/set_config_option` 的 `thought_level`） |
+| `/compact` | **本地**：`/compact` 作为 prompt 交给 distro，进度走 `compaction_update` |
 | `/clear` | **本地**：清空本地会话视图（历史留在磁盘，重开即回来） |
 | `/new` | **本地**：开 scratch 的 Hero（与「新建」同一入口） |
 | `/resume` | **本地**：打开侧栏的会话搜索 |
-| 扩展/模板/技能命令 | **按原文进 `session.prompt`**（pi 在扩展宿主里执行；弹层不列它们，输入即走） |
-| `/help` `/login` `/logout` `/settings` `/export` `/import` `/fork` `/clone` `/session` `/tree` `/name` `/reload` `/trust` `/share` `/copy` `/bug` `/quit` `/hotkeys` `/changelog` | **不支持**：pi 的交互命令，Zu 给一句明确提示，不发送 |
+| 扩展/模板/技能命令 | distro 的 `available_commands_update` 提供 name + description，**弹层逐条列出**；选中后按原文进 `session/prompt` |
+| 其余未知命令 | 同样按原文进 `session/prompt`，由 distro 的分派器决定；**没有静态"不支持"表** |
 
-未知命令（不在上表）按扩展命令原文发送；输入 `/` 时弹层即过滤，Enter 对
-`/` 草稿执行命令而不是发送。
-
-**ACP 现状（2026-11-13）**：`/model`、`/thinking`、`/compact` 的**会话内**切换尚未映射到 ACP
-（`pi-harness/src/acp/mapping.ts` 有显式缺席清单），UI 会报「ACP 下不可用」而不是静默失败。
-Hero 的模型/effort 选择已生效：pi 走 spawn env（`ZU_PI_MODEL`/`ZU_PI_EFFORT`），manox 走
-registration-qualified ref（Q104）。`/model` 的模型菜单本身仍打开；只是切换不到会话。
+输入 `/` 时弹层即过滤，Enter 对 `/` 草稿执行命令而不是发送；命令表热更新时候选就地刷新。
+会话内的模型/档位/审批走 ACP 协议（`configOptions`/`modes`），不再有 spawn env 或"ACP 下不可用"分支。
 本节描述的是 pi 面当前的 hairline composer；manox 面在自己的模块里有独立 composer（Steer 风格）。
 Pi 会话的完整交互状态（审批卡、elicitation、命令候选、恢复/休眠）以
 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §9 为准；视觉 token 仍取本文。

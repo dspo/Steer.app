@@ -7,7 +7,12 @@
 
 import { describe, expect, test } from "bun:test";
 import { ndJsonStream, type SessionUpdate, type StopReason } from "@agentclientprotocol/sdk";
-import { createAcpApp, type HarnessPorts, type HarnessSession } from "./app";
+import {
+  createAcpApp,
+  type HarnessClientBridge,
+  type HarnessPorts,
+  type HarnessSession,
+} from "./app";
 
 // ---------------------------------------------------------------- harness
 
@@ -15,8 +20,14 @@ class FakeSession implements HarnessSession {
   readonly id: string;
   prompts: string[] = [];
   aborted = 0;
+  disposed = 0;
+  readonly configChanges: Array<{ configId: string; value: string }> = [];
+  readonly modeChanges: string[] = [];
+  readonly permissionAnswers: unknown[] = [];
+  readonly elicitationAnswers: unknown[] = [];
   private listeners: Array<(update: SessionUpdate) => void> = [];
   private releasePrompt: (() => void) | undefined;
+  private bridge: HarnessClientBridge | null = null;
 
   constructor(
     private readonly spec: {
@@ -26,6 +37,11 @@ class FakeSession implements HarnessSession {
       stop?: StopReason;
       /** The prompt promise holds until `abort()` or `settlePrompt()`. */
       hangUntilAbort?: boolean;
+      /** Asks the client for approval before answering. */
+      permission?: boolean;
+      /** Asks the client for structured input before answering. */
+      elicit?: boolean;
+      subagents?: HarnessSession["subagents"];
     },
   ) {
     this.id = spec.id;
@@ -33,6 +49,31 @@ class FakeSession implements HarnessSession {
 
   async prompt(text: string): Promise<StopReason> {
     this.prompts.push(text);
+    if (this.spec.permission && this.bridge) {
+      this.permissionAnswers.push(
+        await this.bridge.requestPermission({
+          sessionId: this.id,
+          toolCall: { toolCallId: "tc-ask", title: "run the dangerous thing", kind: "execute" },
+          options: [
+            { optionId: "allow_once", name: "Allow once", kind: "allow_once" },
+            { optionId: "reject", name: "Reject", kind: "reject_once" },
+          ],
+        }),
+      );
+    }
+    if (this.spec.elicit && this.bridge) {
+      this.elicitationAnswers.push(
+        await this.bridge.elicit({
+          sessionId: this.id,
+          message: "Which environment?",
+          requestedSchema: {
+            type: "object",
+            properties: { environment: { type: "string", enum: ["staging", "prod"] } },
+            required: ["environment"],
+          },
+        }),
+      );
+    }
     for (const update of this.spec.updates ?? []) {
       for (const listener of this.listeners) listener(update);
     }
@@ -50,7 +91,9 @@ class FakeSession implements HarnessSession {
     this.releasePrompt?.();
   }
 
-  dispose(): void {}
+  dispose(): void {
+    this.disposed += 1;
+  }
 
   replay(): SessionUpdate[] {
     return this.spec.replay ?? [];
@@ -59,18 +102,69 @@ class FakeSession implements HarnessSession {
   onUpdate(push: (update: SessionUpdate) => void): void {
     this.listeners.push(push);
   }
+
+  configOptions() {
+    return [
+      {
+        id: "model",
+        name: "Model",
+        category: "model" as const,
+        type: "select" as const,
+        currentValue: this.configChanges.at(-1)?.value ?? "p/m",
+        options: [
+          { value: "p/m", name: "p/m" },
+          { value: "p/other", name: "p/other" },
+        ],
+      },
+    ];
+  }
+
+  availableCommands() {
+    return [{ name: "compact", description: "Compact the context." }];
+  }
+
+  async setConfigOption(configId: string, value: string) {
+    this.configChanges.push({ configId, value });
+    return this.configOptions();
+  }
+
+  modeState() {
+    return {
+      currentModeId: this.modeChanges.at(-1) ?? "ask",
+      availableModes: [
+        { id: "ask", name: "Ask" },
+        { id: "auto", name: "Auto" },
+      ],
+    };
+  }
+
+  async setMode(modeId: string): Promise<void> {
+    this.modeChanges.push(modeId);
+    for (const listener of this.listeners) {
+      listener({ sessionUpdate: "current_mode_update", currentModeId: modeId } as SessionUpdate);
+    }
+  }
+
+  attachClient(bridge: HarnessClientBridge | null): void {
+    this.bridge = bridge;
+  }
+
+  get subagents(): HarnessSession["subagents"] {
+    return this.spec.subagents;
+  }
 }
 
 interface PortsSpy {
   created: string[];
   loaded: Array<{ sessionId: string; cwd: string }>;
+  resumed: Array<{ sessionId: string; cwd: string }>;
 }
 
 function fakePorts(sessions: FakeSession[], onSession?: (session: FakeSession, spy: PortsSpy) => void): {
   ports: HarnessPorts;
   spy: PortsSpy;
 } {
-  const spy: PortsSpy = { created: [], loaded: [] };
+  const spy: PortsSpy = { created: [], loaded: [], resumed: [] };
   let index = 0;
   return {
     spy,
@@ -83,6 +177,12 @@ function fakePorts(sessions: FakeSession[], onSession?: (session: FakeSession, s
       },
       loadSession: async (sessionId, cwd) => {
         spy.loaded.push({ sessionId, cwd });
+        const session = sessions[index++] ?? new FakeSession({ id: sessionId });
+        onSession?.(session, spy);
+        return session;
+      },
+      resumeSession: async (sessionId, cwd) => {
+        spy.resumed.push({ sessionId, cwd });
         const session = sessions[index++] ?? new FakeSession({ id: sessionId });
         onSession?.(session, spy);
         return session;
@@ -196,6 +296,19 @@ async function initialize(client: ReturnType<typeof startClient>): Promise<Recor
   const response = await client.request("initialize", INITIALIZE_PARAMS);
   expect(response.error).toBeUndefined();
   return response.result as Record<string, unknown>;
+}
+
+/** Reads the stream until the agent asks the client something. */
+async function nextAgentRequest(
+  client: ByteClient,
+  method: string,
+): Promise<{ id: number; params: Record<string, unknown> }> {
+  while (true) {
+    const message = await client.next();
+    if (message.method === method && typeof message.id === "number") {
+      return { id: message.id, params: message.params as Record<string, unknown> };
+    }
+  }
 }
 
 // ----------------------------------------------------------------- framing
@@ -314,7 +427,14 @@ describe("method surface", () => {
       prompt: [{ type: "text", text: "say hi" }],
     });
     expect((response.result as Record<string, unknown>).stopReason).toBe("end_turn");
-    const updates = client.drained().filter((message) => message.method === "session/update");
+    const updates = client
+      .drained()
+      .filter((message) => message.method === "session/update")
+      .filter(
+        (message) =>
+          ((message.params as Record<string, unknown>).update as Record<string, unknown>).sessionUpdate !==
+          "available_commands_update",
+      );
     expect(updates).toHaveLength(2);
     expect((updates[0].params as Record<string, unknown>).sessionId).toBe("pi-2");
     expect(((updates[0].params as Record<string, unknown>).update as Record<string, unknown>).sessionUpdate).toBe(
@@ -390,7 +510,14 @@ describe("method surface", () => {
     const response = await client.request("session/load", { sessionId: "pi-5", cwd: "/tmp/proj", mcpServers: [] });
     expect(response.error).toBeUndefined();
     expect(spy.loaded).toEqual([{ sessionId: "pi-5", cwd: "/tmp/proj" }]);
-    const updates = client.drained().filter((message) => message.method === "session/update");
+    const updates = client
+      .drained()
+      .filter((message) => message.method === "session/update")
+      .filter(
+        (message) =>
+          ((message.params as Record<string, unknown>).update as Record<string, unknown>).sessionUpdate !==
+          "available_commands_update",
+      );
     expect(updates).toHaveLength(2);
     expect(
       ((updates[0].params as Record<string, unknown>).update as Record<string, unknown>).sessionUpdate,
@@ -428,7 +555,14 @@ describe("method surface", () => {
       prompt: [{ type: "text", text: "again" }],
     });
     expect((response.result as Record<string, unknown>).stopReason).toBe("end_turn");
-    const updates = client.drained().filter((message) => message.method === "session/update");
+    const updates = client
+      .drained()
+      .filter((message) => message.method === "session/update")
+      .filter(
+        (message) =>
+          ((message.params as Record<string, unknown>).update as Record<string, unknown>).sessionUpdate !==
+          "available_commands_update",
+      );
     // One replay chunk + one live chunk from the replaced object.
     expect(updates.length).toBe(2);
     expect(loaded.prompts).toEqual(["again"]);
@@ -452,6 +586,179 @@ describe("method surface", () => {
     expect(error.code).toBe(-32603);
     expect(error.data.code).toBe("session_new_failed");
     expect(client.logs.some((line) => line.includes("disk exploded"))).toBe(true);
+    await client.close();
+  });
+
+  test("session/new advertises config options, modes and its command table", async () => {
+    const session = new FakeSession({ id: "pi-7" });
+    const { ports } = fakePorts([session]);
+    const client = startClient(ports);
+    await initialize(client);
+    const response = await client.request("session/new", { cwd: "/tmp/proj" });
+    const result = response.result as Record<string, unknown>;
+    const options = result.configOptions as Array<Record<string, unknown>>;
+    expect(options.map((option) => option.id)).toEqual(["model"]);
+    expect((result.modes as Record<string, unknown>).currentModeId).toBe("ask");
+    const commands = client
+      .drained()
+      .filter((message) => message.method === "session/update")
+      .map((message) => ((message.params as Record<string, unknown>).update as Record<string, unknown>))
+      .filter((update) => update.sessionUpdate === "available_commands_update");
+    expect(commands).toHaveLength(1);
+    expect((commands[0].availableCommands as Array<Record<string, unknown>>)[0].name).toBe("compact");
+    await client.close();
+  });
+
+  test("set_config_option and set_mode reach the session and answer fresh state", async () => {
+    const session = new FakeSession({ id: "pi-8" });
+    const { ports } = fakePorts([session]);
+    const client = startClient(ports);
+    await initialize(client);
+    await client.request("session/new", { cwd: "/tmp/proj" });
+    const config = await client.request("session/set_config_option", {
+      sessionId: "pi-8",
+      configId: "model",
+      type: "select",
+      value: "p/other",
+    });
+    expect(config.error).toBeUndefined();
+    expect(session.configChanges).toEqual([{ configId: "model", value: "p/other" }]);
+    const options = (config.result as Record<string, unknown>).configOptions as Array<Record<string, unknown>>;
+    expect(options[0].currentValue).toBe("p/other");
+    const mode = await client.request("session/set_mode", { sessionId: "pi-8", modeId: "auto" });
+    expect(mode.error).toBeUndefined();
+    expect(session.modeChanges).toEqual(["auto"]);
+    const update = client
+      .drained()
+      .filter((message) => message.method === "session/update")
+      .map((message) => ((message.params as Record<string, unknown>).update as Record<string, unknown>))
+      .find((entry) => entry.sessionUpdate === "current_mode_update");
+    expect(update?.currentModeId).toBe("auto");
+    await client.close();
+  });
+
+  test("session/resume reattaches without replaying history", async () => {
+    const session = new FakeSession({
+      id: "pi-9",
+      replay: [{ sessionUpdate: "user_message_chunk", content: { type: "text", text: "old" }, messageId: "e1" }],
+    });
+    const { ports, spy } = fakePorts([session]);
+    const client = startClient(ports);
+    await initialize(client);
+    const response = await client.request("session/resume", { sessionId: "pi-9", cwd: "/tmp/proj" });
+    expect(response.error).toBeUndefined();
+    expect(spy.resumed).toEqual([{ sessionId: "pi-9", cwd: "/tmp/proj" }]);
+    const replay = client
+      .drained()
+      .filter((message) => message.method === "session/update")
+      .map((message) => ((message.params as Record<string, unknown>).update as Record<string, unknown>))
+      .filter((update) => update.sessionUpdate !== "available_commands_update");
+    expect(replay).toEqual([]);
+    const prompt = await client.request("session/prompt", { sessionId: "pi-9", prompt: [{ type: "text", text: "go" }] });
+    expect((prompt.result as Record<string, unknown>).stopReason).toBe("end_turn");
+    await client.close();
+  });
+
+  test("session/close aborts, disposes and forgets the session", async () => {
+    const session = new FakeSession({ id: "pi-10" });
+    const { ports } = fakePorts([session]);
+    const client = startClient(ports);
+    await initialize(client);
+    await client.request("session/new", { cwd: "/tmp/proj" });
+    const closed = await client.request("session/close", { sessionId: "pi-10" });
+    expect(closed.error).toBeUndefined();
+    expect(session.aborted).toBe(1);
+    expect(session.disposed).toBe(1);
+    const after = await client.request("session/prompt", { sessionId: "pi-10", prompt: [{ type: "text", text: "hi" }] });
+    expect((after.error as { data: { code: string } }).data.code).toBe("session_not_found");
+    await client.close();
+  });
+
+  test("a permission request round-trips through the client", async () => {
+    const session = new FakeSession({ id: "pi-11", permission: true });
+    const { ports } = fakePorts([session]);
+    const client = startClient(ports);
+    await initialize(client);
+    await client.request("session/new", { cwd: "/tmp/proj" });
+    const promptId = await client.requestNoWait("session/prompt", {
+      sessionId: "pi-11",
+      prompt: [{ type: "text", text: "delete it" }],
+    });
+    const ask = await nextAgentRequest(client, "session/request_permission");
+    expect((ask.params.toolCall as Record<string, unknown>).title).toBe("run the dangerous thing");
+    const options = ask.params.options as Array<Record<string, unknown>>;
+    expect(options.map((option) => option.optionId)).toEqual(["allow_once", "reject"]);
+    await client.send({
+      jsonrpc: "2.0",
+      id: ask.id,
+      result: { outcome: { outcome: "selected", optionId: "allow_once" } },
+    });
+    const response = await client.waitResponse(promptId);
+    expect((response.result as Record<string, unknown>).stopReason).toBe("end_turn");
+    expect(session.permissionAnswers).toEqual([
+      { outcome: { outcome: "selected", optionId: "allow_once" } },
+    ]);
+    await client.close();
+  });
+
+  test("an elicitation round-trips through the client", async () => {
+    const session = new FakeSession({ id: "pi-12", elicit: true });
+    const { ports } = fakePorts([session]);
+    const client = startClient(ports);
+    await initialize(client);
+    await client.request("session/new", { cwd: "/tmp/proj" });
+    const promptId = await client.requestNoWait("session/prompt", {
+      sessionId: "pi-12",
+      prompt: [{ type: "text", text: "deploy" }],
+    });
+    const ask = await nextAgentRequest(client, "elicitation/create");
+    expect(ask.params.message).toBe("Which environment?");
+    await client.send({
+      jsonrpc: "2.0",
+      id: ask.id,
+      result: { action: "accept", content: { environment: "staging" } },
+    });
+    const response = await client.waitResponse(promptId);
+    expect((response.result as Record<string, unknown>).stopReason).toBe("end_turn");
+    expect(session.elicitationAnswers).toEqual([
+      { action: "accept", content: { environment: "staging" } },
+    ]);
+    await client.close();
+  });
+
+  test("the _zu/subagents methods delegate to the session surface", async () => {
+    const run = { id: "run-1", agent: "worker", status: "done" };
+    const session = new FakeSession({
+      id: "pi-13",
+      subagents: {
+        list: (filter) => [{ ...run, filter }],
+        transcript: (runId) => ({ runId, rows: [] }),
+        dispatch: (agent, task) => ({ id: "run-2", agent, task }),
+        abort: async () => {},
+      },
+    });
+    const { ports } = fakePorts([session]);
+    const client = startClient(ports);
+    await initialize(client);
+    await client.request("session/new", { cwd: "/tmp/proj" });
+    const list = await client.request("_zu/subagents/list", { sessionId: "pi-13" });
+    expect(((list.result as Record<string, unknown>).runs as Array<Record<string, unknown>>)[0].filter).toEqual({
+      captainId: "pi-13",
+    });
+    const transcript = await client.request("_zu/subagents/transcript", { sessionId: "pi-13", runId: "run-1" });
+    expect((transcript.result as Record<string, unknown>).runId).toBe("run-1");
+    const dispatch = await client.request("_zu/subagents/dispatch", {
+      sessionId: "pi-13",
+      agent: "worker",
+      task: "look",
+    });
+    expect((dispatch.result as Record<string, unknown>).run).toEqual({
+      id: "run-2",
+      agent: "worker",
+      task: "look",
+    });
+    const abort = await client.request("_zu/subagents/abort", { sessionId: "pi-13", runId: "run-2" });
+    expect(abort.error).toBeUndefined();
     await client.close();
   });
 });

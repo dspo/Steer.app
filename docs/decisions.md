@@ -172,17 +172,18 @@
 | Q101 | native 的粒度 | **能力域，不是每 sheet 一个 crate**：`fs`/`git`/`pty`/`lsp`/`acp`/`state`/`pimodels`/`manox`；一个域服务多张 sheet；只有 `app/domains/` 可以 import `zu/native`；纯 TS 能做的（浏览器、SVG 预览）不碰 native | 同上 §5；`native/src/lib.rs` 的单一注册面 |
 | Q102 | 容器模型 | **去 harness 身份**：容器 = `{ id, cwd, projectId, sheetOrder }`，`kind` 与 `sessions[]` 消失；容器标题仍由最早存活的 sheet 推导；「外部终端容器」变成 terminal 模块的 intent；pi 的多会话变成模块内投影 | arch §5.3；迁移 S3 |
 | Q103 | 文档治理 | **权威链 + 状态锚点**：architecture（当前）/ sheet-module（目标）/ pi-acp（协议）/ DESIGN（视觉）/ decisions（裁决）/ plan（执行）；只有 plan §0 与 architecture §7 写状态；`docs/evidence/` 只放可再生的验证产物，过程叙事删除、历史留 git | [plan.md](plan.md) §5 |
-| Q104 | 两条 harness 的模型目录 | **共用一份 pi 目录，不各养一套**：`native/manox` 的 boot 把 `~/.pi` 的 `models.json`/`auth.json` 翻译进内核 provider 注册（`register_providers_yaml`），app 侧把 pi ref 组合成 registration-qualified `{provider}-{wire}/{model}`；pi 侧把 Hero 的选择经 spawn env（`ZU_PI_MODEL`/`ZU_PI_EFFORT`）应用到 `ModelRuntime` | `native/manox/src/real.rs`、`app/stores/pi-models.ts`、`app/harness/pi-acp/acp.ts`、`pi-harness/src/acp/pi-session.ts`；bb94e6f |
+| Q104 | 两条 harness 的模型目录 | **共用一份 pi 目录，不各养一套**：`native/manox` 的 boot 把 `~/.pi` 的 `models.json`/`auth.json` 翻译进内核 provider 注册（`register_providers_yaml`），app 侧把 pi ref 组合成 registration-qualified `{provider}-{wire}/{model}`；pi 侧把 Hero 的选择在会话建立后经 `session/set_config_option` 应用到 `ModelRuntime`（Q108 起；此前是 spawn env） | `native/manox/src/real.rs`、`app/stores/pi-models.ts`、`app/harness/pi-acp/acp.ts`、`pi-harness/src/acp/pi-session.ts`；bb94e6f |
 | Q105 | 侧栏的 harness 分组 | **不设 harness 专属组**：manox 的侧栏组随 `ContributedSection` seam 一起移除（Hero 的 harness 段已是入口；一个侧栏只能说一种行的语言）。已开的 thread 经 sheet 与布局 stash 可达；后继是**合并的项目投影**，不是恢复分组 | `app/shell/contrib.tsx`、`app/harness/manox/register.tsx`、`app/shell/shell.tsx`；7d2d523 |
 
 | Q106 | sheet 模块的落地形态 | **S0–S3 一次落地**：`contracts/module.ts` 是唯一契约；`app/core/registry.ts` 提供 `registerModule/startModules`；`app/domains/` 是唯一 import `zu/native` 的地方；`app/modules/` 收编 home/browser/files/git/terminal/problems/pi/manox；容器记录只剩 `{id,cwd,projectId,sheetOrder}`；通知以 sheet id 为单位；依赖门禁 `script/check-layers.mjs` 零白名单 | `contracts/module.ts`、`app/core/registry.ts`、`app/modules/register-all.ts`、`app/sheet-modules.test.tsx` |
-| Q107 | 旧 wire 与 legacy distro 的删除 | **P4 完成**：删 `contracts/protocol.{ts,md}`、`stores/engine.ts`、`native` 的 `Engine` 模块、`pi-harness/src/{server,store,subagents}.ts` 与 `dist/pi-engine`；打包只带 `Helpers/pi-acp`。代价：ACP distro 尚无 dispatch，子代理名册在 UI 上明确显示不可用（后续以 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) E0 恢复） | `script/bundle-mac.sh`、`native/src/lib.rs`、`pi-harness/package.json`、`app/modules/pi/subagents.ts` |
+| Q108 | Pi × ACP 会话运行时 | **A0–F0 落地**：D1–D7 全部采纳。一会话一持久 `pi-acp`（无 cap/TTL/RSS 回收）；stable v1 补齐 config/mode/resume/close/usage/commands/info/compaction/notice；`SessionView` 只投影协议；权限策略在 distro 扩展里，`request_permission`/`elicitation` 由客户端 UI 回答；子代理走 `_zu/subagents/*`；宿主是独立进程 | `app/modules/pi/acp/{acp,host}.ts`、`app/modules/pi/{sessions,composer,approvals,subagents}.tsx`、`pi-harness/src/acp/{app,pi-session,subagents}.ts`；本次提交 |
+| Q107 | 旧 wire 与 legacy distro 的删除 | **P4 完成**：删 `contracts/protocol.{ts,md}`、`stores/engine.ts`、`native` 的 `Engine` 模块、`pi-harness/src/{server,store,subagents}.ts` 与 `dist/pi-engine`；打包只带 `Helpers/pi-acp`。代价：ACP distro 尚无 dispatch，子代理名册在 UI 上明确显示不可用（已由 Q108 的 E0 恢复） | `script/bundle-mac.sh`、`native/src/lib.rs`、`pi-harness/package.json`、`app/modules/pi/subagents.ts` |
 
-## 待审设计（不计入 Q 编号）
+## 已落地设计（Q108）
 
-[pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) 的 D1–D7 是**设计稿**，尚未成为裁决：
+[pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) 的 D1–D7 已作为 **Q108** 登记并落地：
 
-- D1 一会话一持久 `pi-acp` 进程（容器级复用延后）
+- D1 一会话一持久 `pi-acp` 进程（容器级复用延后；不设进程/资源上限）
 - D2 留在 stable ACP v1，补齐会话语义面
 - D3 配置/命令/上下文是协议状态，删除客户端代偿
 - D4 权限策略在 distro 扩展里
@@ -190,7 +191,7 @@
 - D6 ACP 宿主是独立进程，不是 Pi 扩展
 - D7 不采用 `pi-ahp`
 
-审查通过后，这些条目按 Q108 起登记；在此之前，plan 只把 A0–F0 标为"设计待审"。
+未跑的真机/live 验收见 IMPLEMENTATION §11.2；不在本文重复状态。
 
 ## 决策编号说明
 

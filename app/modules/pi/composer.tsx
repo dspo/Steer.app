@@ -2,13 +2,14 @@ import { effect, Scroll, signal, Text, token, View } from "nsh";
 import { Input, Menu, MenuItem, Submenu } from "nsh/base";
 import { K, t } from "../../ui/i18n";
 import type { SessionModelsReason } from "./protocol";
-import { openModelMenuRequest, runSlash, slashCandidates, type SlashOutcome } from "./slash";
+import { openModelMenuRequest, runSlash, slashCandidates } from "./slash";
 import {
   chooseSessionModel,
   followUp,
   loadSessionModels,
   send,
   sessionModels,
+  setSessionMode,
   stop,
   viewFor,
 } from "./sessions";
@@ -22,9 +23,8 @@ import { Glyph, motionStyle, shadowRaised, type GlyphName } from "../../ui/ui";
  *
  * The footer names the session's model, thinking level and context, then the
  * action: idle is one accent send; while a turn runs the same spot is the
- * stop (absolute — never gated by the draft), and the queue, steer and
- * interrupt lanes fold into a `⋯` menu whose entries press without acting
- * (visual-only until the pi wiring lands, §2.2-11).
+ * stop (absolute — never gated by the draft). The model menu ends with the
+ * approval policy; the `⋯` menu carries a running turn's lanes.
  */
 
 /** `12.3k`, `1M`, `840`: a token count at a glance. */
@@ -148,6 +148,8 @@ export function ModelPicker(props: { sessionId: string }) {
   const current = () => view()?.model ?? state()?.data?.current;
   const thinking = () => view()?.thinkingLevel ?? state()?.data?.thinkingLevel;
   const currentKey = () => (current() ? `${current()!.provider}/${current()!.id}` : "");
+  const modes = () => view()?.modes ?? [];
+  const mode = () => view()?.mode ?? "ask";
   const label = () => {
     const model = current();
     if (!model) return t(K.session.model);
@@ -281,12 +283,43 @@ export function ModelPicker(props: { sessionId: string }) {
             </Submenu>
           )}
         </Each>
+        <If when={modes().length > 0}>
+          <View class="my-1 h-px bg-line" />
+          <Text class="px-2.5 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-faint">
+            {t(K.session.permissions)}
+          </Text>
+          <Each of={modes()} key={(entry) => entry.id}>
+            {(entry) => (
+              <MenuItem
+                testID={`session-mode-${entry().id}`}
+                checked={mode() === entry().id}
+                role="menuitemradio"
+                closeOnSelect={false}
+                indicator={<Glyph name="check" size={11} tint={token("brand")} />}
+                indicatorClass="opacity-0 checked:opacity-100"
+                class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+                onSelect={() => void setSessionMode(props.sessionId, entry().id)}
+              >
+                <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+                  <Text class="text-[12px] text-foreground" style={{ numberOfLines: 1 }}>
+                    {entry().name}
+                  </Text>
+                  <If when={!!entry().description}>
+                    <Text class="text-[10px] text-faint" style={{ numberOfLines: 2 }}>
+                      {entry().description ?? ""}
+                    </Text>
+                  </If>
+                </View>
+              </MenuItem>
+            )}
+          </Each>
+        </If>
       </Scroll>
     </Menu>
   );
 }
 
-/** The `⋯` lanes: visual-only entries (§2.2-11 says 不接线). */
+/** The `⋯` menu: the lanes of a running turn. */
 function ComposerMore() {
   const open = signal(false);
   const item = "rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent";
@@ -331,7 +364,9 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean; ha
   const models = () => sessionModels()[props.sessionId];
   /** The engine's answer that this machine has no models to name. */
   const modelsUnavailable = () => !!models()?.data?.reason;
-  const canSubmit = () => draft().trim().length > 0 && !!view() && !modelsUnavailable();
+  const waiting = () => view()?.sessionState === "waiting_user";
+  const queued = () => view()?.queued ?? 0;
+  const canSubmit = () => draft().trim().length > 0 && !!view() && !modelsUnavailable() && !waiting();
   // One ask per composer, so the empty state knows its cause without the
   // user opening the menu. A retry (here or in the menu) is the way back.
   let asked = false;
@@ -351,15 +386,11 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean; ha
     const text = draft().trimStart();
     return text.startsWith("/") ? text : "";
   };
-  const candidates = () => (slashDraft() ? slashCandidates(slashDraft()) : []);
-  const notice = signal<SlashOutcome | null>(null);
+  const candidates = () => (slashDraft() ? slashCandidates(slashDraft(), props.sessionId) : []);
   const runDraft = () => {
     const text = slashDraft();
     if (!text) return false;
-    void runSlash(props.sessionId, text).then((outcome) => {
-      if (outcome.kind === "unsupported") notice.set(outcome);
-      else notice.set(null);
-    });
+    void runSlash(props.sessionId, text);
     draft.set("");
     return true;
   };
@@ -402,6 +433,17 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean; ha
           />
         </View>
       </If>
+      <If when={waiting()}>
+        <View testID="session-waiting" class="flex-row items-center gap-1.5">
+          <Glyph name="alert" size={10} tint={token("warn")} />
+          <Text class="text-[11px] text-warn">{t(K.session.waitingApproval)}</Text>
+        </View>
+      </If>
+      <If when={queued() > 0}>
+        <Text testID="session-queued" class="text-[11px] text-faint">
+          {t(K.session.queued, { count: queued() })}
+        </Text>
+      </If>
       {/* The slash candidates: the mapping's own rows, filtered by the draft. */}
       <If when={candidates().length > 0}>
         <View
@@ -415,24 +457,17 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean; ha
               testID={`slash-${command.name}`}
               class="flex-row items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-hover active:bg-accent"
               onPress={() => {
-                void runSlash(props.sessionId, `/${command.name}`).then((outcome) => {
-                  if (outcome.kind === "unsupported") notice.set(outcome);
-                });
+                void runSlash(props.sessionId, `/${command.name}`);
                 draft.set("");
               }}
             >
               <Text class="text-[12px] font-medium text-foreground">{`/${command.name}`}</Text>
               <Text class="min-w-0 flex-1 text-[11px] text-faint" style={{ numberOfLines: 1 }}>
-                {command.description()}
+                {command.description}
               </Text>
             </View>
           ))}
         </View>
-      </If>
-      <If when={notice()?.kind === "unsupported"}>
-        <Text testID="session-slash-notice" class="text-[11px] leading-[16px] text-faint">
-          {t(K.slash.unsupported, { name: `/${(notice() as any).name}` })}
-        </Text>
       </If>
       <Input
         testID="session-input"

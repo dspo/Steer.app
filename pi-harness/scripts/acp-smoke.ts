@@ -171,7 +171,15 @@ try {
   const created = await request("session/new", { cwd });
   assert(created.result?.sessionId, `session/new failed: ${JSON.stringify(created.error)}`);
   const sessionId = String(created.result.sessionId);
-  console.log(`session/new ok: ${sessionId}`);
+  assert(Array.isArray(created.result.configOptions), "session/new must return configOptions");
+  assert(created.result.modes?.availableModes?.length > 0, "session/new must return the approval modes");
+  const announced = notifications.some(
+    (message) =>
+      message.method === "session/update" &&
+      message.params?.update?.sessionUpdate === "available_commands_update",
+  );
+  assert(announced, "session/new must announce available_commands_update");
+  console.log(`session/new ok: ${sessionId} (${created.result.configOptions.length} config option(s))`);
   await send({ jsonrpc: "2.0", method: "session/cancel", params: { sessionId } });
   console.log("session/cancel accepted (notification, no reply)");
 
@@ -315,7 +323,12 @@ async function waitForResponse(id: number, timeoutMs = 10_000): Promise<Record<s
 async function nextRawMessage(timeoutMs = 10_000): Promise<Record<string, any>> {
   const deadline = Date.now() + timeoutMs;
   while (true) {
-    if (notifications.length > 0) return notifications.shift()!;
+    // Session updates (the command table, tool streaming) are not replies;
+    // a framing probe wants the next protocol envelope.
+    const index = notifications.findIndex(
+      (message) => !(message.method === "session/update" && message.id === undefined),
+    );
+    if (index >= 0) return notifications.splice(index, 1)[0]!;
     if (Date.now() > deadline) throw new Failure("timeout waiting for any protocol frame");
     await new Promise((resolve) => setTimeout(resolve, 15));
   }

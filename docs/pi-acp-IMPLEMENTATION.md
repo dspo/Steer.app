@@ -1,6 +1,10 @@
 # Pi distro × ACP 集成设计（实现稿）
 
-> 状态：**设计稿，待审查；尚未实施**。审查通过后，实施按本文 §12 的 A0–F0 工作包落地。
+> 状态：**已落地（2026-11-13，A0–F0）**。本文从设计稿转为实现记录；仍以 §9 的 UI/UX 与 §11
+> 的验收清单为准，未跑的真机/live 项在 §11 明确标注。
+> 门禁（2026-11-13）：`nsh check app` ✓、`node script/check-layers.mjs` ✓、
+> `ZU_SKIP_LIVE=1 nsh test app` 219 用例 211 通过 / 8 skip、`pi-harness bun test` 41 ✓、
+> distro `bun run build` ✓、`bun run smoke`（ACP offline）✓、`script/bundle-mac.sh` ✓。
 > 关系：本文是 Pi 模块的**目标实现**。当前系统形态见 [architecture.md](architecture.md)；
 > 协议映射与 P0–P4 的历史裁决见 [pi-acp-PROTOCOL.md](pi-acp-PROTOCOL.md)；
 > 扩展机制（sheet 模块、能力域）见 [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md)；
@@ -10,7 +14,7 @@
 > 一个会话一个持久 `pi-acp` 进程，ACP 宿主只做协议，会话语义（模型、档位、命令、审批、用量、恢复）
 > 全部回到协议里；Pi 扩展继续负责 agent 能力，不被协议层替代。
 
-## 0. 裁决摘要（设计稿）
+## 0. 裁决摘要
 
 | # | 决定 | 理由 |
 |---|---|---|
@@ -22,7 +26,9 @@
 | D6 | **ACP 宿主是独立进程，不是 Pi 扩展** | 扩展没有 stdio/进程所有权，也回答不了 `initialize`/`session/new`；扩展只提供能力 |
 | D7 | **不采用 `pi-ahp`** | AHP 是 manox 的 journal/reducer 协议；在 Pi 上实现等价宿主是重写，且失去 ACP 生态。统一发生在 sheet 模型层 |
 
-## 1. 复盘：现状为什么不够
+## 1. 实施前复盘：当时的缺口（历史）
+
+> 本节保留实施前的诊断，便于理解 A0–F0 为何这样切；当前形态已不是这样。
 
 ### 1.1 现在的形状
 
@@ -461,16 +467,27 @@ app/modules/pi/
 
 ### 11.2 验收清单
 
-- [ ] 同一会话连续 3 轮不换进程；进程表只有一行。
-- [ ] 会话内切模型/档位立即生效，resume 后保留。
-- [ ] `/compact` 产生 compaction 更新并缩短 context。
-- [ ] destructive 工具弹出审批；允许/始终/拒绝三态都正确；cancel 结算 pending。
-- [ ] 扩展 confirm/select/input 能拿到真实答案；custom/widget 有明确 notice。
-- [ ] 子代理 dispatch → 流式 → settle → abort；关 app 重开能看 settled 转录。
-- [ ] kill 进程后下一次发送 resume 成功；turn 中的中断不重放。
-- [ ] 归档容器/退出 app 无残留进程。
-- [ ] grep 门禁：无 `ZU_PI_MODEL`、`acpModelsUnavailable`、静态 unsupported 斜杆表、no-op `uiContext`。
-- [ ] 文档：`pi-acp-PROTOCOL.md` 的缺席清单逐条销账，plan 的 A–F 关闭。
+代码级（hermetic）已覆盖：
+
+- [x] 同一会话连续多轮不换进程（`app/acp.test.ts`）。
+- [x] `set_config_option`/`set_mode` 到达 distro 并回传新状态（`pi-harness` + `app/acp.test.ts`）。
+- [x] 服务端→客户端 `session/request_permission`、`elicitation/create` 往返。
+- [x] `session/resume` 不重放历史；`session/close` 释放会话。
+- [x] `available_commands_update` 在 new/load/resume 的响应前到达，客户端取到命令表。
+- [x] 扩展 confirm/select/input/editor → elicitation；custom/widget 有 warning notice。
+- [x] 子代理 `_zu/subagents/{list,transcript,dispatch,abort}` 方法面；settled 索引落盘。
+- [x] kill/崩溃把 session 标死；下一次用户动作走 resume（host 的 `ensureAcpSession`）。
+- [x] grep 门禁：无 `ZU_PI_MODEL`、`acpModelsUnavailable`、静态 unsupported 斜杆表、no-op `uiContext`。
+- [x] 文档：PROTOCOL 的缺席清单标记被取代；plan 的 A–F 关闭。
+
+未跑（需真机/真实模型，发布前补）：
+
+- [ ] 会话内切模型/档位在 resume 后保留（distro 以 `persist:false` 切换，是否进 session 头待实测）。
+- [ ] `/compact` 的 compaction 更新在真实长会话里缩短 context。
+- [ ] destructive 工具的真实审批放行/拒绝（stub 只验证协议往返）。
+- [ ] 子代理真实模型 dispatch → settle → abort；重启后读 settled 转录。
+- [ ] 归档容器/退出 app 后无残留进程（生命周期已接线，未跑进程表断言）。
+- [ ] 冷启动/resume 首 token/RSS 记录（只测不设限）。
 
 ## 12. 实施工作包与顺序
 
@@ -489,7 +506,7 @@ E0 依赖 D0 的 permission（dispatch 本身也可能触发审批）。
 ### 12.1 删除清单（随迁移）
 
 - `startTurn`/`loadTranscript` 的每轮 spawn 路径（保留 `load` 作为读面兼容）；
-- `ZU_PI_MODEL`/`ZU_PI_EFFORT` 与 `applySessionPrefs`；
+- `ZU_PI_MODEL`/`ZU_PI_EFFORT` 与 spawn-env 版的 `applySessionPrefs`（现名 `applySessionConfig`，走 `set_config_option`）；
 - `sessionTransport`/`modelTransport` 的 ACP 分支、`acpAliasByPiId`；
 - `updateToStoreEvents` 旧 fold（改为直接投影 v1 update）；
 - `slash.ts` 静态表与 `acpModelsUnavailable` 文案；

@@ -5,40 +5,27 @@ import { openHero } from "../../core/projects";
 import { K, t } from "../../ui/i18n";
 
 /**
- * The `/model` command opens the model menu of one session. The request
- * lives here because both the table and the composer's picker read it (and
- * the composer cannot import itself).
+ * The composer's slash commands. The **distro owns the command table**
+ * (`availableCommands`): extensions, prompt templates and skills arrive over
+ * ACP. Only the few commands the host itself performs stay local here:
+ * `/model`, `/thinking`, `/compact`, `/clear`, `/new`, `/resume`.
+ *
+ * Everything else is sent verbatim in a prompt; the distro's dispatcher
+ * decides what to do with it. There is no static "unsupported" list.
  */
+
+/** The `/model` command opens the model menu of one session. */
 export const openModelMenuRequest = signal<string | null>(null);
 
-/**
- * The composer's slash commands (§2.2-11a), mapped from pi 1.5.0's
- * interactive set. Three buckets:
- *
- * - **local** — Zu does the work itself (model menu, thinking level, clear,
- *   compact, new, resume);
- * - **prompt** — sent verbatim through `session.prompt`, which is how pi
- *   invokes extension, prompt-template and skill commands;
- * - **unsupported** — pi's interactive-only commands (`/login`, `/quit`,
- *   `/settings`, …): the composer says so instead of guessing.
- *
- * The table is the single source for the popup's candidates and for what
- * Enter does when the draft starts with `/`.
- */
+export type SlashOutcome = { kind: "local" } | { kind: "prompt" };
 
-export type SlashOutcome =
-  | { kind: "local" }
-  | { kind: "prompt" }
-  | { kind: "unsupported"; name: string };
-
-interface SlashCommand {
+export interface SlashCommand {
   name: string;
-  /** The one-line description the popup shows (an `app.slash.*` key). */
-  description: (locale?: string) => string;
+  description: string;
   kind: "local" | "prompt";
 }
 
-/** Actions the host installs (opening the model menu, the sidebar search). */
+/** Actions the host installs (the sidebar search). */
 interface SlashActions {
   openSidebarSearch(): void;
 }
@@ -58,86 +45,41 @@ function nextThinkingLevel(level: string): SessionThinkingLevel {
   return THINKING_ORDER[(at + 1) % THINKING_ORDER.length];
 }
 
-const SLASH_COMMANDS: SlashCommand[] = [
-  {
-    name: "model",
-    description: (locale) => t(K.slash.model, { locale }),
-    kind: "local",
-  },
-  {
-    name: "thinking",
-    description: (locale) => t(K.slash.thinking, { locale }),
-    kind: "local",
-  },
-  {
-    name: "compact",
-    description: (locale) => t(K.slash.compact, { locale }),
-    kind: "local",
-  },
-  {
-    name: "clear",
-    description: (locale) => t(K.slash.clear, { locale }),
-    kind: "local",
-  },
-  {
-    name: "new",
-    description: (locale) => t(K.slash.new, { locale }),
-    kind: "local",
-  },
-  {
-    name: "resume",
-    description: (locale) => t(K.slash.resume, { locale }),
-    kind: "local",
-  },
+const LOCAL_COMMANDS: SlashCommand[] = [
+  { name: "model", description: t(K.slash.model), kind: "local" },
+  { name: "thinking", description: t(K.slash.thinking), kind: "local" },
+  { name: "compact", description: t(K.slash.compact), kind: "local" },
+  { name: "clear", description: t(K.slash.clear), kind: "local" },
+  { name: "new", description: t(K.slash.new), kind: "local" },
+  { name: "resume", description: t(K.slash.resume), kind: "local" },
 ];
 
-/** pi's interactive-only commands: the composer does not replace them. */
-const INTERACTIVE_ONLY = new Set([
-  "help",
-  "login",
-  "logout",
-  "settings",
-  "export",
-  "import",
-  "fork",
-  "clone",
-  "session",
-  "tree",
-  "name",
-  "reload",
-  "trust",
-  "share",
-  "copy",
-  "bug",
-  "quit",
-  "hotkeys",
-  "changelog",
-]);
-
-/** The candidates whose names start with what the user typed. */
-export function slashCandidates(query: string): SlashCommand[] {
+/** The candidates: local commands plus the session's advertised commands. */
+export function slashCandidates(query: string, sessionId?: string | null): SlashCommand[] {
   const term = query.replace(/^\//, "").trim().toLowerCase();
-  return SLASH_COMMANDS.filter((command) => command.name.startsWith(term));
+  const advertised = (sessionId ? viewFor(sessionId)?.commands ?? [] : []).map((command) => ({
+    name: command.name,
+    description: command.description,
+    kind: "prompt" as const,
+  }));
+  const all = [
+    ...LOCAL_COMMANDS,
+    ...advertised.filter((command) => !LOCAL_COMMANDS.some((local) => local.name === command.name)),
+  ];
+  return all.filter((command) => command.name.toLowerCase().startsWith(term));
 }
 
-/**
- * Runs one slash draft (leading `/` included). The popup's rows and Enter
- * both land here.
- */
+/** Runs one slash draft (leading `/` included). */
 export async function runSlash(sessionId: string, draft: string): Promise<SlashOutcome> {
   const text = draft.trim();
   const name = text.slice(1).split(/\s+/)[0]?.toLowerCase() ?? "";
-  if (!name) return { kind: "unsupported", name: "" };
-
-  const known = SLASH_COMMANDS.find((command) => command.name === name);
-  if (known?.kind === "local") {
+  if (!name) return { kind: "prompt" };
+  if (LOCAL_COMMANDS.some((command) => command.name === name)) {
     await runLocal(sessionId, name);
     return { kind: "local" };
   }
-  if (INTERACTIVE_ONLY.has(name)) return { kind: "unsupported", name };
-
-  // Everything else is invokable through pi's prompt: extension commands,
-  // prompt templates and skill commands. Sent verbatim, slash included.
+  // Extension commands, templates, skills and anything else the distro
+  // advertises: the protocol's prompt lane decides.
   void send(text, sessionId);
   return { kind: "prompt" };
 }

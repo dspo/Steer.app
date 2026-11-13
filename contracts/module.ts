@@ -131,6 +131,8 @@ export interface SheetModule {
   initialize?: () => void;
   /** A container became the active canvas: hydrate its visible sheets. */
   onContainerShown?: (containerId: string) => void;
+  /** The app is quitting: release processes and connections. */
+  onAppQuit?: () => void;
   /** A sheet of this module became its group's displayed tab (focus its
    * resource, hydrate it). */
   onSheetActivated?: (id: SheetId) => void;

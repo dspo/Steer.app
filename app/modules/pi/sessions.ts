@@ -1,12 +1,19 @@
 import { batch, computed, signal } from "nsh";
 import { State } from "../../domains/state";
 import { K, t } from "../../ui/i18n";
+import type { AcpUpdate } from "./acp/acp";
 import {
-  loadTranscript,
-  startTurn,
-  type AcpUpdate,
-  type TurnHandle,
-} from "./acp/acp";
+  closeSession as closeHostSession,
+  liveSession,
+  openExistingSession,
+  openNewSession,
+  type AcpSession,
+  type ElicitationRequest,
+  type PermissionRequest,
+  type PiCommand,
+  type PiConfigOption,
+  type PiUsage,
+} from "./acp/host";
 import { transcriptFromReplay, updateToStoreEvents } from "./acp/fold";
 import { notifySettled } from "../../core/notifications";
 import { sessionSheetId } from "./sheets";
@@ -72,6 +79,16 @@ type SessionView = {
    * the view was opened under (an ACP mint after an engine-created view). */
   piId?: string;
   error?: string;
+  /** ACP protocol state: config selectors, commands, usage, approval mode. */
+  configOptions: PiConfigOption[];
+  commands: PiCommand[];
+  mode: string;
+  /** The approval modes the distro offers and the current one. */
+  modes: Array<{ id: string; name: string; description?: string }>;
+  usage: PiUsage | null;
+  /** Follow-ups waiting behind the running turn. */
+  queued: number;
+  sessionState: "starting" | "ready" | "streaming" | "waiting_user" | "interrupted" | "dead";
 };
 
 /** Every session the shell has opened or adopted, by pi id. */
@@ -103,6 +120,13 @@ function blankView(id: string, patch: Partial<SessionView> = {}): SessionView {
     streaming: false,
     interrupted: false,
     loaded: false,
+    configOptions: [],
+    commands: [],
+    mode: "ask",
+    modes: [],
+    usage: null,
+    queued: 0,
+    sessionState: "starting",
     ...patch,
   };
 }
@@ -119,22 +143,186 @@ function patchView(id: string, patch: Partial<SessionView>): void {
   views.set({ ...views(), [id]: { ...current, ...patch } });
 }
 
-// --- the ACP transport (v2 §7) ---------------------------------------------
+// --- the ACP transport (pi-acp-IMPLEMENTATION.md) -------------------------
 //
-// Pi sessions ride per-turn harness processes over stdio. The view keys and
-// the store's outward behavior are the same as the old engine's; only the
-// transport under `send`/`stop`/`open` differs. The surfaces the distro does
-// not serve yet (models/thinking/compaction, dispatch/subagents, steering)
-// degrade with reasons here rather than failing obscurely.
+// Pi sessions ride one persistent `pi-acp` process each (design D1). The view
+// keys and the store's outward behavior are the same as the old engine's;
+// only the transport under `send`/`stop`/`open` differs. Config selectors,
+// commands, usage, approval modes, permissions and elicitation are protocol
+// state projected into the view; subagents use the `_zu/subagents/*` lane.
 
-/** The ACP alias map: a pi session id → the view key it is shown under. A
- * view's pi id can be minted (or re-minted) after the view exists, and the
- * dock's sheets hold the key they were opened with. */
-const acpAliasByPiId = new Map<string, string>();
 /** The in-flight ACP turn per view key (the stop button's handle). */
-const acpTurns = new Map<string, TurnHandle>();
+const acpTurns = new Map<string, { cancel(): void }>();
 /** Texts queued while a turn runs (the follow-up lane without the engine). */
 const acpQueues = new Map<string, string[]>();
+
+/** A pending server→client request, awaiting the user's answer. */
+export interface PendingPermission {
+  sessionId: string;
+  request: PermissionRequest;
+  resolve: (response: { outcome: { outcome: string; optionId?: string } }) => void;
+}
+
+export interface PendingElicitation {
+  sessionId: string;
+  request: ElicitationRequest;
+  resolve: (response: { action: string; content?: Record<string, unknown> }) => void;
+}
+
+export const pendingPermissions = signal<Record<string, PendingPermission>>({});
+export const pendingElicitations = signal<Record<string, PendingElicitation>>({});
+
+/** Answers the first pending approval of a session (the approval card). */
+export function answerPermission(sessionId: string, optionId: string): void {
+  const entries = Object.entries(pendingPermissions()).filter(
+    ([, entry]) => entry.sessionId === sessionId,
+  );
+  if (entries.length === 0) return;
+  const [id, entry] = entries[0];
+  const next = { ...pendingPermissions() };
+  delete next[id];
+  pendingPermissions.set(next);
+  entry.resolve({ outcome: { outcome: optionId === "cancel" ? "cancelled" : "selected", optionId } });
+  resumeAfterAnswer(sessionId);
+}
+
+/** A session is only "waiting for you" while a request is still pending. */
+function resumeAfterAnswer(key: string): void {
+  const stillWaiting =
+    Object.values(pendingPermissions()).some((entry) => entry.sessionId === key) ||
+    Object.values(pendingElicitations()).some((entry) => entry.sessionId === key);
+  if (stillWaiting) return;
+  const view = views()[key];
+  patchView(key, { sessionState: view?.streaming ? "streaming" : "ready" });
+}
+
+/** Resolves a session's pending requests when its process goes away. */
+function cancelPending(key: string): void {
+  const permissions = { ...pendingPermissions() };
+  const elicitations = { ...pendingElicitations() };
+  let changed = false;
+  for (const [id, entry] of Object.entries(permissions)) {
+    if (entry.sessionId !== key) continue;
+    delete permissions[id];
+    entry.resolve({ outcome: { outcome: "cancelled" } });
+    changed = true;
+  }
+  for (const [id, entry] of Object.entries(elicitations)) {
+    if (entry.sessionId !== key) continue;
+    delete elicitations[id];
+    entry.resolve({ action: "cancel" });
+    changed = true;
+  }
+  if (changed) {
+    pendingPermissions.set(permissions);
+    pendingElicitations.set(elicitations);
+  }
+}
+
+/** Answers the pending elicitation of a session. */
+export function answerElicitation(
+  sessionId: string,
+  action: string,
+  content?: Record<string, unknown>,
+): void {
+  const entries = Object.entries(pendingElicitations()).filter(
+    ([, entry]) => entry.sessionId === sessionId,
+  );
+  if (entries.length === 0) return;
+  const [id, entry] = entries[0];
+  const next = { ...pendingElicitations() };
+  delete next[id];
+  pendingElicitations.set(next);
+  entry.resolve({ action, ...(content ? { content } : {}) });
+  resumeAfterAnswer(sessionId);
+}
+
+/** Copies the host session's protocol state into the view. */
+function syncProtocolState(key: string): void {
+  const session = liveSession(key);
+  if (!session) return;
+  const modelConfig = session.configOptions.find((option) => option.id === "model");
+  const thought = session.configOptions.find((option) => option.id === "thought_level");
+  const model = modelConfig
+    ? {
+        provider: modelConfig.currentValue.split("/")[0] ?? "",
+        id: modelConfig.currentValue.split("/").slice(1).join("/"),
+        name:
+          modelConfig.options.find((option) => option.value === modelConfig.currentValue)?.name ??
+          modelConfig.currentValue,
+      }
+    : undefined;
+  const usage = session.usage
+    ? {
+        tokens: session.usage.used,
+        contextWindow: session.usage.size,
+        percent: session.usage.size > 0 ? Math.round((session.usage.used / session.usage.size) * 100) : null,
+      }
+    : undefined;
+  const waiting =
+    Object.values(pendingPermissions()).some((entry) => entry.sessionId === key) ||
+    Object.values(pendingElicitations()).some((entry) => entry.sessionId === key);
+  patchView(key, {
+    configOptions: session.configOptions,
+    commands: session.commands,
+    mode: session.modes.currentModeId,
+    modes: session.modes.availableModes,
+    usage: session.usage,
+    ...(model ? { model } : {}),
+    ...(thought ? { thinkingLevel: thought.currentValue as SessionThinkingLevel } : {}),
+    ...(usage ? { contextUsage: usage } : {}),
+    ...(session.title ? { name: session.title } : {}),
+    sessionState: session.dead
+      ? "dead"
+      : waiting
+        ? "waiting_user"
+        : views()[key]?.sessionState === "streaming"
+          ? "streaming"
+          : "ready",
+  });
+}
+
+/** Installs the session's client bridge: updates fold, requests wait for UI. */
+function attachSession(key: string, session: AcpSession): void {
+  session.setHandlers({
+    onUpdate: (update) => {
+      foldAcpUpdate(key, update);
+      syncProtocolState(key);
+      if (update.sessionUpdate === "config_option_update") void loadSessionModels(key, true);
+    },
+    requestPermission: (request) =>
+      new Promise((resolve) => {
+        const id = `${key}:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        pendingPermissions.set({
+          ...pendingPermissions(),
+          [id]: { sessionId: key, request, resolve },
+        });
+        patchView(key, { sessionState: "waiting_user" });
+      }),
+    requestElicitation: (request) =>
+      new Promise((resolve) => {
+        const id = `${key}:${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        pendingElicitations.set({
+          ...pendingElicitations(),
+          [id]: { sessionId: key, request, resolve },
+        });
+        patchView(key, { sessionState: "waiting_user" });
+      }),
+    onExit: (reason) => {
+      acpTurns.delete(key);
+      acpQueues.delete(key);
+      cancelPending(key);
+      patchView(key, {
+        queued: 0,
+        streaming: false,
+        interrupted: true,
+        error: reason,
+        sessionState: "interrupted",
+      });
+    },
+  });
+  syncProtocolState(key);
+}
 
 /** True when pi sessions ride the ACP harness (always, since the cutover). */
 export function acpEnabled(): boolean {
@@ -150,18 +338,10 @@ function useAcpBranch(): boolean {
   return acpEnabled() && sessionTransport === null && modelTransport === null;
 }
 
-/** Resolves a pi session id (or alias) to the view key it folds into. */
+/** The view key of a pi session id: they are the same since the persistent
+ * runtime mints the id at creation. */
 function viewKeyFor(id: string | null | undefined): string | null {
-  if (!id) return null;
-  const aliased = acpAliasByPiId.get(id);
-  return aliased ?? id;
-}
-
-/** Records that pi id `piId` is shown under view key `key`. */
-function notePiId(key: string, piId: string): void {
-  const view = views()[key];
-  if (view) patchView(key, { piId });
-  if (piId !== key) acpAliasByPiId.set(piId, key);
+  return id ?? null;
 }
 
 /** Translates one ACP update into the store's fold. */
@@ -172,62 +352,58 @@ function foldAcpUpdate(key: string, update: AcpUpdate): void {
 }
 
 /**
- * Runs one ACP turn for view `key`, folding updates as they stream, marking
- * the settle, and pumping the follow-up queue. The turn's result may mint a
- * pi id the view did not have (the first prompt, or a captain whose file was
- * never cast); the alias map keeps the view where its sheet is.
+ * Ensures the view has a live ACP session, resuming its process if it died.
+ * Runs one turn for view `key`, folding updates as they stream, marking the
+ * settle, and pumping the follow-up queue.
  */
-function runAcpTurn(key: string, text: string): void {
+export async function ensureAcpSession(key: string): Promise<AcpSession | null> {
   const view = views()[key];
-  if (!view) return;
-  const cwd = view.cwd || "/";
-  let aliasNoted = false;
-  const handle = startTurn({
-    cwd,
-    text,
-    ...(view.piId ? { sessionId: view.piId } : {}),
-    freshSessionFallback: true,
-    onReplay: (updates) => {
-      // A load replays before the turn: it is the file's truth, folded as
-      // the transcript's base (the streamed deltas go on top of it).
-      const rows = transcriptFromReplay(updates);
-      const current = views()[key];
-      if (current && rows.length > 0) patchView(key, { messages: rows });
-    },
-    hooks: {
-      onUpdate: (update) => {
-        const piId = handle?.sessionId;
-        if (piId && piId !== key && !aliasNoted) {
-          aliasNoted = true;
-          notePiId(key, piId);
-        }
-        foldAcpUpdate(key, update);
-      },
-      onNotice: () => {
-        // Harness stderr is transport detail; the turn's outcome carries it
-        // when there is something to report.
-      },
-    },
-  });
-  acpTurns.set(key, handle);
-  foldStoreEvent(key, "agent.state", { state: "running" });
-  handle.done
-    .then((result) => {
-      acpTurns.delete(key);
-      if (result.sessionId) notePiId(key, result.sessionId);
-      foldStoreEvent(key, "agent.state", { state: "idle" });
-      void notifySettled({
-        sheetId: sessionSheetId(key),
-        title: sessionTitle(key),
-        body: settledPreview(key),
-      });
-      void pumpAcpQueue(key);
-    })
-    .catch((failure) => {
-      acpTurns.delete(key);
-      foldStoreEvent(key, "agent.state", { state: "idle" });
-      patchView(key, { error: String(failure instanceof Error ? failure.message : failure) });
+  if (!view) return null;
+  const existing = liveSession(view.id) ?? liveSession(key);
+  if (existing && !existing.dead) {
+    attachSession(key, existing);
+    return existing;
+  }
+  try {
+    const { session } = await openExistingSession(view.id, view.cwd || "/", { load: false });
+    attachSession(key, session);
+    return session;
+  } catch (failure) {
+    patchView(key, {
+      error: String(failure instanceof Error ? failure.message : failure),
+      sessionState: "interrupted",
+      streaming: false,
     });
+    return null;
+  }
+}
+
+async function runAcpTurn(key: string, text: string): Promise<void> {
+  const session = await ensureAcpSession(key);
+  if (!session) return;
+  acpTurns.set(key, { cancel: () => session.cancel() });
+  foldStoreEvent(key, "agent.state", { state: "running" });
+  patchView(key, { sessionState: "streaming" });
+  try {
+    await session.prompt(text);
+    patchView(key, { sessionState: "ready" });
+    foldStoreEvent(key, "agent.state", { state: "idle" });
+    void notifySettled({
+      sheetId: sessionSheetId(key),
+      title: sessionTitle(key),
+      body: settledPreview(key),
+    });
+    void pumpAcpQueue(key);
+  } catch (failure) {
+    patchView(key, {
+      sessionState: "interrupted",
+      streaming: false,
+      error: String(failure instanceof Error ? failure.message : failure),
+    });
+    foldStoreEvent(key, "agent.state", { state: "idle" });
+  } finally {
+    acpTurns.delete(key);
+  }
 }
 
 /** The last assistant sentence, as a short notification body. */
@@ -249,6 +425,7 @@ async function pumpAcpQueue(key: string): Promise<void> {
   const [next, ...rest] = queued;
   if (rest.length > 0) acpQueues.set(key, rest);
   else acpQueues.delete(key);
+  patchView(key, { queued: rest.length });
   if (next) runAcpTurn(key, next);
 }
 
@@ -263,7 +440,9 @@ export function turnActive(id: string | null | undefined): boolean {
 function acpSend(key: string, text: string): void {
   const busy = acpTurns.has(key) || (views()[key]?.streaming ?? false);
   if (busy) {
-    acpQueues.set(key, [...(acpQueues.get(key) ?? []), text]);
+    const next = [...(acpQueues.get(key) ?? []), text];
+    acpQueues.set(key, next);
+    patchView(key, { queued: next.length });
     optimisticUser(key, text);
     return;
   }
@@ -300,9 +479,8 @@ export function setSessionPathObserver(next: ((id: string, path: string) => void
 }
 
 /** Asks the engine for a session's composer data and folds it into the view.
- * The ACP distro does not expose modes/models/usage yet (v2 §12 P3): in ACP
- * mode this stays empty rather than pretending, and the composer renders
- * without those gauges. */
+ * In ACP mode the protocol (`config_option_update`, `usage_update`,
+ * `session_info_update`) is the source, so there is nothing to request. */
 export async function refreshSessionInfo(id: string): Promise<void> {
   if (!id || useAcpBranch()) return;
   try {
@@ -364,9 +542,39 @@ function patchModels(id: string, next: SessionModelsState): void {
 export async function loadSessionModels(id: string, force = false): Promise<void> {
   if (!id) return;
   if (useAcpBranch()) {
-    // The distro does not serve a model table yet; the picker says so
-    // instead of an empty list or a silent spin.
-    patchModels(id, { status: "error", error: t(K.session.acpModelsUnavailable) });
+    const view = views()[id];
+    const config = liveSession(id)?.configOptions ?? view?.configOptions ?? [];
+    const modelConfig = config.find((option) => option.id === "model");
+    if (!modelConfig) {
+      patchModels(id, { status: "error", error: t(K.session.modelsEmpty) });
+      return;
+    }
+    const providers: SessionModelsData["providers"] = [];
+    for (const option of modelConfig.options) {
+      const at = option.value.indexOf("/");
+      const provider = at >= 0 ? option.value.slice(0, at) : option.value;
+      const modelId = at >= 0 ? option.value.slice(at + 1) : option.value;
+      let group = providers.find((entry) => entry.id === provider);
+      if (!group) {
+        group = { id: provider, name: provider, models: [] };
+        providers.push(group);
+      }
+      group.models.push({ provider, id: modelId, name: option.name });
+    }
+    const currentRef = modelConfig.currentValue;
+    const at = currentRef.indexOf("/");
+    const current = at >= 0
+      ? { provider: currentRef.slice(0, at), id: currentRef.slice(at + 1), name: currentRef }
+      : undefined;
+    const thought = config.find((option) => option.id === "thought_level");
+    patchModels(id, {
+      status: "ready",
+      data: {
+        providers,
+        ...(current ? { current } : {}),
+        ...(thought ? { thinkingLevel: thought.currentValue as SessionThinkingLevel } : {}),
+      },
+    });
     return;
   }
   const current = sessionModels()[id];
@@ -390,8 +598,20 @@ export async function loadSessionModels(id: string, force = false): Promise<void
 export async function chooseSessionModel(id: string, provider: string, modelId: string): Promise<boolean> {
   if (!id || !provider || !modelId) return false;
   if (useAcpBranch()) {
-    patchModels(id, { ...(sessionModels()[id] ?? { status: "error" as const }), status: "error", error: t(K.session.acpModelsUnavailable) });
-    return false;
+    const session = liveSession(id);
+    if (!session) {
+      patchView(id, { error: "the session is not running" });
+      return false;
+    }
+    try {
+      await session.setConfig("model", `${provider}/${modelId}`);
+      syncProtocolState(id);
+      await loadSessionModels(id, true);
+      return true;
+    } catch (failure) {
+      patchView(id, { error: String(failure) });
+      return false;
+    }
   }
   try {
     const data = (await modelRequest("session.setModel", { sessionId: id, provider, id: modelId }, 30000)) as SessionInfoData;
@@ -414,8 +634,53 @@ export async function chooseSessionModel(id: string, provider: string, modelId: 
 
 /** The view of `id`, if the shell has seen it. A pi session id minted after
  * its view existed resolves through the ACP alias map to the view's key. */
+/** Applies the Hero's pre-session pick through the protocol (after the
+ * session is minted): model as `provider/id`, effort as the thought level. */
+export async function applySessionConfig(
+  id: string,
+  prefs: { model?: string | null; effort?: string | null },
+): Promise<void> {
+  const session = liveSession(id);
+  if (!session) return;
+  try {
+    if (prefs.model && prefs.model.includes("/")) {
+      await session.setConfig("model", prefs.model);
+    }
+    if (prefs.effort) {
+      await session.setConfig("thought_level", prefs.effort);
+    }
+    syncProtocolState(id);
+    await loadSessionModels(id, true);
+  } catch (failure) {
+    patchView(id, { error: String(failure) });
+  }
+}
+
 export function viewFor(id: string | null | undefined): SessionView | undefined {
-  return id ? views()[viewKeyFor(id) ?? id] : undefined;
+  return id ? views()[id] : undefined;
+}
+
+/** Selects the session's approval policy (`session/set_mode`). */
+export async function setSessionMode(id: string, modeId: string): Promise<boolean> {
+  const session = liveSession(id);
+  if (!session || session.dead) return false;
+  try {
+    await session.setMode(modeId);
+    syncProtocolState(id);
+    return true;
+  } catch (failure) {
+    patchView(id, { error: String(failure) });
+    return false;
+  }
+}
+
+/** Releases a session's process and any request still waiting on the user. */
+export async function releaseSession(id: string): Promise<void> {
+  const key = viewKeyFor(id) ?? id;
+  acpTurns.delete(key);
+  acpQueues.delete(key);
+  cancelPending(key);
+  await closeHostSession(key);
 }
 
 /** Makes `id` the session the shell's non-keyed controls act on. */
@@ -652,9 +917,9 @@ export function adoptSession(data: SessionData): SessionView {
 /**
  * Opens a session by its file path and loads its transcript. Repeated calls
  * for the same file share one request; a second call focuses the view.
- * ACP mode: the transcript is the `session/load` replay (v2 §5.4 — history
- * is read by a process from the file, never from the wire's memory), from a
- * harness process that settles and exits without a turn.
+ * ACP mode: the transcript is the `session/load` replay (history is read by
+ * a process from the file, never from the wire's memory); the same process
+ * stays attached for the session's later turns.
  */
 export function openSession(path: string): Promise<SessionView | undefined> {
   const existing = Object.values(views()).find((view) => view.path === path);
@@ -679,15 +944,17 @@ export function openSession(path: string): Promise<SessionView | undefined> {
           error.set(null);
           return undefined;
         }
-        const { updates } = await loadTranscript({ cwd: meta.cwd, sessionId: id });
+        const { session, replay } = await openExistingSession(id, meta.cwd, { load: true });
         const view = blankView(id, {
           path,
           cwd: meta.cwd,
           name: meta?.name ?? "",
-          messages: transcriptFromReplay(updates),
+          messages: transcriptFromReplay(replay),
           loaded: true,
+          sessionState: "ready",
         });
         patchView(id, view);
+        attachSession(id, session);
         activeId.set(id);
         error.set(null);
         return view;
@@ -719,14 +986,15 @@ function piSessionIdOfPath(path: string): string | null {
 /**
  * Creates a session in `cwd` and opens it (without a container).
  *
- * ACP mode mints nothing here (v2 §4.3: `session/new` happens at the first
- * real prompt): the view is a local key whose first send casts the pi
- * session and records it under `piId`. The key stays stable for the dock.
+ * ACP mode mints the distro session at once (`session/new`), so the view key
+ * is the pi session id from the start; the process stays alive between turns.
  */
 export async function createSession(cwd: string): Promise<string> {
   if (useAcpBranch()) {
-    const key = `acp-local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    patchView(key, { id: key, cwd, loaded: true });
+    const session = await openNewSession(cwd);
+    const key = session.id;
+    patchView(key, { id: key, cwd, loaded: true, sessionState: "ready" });
+    attachSession(key, session);
     activeId.set(key);
     error.set(null);
     return key;
@@ -757,7 +1025,7 @@ function optimisticUser(id: string, text: string): void {
 /**
  * Sends a prompt to `sessionId` (the active session by default). A prompt
  * while a turn runs is a follow-up (the queue lane), never a second turn.
- * ACP mode: a per-turn harness process; a running turn queues the text.
+ * ACP mode: the session's persistent process; a running turn queues the text.
  */
 export async function send(text: string, sessionId?: string): Promise<void> {
   const id = sessionId ?? activeId();
@@ -807,8 +1075,8 @@ export async function followUp(text: string, sessionId?: string): Promise<void> 
 /**
  * Injects `text` into the running turn (`session.steer`): the engine hands it
  * to the model at its next safe point. Idle degrades to a prompt. The ACP
- * distro has no `_session/steering` yet (v2 §5.3): the text degrades to a
- * queued turn — the same words, delivered at the next turn boundary.
+ * distro has no steering lane: the text becomes a queued turn — the same
+ * words, delivered at the next turn boundary.
  */
 export async function steer(text: string, sessionId?: string): Promise<void> {
   const id = sessionId ?? activeId();
@@ -862,8 +1130,8 @@ export async function interrupt(text: string, sessionId?: string): Promise<void>
 }
 
 /** Stops the run of `sessionId` (the active session by default). ACP mode:
- * `session/cancel` to the harness process; its pending prompt settles
- * `cancelled` and the process exits. */
+ * `session/cancel` to the session's process; the pending prompt settles
+ * `cancelled` and the process stays attached. */
 export async function stop(sessionId?: string): Promise<void> {
   const id = sessionId ?? activeId();
   if (!id) return;
@@ -880,12 +1148,23 @@ export async function stop(sessionId?: string): Promise<void> {
 }
 
 /** Sets the session's thinking level (the `/thinking` command's engine leg).
- * ACP mode: thinking levels are session modes on the distro, which does not
- * expose them yet — refused with the reason, never guessed. */
+ * ACP mode: the `thought_level` config selector. */
 export async function setThinkingLevel(id: string, level: SessionThinkingLevel): Promise<boolean> {
   if (useAcpBranch()) {
-    patchView(id, { error: t(K.session.acpThinkingUnavailable) });
-    return false;
+    const session = liveSession(id);
+    if (!session) {
+      patchView(id, { error: "the session is not running" });
+      return false;
+    }
+    try {
+      await session.setConfig("thought_level", level);
+      syncProtocolState(id);
+      await loadSessionModels(id, true);
+      return true;
+    } catch (failure) {
+      patchView(id, { error: String(failure) });
+      return false;
+    }
   }
   try {
     const data = (await sessionRequest("session.setThinking", { sessionId: id, level }, 30000)) as SessionInfoData;
@@ -898,12 +1177,14 @@ export async function setThinkingLevel(id: string, level: SessionThinkingLevel):
 }
 
 /** Starts a manual compaction (the `/compact` command's engine leg). ACP
- * mode: the distro has no compaction trigger yet (v2 §5.3 x-zu/compact) —
- * refused with the reason. */
+ * mode: `/compact` is a prompt the distro's dispatcher owns. */
 export async function compactSession(id: string, instructions?: string): Promise<boolean> {
   if (useAcpBranch()) {
-    patchView(id, { error: t(K.session.acpCompactUnavailable) });
-    return false;
+    if (!liveSession(id)) return false;
+    // One turn on the session's process, like any other prompt: the stop
+    // button and the queue behave the same while compaction runs.
+    void runAcpTurn(id, `/compact${instructions ? ` ${instructions}` : ""}`);
+    return true;
   }
   try {
     await sessionRequest("session.compact", { sessionId: id, ...(instructions ? { instructions } : {}) }, 30000);

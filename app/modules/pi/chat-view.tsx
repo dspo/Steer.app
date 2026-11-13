@@ -4,6 +4,7 @@ import { SHEET_FONT } from "../../ui/fonts";
 import { K, t } from "../../ui/i18n";
 import { viewFor } from "./sessions";
 import { ChatComposer } from "./composer";
+import { ApprovalCard, ElicitationDialog } from "./approvals";
 import { Glyph } from "../../ui/ui";
 
 /**
@@ -221,7 +222,8 @@ export function Conversation(props: { id: string }) {
         )}
       </List>
       {/* The composer draws its own hairline, exactly its width. */}
-      <View class="bg-background" style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 10 }}>
+      <View class="bg-background" style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 10, gap: 8 }}>
+        <ApprovalCard sessionId={props.id} />
         <ChatComposer sessionId={props.id} autofocus hairline />
       </View>
     </View>
@@ -240,6 +242,7 @@ function Hero(props: { id: string }) {
         <Text class="text-[16px] font-black text-foreground" style={{ textAlign: "center" }}>
           {t(K.hero.title)}
         </Text>
+        <ApprovalCard sessionId={props.id} />
         <ChatComposer sessionId={props.id} autofocus />
       </View>
     </View>
@@ -258,6 +261,7 @@ export function ChatView(props: { id: string }) {
       <If when={!empty()}>
         <Conversation id={props.id} />
       </If>
+      <ElicitationDialog sessionId={props.id} />
     </View>
   );
 }

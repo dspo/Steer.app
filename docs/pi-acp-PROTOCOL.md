@@ -5,15 +5,15 @@
 > [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md)，**目标实现与 UI/UX 见
 > [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md)**。
 > 本文只回答"ACP 词汇怎样映射到 Pi"以及"P0–P4 当时为何这样裁决"；§12 的迁移路径与 §5 的
-> "deliberately absent" 清单是历史记录，后续工作以 IMPLEMENTATION 的 A0–F0 为准，
-> 不再回写本文。
+> "deliberately absent" 清单是历史记录。**A0–F0 已按 IMPLEMENTATION 落地**；本文不回写，
+> 当前形态以 [architecture.md](architecture.md) 与实现为准。
 
 ## 阅读边界（P0–P4 冻结，先读）
 
 本文冻结于 P0–P4。**下列内容已被 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) 取代**，
 不要照着它们规划或改代码：
 
-| 本文位置 | 历史裁决 | 目标（IMPLEMENTATION） |
+| 本文位置 | 历史裁决 | 已落地（IMPLEMENTATION） |
 |---|---|---|
 | §0/§7 进程模型 | 轮级子进程，settle 即退出，无监督 | D1/A0：一会话一持久进程 + resume |
 | §5.2/§13 | models/thinking/compaction/permission 缺席 | B0/C0/D0：协议原生 config/usage/commands/permission/elicitation |

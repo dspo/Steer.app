@@ -14,7 +14,7 @@ import {
 } from "../../core/containers";
 import type { ContainerRecord } from "../../core/types";
 import { appendSheet, panelIds, replaceSheet, visiblePanels } from "../../core/dock";
-import { createSession, focusSession, openSession, refreshSessions, send, sessions, viewFor } from "./sessions";
+import { applySessionConfig, createSession, focusSession, openSession, refreshSessions, send, sessions, viewFor } from "./sessions";
 import { defaultLayoutForSessions, layoutSessions, sessionIdOfSheet, sessionSheetId } from "./sheets";
 
 /**
@@ -62,11 +62,16 @@ export function hostsPi(containerId: string | null): boolean {
  * session id (`pi:{sessionId}`) as before, but the record itself is generic;
  * the session is this module's.
  */
-export async function createContainer(cwd?: string, projectId?: string | null): Promise<string | null> {
+export async function createContainer(
+  cwd?: string,
+  projectId?: string | null,
+  prefs: { model?: string | null; effort?: string | null } = {},
+): Promise<string | null> {
   try {
     const target = cwd || projectCwd(projectId) || activeCwd() || fallbackCwd();
     if (!target) throw new Error("no folder to start the conversation in");
     const sessionId = await createSession(target);
+    await applySessionConfig(sessionId, prefs);
     const view = viewFor(sessionId);
     const container = await createContainerRecord({
       id: `pi:${sessionId}`,
@@ -126,11 +131,19 @@ export async function startInContainer(containerId: string, text: string, heroSh
 /** From a fresh canvas: a pi container plus the first message. */
 export async function startFromScratch(
   text: string,
-  target: { cwd?: string; projectId?: string | null } = {},
+  target: {
+    cwd?: string;
+    projectId?: string | null;
+    model?: string | null;
+    effort?: string | null;
+  } = {},
 ): Promise<boolean> {
   const prompt = text.trim();
   if (!prompt) return false;
-  const sessionId = await createContainer(target.cwd, target.projectId);
+  const sessionId = await createContainer(target.cwd, target.projectId, {
+    model: target.model,
+    effort: target.effort,
+  });
   if (!sessionId) return false;
   await send(prompt, sessionId);
   return true;

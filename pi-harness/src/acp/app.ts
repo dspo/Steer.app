@@ -1,20 +1,24 @@
 /**
  * The ACP agent-side method surface, served on the official SDK
- * (`@agentclientprotocol/sdk`, ACP v1 — the "0.11 baseline" vocabulary of
- * docs/pi-acp-PROTOCOL.md §5).
+ * (`@agentclientprotocol/sdk`, stable ACP v1).
  *
- * The SDK owns the wire: ndjson framing with a 32 MiB line cap (§7.3), JSON-RPC
- * 2.0 id pairing, batch-array rejection, and error responses for parse /
- * unknown-method / bad-params. This module owns the semantics:
+ * The SDK owns the wire: ndjson framing, JSON-RPC id pairing, batch-array
+ * rejection, and error responses. This module owns the semantics:
  *
- *   initialize    → protocolVersion + agentCapabilities + authMethods: []
- *   session/new   → one pi session per ACP sessionId
- *   session/load  → resume from ~/.pi/agent/sessions + full update replay
- *   session/prompt→ one turn; settle = stopReason
- *   session/cancel→ abort; the pending prompt answers stopReason: cancelled
+ *   initialize            → protocolVersion + capabilities
+ *   session/new           → one pi session; configOptions + modes
+ *   session/load          → replay the file, then config/modes
+ *   session/resume        → reattach without replay
+ *   session/close         → cancel and free the session
+ *   session/set_config_option → model / thought level
+ *   session/set_mode      → approval policy
+ *   session/prompt        → one turn; settle = stopReason
+ *   session/cancel        → abort; pending prompt answers cancelled
  *
  * This file must not import pi. The pi glue sits behind `HarnessPorts`
  * (src/acp/pi-session.ts), which keeps `bun test` free of pi and of network.
+ * The permission/elicitation bridge is a server→client request owned by the
+ * session object; the app only supplies the client context.
  */
 
 import {
@@ -22,9 +26,16 @@ import {
   agent,
   type AgentApp,
   type AgentContext,
+  type AvailableCommand,
   type ContentBlock,
+  type CreateElicitationRequest,
+  type CreateElicitationResponse,
   type LoadSessionRequest,
   type NewSessionRequest,
+  type RequestPermissionRequest,
+  type RequestPermissionResponse,
+  type SessionConfigOption,
+  type SessionModeState,
   type SessionNotification,
   type SessionUpdate,
   type StopReason,
@@ -33,9 +44,16 @@ import { codedError, JSONRPC_CODE, normalizeError, sessionNotFoundError } from "
 import { PI_VERSION } from "../version";
 import { promptBlocksToText } from "./mapping";
 
+/** Server→client requests a session may make while a turn runs (or between
+ * turns): tool approval and structured user input. */
+export interface HarnessClientBridge {
+  requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse>;
+  elicit(params: CreateElicitationRequest): Promise<CreateElicitationResponse>;
+}
+
 /** What the adapter needs from a live session. Implemented by the pi glue. */
 export interface HarnessSession {
-  /** pi's session id; doubles as the ACP sessionId (v2 §4.3). */
+  /** pi's session id; doubles as the ACP sessionId. */
   readonly id: string;
   /** Runs one turn; resolves with the ACP stop reason when it settles. */
   prompt(text: string): Promise<StopReason>;
@@ -47,12 +65,33 @@ export interface HarnessSession {
   replay(): SessionUpdate[];
   /** Live update payloads, pushed synchronously and in pi's event order. */
   onUpdate(push: (update: SessionUpdate) => void): void;
+  /** The current configuration selectors (model, thought level). */
+  configOptions(): SessionConfigOption[];
+  /** Commands the session can execute from a prompt (`/name args`). */
+  availableCommands(): AvailableCommand[];
+  /** Applies one config value; returns the fresh option list. */
+  setConfigOption(configId: string, value: string): Promise<SessionConfigOption[]>;
+  /** The approval-policy modes. */
+  modeState(): SessionModeState;
+  /** Selects one mode; the session emits `current_mode_update` itself. */
+  setMode(modeId: string): Promise<void>;
+  /** Gives the session a way to call back into the client. */
+  attachClient(bridge: HarnessClientBridge | null): void;
+  /** The subagent surface (the `_zu/subagents/*` extension methods). */
+  subagents?: {
+    list(filter?: { captainId?: string }): any[];
+    transcript(runId: string): any;
+    dispatch(agent: string, task: string): any;
+    abort(runId: string): Promise<void>;
+  };
 }
 
 /** How the method surface obtains sessions (pi in production, fakes in tests). */
 export interface HarnessPorts {
   createSession(cwd: string): Promise<HarnessSession>;
   loadSession(sessionId: string, cwd: string): Promise<HarnessSession>;
+  /** Reattach without replay; defaults to `loadSession` when absent. */
+  resumeSession?(sessionId: string, cwd: string): Promise<HarnessSession>;
 }
 
 /** One stderr line; stdout is protocol-only. */
@@ -63,43 +102,38 @@ export type HarnessLog = (line: string) => void;
  */
 export function createAcpApp(ports: HarnessPorts, log: HarnessLog = () => {}): AgentApp {
   const sessions = new Map<string, HarnessSession>();
-  /** Each session's live updates flow to the context that created it. */
   const clients = new Map<string, AgentContext>();
-  /** Whether a `session/prompt` turn is in flight, per session. */
   const busy = new Set<string>();
-  /** Serializes each session's outbound updates; notify is async. */
   const pumps = new Map<string, Promise<void>>();
 
   const app = agent({ name: "pi-harness" });
 
   app.onRequest("initialize", (cx) => {
     const requested = cx.params.protocolVersion;
-    // We speak exactly ACP v1; echo a matching request, else declare ours and
-    // let the client decide (the schema documents both halves of this rule).
     const protocolVersion = requested === PROTOCOL_VERSION ? requested : PROTOCOL_VERSION;
     return {
       protocolVersion,
       agentCapabilities: {
         loadSession: true,
         promptCapabilities: { image: false, audio: false, embeddedContext: false },
+        sessionCapabilities: { resume: {}, close: {} },
       },
-      // Credentials come from ~/.pi, shared with the user's own pi CLI; the
-      // distro needs no login flow (v2 §5.0).
       authMethods: [],
       agentInfo: { name: "pi-harness", version: PI_VERSION },
     };
   });
 
   app.onRequest("session/new", mcpServersLenient<NewSessionRequest>, async (cx) => {
-    // `mcpServers` is accepted and explicitly ignored: pi runs its own MCP
-    // configuration, and ignoring is a declared behavior, not an accident
-    // (v2 §5.2). Clients that omit the field entirely are served too — the
-    // lenient parser below defaults it to `[]`.
     void cx.params.mcpServers;
     void cx.params.additionalDirectories;
     const session = await withLog("session_new_failed", () => ports.createSession(cx.params.cwd));
     adopt(session, cx.client);
-    return { sessionId: session.id };
+    await announceCommands(session);
+    return {
+      sessionId: session.id,
+      modes: session.modeState(),
+      configOptions: session.configOptions(),
+    };
   });
 
   app.onRequest("session/load", mcpServersLenient<LoadSessionRequest>, async (cx) => {
@@ -108,9 +142,66 @@ export function createAcpApp(ports: HarnessPorts, log: HarnessLog = () => {}): A
     );
     adopt(session, cx.client);
     // ACP v1: the replay precedes the response, in order.
-    for (const update of session.replay()) {
-      await notifyUpdate(session.id, update);
-    }
+    for (const update of session.replay()) await notifyUpdate(session.id, update);
+    await announceCommands(session);
+    return { modes: session.modeState(), configOptions: session.configOptions() };
+  });
+
+  app.onRequest("session/resume", async (cx) => {
+    const session = await withLog("session_resume_failed", async () => {
+      if (ports.resumeSession) return ports.resumeSession(cx.params.sessionId, cx.params.cwd);
+      return ports.loadSession(cx.params.sessionId, cx.params.cwd);
+    });
+    adopt(session, cx.client);
+    await announceCommands(session);
+    return { modes: session.modeState(), configOptions: session.configOptions() };
+  });
+
+  app.onRequest("session/close", async (cx) => {
+    const session = sessions.get(cx.params.sessionId);
+    if (!session) return {};
+    await session.abort().catch(() => {});
+    session.dispose();
+    sessions.delete(session.id);
+    clients.delete(session.id);
+    pumps.delete(session.id);
+    return {};
+  });
+
+  app.onRequest("session/set_config_option", async (cx) => {
+    const session = requireSession(cx.params.sessionId);
+    const value = configValue(cx.params);
+    const configOptions = await session.setConfigOption(cx.params.configId, value);
+    return { configOptions };
+  });
+
+  app.onRequest("session/set_mode", async (cx) => {
+    const session = requireSession(cx.params.sessionId);
+    await session.setMode(cx.params.modeId);
+    return {};
+  });
+
+  app.onRequest("_zu/subagents/list", (raw: any) => raw as any, async (cx) => {
+    const session = requireSession(cx.params.sessionId);
+    return { runs: session.subagents?.list({ captainId: session.id }) ?? [] };
+  });
+
+  app.onRequest("_zu/subagents/transcript", (raw: any) => raw as any, async (cx) => {
+    const session = requireSession(cx.params.sessionId);
+    if (!session.subagents) throw codedError(JSONRPC_CODE.methodNotFound, "subagents_unavailable", "no subagent surface");
+    return session.subagents.transcript(cx.params.runId);
+  });
+
+  app.onRequest("_zu/subagents/dispatch", (raw: any) => raw as any, async (cx) => {
+    const session = requireSession(cx.params.sessionId);
+    if (!session.subagents) throw codedError(JSONRPC_CODE.methodNotFound, "subagents_unavailable", "no subagent surface");
+    return { run: session.subagents.dispatch(String(cx.params.agent ?? "worker"), String(cx.params.task ?? "")) };
+  });
+
+  app.onRequest("_zu/subagents/abort", (raw: any) => raw as any, async (cx) => {
+    const session = requireSession(cx.params.sessionId);
+    if (!session.subagents) throw codedError(JSONRPC_CODE.methodNotFound, "subagents_unavailable", "no subagent surface");
+    await session.subagents.abort(String(cx.params.runId ?? ""));
     return {};
   });
 
@@ -130,9 +221,6 @@ export function createAcpApp(ports: HarnessPorts, log: HarnessLog = () => {}): A
     busy.add(session.id);
     try {
       const stopReason = await session.prompt(converted.text);
-      // The turn's updates leave before the stop response: the pump chain is
-      // the per-session ordering guarantee, and the response is the turn's
-      // last frame on the wire.
       await pumps.get(session.id);
       return { stopReason };
     } catch (error) {
@@ -143,17 +231,12 @@ export function createAcpApp(ports: HarnessPorts, log: HarnessLog = () => {}): A
   });
 
   app.onRequest("*", (cx) => {
-    // Fallback after normal dispatch: an unknown method still answers with a
-    // coded error — the repo ships zero uncoded errors, protocol misses
-    // included.
     throw codedError(JSONRPC_CODE.methodNotFound, "method_not_found", `unknown method: ${cx.method}`);
   });
 
   app.onNotification("session/cancel", (cx) => {
     const session = sessions.get(cx.params.sessionId);
     if (!session) {
-      // Notifications get no reply; a cancel for an unknown session is logged
-      // so the condition is never silently swallowed.
       log(`session/cancel for unknown session ${cx.params.sessionId}`);
       return;
     }
@@ -162,12 +245,6 @@ export function createAcpApp(ports: HarnessPorts, log: HarnessLog = () => {}): A
     });
   });
 
-  /**
-   * Brings a session under the map: one live session object per id (v2 §11.2
-   * — one harness per sessionPath). A `session/load` replaces the object a
-   * previous `session/new` or load created for the same id; the old one is
-   * disposed, the update pump is rewired to the new object.
-   */
   function adopt(session: HarnessSession, client: AgentContext): void {
     const previous = sessions.get(session.id);
     if (previous && previous !== session) {
@@ -179,12 +256,18 @@ export function createAcpApp(ports: HarnessPorts, log: HarnessLog = () => {}): A
     }
     sessions.set(session.id, session);
     clients.set(session.id, client);
-    // The pump chain belongs to the previous object; start a fresh one.
+    session.attachClient(bridgeFor(client));
     pumps.delete(session.id);
     pump(session);
   }
 
-  /** The live update pump: one ordered chain per session. */
+  function bridgeFor(client: AgentContext): HarnessClientBridge {
+    return {
+      requestPermission: (params) => client.request("session/request_permission", params),
+      elicit: (params) => client.request("elicitation/create", params),
+    };
+  }
+
   function pump(session: HarnessSession): void {
     pumps.set(session.id, Promise.resolve());
     session.onUpdate((update) => {
@@ -194,6 +277,13 @@ export function createAcpApp(ports: HarnessPorts, log: HarnessLog = () => {}): A
         session.id,
         next.catch(() => {}),
       );
+    });
+  }
+
+  async function announceCommands(session: HarnessSession): Promise<void> {
+    await notifyUpdate(session.id, {
+      sessionUpdate: "available_commands_update",
+      availableCommands: session.availableCommands(),
     });
   }
 
@@ -221,8 +311,6 @@ export function createAcpApp(ports: HarnessPorts, log: HarnessLog = () => {}): A
     try {
       return await op();
     } catch (error) {
-      // Rethrown so the SDK turns it into a coded JSON-RPC error; logged so
-      // the operator sees the same failure on stderr.
       const normalized = normalizeError(error, stringCode);
       log(`${stringCode}: ${normalized.message}`);
       throw normalized;
@@ -236,11 +324,20 @@ function describe(update: SessionUpdate): string {
   return String((update as { sessionUpdate?: unknown }).sessionUpdate ?? "update");
 }
 
+/** The `session/set_config_option` value variants collapse to the id string. */
+function configValue(params: any): string {
+  const value = params?.value;
+  if (typeof value === "string") return value;
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (value && typeof value === "object" && typeof value.value === "string") return value.value;
+  throw codedError(JSONRPC_CODE.invalidParams, "invalid_config_value", "the config value is missing");
+}
+
 /**
  * The schema parses `mcpServers` as an array that defaults on null only, so a
  * request that omits the field would be refused before the handler runs.
- * The harness ignores MCP servers anyway (pi keeps its own configuration,
- * v2 §5.2), so an absent field means an empty list.
+ * The harness ignores MCP servers anyway (pi keeps its own configuration), so
+ * an absent field means an empty list.
  */
 function mcpServersLenient<T>(raw: unknown): T {
   const value = (raw ?? {}) as Record<string, unknown>;

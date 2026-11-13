@@ -2,6 +2,7 @@ import { signal } from "nsh";
 import { Application, Tray, Window, isAvailable as desktopAvailable } from "nsh/desktop";
 import { claimInstance, releaseInstance, type InstanceClaim } from "../domains/instance";
 import { flushNotificationIntents } from "../core/notifications";
+import { notifyAppQuit } from "../core/registry";
 import { bootShell } from "./shell";
 import { K, t } from "../ui/i18n";
 
@@ -72,6 +73,7 @@ export function startLifecycle(): void {
  * `Application.quit()` is the same path the app menu's quit and Cmd+Q take.
  */
 export function quitApp(): void {
+  notifyAppQuit();
   releaseInstance();
   try {
     Tray.set(null);

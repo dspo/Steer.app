@@ -2,13 +2,13 @@
 
 > 决策文档：记录 Zu 的当前架构形态与「为什么这样定」。决策的来龙去脉见 [decisions.md](decisions.md)。
 > 文档分工：**本文 = 当前系统**；[sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md) = 扩展机制；
-> [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) = pi 模块的 ACP 目标实现（设计稿，待审）；
+> [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) = pi 模块的 ACP 实现（A0–F0 已落地）；
 > [pi-acp-PROTOCOL.md](pi-acp-PROTOCOL.md) = ACP 协议映射与历史裁决。
 > 视觉规格见 [DESIGN.md](DESIGN.md)；执行计划见 [plan.md](plan.md)。
 
 ## 0. 一句话
 
-**Zu 是 nsh（AppKit）写的桌面工作台，会话来源是两种 harness**：pi 是轮级 ACP 子进程（`pi-acp`），
+**Zu 是 nsh（AppKit）写的桌面工作台，会话来源是两种 harness**：pi 是一会话一持久 ACP 进程（`pi-acp`），
 manox 是进程内 AHP 宿主（`native/manox`）。两者都只是容器里的一种 sheet；壳与容器模型零 harness 语义，
 会话的 durable 权威都在磁盘（`~/.pi` 会话文件 / `~/.manox` journal），零活进程可读。
 
@@ -60,13 +60,17 @@ Zu.app（nsh TSX / AppKit）
   UI 侧 fold 成会话视图；没有活引擎也能浏览。
 - **只有一条传输**：旧 loopback engine（`contracts/protocol.ts`、`stores/engine.ts`、`pi-engine` 入口）
   已在 P4 删除；`ZU_PI_TRANSPORT` 不再存在。
-- **模型与 effort**：Hero 的选择随 spawn env 生效（`ZU_PI_MODEL`/`ZU_PI_EFFORT`，distro 在
-  `session/new` 时应用到 `ModelRuntime`）；会话内的 `/model`、`/thinking`、`/compact` 尚未映射到 ACP。
+- **进程**：一会话一持久 `pi-acp`，跨 turn 保留；关 sheet/归档容器/退出 app 才结束。崩溃 → 会话
+  中断，下一次用户动作 `session/resume`；无 cap/TTL/RSS 回收（D1）。
+- **模型/档位/命令/用量/审批**：协议状态。`session/new|resume|load` 回 `configOptions`/`modes`，
+  `session/set_config_option`、`session/set_mode` 切换；`available_commands_update`、
+  `usage_update`、`session_info_update`、`compaction_update`、`notice` 投影进 `SessionView`。
+  Hero 的预选在会话建立后经 `set_config_option` 应用，不再有 spawn env。
 - **容器 ↔ 会话**：`pi` 模块维护自己的 `containerId → sessionIds` 投影（不再写进容器记录）；
   容器记录只存 `sheetOrder`（标题序，可持久化）。
 - 协议映射与 P0–P4 的历史裁决见 [pi-acp-PROTOCOL.md](pi-acp-PROTOCOL.md)。
-- **目标实现（设计稿，待审）**：一会话一持久 `pi-acp` 进程、`configOptions`/`set_config_option`、
-  `resume`、权限/elicitation、命令表与子代理；见 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md)。
+- **已落地**：持久进程、`configOptions`/`set_config_option`、`resume`/`close`、权限/elicitation、
+  命令表与子代理；见 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md)。
 
 ### 3.3 manox 线（in-proc AHP）
 
@@ -195,12 +199,13 @@ App.tsx（装配点：startModules() + 跟随系统语言 + lifecycle）
 
 `⌘W` 关闭 sheet、`⌘1-9` 切 sheet、`⌘K` 命令面板（后续）、`⌘0` 显示主窗口。焦点/zoom 由 DockArea 处理。
 
-### 4.5 扩展宿主（pi，ACP 待补）
+### 4.5 扩展宿主（pi，ACP）
 
-旧引擎的扩展 UI 桥（`bindExtensions`、confirm/select/input/editor、notify/status/title）已随 P4 删除。
-目标实现把扩展 UI 映射到 `elicitation/create`/`notice`/`session_info_update`，工具审批映射到
-`session/request_permission`，见 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §6–§7。
-在实施完成前，**不要**在 ACP 路径上声称扩展 UI 已可用。
+旧引擎的扩展 UI 桥（`bindExtensions`、confirm/select/input/editor、notify/status/title）已随 P4 删除，
+在 distro 内以 ACP 桥重建：confirm/select/input/editor → `elicitation/create`，
+notify/status/title → `notice`/`session_info_update`，工具审批 → `session/request_permission`。
+rich presentation（widget/footer/custom…）没有 ACP 等价面，降级为一条 warning notice。
+见 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §6–§9。
 
 ### 4.6 常驻、通知与更新
 
@@ -261,9 +266,10 @@ terminal 模块的一个 intent。
 
 ### 5.6 子代理（pi 模块）
 
-旧的 `dispatch` 扩展随 legacy engine 一起删除；目标形态是在 ACP 进程内恢复 dispatch 扩展，
-用 `_zu/subagents/*` 暴露名册/转录/派发/中止，见 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §7。
-在实施完成前，`loadSubagents` 在 ACP 下明确说「不可用」而不是空转。
+`dispatch` 扩展在 ACP 进程内恢复（只注册进 captain；子会话 `noExtensions`），名册/转录/派发/中止走
+`_zu/subagents/{list,transcript,dispatch,abort}`。live run 只在内存，settled 索引落
+`~/.pi/zu/subagents/index.json`，重启后经一个 resume 的 captain 读取。见
+[pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §7–§9.8。
 
 ### 5.7 不变量
 
@@ -300,13 +306,15 @@ terminal 模块的一个 intent。
 **已交付**：M0–M12（地基、对话、契约、容器、项目、轮廓、终端、编辑器、Git、浏览器、LSP、常驻/通知/更新）；
 Casing II；C8 三包布局；ACP cutover（P0–P4：distro ACP 入口、`zu/acp` 泵、UI 读写反转、控制面切换、
 旧 wire 删除）；manox 真宿主（M1）；**sheet 模块化 S0–S3**（注册表、domains、工作台与 harness 模块、
-容器去 harness 身份、通知按 sheet id）。
+容器去 harness 身份、通知按 sheet id）；**Pi × ACP 会话运行时 A0–F0**（持久进程、协议配置/命令/用量、
+权限与 elicitation、扩展 UI、子代理、sheet/容器/退出生命周期）。
 
 **待做**：
 
-1. **Pi × ACP 集成（设计稿待审）**：会话运行时、配置/命令/用量、权限与扩展 UI、子代理；
-   见 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md)。它在一次迁移里覆盖旧的 G1–G3。
-2. **打包产物真机启动**：脚本已绿；发布前跑一轮真实 turn。
+1. **打包产物真机启动**：脚本已绿；发布前跑一轮真实 turn。
+2. **Pi × ACP 的真机/live 验收**：真实模型下的模型切换、`/compact`、审批放行/拒绝、扩展 confirm、
+   子代理、崩溃后 resume、进程表无残留；性能基准只测不设限。代码级门禁见
+   [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §11。
 
 **已知问题（非决策）**：
 
@@ -322,14 +330,16 @@ Casing II；C8 三包布局；ACP cutover（P0–P4：distro ACP 入口、`zu/ac
 - **malachite-bigint 双版本**：生成的 `.nsh/rust/Cargo.lock` 需 `cargo update -p malachite-bigint@0.14.0 --precise 0.12.0`
   （`native/manox/Cargo.toml` 有注释）。
 - **manox provider 路径**：上游 v0.9.1 直查 `$HOME/.manox`，测试隔离需 `MANOX_HOME`+`MANOX_CLAUDE_HOME`+`HOME` 三变量。
-- **子代理界面**：ACP 下没有 dispatch，roster 显示不可用；不再有 legacy engine 可作为回退。
+- **审批通知**：审批卡在会话内渲染；窗口不在前台时的系统通知（设计 §9.7）尚未接线。
+- **审批快捷键/页签圆点**：`⏎/⌘⏎/Esc` 与容器行/页签的 `waiting_user` 圆点未做。
+- **子代理名册**：live run 只在内存；重启后需先 resume 一个 captain 才能读 settled 索引。
 
 ## 8. 文档
 
 | Doc | 内容 |
 |---|---|
 | [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md) | 扩展机制：sheet 模块契约、能力域、S0–S3 落地 |
-| [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) | **设计稿（待审）**：Pi × ACP 的会话运行时、协议面、UI/UX、A0–F0 |
+| [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) | **已落地（A0–F0）**：Pi × ACP 的会话运行时、协议面、UI/UX、验收 |
 | [pi-acp-PROTOCOL.md](pi-acp-PROTOCOL.md) | pi 模块：ACP 协议映射与历史裁决（P0–P4） |
 | [DESIGN.md](DESIGN.md) | 视觉规格：token、外壳几何、表面、动效、各 sheet |
 | [decisions.md](decisions.md) | 决策台账（Q1–Q107） |

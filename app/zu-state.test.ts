@@ -83,9 +83,9 @@ test("zu/state reads, writes and refuses a stale version", async () => {
 test("containers are created, archived and restored from the registry fold", async () => {
   await loadContainers();
   expect(containers().length).toBe(0);
+  await Fs.mkdir("/tmp", "zu-fold-a");
   const sessionId = String(await createContainer("/tmp/zu-fold-a"));
   expect(sessionId).toBeTruthy();
-  expect(sessionId.startsWith("acp-local-")).toBe(true);
   expect(containers().length).toBe(1);
   expect(containers()[0].id).toBe(`pi:${sessionId}`);
   expect(activeContainerId()).toBe(containers()[0].id);
@@ -137,6 +137,7 @@ test("projects are created and read through zu/state", async () => {
   expect(made?.nameOverridden).toBe(true);
   expect(made?.roots[1].primary).toBe(true);
   // Membership: a container created under a project carries the map row.
+  await Fs.mkdir("/tmp", "zu-fold-b");
   const sessionId = String(await createContainer("/tmp/zu-fold-b", made?.id ?? null));
   await sleep(80);
   expect(membership()[`pi:${sessionId}`]).toBe(made?.id);

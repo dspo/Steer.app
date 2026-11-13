@@ -171,6 +171,11 @@ export function notifyContainerShown(containerId: string): void {
   for (const module of modules.values()) module.onContainerShown?.(containerId);
 }
 
+/** Tells every module that the app is quitting (kill children, close stdio). */
+export function notifyAppQuit(): void {
+  for (const module of modules.values()) module.onAppQuit?.();
+}
+
 /** The registered modules (assembly diagnostics and tests). */
 export function registeredModules(): SheetModule[] {
   return [...modules.values()];

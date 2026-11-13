@@ -3,12 +3,11 @@
  * session, its events mapped onto `session/update` payloads (v2 §4.1 — the
  * adapter embeds the SDK, no RPC subprocess).
  *
- * This is the createAgentSession wiring of the legacy loopback engine
- * reshaped for a protocol peer: no Zu registry, no wire
- * events, no containers — the ACP sessionId is pi's sessionId and pi's
- * session files stay the only durable authority. The dispatch/subagent
- * extension is deliberately absent (v2 §12: P3), and the legacy server keeps
- * serving the existing app untouched until the v2 P4 removal.
+ * This is the createAgentSession wiring behind a protocol peer: no Zu
+ * registry, no wire events, no containers — the ACP sessionId is pi's
+ * sessionId and pi's session files stay the only durable authority. The
+ * dispatch extension and the subagent manager are restored, scoped to the
+ * captain session; the ACP process is persistent for the conversation.
  *
  * Env the adapter reads:
  *   ACP_NO_EXTENSIONS=1            — load pi with no extensions at all
@@ -16,11 +15,10 @@
  *
  * Project trust is conservative: a saved decision in pi's trust store is
  * honored; an unsaved one is treated as untrusted (project-local extensions
- * and settings stay unloaded) and logged — the dialog bridge is a later
- * stage (v2 §5.3 x-zu/ui.request).
+ * and settings stay unloaded) and logged.
  */
 
-import { readdirSync, statSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -33,20 +31,113 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import type { AgentSessionEvent, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
-import type { SessionUpdate, StopReason } from "@agentclientprotocol/sdk";
+import type { AgentSessionEvent, ExtensionAPI, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
+import type {
+  AvailableCommand,
+  CreateElicitationRequest,
+  CreateElicitationResponse,
+  RequestPermissionRequest,
+  RequestPermissionResponse,
+  SessionConfigOption,
+  SessionModeState,
+  SessionUpdate,
+  StopReason,
+} from "@agentclientprotocol/sdk";
 import { codedError } from "./errors";
 import {
   assistantDeltaUpdate,
+  describeToolCall,
+  isRecord,
+  piToolKind,
   stopReasonFromPi,
   toolCallEndUpdate,
   toolCallPartialUpdate,
   toolCallStartUpdate,
 } from "./mapping";
 import { replayUpdates, type ReplayEntry } from "./replay";
-import type { HarnessPorts, HarnessSession, HarnessLog } from "./app";
+import { SubagentManager, dispatchExtension, type SubagentHost, type SubagentRun } from "./subagents";
+import type { HarnessClientBridge, HarnessPorts, HarnessSession, HarnessLog } from "./app";
 
 type PiAgentSession = Awaited<ReturnType<typeof createAgentSession>>["session"];
+type ThinkingLevel = Parameters<PiAgentSession["setThinkingLevel"]>[0];
+
+/** The approval-policy modes advertised through `session/set_mode`. */
+const APPROVAL_MODES: SessionModeState = {
+  currentModeId: "ask",
+  availableModes: [
+    { id: "ask", name: "Ask", description: "Ask before destructive tools and commands." },
+    { id: "auto", name: "Auto", description: "Run tools without asking." },
+    { id: "read-only", name: "Read-only", description: "Block writes, commands and network tools." },
+  ],
+};
+
+/** Tools that are safe to run without a prompt in `ask` mode. */
+const READ_ONLY_TOOLS = new Set(["read", "ls", "find", "grep", "glob", "search", "view"]);
+
+/** The session's live approval gate: mode, remembered allows, client bridge. */
+class PermissionGate {
+  mode = "ask";
+  sessionId = "";
+  bridge: HarnessClientBridge | null = null;
+  private readonly allowed = new Set<string>();
+
+  constructor(private readonly log: HarnessLog) {}
+
+  extension(): (pi: ExtensionAPI) => void {
+    return (pi: ExtensionAPI) => {
+      pi.on("tool_call", (async (event: any) => this.check(event)) as never);
+    };
+  }
+
+  private async check(event: ToolCallLike): Promise<{ block?: boolean; reason?: string } | void> {
+    const tool = String(event.toolName ?? "");
+    if (this.mode === "auto") return;
+    if (this.mode === "read-only") {
+      if (READ_ONLY_TOOLS.has(tool)) return;
+      return { block: true, reason: "read-only mode: writes, commands and network tools are blocked" };
+    }
+    if (READ_ONLY_TOOLS.has(tool)) return;
+    if (this.allowed.has(tool)) return;
+    if (!this.bridge) {
+      this.log(`permission required for ${tool}, but no client bridge is attached`);
+      return { block: true, reason: "no approval channel is attached" };
+    }
+    const title = describeToolCall(tool, event.input);
+    try {
+      const response = await this.bridge.requestPermission({
+        sessionId: this.sessionId,
+        toolCall: {
+          toolCallId: String(event.toolCallId ?? ""),
+          title,
+          kind: piToolKind(tool),
+          status: "pending",
+          ...(isRecord(event.input) ? { rawInput: event.input } : {}),
+        },
+        options: [
+          { optionId: "allow_once", name: "Allow once", kind: "allow_once" },
+          { optionId: "allow_always", name: "Always allow", kind: "allow_always" },
+          { optionId: "reject", name: "Reject", kind: "reject_once" },
+        ],
+      });
+      const outcome = (response as { outcome?: { outcome?: string; optionId?: string } }).outcome;
+      if (outcome?.outcome !== "selected") {
+        return { block: true, reason: "the approval was cancelled" };
+      }
+      if (outcome.optionId === "allow_always") this.allowed.add(tool);
+      if (outcome.optionId === "allow_once" || outcome.optionId === "allow_always") return;
+      return { block: true, reason: "rejected by the user" };
+    } catch (error) {
+      this.log(`permission request failed: ${String(error)}`);
+      return { block: true, reason: "the approval request failed" };
+    }
+  }
+}
+
+interface ToolCallLike {
+  toolName?: string;
+  toolCallId?: string;
+  input?: unknown;
+}
 
 const AGENT_DIR = getAgentDir();
 const trustStore = new ProjectTrustStore(AGENT_DIR);
@@ -81,13 +172,30 @@ class PiHarnessSession implements HarnessSession {
   private currentMessageId = "";
   /** The last settled assistant stop reason of the running turn. */
   private lastStop: string | undefined;
+  /** The approval gate the permission extension uses. */
+  private readonly gate: PermissionGate;
+  /** The subagent manager bound to this captain. */
+  private readonly subagentManager: SubagentManager;
+  /** Compaction ids are per session and stable across start/end events. */
+  private compactionSeq = 0;
+  private currentCompactionId = "";
 
-  private constructor(manager: SessionManager, session: PiAgentSession, cwd: string, log: HarnessLog) {
+  private constructor(
+    manager: SessionManager,
+    session: PiAgentSession,
+    cwd: string,
+    log: HarnessLog,
+    gate: PermissionGate,
+    subagentManager: SubagentManager,
+  ) {
     this.manager = manager;
     this.session = session;
     this.cwd = cwd;
     this.log = log;
+    this.gate = gate;
+    this.subagentManager = subagentManager;
     this.id = manager.getSessionId();
+    this.gate.sessionId = this.id;
     this.subscribe();
   }
 
@@ -102,7 +210,14 @@ class PiHarnessSession implements HarnessSession {
   }
 
   private static async build(manager: SessionManager, cwd: string, log: HarnessLog): Promise<PiHarnessSession> {
-    const { settingsManager, resourceLoader } = await services(cwd, log);
+    const gate = new PermissionGate(log);
+    const captainId = manager.getSessionId();
+    const sessionRef: { session: PiAgentSession | null } = { session: null };
+    const subagentManager = new SubagentManager(subagentHost(cwd, manager, sessionRef, log));
+    const { settingsManager, resourceLoader } = await services(cwd, log, [
+      gate.extension(),
+      dispatchExtension(subagentManager, captainId),
+    ]);
     const created = await createAgentSession({
       sessionManager: manager,
       settingsManager,
@@ -110,13 +225,8 @@ class PiHarnessSession implements HarnessSession {
       cwd,
       modelRuntime: await modelRegistry,
     });
-    // The host's picked session prefs, applied before the first turn:
-    // ZU_PI_MODEL (`provider/id`, resolved through the same ModelRuntime the
-    // registry built) and ZU_PI_EFFORT (pi's own thinking ladder). An
-    // unknown model or level is logged and skipped — the turn still runs on
-    // pi's default rather than dying on the pick.
-    applySessionPrefs(created.session, log);
-    const rec = new PiHarnessSession(manager, created.session, cwd, log);
+    sessionRef.session = created.session;
+    const rec = new PiHarnessSession(manager, created.session, cwd, log, gate, subagentManager);
     try {
       await created.session.bindExtensions({
         uiContext: rec.uiContext(),
@@ -134,9 +244,19 @@ class PiHarnessSession implements HarnessSession {
     return rec;
   }
 
-  prompt(text: string): Promise<StopReason> {
+  async prompt(text: string): Promise<StopReason> {
     this.lastStop = undefined;
-    return this.session.prompt(text).then(() => stopReasonFromPi(this.lastStop));
+    // `/compact` is the one built-in the distro executes itself; extension
+    // commands, templates and skills are handled by `session.prompt`.
+    const trimmed = text.trim();
+    if (trimmed === "/compact" || trimmed.startsWith("/compact ")) {
+      await this.session.compact(trimmed.slice("/compact".length).trim() || undefined);
+      this.emitUsage();
+      return "end_turn";
+    }
+    await this.session.prompt(text);
+    this.emitUsage();
+    return stopReasonFromPi(this.lastStop);
   }
 
   async abort(): Promise<void> {
@@ -152,6 +272,128 @@ class PiHarnessSession implements HarnessSession {
   }
 
   /** The load replay, mapped from pi's own projection of the session file. */
+  /** The ACP extension surface for subagents (`_zu/subagents/*`). */
+  get subagents() {
+    return {
+      list: (filter: { captainId?: string } = {}) =>
+        this.subagentManager.list({ ...filter, captainId: filter.captainId ?? this.id }),
+      transcript: (runId: string) => this.subagentManager.transcript(runId),
+      dispatch: (agent: string, task: string) => this.subagentManager.spawn(this.id, agent, task),
+      abort: (runId: string) => this.subagentManager.abort(runId),
+    };
+  }
+
+  configOptions(): SessionConfigOption[] {
+    const runtime = this.session.modelRuntime;
+    const models = runtime?.getAvailableSnapshot?.() ?? [];
+    const options = models.map((model) => ({
+      value: `${model.provider}/${model.id}`,
+      name: model.name ?? `${model.provider}/${model.id}`,
+      description: model.provider,
+    }));
+    const current = this.session.model;
+    const levels = this.session.getAvailableThinkingLevels().map((level) => ({
+      value: level,
+      name: level,
+    }));
+    const configs: SessionConfigOption[] = [];
+    if (options.length > 0) {
+      configs.push({
+        id: "model",
+        name: "Model",
+        category: "model",
+        type: "select",
+        currentValue: current ? `${current.provider}/${current.id}` : options[0].value,
+        options,
+      });
+    }
+    if (levels.length > 0) {
+      configs.push({
+        id: "thought_level",
+        name: "Thinking",
+        category: "thought_level",
+        type: "select",
+        currentValue: this.session.thinkingLevel,
+        options: levels,
+      });
+    }
+    return configs;
+  }
+
+  availableCommands(): AvailableCommand[] {
+    const commands = this.session.extensionRunner.getRegisteredCommands().map((command) => ({
+      name: command.invocationName,
+      description: command.description ?? "",
+    }));
+    const templates = this.session.promptTemplates.map((template) => ({
+      name: template.name,
+      description: template.description ?? "",
+    }));
+    const skills = this.session.resourceLoader.getSkills().skills.map((skill) => ({
+      name: `skill:${skill.name}`,
+      description: skill.description ?? "",
+    }));
+    return [
+      { name: "compact", description: "Compact the conversation context." },
+      ...commands,
+      ...templates,
+      ...skills,
+    ];
+  }
+
+  async setConfigOption(configId: string, value: string): Promise<SessionConfigOption[]> {
+    if (configId === "model") {
+      const [provider, ...rest] = value.split("/");
+      const id = rest.join("/");
+      const model = provider && id ? this.session.modelRuntime.getModel(provider, id) : undefined;
+      if (!model) {
+        throw codedError(-32602, "unknown_model", `unknown model ${value}`);
+      }
+      await this.session.setModel(model, { persist: false });
+      this.emitConfig();
+      return this.configOptions();
+    }
+    if (configId === "thought_level") {
+      const levels = this.session.getAvailableThinkingLevels();
+      if (!levels.includes(value as ThinkingLevel)) {
+        throw codedError(-32602, "invalid_thought_level", `unknown thinking level ${value}`);
+      }
+      this.session.setThinkingLevel(value as ThinkingLevel, { persist: false });
+      this.emitConfig();
+      return this.configOptions();
+    }
+    throw codedError(-32602, "unknown_config_option", `unknown config option ${configId}`);
+  }
+
+  modeState(): SessionModeState {
+    return {
+      currentModeId: this.gate.mode,
+      availableModes: APPROVAL_MODES.availableModes,
+    };
+  }
+
+  async setMode(modeId: string): Promise<void> {
+    if (!APPROVAL_MODES.availableModes.some((mode) => mode.id === modeId)) {
+      throw codedError(-32602, "unknown_mode", `unknown mode ${modeId}`);
+    }
+    this.gate.mode = modeId;
+    this.emit({ sessionUpdate: "current_mode_update", currentModeId: modeId });
+  }
+
+  attachClient(bridge: HarnessClientBridge | null): void {
+    this.gate.bridge = bridge;
+  }
+
+  private emitConfig(): void {
+    this.emit({ sessionUpdate: "config_option_update", configOptions: this.configOptions() });
+  }
+
+  private emitUsage(): void {
+    const usage = this.session.getContextUsage();
+    if (!usage || usage.tokens === null) return;
+    this.emit({ sessionUpdate: "usage_update", used: usage.tokens, size: usage.contextWindow });
+  }
+
   replay(): SessionUpdate[] {
     const projection = this.manager.buildSessionProjection();
     const entries: ReplayEntry[] = projection.entries.map((projected) => ({
@@ -223,6 +465,37 @@ class PiHarnessSession implements HarnessSession {
           this.emit(toolCallEndUpdate(event.toolCallId, event.result, event.isError));
           return;
         }
+        case "thinking_level_changed": {
+          this.emitConfig();
+          return;
+        }
+        case "session_info_changed": {
+          this.emit({ sessionUpdate: "session_info_update", title: event.name ?? null });
+          return;
+        }
+        case "compaction_start": {
+          this.compactionSeq += 1;
+          this.currentCompactionId = `c${this.compactionSeq}`;
+          this.emit({
+            sessionUpdate: "compaction_update",
+            compactionId: this.currentCompactionId,
+            status: "in_progress",
+          });
+          return;
+        }
+        case "compaction_end": {
+          const id = this.currentCompactionId || `c${++this.compactionSeq}`;
+          const status = event.aborted ? "cancelled" : event.errorMessage ? "failed" : "completed";
+          this.emit({
+            sessionUpdate: "compaction_update",
+            compactionId: id,
+            status,
+            ...(event.result?.summary ? { summary: [{ type: "text", text: event.result.summary }] } : {}),
+            ...(event.errorMessage ? { error: event.errorMessage } : {}),
+          });
+          this.emitUsage();
+          return;
+        }
         default:
           // Turn lifecycle, compaction, retries, queue updates: no P0 update
           // shape (v2 §5.0 moves them to core events in later stages).
@@ -232,76 +505,120 @@ class PiHarnessSession implements HarnessSession {
   }
 
   /**
-   * Extension dialogs resolve pi's defaults and say so on stderr — explicit,
-   * logged degradation (Q37) until the dialog bridge lands (v2 §5.3).
-   * Notifications have no channel in P0 and are logged.
+   * The extension UI bridge: confirm/select/input/editor are an ACP
+   * elicitation form; notify/status/title become notices and session info.
+   * The rich presentation surfaces ACP has no equivalent for degrade to a
+   * warning notice, which the client renders in the transcript.
    */
   private uiContext(): ExtensionUIContext {
-    const log = (method: string, detail: string) => this.log(`extension ui ${method} unavailable: ${detail}`);
-    const noop = (method: string) => (..._args: unknown[]) => {
-      log(method, "not supported over ACP yet");
+    const unsupported = (method: string) => (..._args: unknown[]) => {
+      this.log(`extension ui ${method} is not supported over ACP`);
+      this.emit({
+        sessionUpdate: "notice",
+        notice: {
+          severity: "warning",
+          title: `${method} is not supported`,
+          description: "This extension UI surface has no ACP equivalent yet.",
+        },
+      });
       return undefined;
     };
+    const form = async (
+      message: string,
+      properties: Record<string, unknown>,
+      required: string[],
+    ): Promise<{ action?: string; content?: Record<string, unknown> } | undefined> => {
+      if (!this.gate.bridge) {
+        this.log("extension ui requested without a client bridge");
+        return undefined;
+      }
+      try {
+        return (await this.gate.bridge.elicit({
+          mode: "form",
+          sessionId: this.id,
+          message,
+          requestedSchema: { type: "object", properties, required },
+        })) as { action?: string; content?: Record<string, unknown> };
+      } catch (error) {
+        this.log(`extension ui elicitation failed: ${String(error)}`);
+        return undefined;
+      }
+    };
     return {
-      select: (title, _options, _opts) => {
-        log("select", title);
-        return Promise.resolve(undefined);
+      select: async (title, options) => {
+        const result = await form(title, {
+          choice: { type: "string", title, enum: options },
+        }, ["choice"]);
+        if (result?.action !== "accept") return undefined;
+        const value = result.content?.choice;
+        return typeof value === "string" ? value : undefined;
       },
-      confirm: (title, _message, _opts) => {
-        log("confirm", title);
-        return Promise.resolve(false);
+      confirm: async (title, message) => {
+        const result = await form(`${title}\n${message}`, {
+          confirmed: { type: "boolean", title, description: message },
+        }, ["confirmed"]);
+        return result?.action === "accept" && result.content?.confirmed === true;
       },
-      input: (title, _placeholder, _opts) => {
-        log("input", title);
-        return Promise.resolve(undefined);
+      input: async (title, placeholder) => {
+        const result = await form(title, {
+          value: { type: "string", title, description: placeholder ?? "" },
+        }, ["value"]);
+        if (result?.action !== "accept") return undefined;
+        const value = result.content?.value;
+        return typeof value === "string" ? value : undefined;
       },
-      editor: (title, _prefill) => {
-        log("editor", title);
-        return Promise.resolve(undefined);
+      editor: async (title, prefill) => {
+        const result = await form(title, {
+          value: { type: "string", title, description: "Markdown or plain text", default: prefill ?? "" },
+        }, ["value"]);
+        if (result?.action !== "accept") return undefined;
+        const value = result.content?.value;
+        return typeof value === "string" ? value : undefined;
       },
-      notify: (message, _type) => {
-        log("notify", message);
+      notify: (message, type) => {
+        this.emit({
+          sessionUpdate: "notice",
+          notice: {
+            severity: type === "error" ? "error" : type === "warning" ? "warning" : "info",
+            title: message,
+          },
+        });
       },
       setStatus: (key, text) => {
-        log("setStatus", `${key}: ${text}`);
+        this.emit({
+          sessionUpdate: "notice",
+          notice: {
+            severity: "info",
+            title: `${key}${text ? `: ${text}` : ""}`,
+          },
+        });
       },
       setTitle: (title) => {
-        log("setTitle", title);
+        this.emit({ sessionUpdate: "session_info_update", title });
       },
-      setWorkingMessage: noop("setWorkingMessage"),
-      setWorkingVisible: noop("setWorkingVisible"),
-      setWorkingIndicator: noop("setWorkingIndicator"),
-      setHiddenThinkingLabel: noop("setHiddenThinkingLabel"),
-      setWidget: noop("setWidget"),
-      setFooter: noop("setFooter"),
-      setHeader: noop("setHeader"),
-      custom: noop("custom"),
-      pasteToEditor: noop("pasteToEditor"),
-      setEditorText: noop("setEditorText"),
-      addAutocompleteProvider: noop("addAutocompleteProvider"),
-      setEditorComponent: noop("setEditorComponent"),
+      setWorkingMessage: unsupported("setWorkingMessage") as never,
+      setWorkingVisible: unsupported("setWorkingVisible") as never,
+      setWorkingIndicator: unsupported("setWorkingIndicator") as never,
+      setHiddenThinkingLabel: unsupported("setHiddenThinkingLabel") as never,
+      setWidget: unsupported("setWidget") as never,
+      setFooter: unsupported("setFooter") as never,
+      setHeader: unsupported("setHeader") as never,
+      custom: unsupported("custom") as never,
+      pasteToEditor: unsupported("pasteToEditor") as never,
+      setEditorText: unsupported("setEditorText") as never,
+      addAutocompleteProvider: unsupported("addAutocompleteProvider") as never,
+      setEditorComponent: unsupported("setEditorComponent") as never,
       onTerminalInput: () => {
-        log("onTerminalInput", "not supported over ACP yet");
+        this.log("extension ui onTerminalInput is not supported over ACP");
         return () => {};
       },
-      getEditorText: () => {
-        log("getEditorText", "not supported over ACP yet");
-        return "";
-      },
-      getEditorComponent: () => {
-        log("getEditorComponent", "not supported over ACP yet");
-        return undefined;
-      },
+      getEditorText: () => "",
+      getEditorComponent: () => undefined,
       getToolsExpanded: () => false,
-      setToolsExpanded: noop("setToolsExpanded"),
+      setToolsExpanded: unsupported("setToolsExpanded") as never,
       getAllThemes: () => [],
-      getTheme: () => {
-        log("getTheme", "not supported over ACP yet");
-        return undefined;
-      },
-      setTheme: () => {
-        return Promise.resolve({ success: false, error: "the client owns its theme" });
-      },
+      getTheme: () => undefined,
+      setTheme: () => Promise.resolve({ success: false, error: "the client owns its theme" }),
       theme: undefined as never,
     } as ExtensionUIContext;
   }
@@ -315,7 +632,62 @@ type ReplayMessageShape = import("./replay").ReplayMessage;
  * decision stands, an unsaved one stays untrusted (and logged) — project
  * resources stay unloaded instead of silently loading.
  */
-async function services(cwd: string, log: HarnessLog) {
+/** The subagent manager's host: this session is its captain; settled runs
+ * live in `~/.pi/zu/subagents/index.json`. */
+function subagentHost(
+  cwd: string,
+  manager: SessionManager,
+  sessionRef: { session: PiAgentSession | null },
+  log: HarnessLog,
+): SubagentHost {
+  const root = join(process.env.PI_CODING_AGENT_DIR ?? join(process.env.HOME ?? "", ".pi", "agent"), "..", "zu", "subagents");
+  const index = join(root, "index.json");
+  const readIndex = (): SubagentRun[] => {
+    try {
+      const parsed = JSON.parse(readFileSync(index, "utf8")) as { runs?: SubagentRun[] };
+      return Array.isArray(parsed.runs) ? parsed.runs : [];
+    } catch {
+      return [];
+    }
+  };
+  return {
+    agentDir: AGENT_DIR,
+    captainFor: (id) =>
+      sessionRef.session
+        ? {
+            id,
+            path: manager.getSessionFile() ?? "",
+            cwd,
+            manager,
+            session: sessionRef.session,
+          }
+        : undefined,
+    settledRuns: readIndex,
+    saveSettled: (run) => {
+      try {
+        mkdirSync(root, { recursive: true });
+        const runs = readIndex().filter((entry) => entry.runId !== run.runId).concat(run);
+        const temp = `${index}.tmp`;
+        writeFileSync(temp, JSON.stringify({ v: 1, runs }, null, 2));
+        renameSync(temp, index);
+      } catch (error) {
+        log(`subagent index write failed: ${String(error)}`);
+      }
+    },
+    appendCaptainNote: (id, kind, text, data) => {
+      try {
+        manager.appendCustomEntry(kind === "dispatch" ? "zu.dispatch" : "zu.delivery", { ...(data as object), text });
+      } catch (error) {
+        log(`captain note failed for ${id}: ${String(error)}`);
+      }
+    },
+    emit: (type, _data) => log(`subagent ${type}`),
+    projectTrusted: (dir) => !hasTrustRequiringProjectResources(dir) || trustStore.get(dir) === true,
+    isArchived: () => false,
+  };
+}
+
+async function services(cwd: string, log: HarnessLog, extensionFactories: Array<(pi: ExtensionAPI) => void> = []) {
   const needsTrust = hasTrustRequiringProjectResources(cwd);
   const projectTrusted = !needsTrust || trustStore.get(cwd) === true;
   if (needsTrust && !projectTrusted) {
@@ -327,6 +699,7 @@ async function services(cwd: string, log: HarnessLog) {
     agentDir: AGENT_DIR,
     settingsManager,
     additionalExtensionPaths: extraExtensionPaths,
+    extensionFactories,
     noExtensions,
     ...(needsTrust && !projectTrusted
       ? {
@@ -344,6 +717,9 @@ async function services(cwd: string, log: HarnessLog) {
 export function createPiPorts(log: HarnessLog): HarnessPorts {
   return {
     createSession: (cwd: string) => PiHarnessSession.create(cwd, log),
+    resumeSession: async (sessionId: string, cwd: string) => {
+      return createPiPorts(log).loadSession(sessionId, cwd);
+    },
     loadSession: async (sessionId: string, cwd: string) => {
       const path = findPiSessionFile(sessionId);
       if (!path) {
@@ -403,38 +779,4 @@ export function findPiSessionFile(sessionId: string): string | undefined {
   };
   visit(root, 0);
   return found;
-}
-
-/**
- * Applies the env-carried session prefs (the Hero's model/effort pick) to a
- * freshly created pi session. Pure plumbing, exported for the unit test.
- */
-export function applySessionPrefs(session: PiAgentSession, log: HarnessLog): void {
-  const pick = process.env.ZU_PI_MODEL ?? "";
-  if (pick.includes("/")) {
-    const [provider, id] = pick.split("/", 2);
-    const runtime: { getModel?: (provider: string, id: string) => unknown } = (session as unknown as {
-      modelRuntime?: { getModel?: (provider: string, id: string) => unknown };
-    }).modelRuntime;
-    const model = runtime?.getModel?.(provider, id);
-    if (model) {
-      void (session as unknown as { setModel: (model: unknown) => Promise<void> })
-        .setModel(model)
-        .catch((error: unknown) => log(`ZU_PI_MODEL ${pick}: setModel failed: ${String(error)}`));
-    } else {
-      log(`ZU_PI_MODEL ${pick}: unknown model, keeping pi's default`);
-    }
-  }
-  const effort = process.env.ZU_PI_EFFORT ?? "";
-  if (effort) {
-    const setter = session as unknown as { setThinkingLevel?: (level: string) => void | Promise<void> };
-    try {
-      const outcome = setter.setThinkingLevel?.(effort);
-      if (outcome && typeof (outcome as Promise<void>).catch === "function") {
-        (outcome as Promise<void>).catch((error: unknown) => log(`ZU_PI_EFFORT ${effort}: ${String(error)}`));
-      }
-    } catch (error) {
-      log(`ZU_PI_EFFORT ${effort}: ${String(error)}`);
-    }
-  }
 }

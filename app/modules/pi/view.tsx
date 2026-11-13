@@ -1,8 +1,9 @@
 import { Scroll, Text, token, View } from "nsh";
 import { abortRun, loadSubagents, runs, selectedRunId, selectRun, transcript } from "./subagents";
-import { refreshSessions, sessionHasName, sessionTitle, viewFor } from "./sessions";
-import { setSessionPrefs } from "./acp/acp";
+import { refreshSessions, releaseSession, sessionHasName, sessionTitle, viewFor } from "./sessions";
 import { sessionIdOfSheet } from "./sheets";
+import { closeAllSessions } from "./acp/host";
+import { activeContainerId } from "../../core/containers";
 import { visiblePanels } from "../../core/dock";
 import { ChatView, MessageRow } from "./chat-view";
 import { K, t } from "../../ui/i18n";
@@ -153,6 +154,23 @@ export function SessionBody(props: { id: string; sheetId: string }) {
   );
 }
 
+/** Each container's open session sheets, so a closed tab closes its process
+ * and an archived container closes all of them. */
+const openByContainer = new Map<string, Set<string>>();
+
+function releaseClosedSessions(ids: string[]): void {
+  const containerId = activeContainerId();
+  if (!containerId) return;
+  const next = new Set(
+    ids.map(sessionIdOfSheet).filter((id): id is string => !!id),
+  );
+  const previous = openByContainer.get(containerId) ?? new Set<string>();
+  for (const old of previous) {
+    if (!next.has(old)) void releaseSession(old);
+  }
+  openByContainer.set(containerId, next);
+}
+
 /** The pi module's kinds. The module also owns the subagent roster and the
  * container operations (create, show, open a file, hydrate). */
 export const piModule: SheetModule = {
@@ -166,6 +184,14 @@ export const piModule: SheetModule = {
   onContainerShown: (containerId) => {
     rememberContainerSessions(containerId);
     hydrateVisible();
+  },
+  onLayoutChanged: (ids) => releaseClosedSessions(ids),
+  onContainerArchive: (containerId) => {
+    for (const sessionId of openByContainer.get(containerId) ?? []) void releaseSession(sessionId);
+    openByContainer.delete(containerId);
+  },
+  onAppQuit: () => {
+    void closeAllSessions();
   },
   search: (query) => searchSessions(query),
   intents: {
@@ -183,10 +209,14 @@ export const piModule: SheetModule = {
         model?: string | null;
         effort?: string | null;
       };
-      // The pi arm's pick rides the spawn env (ZU_PI_MODEL/ZU_PI_EFFORT).
-      setSessionPrefs({ model: target.model ?? null, effort: target.effort ?? null });
       if (target.containerId) await startInContainer(target.containerId, target.text, target.sheetId);
-      else await startFromScratch(target.text, { cwd: target.cwd ?? undefined, projectId: target.projectId ?? null });
+      else
+        await startFromScratch(target.text, {
+          cwd: target.cwd ?? undefined,
+          projectId: target.projectId ?? null,
+          model: target.model ?? null,
+          effort: target.effort ?? null,
+        });
       return null;
     },
     "pi.openPath": async (payload) => {

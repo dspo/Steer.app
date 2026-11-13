@@ -2,21 +2,18 @@ import { Acp, type AcpExit } from "../../../domains/acp";
 import { JsonrpcChannel, JsonrpcFailure, type ServerMessage } from "./jsonrpc";
 
 /**
- * The pi sessions' ACP client: one harness process per turn, over stdio
- * ndjson (v2 §7). This module owns the connection lifecycle — spawn →
- * initialize (the 60 s watchdog) → `session/new` (minted at the first real
- * prompt, v2 §4.3) or `session/load` (whose replay is the transcript
- * rebuild) → `session/prompt` (a pending prompt is the turn;
- * `session/update` streams as it runs; the `stopReason` reply settles it) →
- * stdin close (the graceful exit). `session/cancel` is the stop.
+ * The pi sessions' ACP client: one harness process per conversation, over
+ * stdio ndjson. This module owns one connection's lifecycle — spawn →
+ * initialize (the 60 s watchdog) → `session/new`/`load`/`resume` → prompts
+ * and notifications → `session/close` then stdin close (the graceful exit).
  *
- * The process model is the v2 one: settle and exit, no supervision, no
- * reconnect — a retry is a user action and a new process. The durable
- * authority is pi's session file; updates are acceleration.
+ * The process is persistent (design D1): it stays between turns, and the
+ * session's sheet/container/app lifecycle decides when it goes. A crash
+ * fails every pending request; the store marks the session interrupted and
+ * the next action resumes it. The durable authority is pi's session file.
  *
- * This is the only pi-session transport since the cutover. The surfaces the
- * distro does not serve yet (dispatch/subagents, modes/models, steering)
- * degrade above this module, in the stores.
+ * This is the only pi-session transport since the cutover. The host above
+ * (`host.ts`) owns the process registry and the server→client requests.
  */
 
 /** One ACP `session/update` payload (the distro's shape, deliberately loose). */
@@ -26,7 +23,7 @@ export interface AcpUpdate {
 }
 
 /** One harness process, from spawn to exit. */
-class HarnessConnection {
+export class HarnessConnection {
   readonly process: Acp;
   readonly channel: JsonrpcChannel;
   /** Stderr kept for error reports (reviu's launch-stderr tail pattern). */
@@ -35,6 +32,8 @@ class HarnessConnection {
   private exitListener: ((exit: AcpExit) => void) | null = null;
   /** Where `session/update` payloads go while the connection lives. */
   updateSink: ((sessionId: string, update: AcpUpdate) => void) | null = null;
+  /** The client's answer for server→client requests (permission/elicitation). */
+  requestHandler: ((message: ServerMessage) => void) | null = null;
   /** When set, updates land here instead of the sink (the load replay). */
   replaySink: ((update: AcpUpdate) => void) | null = null;
   /** The session id this connection's updates belong to. */
@@ -54,15 +53,12 @@ class HarnessConnection {
       (text: string) => this.note(text),
       (exit: AcpExit) => {
         this.exited = true;
-        if (this.exitListener) {
-          this.exitListener(exit);
-          return;
-        }
-        // Nobody listens yet (a cancel or a death during the handshake): the
-        // pending handshake fails now instead of riding its watchdog.
-        const why = `the harness exited before it was ready (exit ${exit.code === null ? String(exit.signal ?? "unknown") : exit.code})`;
+        const why = `the harness exited (exit ${exit.code === null ? String(exit.signal ?? "unknown") : exit.code})`;
+        // Pending requests must settle whether or not a listener is attached:
+        // a process death is a turn's other way out.
         this.channel.failAll(why);
         this.note(`${why}\n`);
+        if (this.exitListener) this.exitListener(exit);
       },
     );
     this.channel = new JsonrpcChannel((line) => {
@@ -77,14 +73,15 @@ class HarnessConnection {
       if (message.method !== "session/update") return;
       const update = message.params?.update as AcpUpdate | undefined;
       const sessionId = message.params?.sessionId as string | undefined;
-      if (!update || (sessionId && sessionId !== this.boundSessionId)) return;
+      if (!update) return;
       if (this.replaySink) this.replaySink(update);
       else if (this.updateSink) this.updateSink(sessionId ?? this.boundSessionId ?? "", update);
     });
     this.channel.onRequest((message: ServerMessage) => {
-      // The distro asks nothing of the client in this stage (permissions are
-      // pi-autonomous); a request is refused with the standard code rather
-      // than left hanging on the agent side.
+      if (this.requestHandler) {
+        this.requestHandler(message);
+        return;
+      }
       this.channel.replyError(message.id as number, -32601, `the client does not serve ${message.method}`);
     });
   }
@@ -121,71 +118,84 @@ class HarnessConnection {
     return connection;
   }
 
-  /** Mints a session (`session/new`); the harness casts the id. */
-  async create(cwd: string): Promise<string> {
+  /** `session/new` with the full response (configOptions/modes). */
+  async newSession(cwd: string): Promise<any> {
     try {
-      const created = await this.channel.request(
-        "session/new",
-        { cwd, mcpServers: [] },
-        BIND_TIMEOUT_MS,
-      );
+      const created = await this.channel.request("session/new", { cwd, mcpServers: [] }, BIND_TIMEOUT_MS);
       const sessionId = String(created?.sessionId ?? "");
       if (!sessionId) throw new Error("session/new returned no sessionId");
       this.boundSessionId = sessionId;
-      return sessionId;
+      return created;
     } catch (failure) {
       this.kill("the session could not be minted");
       throw new Error(withTail(describe(failure), this.stderrTail));
     }
   }
 
-  /** Loads a session and returns its replay, in file order, before returning. */
-  async load(sessionId: string, cwd: string): Promise<AcpUpdate[]> {
+  /** `session/resume` — reattach without replay. */
+  async resumeSession(sessionId: string, cwd: string): Promise<any> {
+    this.boundSessionId = sessionId;
+    try {
+      return await this.channel.request(
+        "session/resume",
+        { sessionId, cwd, mcpServers: [] },
+        BIND_TIMEOUT_MS,
+      );
+    } catch (failure) {
+      this.kill("the session could not be resumed");
+      throw new Error(withTail(describe(failure), this.stderrTail));
+    }
+  }
+
+  /** `session/load` with both the response and its replay. */
+  async loadSession(sessionId: string, cwd: string): Promise<{ result: any; updates: AcpUpdate[] }> {
     this.boundSessionId = sessionId;
     const replay: AcpUpdate[] = [];
     this.replaySink = (update) => replay.push(update);
     try {
-      await this.channel.request("session/load", { sessionId, cwd, mcpServers: [] }, BIND_TIMEOUT_MS);
+      const result = await this.channel.request(
+        "session/load",
+        { sessionId, cwd, mcpServers: [] },
+        BIND_TIMEOUT_MS,
+      );
+      return { result, updates: replay };
     } catch (failure) {
       this.kill("the session could not be loaded");
       throw new Error(withTail(describe(failure), this.stderrTail));
     } finally {
       this.replaySink = null;
     }
-    // ACP v1: the replay precedes the load response, in order.
-    return replay;
   }
 
-  /** Runs one prompt; `onUpdate` sees each streamed update and `onSent`
-   * fires once the request is on the wire (a cancel requested during the
-   * bind lands here, where the agent can actually act on it); resolves
-   * settled. */
-  async prompt(
-    sessionId: string,
-    text: string,
-    onUpdate: (update: AcpUpdate) => void,
-    onSent?: () => void,
-  ): Promise<string> {
-    this.updateSink = (_bound, update) => onUpdate(update);
+  /** `session/close` — free the session, keep the process for the caller. */
+  async closeSession(sessionId: string): Promise<void> {
     try {
-      // No timeout: a turn is as long as it is. The process's death and the
-      // explicit stop are the other ways out.
-      const reply = this.channel.request("session/prompt", { sessionId, prompt: [{ type: "text", text }] });
-      onSent?.();
-      return String((await reply)?.stopReason ?? "end_turn");
+      await this.channel.request("session/close", { sessionId }, BIND_TIMEOUT_MS);
     } catch (failure) {
-      throw new Error(describe(failure));
-    } finally {
-      this.updateSink = null;
+      this.note(`session/close failed: ${describe(failure)}\n`);
     }
   }
 
-  /** The stop: an ACP notification; the pending prompt answers `cancelled`. */
-  cancel(sessionId: string): void {
-    this.channel.notify("session/cancel", { sessionId });
+  /** Routes `session/update` payloads to a callback. */
+  onUpdate(listener: ((sessionId: string, update: AcpUpdate) => void) | null): void {
+    this.updateSink = listener;
   }
 
-  /** Listens for the process's death (a turn's other way out). */
+  /** Installs the server→client request handler. */
+  onRequest(listener: ((message: ServerMessage) => void) | null): void {
+    this.requestHandler = listener;
+  }
+
+  /** Answers a server→client request (the handler reads the message id). */
+  respond(id: number | string, result: unknown): void {
+    this.channel.reply(id, result);
+  }
+
+  /** Refuses a server→client request. */
+  respondError(id: number | string, code: number, message: string): void {
+    this.channel.replyError(id, code, message);
+  }
+
   onExit(listener: ((exit: AcpExit) => void) | null): void {
     this.exitListener = listener;
     if (listener && this.exited) listener({ code: this.process.exitCode, signal: this.process.exitSignal });
@@ -218,30 +228,7 @@ class HarnessConnection {
   }
 }
 
-/** What a turn reports to the session store. */
-export interface TurnHooks {
-  /** One live update while the prompt is pending. */
-  onUpdate(update: AcpUpdate): void;
-  /** A harness note (stderr) worth keeping in the log, not the transcript. */
-  onNotice(text: string): void;
-}
-
-export interface TurnResult {
-  sessionId: string;
-  stopReason: string;
-}
-
-export interface TurnHandle {
-  /** The turn's outcome; rejects on spawn, handshake, bind or process death. */
-  done: Promise<TurnResult>;
-  /** The pi session id once the harness minted or loaded it, else null. */
-  readonly sessionId: string | null;
-  /** Stops the turn the way the composer's stop button does. */
-  cancel(): void;
-}
-
-/** The initialize watchdog (v2 §7.1): a harness not ready in 60 s is a
- * failed start, reported with its stderr tail, never left hanging. */
+/** The handshake and bind watchdogs. */
 const INITIALIZE_TIMEOUT_MS = 60_000;
 /** `session/new` and `session/load` ride the same watchdog budget. */
 const BIND_TIMEOUT_MS = 60_000;
@@ -251,173 +238,15 @@ const EXIT_GRACE_MS = 5_000;
 /** Stderr kept for error reports. */
 const STDERR_TAIL_BYTES = 4000;
 
-/** One in-flight turn per session id (the composer's busy state, the stop
- * button's target). Keyed by the real pi session id. */
-const activeTurns = new Map<string, { connection: HarnessConnection; sessionId: string }>();
-
-/** The Hero's session prefs for pi sessions: the model (`provider/id` from
- * the machine's pi list) and the reasoning effort. The distro applies them
- * from the spawn env on every session create — per-turn processes make the
- * pick per-turn fresh. A stub's explicit env wins over the prefs. */
-const sessionPrefs = { model: "", effort: "" };
-
-/** Sets the prefs the next pi sessions spawn with. */
-export function setSessionPrefs(prefs: { model?: string | null; effort?: string | null }): void {
-  if (prefs.model !== undefined) sessionPrefs.model = prefs.model ?? "";
-  if (prefs.effort !== undefined) sessionPrefs.effort = prefs.effort ?? "";
-}
-
-
-/** Whether a turn is in flight for `sessionId`. */
-export function isTurnActive(sessionId: string): boolean {
-  return activeTurns.has(sessionId);
-}
-
-/** The active turn of `sessionId`, when one is in flight. */
-export function activeTurn(sessionId: string): { cancel(): void } | null {
-  const turn = activeTurns.get(sessionId);
-  return turn ? { cancel: () => turn.connection.cancel(sessionId) } : null;
-}
-
-/**
- * Runs one turn: spawn the harness, shake hands, bind (`session/new` when
- * `sessionId` is absent — the mint happens at the first real prompt; else
- * `session/load`, whose replay goes to `onReplay` first), prompt, settle,
- * and close stdin. The process is never kept between turns.
- */
-export function startTurn(options: {
-  cwd: string;
-  text: string;
-  sessionId?: string;
-  hooks: TurnHooks;
-  onReplay?: (updates: AcpUpdate[]) => void;
-  /** When a load finds no session file, mint a fresh session instead of
-   * failing (a captain another transport minted but never prompted). */
-  freshSessionFallback?: boolean;
-  /** Overrides the harness binary (tests drive a stub agent). */
-  command?: string;
-  /** Extra argv for the override program. */
-  args?: string[];
-  /** Extra environment entries for this process (the stub's modes in tests). */
-  env?: Record<string, string>;
-}): TurnHandle {
-  let connection: HarnessConnection | null = null;
-  let sessionId: string | null = options.sessionId ?? null;
-  let settled = false;
-  let cancelled = false;
-
-  /** One exit path: the turn is over, the process goes with it. */
-  const finish = (): void => {
-    if (settled) return;
-    settled = true;
-    if (sessionId) activeTurns.delete(sessionId);
-    connection?.close();
-  };
-
-  const done = (async (): Promise<TurnResult> => {
-    const spawn = { ...options };
-    if (!spawn.command) {
-      // Real harness: the prefs ride the env (the stub's own env wins).
-      spawn.env = {
-        ...(sessionPrefs.model ? { ZU_PI_MODEL: sessionPrefs.model } : {}),
-        ...(sessionPrefs.effort ? { ZU_PI_EFFORT: sessionPrefs.effort } : {}),
-        ...options.env,
-      };
-    }
-    connection = await HarnessConnection.start(spawn);
-    connection.onExit((exit) => {
-      if (settled) return;
-      const why = `the harness exited mid-turn (exit ${exit.code === null ? String(exit.signal ?? "unknown") : exit.code})`;
-      connection?.channel.failAll(why);
-    });
-
-    if (sessionId) {
-      try {
-        const replay = await connection.load(sessionId, options.cwd);
-        if (!settled && replay.length > 0) options.onReplay?.(replay);
-      } catch (failure) {
-        // A session id whose file does not exist (a captain another
-        // transport minted but never prompted) is not a dead turn: when the
-        // caller allows it, the harness mints a fresh session and the
-        // caller renames its view through the handle's live sessionId.
-        if (!(failure instanceof JsonrpcFailure && failure.dataCode === "session_not_found") || !options.freshSessionFallback) {
-          throw failure;
-        }
-        sessionId = await connection.create(options.cwd);
-      }
-    } else {
-      sessionId = await connection.create(options.cwd);
-    }
-    if (settled) throw new Error("the turn was cancelled while binding");
-
-    const boundId: string = sessionId;
-    activeTurns.set(boundId, { connection, sessionId: boundId });
-    // A cancel that arrived while the bind was still in flight is retried
-    // once the prompt is actually on the wire — a cancel for a prompt that
-    // was never sent is a no-op on the agent side, and the turn would hold.
-    const cancelIfRequested = () => {
-      if (cancelled) connection?.cancel(boundId);
-    };
-    if (cancelled) connection.cancel(boundId);
-
-    try {
-      const stopReason = await connection.prompt(sessionId, options.text, options.hooks.onUpdate, cancelIfRequested);
-      return { sessionId, stopReason };
-    } finally {
-      finish();
-    }
-  })();
-
-  return {
-    done,
-    get sessionId() {
-      return sessionId;
-    },
-    cancel() {
-      cancelled = true;
-      if (connection && sessionId && activeTurns.has(sessionId)) connection.cancel(sessionId);
-      else connection?.kill("the turn was cancelled before it started");
-    },
-  };
-}
-
-/** The test/fixture override for the harness binary: when set, turns and
- * transcript loads spawn this program instead of resolving `pi-acp`. The
- * packaged app never calls this. */
+/** The test/fixture override for the harness binary: when set, sessions
+ * spawn this program instead of resolving `pi-acp`. The packaged app never
+ * calls this. */
 let commandOverride: { command: string; args?: string[]; env?: Record<string, string> } | null = null;
 
 export function setAcpCommandOverride(
   override: { command: string; args?: string[]; env?: Record<string, string> } | null,
 ): void {
   commandOverride = override;
-}
-
-/** The harness spawn options for a production call (the resolved `pi-acp`)
- * or a test's stub. */
-function harnessSpawn(): { command?: string; args?: string[]; env?: Record<string, string> } {
-  return commandOverride ?? {};
-}
-
-/**
- * Reopens a session without a turn: spawn, initialize, `session/load`, hand
- * the replay to the caller, close stdin. This is the ACP path's transcript
- * read (v2 §5.4: history is read from files into a process, never from the
- * wire's memory alone).
- */
-export async function loadTranscript(options: {
-  cwd: string;
-  sessionId: string;
-  command?: string;
-  args?: string[];
-  env?: Record<string, string>;
-}): Promise<{ sessionId: string; updates: AcpUpdate[] }> {
-  const connection = await HarnessConnection.start(options);
-  try {
-    const updates = await connection.load(options.sessionId, options.cwd);
-    return { sessionId: options.sessionId, updates };
-  } finally {
-    connection.close();
-  }
 }
 
 function describe(failure: unknown): string {

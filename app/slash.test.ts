@@ -111,24 +111,6 @@ test("/resume asks the shell to open the sidebar's search", () => {
   expect(opened).toBe("search");
 });
 
-test("pi's interactive commands answer with a reason, not a send", () => {
-  const id = seedActive();
-  const prompts: any[] = [];
-  setSessionTransport(async (type) => {
-    prompts.push(type);
-    throw new Error(`unexpected ${type}`);
-  });
-  for (const name of ["help", "login", "quit", "settings", "export"]) {
-    void runSlash(id, `/${name}`);
-    void 0;
-  }
-  // The transport saw no prompt at all: these are refused, not forwarded.
-  expect(prompts).toEqual([]);
-  expect(runSlash(id, "/quit")).resolves.toEqual({ kind: "unsupported", name: "quit" });
-  expect(prompts).toEqual([]);
-  expect(prompts).toEqual([]);
-});
-
 test("anything else is pi's own command: sent verbatim through the prompt", async () => {
   const id = seedActive();
   const sent: string[] = [];

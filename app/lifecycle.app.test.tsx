@@ -11,10 +11,10 @@ State.setStateDir(STATE_DIR);
 /**
  * The real app on a desktop window model, post-cutover: closing the window
  * reports a close press, the shell hides it, and the app keeps running —
- * M12's "close means hide". There is no sidecar to keep alive any more (the
- * ACP harness processes are per-turn and settle on their own), which is the
- * stronger form of the same guarantee: hiding tears nothing down, and the
- * window comes back through the application menu's Show (Mod+0).
+ * M12's "close means hide". There is no separate sidecar to keep alive: the
+ * shell owns its state files, and each open conversation's `pi-acp` process is
+ * owned by its sheet (hiding the window tears nothing down). The window comes
+ * back through the application menu's Show (Mod+0).
  */
 test("hiding the window keeps the app alive with no sidecar", async () => {
   const app = await open("./App.tsx", { network: "live", platform: "macos", width: 1200, height: 800 });

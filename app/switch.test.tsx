@@ -2,7 +2,7 @@ import { expect, open, test } from "nsh/test";
 import { containers, loadContainers } from "./core/containers";
 import { createContainer } from "./modules/pi/container";
 import { resetStateCache } from "./domains/state";
-import { State } from "zu/native";
+import { Fs, State } from "zu/native";
 
 
 // A state directory of this run: the user's registry is never touched.
@@ -27,6 +27,8 @@ async function untilActive(id: string, timeoutMs = 15000): Promise<boolean> {
 
 test("pressing a container row switches the active container", async () => {
   await loadContainers();
+  await Fs.mkdir("/tmp", "zu-switch-a");
+  await Fs.mkdir("/tmp", "zu-switch-b");
   const a = await createContainer("/tmp/zu-switch-a");
   const b = await createContainer("/tmp/zu-switch-b");
   const aId = String(a ? `pi:${a}` : "");

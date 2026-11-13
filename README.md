@@ -26,7 +26,7 @@ Project → Container → Sheet 的关系模型；契约与迁移见
 |---|---|
 | [docs/sheet-module-ARCHITECTURE.md](docs/sheet-module-ARCHITECTURE.md) | sheet 模块契约、能力域、依赖门禁（S0–S3 已落地） |
 | [docs/architecture.md](docs/architecture.md) | **当前**：约束、两条 harness、存储、native 域、对象模型、风险 |
-| [docs/pi-acp-IMPLEMENTATION.md](docs/pi-acp-IMPLEMENTATION.md) | **设计稿（待审）**：Pi × ACP 的会话运行时、协议面、UI/UX 与 A0–F0 |
+| [docs/pi-acp-IMPLEMENTATION.md](docs/pi-acp-IMPLEMENTATION.md) | **已落地（A0–F0）**：Pi × ACP 的会话运行时、协议面、UI/UX 与验收 |
 | [docs/pi-acp-PROTOCOL.md](docs/pi-acp-PROTOCOL.md) | pi 模块：ACP 协议映射与历史裁决（P0–P4，已冻结） |
 | [docs/DESIGN.md](docs/DESIGN.md) | 视觉规格：token、外壳几何、表面、动效、各 sheet |
 | [docs/decisions.md](docs/decisions.md) | 决策台账 Q1–Q107（问题 → 裁决 → 落点） |

@@ -1,5 +1,5 @@
 import { expect, test } from "nsh/test";
-import { State } from "zu/native";
+import { Fs, State } from "zu/native";
 import { containers, containersLoaded, loadContainers } from "./core/containers";
 import {
   containerProject,
@@ -45,6 +45,7 @@ test("a container created from a project snapshots the primary cwd", async () =>
   expect(container?.cwd).toBe(ROOT_A);
   expect(containerProject(container!)).toBe(project.id);
 
+  await Fs.mkdir("/tmp", "zu-m4-chats");
   const chatted = await createContainer("/tmp/zu-m4-chats", null);
   const chats = containers().find((row) => row.id === `pi:${chatted}`);
   expect(containerProject(chats!)).toBeNull();
