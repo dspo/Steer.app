@@ -43,6 +43,7 @@ import {
 import { codedError, JSONRPC_CODE, normalizeError, sessionNotFoundError } from "./errors";
 import { PI_VERSION } from "../version";
 import { promptBlocksToText } from "./mapping";
+import type { TrustElicit } from "../pi/trust";
 
 /** Server→client requests a session may make while a turn runs (or between
  * turns): tool approval and structured user input. */
@@ -86,12 +87,20 @@ export interface HarnessSession {
   };
 }
 
+/** What the ACP request carries into session construction. */
+export interface HarnessSessionContext {
+  /** Trust is asked while `session/new` is still in flight. */
+  elicit?: TrustElicit;
+  /** `session/new|load` servers; the distro hands them to pi's MCP extension. */
+  mcpServers?: unknown[];
+}
+
 /** How the method surface obtains sessions (pi in production, fakes in tests). */
 export interface HarnessPorts {
-  createSession(cwd: string): Promise<HarnessSession>;
-  loadSession(sessionId: string, cwd: string): Promise<HarnessSession>;
+  createSession(cwd: string, context?: HarnessSessionContext): Promise<HarnessSession>;
+  loadSession(sessionId: string, cwd: string, context?: HarnessSessionContext): Promise<HarnessSession>;
   /** Reattach without replay; defaults to `loadSession` when absent. */
-  resumeSession?(sessionId: string, cwd: string): Promise<HarnessSession>;
+  resumeSession?(sessionId: string, cwd: string, context?: HarnessSessionContext): Promise<HarnessSession>;
 }
 
 /** One stderr line; stdout is protocol-only. */
@@ -124,9 +133,12 @@ export function createAcpApp(ports: HarnessPorts, log: HarnessLog = () => {}): A
   });
 
   app.onRequest("session/new", mcpServersLenient<NewSessionRequest>, async (cx) => {
-    void cx.params.mcpServers;
     void cx.params.additionalDirectories;
-    const session = await withLog("session_new_failed", () => ports.createSession(cx.params.cwd));
+    const context: HarnessSessionContext = {
+      elicit: (request) => cx.client.request("elicitation/create", request as any),
+      ...(cx.params.mcpServers && cx.params.mcpServers.length > 0 ? { mcpServers: cx.params.mcpServers } : {}),
+    };
+    const session = await withLog("session_new_failed", () => ports.createSession(cx.params.cwd, context));
     adopt(session, cx.client);
     await announceCommands(session);
     return {
@@ -137,8 +149,12 @@ export function createAcpApp(ports: HarnessPorts, log: HarnessLog = () => {}): A
   });
 
   app.onRequest("session/load", mcpServersLenient<LoadSessionRequest>, async (cx) => {
+    const context: HarnessSessionContext = {
+      elicit: (request) => cx.client.request("elicitation/create", request as any),
+      ...(cx.params.mcpServers && cx.params.mcpServers.length > 0 ? { mcpServers: cx.params.mcpServers } : {}),
+    };
     const session = await withLog("session_load_failed", () =>
-      ports.loadSession(cx.params.sessionId, cx.params.cwd),
+      ports.loadSession(cx.params.sessionId, cx.params.cwd, context),
     );
     adopt(session, cx.client);
     // ACP v1: the replay precedes the response, in order.
@@ -148,9 +164,12 @@ export function createAcpApp(ports: HarnessPorts, log: HarnessLog = () => {}): A
   });
 
   app.onRequest("session/resume", async (cx) => {
+    const context: HarnessSessionContext = {
+      elicit: (request) => cx.client.request("elicitation/create", request as any),
+    };
     const session = await withLog("session_resume_failed", async () => {
-      if (ports.resumeSession) return ports.resumeSession(cx.params.sessionId, cx.params.cwd);
-      return ports.loadSession(cx.params.sessionId, cx.params.cwd);
+      if (ports.resumeSession) return ports.resumeSession(cx.params.sessionId, cx.params.cwd, context);
+      return ports.loadSession(cx.params.sessionId, cx.params.cwd, context);
     });
     adopt(session, cx.client);
     await announceCommands(session);

@@ -17,6 +17,7 @@ import { join } from "node:path";
 
 const DIST = join(import.meta.dir, "..", "dist", "pi-acp");
 const CWD = join(import.meta.dir, "..", "..");
+const MCP_ECHO = join(import.meta.dir, "fixtures", "mcp-echo.ts");
 
 if (!existsSync(DIST)) {
   console.error("dist/pi-acp not found; run `bun run build` first");
@@ -53,6 +54,8 @@ class LiveClient {
   private nextId = 0;
   permissionPolicy: PermissionPolicy = "allow";
   elicitationPolicy: "accept" | "decline" = "decline";
+  /** Servers passed on this client's session/new. */
+  mcpServers: Array<Record<string, unknown>> = [];
   elicitationContent: Record<string, unknown> = {};
   readonly turns: Turn[] = [];
   private turn: Turn | null = null;
@@ -338,7 +341,10 @@ async function main(): Promise<void> {
     const coldStart = Date.now();
     const init = await client.request<any>("initialize", { protocolVersion: 1, clientCapabilities: {} }, 60_000);
     assert(init?.protocolVersion === 1, "protocolVersion is not 1");
-    const created = await client.request<any>("session/new", { cwd: CWD, mcpServers: [] }, 90_000);
+    client.mcpServers = [
+      { name: "fixture", command: process.execPath, args: [MCP_ECHO] },
+    ];
+    const created = await client.request<any>("session/new", { cwd: CWD, mcpServers: client.mcpServers }, 90_000);
     sessionId = String(created?.sessionId ?? "");
     assert(sessionId, "session/new returned no sessionId");
     let options = created.configOptions ?? [];
@@ -359,6 +365,42 @@ async function main(): Promise<void> {
     console.log(
       `  ok: ${baselineText.trim().slice(0, 60)} (first token ${baseline.firstTokenAt ? baseline.firstTokenAt - baseline.startedAt : "?"} ms)`,
     );
+
+    console.log("→ codemode from the user's settings.json");
+    const codeTurn = await client.turnPrompt(
+      sessionId,
+      "Use the codemode tool to compute 6*7 and reply with just the result.",
+      180_000,
+    );
+    assert(codeTurn.stopReason === "end_turn", `codemode turn stopReason ${codeTurn.stopReason}`);
+    const called = codeTurn.updates
+      .filter((update) => update.sessionUpdate === "tool_call")
+      .map((update) => String(update.name ?? update.title ?? ""));
+    assert(called.some((name) => name.toLowerCase().includes("codemode")), `codemode was not called; tools=${called.join(",")}`);
+    const codeText = codeTurn.updates
+      .filter((update) => update.sessionUpdate === "agent_message_chunk")
+      .map((update) => update.content?.text ?? "")
+      .join("");
+    assert(codeText.includes("42"), `codemode answer was ${codeText.slice(0, 120)}`);
+    console.log("  ok: codemode tool called and returned 42");
+
+    console.log("→ ACP session/new mcpServers");
+    const mcpTurn = await client.turnPrompt(
+      sessionId,
+      "Use the mcp__fixture__echo tool to echo exactly: mcp-live-ok. Use that tool and no other.",
+      180_000,
+    );
+    assert(mcpTurn.stopReason === "end_turn", `MCP turn stopReason ${mcpTurn.stopReason}`);
+    const mcpTools = mcpTurn.updates
+      .filter((update) => update.sessionUpdate === "tool_call")
+      .map((update) => String(update.name ?? update.title ?? ""));
+    assert(mcpTools.some((name) => name.includes("fixture") || name.includes("echo")), `MCP tool not called; tools=${mcpTools.join(",")}`);
+    const mcpText = mcpTurn.updates
+      .filter((update) => update.sessionUpdate === "agent_message_chunk")
+      .map((update) => update.content?.text ?? "")
+      .join("");
+    assert(mcpText.includes("mcp-live-ok"), `MCP answer was ${mcpText.slice(0, 120)}`);
+    console.log("  ok: the ACP MCP server's echo tool ran");
 
     console.log("→ in-session model switch");
     const modelOption = configOf(options, "model");

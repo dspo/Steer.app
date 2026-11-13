@@ -392,4 +392,7 @@ export const zhCN: Record<string, string> = {
   "app.session.waitingApproval": "等待你的确认",
   "app.session.permissions": "权限",
   "app.session.queued": "排队 %{count} 条",
+  "app.trust.title": "信任这个项目？",
+  "app.trust.accept": "信任并加载",
+  "app.trust.decline": "暂不信任",
 };

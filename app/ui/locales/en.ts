@@ -394,4 +394,7 @@ export const en: Record<string, string> = {
   "app.session.waitingApproval": "Waiting for your confirmation",
   "app.session.permissions": "Permissions",
   "app.session.queued": "%{count} queued",
+  "app.trust.title": "Trust this project?",
+  "app.trust.accept": "Trust and load",
+  "app.trust.decline": "Not now",
 };

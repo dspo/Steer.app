@@ -72,6 +72,25 @@ void (async () => {
           newline = buffer.indexOf("\n");
           continue;
         }
+        if (
+          typeof message.method === "string" &&
+          message.id !== undefined &&
+          message.id !== null &&
+          !("result" in message) &&
+          !("error" in message)
+        ) {
+          // The distro may ask for project trust while session/new is in
+          // flight. This smoke has no UI; declining keeps it headless.
+          if (message.method === "elicitation/create") {
+            stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { action: "decline" } })}\n`);
+          } else {
+            stdin.write(
+              `${JSON.stringify({ jsonrpc: "2.0", id: message.id, error: { code: -32601, message: "not served by smoke" } })}\n`,
+            );
+          }
+          newline = buffer.indexOf("\n");
+          continue;
+        }
         const pending = pendingByResponseId.get(String(message.id));
         if (pending !== undefined && ("result" in message || "error" in message)) {
           pendingByResponseId.delete(String(message.id));

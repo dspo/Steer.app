@@ -18,15 +18,18 @@
 | manox M1 | 真宿主 in-proc（manox v0.9.1）、panic 边界、折叠对账门禁、能对话回路 |
 | sheet 模块化 | S0–S3 全部落地（`contracts/module.ts`、`app/core/registry.ts`、`app/domains/`、`app/modules/`、容器去 harness 身份、通知按 sheet id、旧 wire 删除）；门禁 215 用例 207 通过 / 8 skip |
 | 页签切换器 | 外壳页签取画廊的 section switcher 语言：`switcherTrack/Pill/TabFrame`、轨道内 `+`、`shadow-inset` token；DESIGN §3.2 | `app/ui/ui.tsx`、`app/shell/shell.tsx`、`app/theme.json` |
+| Pi 官方配置 parity | `createAgentSessionServices` 统一装配；CLI builtin（codemode/tool-search/mcp）以 `builtin:true` 复刻；项目信任用 ACP elicitation；`mcp.json` + ACP `mcpServers` 双通道；子代理共享 services/model/trust；漂移测试守 builtin 名单 |
 | Pi × ACP 会话运行时 | A0–F0 落地：一会话一持久 `pi-acp`、config/mode/resume/close、usage/commands/info/compaction、permission/elicitation、扩展 UI、子代理 `_zu/subagents/*`、sheet/容器/退出生命周期；协议/宿主测试补齐 |
 
-门禁：`nsh check app` ✓、`check-layers` ✓、`nsh test app` 219 用例 211 通过 / 8 skip、
-`pi-harness bun test` 41 ✓、`bun run smoke` ✓、`script/bundle-mac.sh` ✓。
+门禁：`nsh check app` ✓、`check-layers` ✓、`nsh test app` 221 用例 213 通过 / 8 skip、
+`pi-harness bun test` 54 ✓、`bun run smoke` ✓、`script/bundle-mac.sh` ✓。
 
 真机 live 验收已完成（2026-11-13，`pi-harness/scripts/acp-live-acceptance.ts`，记录见
 [evidence/pi-acp-live-2026-11-13.md](evidence/pi-acp-live-2026-11-13.md)）。剩余只有发布前的打包真机启动。
 
 下一批是**打包产物真机启动**，不再有结构性迁移。
+
+当前交付分支：`feat/pi-official-config-parity`（独立 worktree），合并请求指向 `origin/main`。
 
 ## 1. sheet 模块化（已完成）
 

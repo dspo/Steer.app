@@ -208,7 +208,7 @@ JIT entitlement 在 harness 上）；pi pin + 扩展 + 适配器同包同版本�
 | 模型选择 | `SetSessionModel` + `available_models` | v2 变更：composer 模型菜单从协议来 |
 | 压缩（状态） | 核心 `CompactionUpdate` 事件 | 自动压缩状态条从协议来 |
 | 斜杆命令（agent 侧） | `available_commands_update` + 命令文本进 prompt | 扩展/模板/技能命令按原文进 `session/prompt`，宿主不再维护这张表 |
-| MCP | `session/new` 的 `mcpServers` 参数 **distro 显式忽略** | pi 用自己的 MCP 配置；忽略是声明行为，写进 protocol notes，标准 client 传入不 undefined |
+| MCP | `session/new` 的 `mcpServers` 参数 **distro 显式忽略** | **已被 Q109/G0–G4 取代**：distro 现在同时消费 `mcp.json` 与 ACP `mcpServers`；本行保留为 P1 历史 |
 | 斜杆命令（宿主本地） | 无协议 | `/new` `/resume` `/clear` 是纯 UI 动作，留在宿主本地表——三分法只剩 local 表 + 协议命令表两半 |
 
 ### 5.3 私有面：`_session/steering`（生态惯例）+ `x-zu`（收缩后）

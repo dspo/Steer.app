@@ -22,16 +22,17 @@ import { mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSy
 import { join } from "node:path";
 
 import {
-  createAgentSession,
-  DefaultResourceLoader,
+  createAgentSessionFromServices,
   getAgentDir,
-  hasTrustRequiringProjectResources,
-  ModelRuntime,
-  ProjectTrustStore,
   SessionManager,
+} from "@earendil-works/pi-coding-agent";
+import type {
+  AgentSession,
+  AgentSessionEvent,
+  ExtensionAPI,
+  ExtensionUIContext,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import type { AgentSessionEvent, ExtensionAPI, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import type {
   AvailableCommand,
   CreateElicitationRequest,
@@ -55,11 +56,37 @@ import {
   toolCallStartUpdate,
 } from "./mapping";
 import { replayUpdates, type ReplayEntry } from "./replay";
+import { createPiServices } from "../pi/services";
+import type { AcpMcpServer } from "../pi/mcp";
+import type { TrustElicit } from "../pi/trust";
 import { SubagentManager, dispatchExtension, type SubagentHost, type SubagentRun } from "./subagents";
-import type { HarnessClientBridge, HarnessPorts, HarnessSession, HarnessLog } from "./app";
+import type { HarnessClientBridge, HarnessPorts, HarnessSession, HarnessSessionContext, HarnessLog } from "./app";
 
-type PiAgentSession = Awaited<ReturnType<typeof createAgentSession>>["session"];
+type PiAgentSession = AgentSession;
 type ThinkingLevel = Parameters<PiAgentSession["setThinkingLevel"]>[0];
+
+/** `enabledModels` patterns are fuzzy in pi; this is the conservative subset. */
+function modelAllowed(patterns: string[], model: { provider: string; id: string; name?: string }): boolean {
+  const ref = `${model.provider}/${model.id}`;
+  const name = model.name ?? ref;
+  return patterns.some((pattern) => {
+    if (pattern === ref) return true;
+    if (pattern.endsWith("/*")) return model.provider === pattern.slice(0, -2);
+    if (pattern.includes("/")) return ref.startsWith(pattern) || name.toLowerCase().includes(pattern.toLowerCase());
+    return model.id.toLowerCase().includes(pattern.toLowerCase()) || name.toLowerCase().includes(pattern.toLowerCase());
+  });
+}
+
+/** What the ACP layer can carry into one Pi session's construction. */
+export interface PiSessionOptions {
+  agentDir?: string;
+  /** The ACP client's trust question (session/new is still in flight). */
+  elicit?: TrustElicit;
+  /** Client-supplied MCP servers (captain only). */
+  mcpServers?: AcpMcpServer[];
+  /** A captain's decision, inherited by a subagent. */
+  trusted?: boolean;
+}
 
 /** The approval-policy modes advertised through `session/set_mode`. */
 const APPROVAL_MODES: SessionModeState = {
@@ -139,25 +166,16 @@ interface ToolCallLike {
   input?: unknown;
 }
 
-const AGENT_DIR = getAgentDir();
-const trustStore = new ProjectTrustStore(AGENT_DIR);
+function extraExtensionPaths(): string[] {
+  return (process.env.ACP_EXTRA_EXTENSION_PATHS ?? "")
+    .split(",")
+    .map((path) => path.trim())
+    .filter(Boolean);
+}
 
-const extraExtensionPaths = (process.env.ACP_EXTRA_EXTENSION_PATHS ?? "")
-  .split(",")
-  .map((path) => path.trim())
-  .filter(Boolean);
-const noExtensions = process.env.ACP_NO_EXTENSIONS === "1";
-
-/**
- * The one model registry for the process, awaited by every session: the
- * session's model, its picker and pi's catalog stay one view. A failed load
- * falls back to pi's per-session default; the failure is logged, never
- * silent.
- */
-const modelRegistry: Promise<ModelRuntime | undefined> = ModelRuntime.create().catch((error: unknown) => {
-  console.error(`[pi-acp] model registry unavailable: ${error instanceof Error ? error.message : String(error)}`);
-  return undefined;
-});
+function extensionsDisabled(): boolean {
+  return process.env.ACP_NO_EXTENSIONS === "1";
+}
 
 class PiHarnessSession implements HarnessSession {
   readonly id: string;
@@ -174,6 +192,8 @@ class PiHarnessSession implements HarnessSession {
   private lastStop: string | undefined;
   /** The approval gate the permission extension uses. */
   private readonly gate: PermissionGate;
+  /** The settings the session's services loaded (model scope, defaults). */
+  private readonly settingsManager: SettingsManager;
   /** The subagent manager bound to this captain. */
   private readonly subagentManager: SubagentManager;
   /** Compaction ids are per session and stable across start/end events. */
@@ -186,6 +206,7 @@ class PiHarnessSession implements HarnessSession {
     cwd: string,
     log: HarnessLog,
     gate: PermissionGate,
+    settingsManager: SettingsManager,
     subagentManager: SubagentManager,
   ) {
     this.manager = manager;
@@ -193,40 +214,63 @@ class PiHarnessSession implements HarnessSession {
     this.cwd = cwd;
     this.log = log;
     this.gate = gate;
+    this.settingsManager = settingsManager;
     this.subagentManager = subagentManager;
     this.id = manager.getSessionId();
     this.gate.sessionId = this.id;
     this.subscribe();
   }
 
-  static async create(cwd: string, log: HarnessLog): Promise<PiHarnessSession> {
+  static async create(cwd: string, log: HarnessLog, options: PiSessionOptions = {}): Promise<PiHarnessSession> {
     const manager = SessionManager.create(cwd);
-    return PiHarnessSession.build(manager, cwd, log);
+    return PiHarnessSession.build(manager, cwd, log, options);
   }
 
-  static async open(path: string, cwd: string, log: HarnessLog): Promise<PiHarnessSession> {
+  static async open(path: string, cwd: string, log: HarnessLog, options: PiSessionOptions = {}): Promise<PiHarnessSession> {
     const manager = SessionManager.open(path);
-    return PiHarnessSession.build(manager, cwd, log);
+    return PiHarnessSession.build(manager, cwd, log, options);
   }
 
-  private static async build(manager: SessionManager, cwd: string, log: HarnessLog): Promise<PiHarnessSession> {
+  private static async build(
+    manager: SessionManager,
+    cwd: string,
+    log: HarnessLog,
+    options: PiSessionOptions,
+  ): Promise<PiHarnessSession> {
+    const agentDir = options.agentDir ?? getAgentDir();
     const gate = new PermissionGate(log);
     const captainId = manager.getSessionId();
     const sessionRef: { session: PiAgentSession | null } = { session: null };
-    const subagentManager = new SubagentManager(subagentHost(cwd, manager, sessionRef, log));
-    const { settingsManager, resourceLoader } = await services(cwd, log, [
-      gate.extension(),
-      dispatchExtension(subagentManager, captainId),
-    ]);
-    const created = await createAgentSession({
-      sessionManager: manager,
-      settingsManager,
-      resourceLoader,
+    const trustRef = { trusted: options.trusted ?? false };
+    const subagentManager = new SubagentManager(
+      subagentHost(cwd, manager, sessionRef, log, agentDir, () => trustRef.trusted),
+    );
+    const built = await createPiServices({
       cwd,
-      modelRuntime: await modelRegistry,
+      agentDir,
+      ...(options.trusted === undefined ? {} : { trusted: options.trusted }),
+      ...(options.elicit ? { elicit: options.elicit } : {}),
+      ...(options.mcpServers ? { mcpServers: options.mcpServers } : {}),
+      extensionFactories: [gate.extension(), dispatchExtension(subagentManager, captainId)],
+      additionalExtensionPaths: extraExtensionPaths(),
+      noExtensions: extensionsDisabled(),
+      log,
+    });
+    trustRef.trusted = built.trusted;
+    const created = await createAgentSessionFromServices({
+      services: built.services,
+      sessionManager: manager,
     });
     sessionRef.session = created.session;
-    const rec = new PiHarnessSession(manager, created.session, cwd, log, gate, subagentManager);
+    const rec = new PiHarnessSession(
+      manager,
+      created.session,
+      cwd,
+      log,
+      gate,
+      built.services.settingsManager,
+      subagentManager,
+    );
     try {
       await created.session.bindExtensions({
         uiContext: rec.uiContext(),
@@ -285,13 +329,20 @@ class PiHarnessSession implements HarnessSession {
 
   configOptions(): SessionConfigOption[] {
     const runtime = this.session.modelRuntime;
-    const models = runtime?.getAvailableSnapshot?.() ?? [];
+    const all = runtime?.getAvailableSnapshot?.() ?? [];
+    const enabled = this.settingsManager.getEnabledModels();
+    const models = enabled ? all.filter((model) => modelAllowed(enabled, model)) : all;
+    const current = this.session.model;
     const options = models.map((model) => ({
       value: `${model.provider}/${model.id}`,
       name: model.name ?? `${model.provider}/${model.id}`,
       description: model.provider,
     }));
-    const current = this.session.model;
+    // The active model must stay selectable even when a scope pattern is
+    // narrower than the session's restored model.
+    if (current && !options.some((option) => option.value === `${current.provider}/${current.id}`)) {
+      options.unshift({ value: `${current.provider}/${current.id}`, name: current.name ?? `${current.provider}/${current.id}`, description: current.provider });
+    }
     const levels = this.session.getAvailableThinkingLevels().map((level) => ({
       value: level,
       name: level,
@@ -639,8 +690,10 @@ function subagentHost(
   manager: SessionManager,
   sessionRef: { session: PiAgentSession | null },
   log: HarnessLog,
+  agentDir: string,
+  trusted: () => boolean,
 ): SubagentHost {
-  const root = join(process.env.PI_CODING_AGENT_DIR ?? join(process.env.HOME ?? "", ".pi", "agent"), "..", "zu", "subagents");
+  const root = join(agentDir, "..", "zu", "subagents");
   const index = join(root, "index.json");
   const readIndex = (): SubagentRun[] => {
     try {
@@ -651,7 +704,7 @@ function subagentHost(
     }
   };
   return {
-    agentDir: AGENT_DIR,
+    agentDir,
     captainFor: (id) =>
       sessionRef.session
         ? {
@@ -682,48 +735,35 @@ function subagentHost(
       }
     },
     emit: (type, _data) => log(`subagent ${type}`),
-    projectTrusted: (dir) => !hasTrustRequiringProjectResources(dir) || trustStore.get(dir) === true,
+    projectTrusted: () => trusted(),
     isArchived: () => false,
   };
 }
 
-async function services(cwd: string, log: HarnessLog, extensionFactories: Array<(pi: ExtensionAPI) => void> = []) {
-  const needsTrust = hasTrustRequiringProjectResources(cwd);
-  const projectTrusted = !needsTrust || trustStore.get(cwd) === true;
-  if (needsTrust && !projectTrusted) {
-    log(`project resources for ${cwd} stay unloaded: no saved trust decision`);
-  }
-  const settingsManager = SettingsManager.create(cwd, AGENT_DIR, { projectTrusted });
-  const resourceLoader = new DefaultResourceLoader({
-    cwd,
-    agentDir: AGENT_DIR,
-    settingsManager,
-    additionalExtensionPaths: extraExtensionPaths,
-    extensionFactories,
-    noExtensions,
-    ...(needsTrust && !projectTrusted
-      ? {
-          // No dialog channel in P0: an unsaved decision is a NO, written to
-          // neither the trust store nor the session.
-          resolveProjectTrust: async () => false,
-        }
-      : {}),
-  });
-  await resourceLoader.reload();
-  return { settingsManager, resourceLoader };
+/** The HarnessPorts over real pi sessions. */
+export interface PiPortsOptions {
+  agentDir?: string;
 }
 
-/** The HarnessPorts over real pi sessions. */
-export function createPiPorts(log: HarnessLog): HarnessPorts {
+function optionsFor(context: HarnessSessionContext | undefined, base: PiPortsOptions): PiSessionOptions {
   return {
-    createSession: (cwd: string) => PiHarnessSession.create(cwd, log),
-    resumeSession: async (sessionId: string, cwd: string) => {
-      return createPiPorts(log).loadSession(sessionId, cwd);
+    ...(base.agentDir ? { agentDir: base.agentDir } : {}),
+    ...(context?.elicit ? { elicit: context.elicit } : {}),
+    ...(context?.mcpServers ? { mcpServers: context.mcpServers as AcpMcpServer[] } : {}),
+  };
+}
+
+export function createPiPorts(log: HarnessLog, base: PiPortsOptions = {}): HarnessPorts {
+  return {
+    createSession: (cwd: string, context?: HarnessSessionContext) =>
+      PiHarnessSession.create(cwd, log, optionsFor(context, base)),
+    resumeSession: async (sessionId: string, cwd: string, context?: HarnessSessionContext) => {
+      return createPiPorts(log, base).loadSession(sessionId, cwd, context);
     },
-    loadSession: async (sessionId: string, cwd: string) => {
-      const path = findPiSessionFile(sessionId);
+    loadSession: async (sessionId: string, cwd: string, context?: HarnessSessionContext) => {
+      const path = findPiSessionFile(sessionId, base.agentDir);
       if (!path) {
-        throw codedError(-32002, "session_not_found", `no session file for ${sessionId} under ${join(AGENT_DIR, "sessions")}`, {
+        throw codedError(-32002, "session_not_found", `no session file for ${sessionId} under ${join(base.agentDir ?? getAgentDir(), "sessions")}`, {
           sessionId,
         });
       }
@@ -737,7 +777,7 @@ export function createPiPorts(log: HarnessLog): HarnessPorts {
           { sessionId },
         );
       }
-      return PiHarnessSession.open(path, cwd, log);
+      return PiHarnessSession.open(path, cwd, log, optionsFor(context, base));
     },
   };
 }
@@ -747,8 +787,8 @@ export function createPiPorts(log: HarnessLog): HarnessPorts {
  * name (pi names files `<timestamp>_<sessionId>.jsonl`). A bounded walk —
  * no full listing, no network.
  */
-export function findPiSessionFile(sessionId: string): string | undefined {
-  const root = join(AGENT_DIR, "sessions");
+export function findPiSessionFile(sessionId: string, agentDir = getAgentDir()): string | undefined {
+  const root = join(agentDir, "sessions");
   let found: string | undefined;
   let foundMtime = 0;
   const suffix = `_${sessionId}.jsonl`;

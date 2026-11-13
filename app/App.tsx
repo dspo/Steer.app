@@ -5,6 +5,7 @@ import { AlreadyRunning, LifecycleHost } from "./shell/lifecycle-ui";
 import { lifecycleMode, startLifecycle } from "./shell/lifecycle";
 import { followSystemLocale } from "./ui/i18n";
 import { applyScrollbarTheme } from "./ui/ui";
+import { TrustDialog } from "./ui/trust";
 import { startModules } from "./modules/register-all";
 
 /** The app: claim the state directory, boot the engine once, then render the workbench. */
@@ -44,6 +45,8 @@ function App() {
       <If when={lifecycleMode() !== "duplicate"}>
         <Workbench />
       </If>
+      {/* `session/new` can ask for project trust before any sheet exists. */}
+      <TrustDialog />
       {/* The tray and the notification listeners are a desktop app's; a
           headless run (the test runner) renders neither. */}
       <If when={lifecycleMode() === "primary"}>

@@ -223,6 +223,11 @@ export const K = {
     permissions: "app.session.permissions",
     queued: "app.session.queued",
   },
+  trust: {
+    title: "app.trust.title",
+    accept: "app.trust.accept",
+    decline: "app.trust.decline",
+  },
   dialog: {
     confirm: "app.dialog.confirm",
     cancel: "app.dialog.cancel",

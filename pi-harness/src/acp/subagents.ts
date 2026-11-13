@@ -13,14 +13,9 @@
 import { mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Type } from "typebox";
-import {
-  createAgentSession,
-  DefaultResourceLoader,
-  parseFrontmatter,
-  SessionManager,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+import { createAgentSessionFromServices, parseFrontmatter, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createPiServices } from "../pi/services";
 /** The subagent surface's own vocabulary (the app has no shared wire type
  * for these; they travel over the `_zu/subagents/*` extension methods). */
 export interface PlainMessage {
@@ -48,12 +43,6 @@ export interface SubagentRun {
 export interface SubagentTranscriptData {
   run?: SubagentRun;
   messages: PlainMessage[];
-}
-
-/** `~/.pi/zu/subagents` — beside the session files, never inside pi's own
- * conversation directory. */
-function stateDir(): string {
-  return join(process.env.PI_CODING_AGENT_DIR ?? `${process.env.HOME ?? ""}/.pi/agent`, "..", "zu");
 }
 
 export interface CaptainLike {
@@ -305,7 +294,7 @@ export class SubagentManager {
   ): Promise<void> {
     const entry = this.live.get(run.runId);
     if (!entry) return;
-    const dir = join(stateDir(), "subagents", captain.id);
+    const dir = join(this.host.agentDir, "..", "zu", "subagents", captain.id);
     mkdirSync(dir, { recursive: true });
     const parent = captain.manager.getSessionFile() ?? captain.path;
     const manager = resume && run.sessionPath
@@ -314,25 +303,21 @@ export class SubagentManager {
           id: run.runId,
           parentSession: parent || undefined,
         });
-    const settings = SettingsManager.create(captain.cwd, this.host.agentDir, { projectTrusted: false });
-    const loader = new DefaultResourceLoader({
+    const built = await createPiServices({
       cwd: captain.cwd,
       agentDir: this.host.agentDir,
-      settingsManager: settings,
+      trusted: this.host.projectTrusted(captain.cwd),
       noExtensions: true,
       appendSystemPrompt: [definition.systemPrompt],
     });
-    await loader.reload();
     let model = captain.session.model;
     if (definition.model?.includes("/")) {
       const [provider, ...rest] = definition.model.split("/");
       model = captain.session.modelRuntime?.getModel(provider, rest.join("/")) ?? model;
     }
-    const created = await createAgentSession({
-      cwd: captain.cwd,
+    const created = await createAgentSessionFromServices({
+      services: built.services,
       sessionManager: manager,
-      settingsManager: settings,
-      resourceLoader: loader,
       model,
       thinkingLevel: (definition.thinking as any) ?? captain.session.thinkingLevel,
       tools: definition.tools,

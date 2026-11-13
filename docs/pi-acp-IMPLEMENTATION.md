@@ -3,7 +3,7 @@
 > 状态：**已落地（2026-11-13，A0–F0）**。本文从设计稿转为实现记录；仍以 §9 的 UI/UX 与 §11
 > 的验收清单为准，未跑的真机/live 项在 §11 明确标注。
 > 门禁（2026-11-13）：`nsh check app` ✓、`node script/check-layers.mjs` ✓、
-> `ZU_SKIP_LIVE=1 nsh test app` 219 用例 211 通过 / 8 skip、`pi-harness bun test` 41 ✓、
+> `ZU_SKIP_LIVE=1 nsh test app` 221 用例 213 通过 / 8 skip、`pi-harness bun test` 54 ✓、
 > distro `bun run build` ✓、`bun run smoke`（ACP offline）✓、`bun run acceptance:live`（真机，两轮）✓、
 > `LIVE_CRASH_ONLY=1 bun run acceptance:live` ✓、`script/bundle-mac.sh` ✓。
 > 关系：本文是 Pi 模块的**目标实现**。当前系统形态见 [architecture.md](architecture.md)；
@@ -484,16 +484,19 @@ app/modules/pi/
 真机 live（2026-11-13，`bun run scripts/acp-live-acceptance.ts`；记录见
 [evidence/pi-acp-live-2026-11-13.md](evidence/pi-acp-live-2026-11-13.md)）：
 
+- [x] 官方配置：`settings.json` 的 `defaultTools:["+codemode"]` 生效，`codemode` 工具真实调用并返回 42。
+- [x] ACP MCP：`session/new.mcpServers` 注册的 `echo` 服务器被 MCP 扩展连接，模型真实调用 `mcp__fixture__echo`。
 - [x] 会话内切模型/档位：`deepseek-flash` → `deepseek-v4-pro` + `high`，下一轮 `end_turn`。
 - [x] resume 后保留：新进程 resume 同一 session，模型与档位都在，首 token 207 ms。
-- [x] `/compact`：compaction 完成，context 151,389 → 46,463（4 条大消息；单条巨大消息无法切分）。
+- [x] `/compact`：compaction 完成，context 153,667 → 48,324（4 条大消息；单条巨大消息无法切分）。
 - [x] 审批放行/拒绝：真实 `bash` 调用；允许的文件存在，拒绝的文件不存在，两轮都 `end_turn`。
 - [x] 扩展 UI：confirm（接受/拒绝）、select、input 的真实答案都回到扩展。
-- [x] 子代理：真实模型 `scout` settle（5 行转录）；`worker` abort 被接受；重启后 captain resume 仍能读同一 run 与转录。
+- [x] 子代理：真实模型 `scout` settle（7 行转录）；`worker` abort 被接受；重启后 captain resume 仍能读同一 run 与转录。
+- [x] 项目信任：resolver 的单测 + `app/trust.ui.test.tsx` 验证会话存在前的对话框与接受/拒绝回答。
 - [x] kill 进程：`LIVE_CRASH_ONLY=1` 下 SIGKILL 中途 turn 拒绝，同 session resume 后回答。
 - [x] 进程收尾：`session/close` + stdin EOF 后无 `pi-acp` 残留；容器归档/退出 app 调用同一组
   `closeContainerSessions`/`closeAllSessions`（GUI 菜单未手动驱动）。
-- [x] 性能记录（不设限）：冷启动 336 ms、首个 token 849 ms、resume 首 token 207 ms、RSS 165.9 MB。
+- [x] 性能记录（不设限）：冷启动 1,367 ms、首个 token 1,944 ms、resume 首 token 725 ms、RSS 168.7 MB。
 
 ## 12. 实施工作包与顺序
 
@@ -562,3 +565,63 @@ E0 依赖 D0 的 permission（dispatch 本身也可能触发审批）。
 | [DESIGN.md](DESIGN.md) | 视觉 token 与外壳；Pi 面的交互以本文 §9 为准 |
 | [plan.md](plan.md) | 执行计划；本文审查通过后，A0–F0 进入批次表 |
 | [decisions.md](decisions.md) | 裁决台账；本文的 D1–D7 在批准后登记 |
+
+## 16. 官方配置 parity（G0–G4，2026-11-13）
+
+**根因**：官方 `pi` CLI 在 `main.js` 里把 `llama.cpp`、`codemode`、`tool-search`、`mcp` 作为
+built-in 扩展交给 `DefaultResourceLoader`，并用 `createAgentSessionServices` 装配 settings / trust /
+model runtime。`pi-harness` 是 SDK 嵌入，原来只注册了权限门和 dispatch，于是
+`defaultTools: ["+codemode"]` 没有可激活的扩展，`mcp.json` 也没有消费者。
+
+### 16.1 装配路径
+
+- `pi-harness/src/pi/official.ts` 用公开 factory 复刻 CLI builtin：
+  `codemode`、`tool-search`、`mcp`，每项 `{ replaceable: true, builtin: true }`；
+  `builtin:true` 保留 `-builtin:<name>`、`--no-extensions`、包替换与 trust 顺序。
+- `pi-harness/src/pi/services.ts` 使用 `createAgentSessionServices`（而不是手拼 loader）：
+  `SettingsManager` → loader（含 trust resolver）→ extension provider 注册 → model refresh；
+  `createAgentSessionFromServices` 创建会话。进程级 `ModelRuntime` 共用一份（auth/models 路径对齐 CLI）。
+- `defaultTools`、`packages`、`skills`、`prompts`、`enabledModels` 都由 settings/loader 消费；
+  `ACP_NO_EXTENSIONS`/`ACP_EXTRA_EXTENSION_PATHS` 语义不变。
+- 子代理也用同一 `createPiServices`（`noExtensions:true` 禁 dispatch，沿用 captain 的 trust/agentDir/
+  ModelRuntime），保留独立 session 目录与隔离上下文。
+
+### 16.2 项目信任
+
+- `trust.ts` 按 CLI 优先级：无 trust 资源 → store/true；store 有决定 → 用之；
+  `defaultProjectTrust` 的 always/never/ask；ask 且无 UI → untrusted。
+- ask 时由 `createAgentSessionServices` 的 `resourceLoaderReloadOptions.resolveProjectTrust` 调用
+  `elicitation/create`；这发生在 `session/new` 尚未返回时，客户端在 `host.ts` 安装**会话创建期**
+  request handler，把问题交给 app root 的 `TrustDialog`。
+- 接受后写 `~/.pi/agent/trust.json`（官方 store，CLI 也认）；拒绝只影响本次，不写 false。
+
+### 16.3 MCP
+
+- `mcp.json` 由 `createMcpExtension()` builtin 消费（global + trusted project，官方优先级）。
+- ACP `session/new`/`session/load` 的 `mcpServers` 经 `mcp.ts` 映射后注册：
+  stdio env 数组转对象；http 直通；sse 以 http 连接并记录；ACP 服务器用 `exposure:"direct"`，
+  同名时 `mcp.json` 优先。
+- 服务端在 `bindExtensions` 的 `session_start` 连接；首个 direct 工具请求最多等 10 秒。
+
+### 16.4 防漂移
+
+- `official.test.ts` 读取已安装包的 `dist/extensions/index.js`，断言
+  `llama.cpp / codemode / tool-search / mcp` 的名称与顺序；上游新增 builtin 时测试失败，
+  提示更新 `official.ts`。
+- `services.test.ts` 覆盖 builtin 注册/`-builtin:mcp`、`createPiServices`、本地 package + skill、
+  trust 四分支、ACP MCP 映射。
+- 已知例外：`llama.cpp` 的 factory 未从 SDK 根导出，本次不纳入；漂移测试显式列出它。
+
+### 16.5 验证
+
+- live：`bun run acceptance:live` 新增 codemode 调用（返回 42）与 ACP MCP `echo` 工具；
+  既有模型/档位/resume/审批/compact/扩展 UI/子代理/崩溃恢复全绿。
+- UI：`app/trust.ui.test.tsx` 验证信任对话框在会话存在前出现，接受/拒绝都返回真实答案。
+- 漂移/loader/trust/MCP 单测：`bun test src/pi` 全绿。
+
+### 16.6 非目标
+
+- `llama.cpp` builtin（无公开 factory）；
+- 主题可视化、`/login`/auth UI、CLI extension flags；
+- `PI_SESSION_DIR`/代理/离线等 CLI 专属开关；
+- 不引入官方 CLI 作为内层进程。
