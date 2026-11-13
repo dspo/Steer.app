@@ -3,8 +3,8 @@ target/
 pi-harness/node_modules/
 pi-harness/dist/
 
-# Tooling installed into the workspace by `npx skills add` (agent skills, not app code)
-.agents/
+# Agent skills installed by `npx skills add`: `.agents/` is the tracked source;
+# `.claude/` (symlinks), `agent/` (copies) and the lock file stay untracked.
 .claude/
 agent/
 skills-lock.json
