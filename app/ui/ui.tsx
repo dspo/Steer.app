@@ -1,4 +1,4 @@
-import { Canvas, type CanvasRenderingContext2D, reduceMotion, Text, token, View } from "nsh";
+import { Canvas, type CanvasRenderingContext2D, reduceMotion, Text, token, View, type ViewStyle } from "nsh";
 import { Scrollbar } from "nsh/base";
 
 /**
@@ -64,7 +64,7 @@ const motion = {
     transitionTimingFunction: "ease-out" as const,
   },
   medium: {
-    transitionProperty: "background-color, opacity, box-shadow",
+    transitionProperty: "background-color, opacity, box-shadow, border-color",
     transitionDuration: 180,
     transitionTimingFunction: "ease-out" as const,
   },
@@ -88,6 +88,69 @@ export function shadowRaised(): string {
 /** The topmost decision layer: dialogs. */
 export function shadowDialog(): string {
   return `0 2px 6px ${token("shadow")}, 0 18px 44px ${token("shadow-strong")}`;
+}
+
+/** The shade inside a sunk surface: a track's or a well's top lip. */
+export function shadowInset(): string {
+  return `inset 0 1px 1px ${token("shadow-inset")}`;
+}
+
+/** A section switcher's track height (the sheet tab bar's own, DESIGN §3.2). */
+export const SWITCHER_HEIGHT = 34;
+/** A switcher tab's pill height: the track minus its border and 3pt inset. */
+export const SWITCHER_PILL = 26;
+
+/**
+ * The section switcher's look, clean-room after the gallery's `tabsLook`:
+ * a capsule track sunk into the card (`shadowInset`), the tabs sharing it,
+ * and the selected tab a pill standing off the track (`shadowCard`). The
+ * gallery's pill is one native indicator the core springs to the next tab;
+ * `DockArea` places each tab itself and reports no bounds, so here the pill
+ * travels by cross-fading between two tabs instead (180 ms, `medium`) —
+ * the same look, one interaction short of the gallery's spring.
+ */
+export function switcherTrack(): ViewStyle {
+  return {
+    height: SWITCHER_HEIGHT,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    paddingHorizontal: 3,
+    borderRadius: SWITCHER_HEIGHT / 2,
+    borderWidth: 1,
+    borderColor: token("border"),
+    backgroundColor: token("inset"),
+    boxShadow: shadowInset(),
+  };
+}
+
+/** One switcher tab: the pill while selected, nothing but its label otherwise. */
+export function switcherPill(active: boolean): ViewStyle {
+  return {
+    height: SWITCHER_PILL,
+    borderRadius: SWITCHER_PILL / 2,
+    // A clear edge the selected pill takes over, so it keeps its size.
+    borderWidth: 1,
+    borderColor: active ? token("border") : "transparent",
+    backgroundColor: active ? token("card") : undefined,
+    boxShadow: active ? shadowCard() : "none",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingHorizontal: 9,
+    flexGrow: 1,
+    ...motionStyle("medium"),
+  };
+}
+
+/**
+ * The frame one switcher tab's host needs so a few tabs share the track and
+ * many still squeeze (the gallery's `fill`): the tab grows into an equal
+ * share of the bar, never past `minWidth` (a title truncates there).
+ */
+export function switcherTabFrame(): ViewStyle {
+  return { flexGrow: 1, flexBasis: 0, minWidth: 72 };
 }
 
 /**

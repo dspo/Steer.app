@@ -47,6 +47,7 @@
       "destructive-foreground": "#ffffff",
       "shadow": "rgba(20,18,40,0.08)",
       "shadow-strong": "rgba(20,18,40,0.14)",
+      "shadow-inset": "rgba(20,18,40,0.06)",
       "toast": "#ffffff"
     },
     "dark": {
@@ -90,6 +91,7 @@
       "destructive-foreground": "#14121c",
       "shadow": "rgba(0,0,0,0.40)",
       "shadow-strong": "rgba(0,0,0,0.55)",
+      "shadow-inset": "rgba(0,0,0,0.35)",
       "toast": "#1e1e23"
     }
   }
