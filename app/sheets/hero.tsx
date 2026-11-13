@@ -29,6 +29,7 @@ import type { ContainerKind, ProjectRecord } from "../../contracts/protocol";
 import type { BrandName } from "../ui/brand-icons";
 import { Glyph, motionStyle, shadowDialog, shadowRaised, type GlyphName } from "../ui/ui";
 import { contributedHeroSubmitters, contributedHeroTools } from "../shell/contrib";
+import { setSessionPrefs } from "../harness/pi-acp/acp";
 import {
   loadPiModels,
   modelId,
@@ -143,6 +144,9 @@ export function HeroSheet(props: { id: string }) {
     draft.set("");
     busy.set("send");
     const done = () => busy.set(null);
+    // The pi arm's pick rides the spawn env (ZU_PI_MODEL/ZU_PI_EFFORT) —
+    // set it before the first session mints, it applies to every spawn.
+    if (!submitter()) setSessionPrefs({ model: chosenModel(), effort: heroEffort() });
     const harness = submitter();
     if (harness) {
       void harness

@@ -284,6 +284,19 @@ const STDERR_TAIL_BYTES = 4000;
  * button's target). Keyed by the real pi session id. */
 const activeTurns = new Map<string, { connection: HarnessConnection; sessionId: string }>();
 
+/** The Hero's session prefs for pi sessions: the model (`provider/id` from
+ * the machine's pi list) and the reasoning effort. The distro applies them
+ * from the spawn env on every session create — per-turn processes make the
+ * pick per-turn fresh. A stub's explicit env wins over the prefs. */
+const sessionPrefs = { model: "", effort: "" };
+
+/** Sets the prefs the next pi sessions spawn with. */
+export function setSessionPrefs(prefs: { model?: string | null; effort?: string | null }): void {
+  if (prefs.model !== undefined) sessionPrefs.model = prefs.model ?? "";
+  if (prefs.effort !== undefined) sessionPrefs.effort = prefs.effort ?? "";
+}
+
+
 /** Whether a turn is in flight for `sessionId`. */
 export function isTurnActive(sessionId: string): boolean {
   return activeTurns.has(sessionId);
@@ -331,7 +344,16 @@ export function startTurn(options: {
   };
 
   const done = (async (): Promise<TurnResult> => {
-    connection = await HarnessConnection.start(options);
+    const spawn = { ...options };
+    if (!spawn.command) {
+      // Real harness: the prefs ride the env (the stub's own env wins).
+      spawn.env = {
+        ...(sessionPrefs.model ? { ZU_PI_MODEL: sessionPrefs.model } : {}),
+        ...(sessionPrefs.effort ? { ZU_PI_EFFORT: sessionPrefs.effort } : {}),
+        ...options.env,
+      };
+    }
+    connection = await HarnessConnection.start(spawn);
     connection.onExit((exit) => {
       if (settled) return;
       const why = `the harness exited mid-turn (exit ${exit.code === null ? String(exit.signal ?? "unknown") : exit.code})`;

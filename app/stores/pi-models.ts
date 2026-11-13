@@ -54,3 +54,31 @@ export async function loadPiModels(): Promise<void> {
 
 /** pi's reasoning-effort ladder, low to high (the composer's own order). */
 export const PI_EFFORTS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+/** pi's `api` value onto the manox kernel's endpoint wire key (the same map
+ * `native/manox`'s provider bridge applies when registering). */
+export function wireKey(api: string | null | undefined): string | null {
+  switch (api) {
+    case "anthropic-messages":
+    case "anthropic":
+      return "anthropic";
+    case "openai-completions":
+    case "openai-chat":
+    case "completions":
+      return "completions";
+    case "openai-responses":
+    case "responses":
+      return "responses";
+    default:
+      return null;
+  }
+}
+
+/** The model ref the manox kernel resolves: registration-qualified
+ * `{provider}-{wire}/{model}` (register_providers names every endpoint
+ * `{cx_name}-{wire_api}`, and `resolve_model_ref` pins the endpoint on a
+ * `provider/id` exact match). Falls back to the bare pi ref. */
+export function manoxModelRef(row: { provider: PiProvider; model: PiModelInfo }): string {
+  const wire = wireKey(row.provider.api);
+  return wire ? `${row.provider.id}-${wire}/${row.model.id}` : modelId(row.provider.id, row.model.id);
+}

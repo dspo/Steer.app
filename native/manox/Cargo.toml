@@ -22,6 +22,8 @@ manox-ahp = { git = "https://github.com/dspo/manox.git", tag = "v0.9.1" }
 manox-ahp-runtime = { git = "https://github.com/dspo/manox.git", tag = "v0.9.1" }
 manox-session-core = { git = "https://github.com/dspo/manox.git", tag = "v0.9.1" }
 manox-agent = { git = "https://github.com/dspo/manox.git", tag = "v0.9.1" }
+manox-harness = { git = "https://github.com/dspo/manox.git", tag = "v0.9.1" }
+tracing = "0.1"
 # The wire message type our Sink/Source impls name. `=1.0.0` is the same pin
 # the manox workspace carries, so both resolve to one copy.
 ahp-types = "=1.0.0"

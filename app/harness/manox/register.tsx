@@ -17,6 +17,7 @@ import { chatOf } from "./stores";
 import { activeContainerId, layout, noteSheetOpened, setLayout } from "../../stores/containers";
 import { appendSheet } from "../../stores/dock";
 import { effectiveState } from "./ahp";
+import { manoxModelRef, usableModels } from "../../stores/pi-models";
 import type { ChatState } from "../../../contracts/ahp/channels-chat/state";
 import type { SessionState } from "../../../contracts/ahp/channels-session/state";
 import { chatResource, sessionResource } from "./stores";
@@ -47,9 +48,14 @@ export function registerManoxPack(): void {
     id: "manox",
     label: "Manox",
     submit: async (text, context) => {
+      // The Hero hands a pi ref (`provider/id`); the kernel wants the
+      // registration-qualified form the provider bridge registered under.
+      const piRef = context.model?.split("/") ?? [];
+      const row = piRef.length === 2 ? usableModels().find((r) => r.provider.id === piRef[0] && r.model.id === piRef[1]) : undefined;
+      const modelRef = row ? manoxModelRef(row) : context.model;
       const { threadId, chatId } = await createManoxThread({
         cwd: context.cwd,
-        model: context.model,
+        model: modelRef,
         effort: context.effort,
       });
       openManoxChat(threadId, chatId);

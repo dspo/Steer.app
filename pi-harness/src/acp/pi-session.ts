@@ -110,6 +110,12 @@ class PiHarnessSession implements HarnessSession {
       cwd,
       modelRuntime: await modelRegistry,
     });
+    // The host's picked session prefs, applied before the first turn:
+    // ZU_PI_MODEL (`provider/id`, resolved through the same ModelRuntime the
+    // registry built) and ZU_PI_EFFORT (pi's own thinking ladder). An
+    // unknown model or level is logged and skipped — the turn still runs on
+    // pi's default rather than dying on the pick.
+    applySessionPrefs(created.session, log);
     const rec = new PiHarnessSession(manager, created.session, cwd, log);
     try {
       await created.session.bindExtensions({
@@ -397,4 +403,38 @@ export function findPiSessionFile(sessionId: string): string | undefined {
   };
   visit(root, 0);
   return found;
+}
+
+/**
+ * Applies the env-carried session prefs (the Hero's model/effort pick) to a
+ * freshly created pi session. Pure plumbing, exported for the unit test.
+ */
+export function applySessionPrefs(session: PiAgentSession, log: HarnessLog): void {
+  const pick = process.env.ZU_PI_MODEL ?? "";
+  if (pick.includes("/")) {
+    const [provider, id] = pick.split("/", 2);
+    const runtime: { getModel?: (provider: string, id: string) => unknown } = (session as unknown as {
+      modelRuntime?: { getModel?: (provider: string, id: string) => unknown };
+    }).modelRuntime;
+    const model = runtime?.getModel?.(provider, id);
+    if (model) {
+      void (session as unknown as { setModel: (model: unknown) => Promise<void> })
+        .setModel(model)
+        .catch((error: unknown) => log(`ZU_PI_MODEL ${pick}: setModel failed: ${String(error)}`));
+    } else {
+      log(`ZU_PI_MODEL ${pick}: unknown model, keeping pi's default`);
+    }
+  }
+  const effort = process.env.ZU_PI_EFFORT ?? "";
+  if (effort) {
+    const setter = session as unknown as { setThinkingLevel?: (level: string) => void | Promise<void> };
+    try {
+      const outcome = setter.setThinkingLevel?.(effort);
+      if (outcome && typeof (outcome as Promise<void>).catch === "function") {
+        (outcome as Promise<void>).catch((error: unknown) => log(`ZU_PI_EFFORT ${effort}: ${String(error)}`));
+      }
+    } catch (error) {
+      log(`ZU_PI_EFFORT ${effort}: ${String(error)}`);
+    }
+  }
 }

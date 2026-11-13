@@ -7982,10 +7982,12 @@ dependencies = [
  "manox-agent",
  "manox-ahp",
  "manox-ahp-runtime",
+ "manox-harness",
  "manox-session-core",
  "nsh-core",
  "serde_json",
  "tokio",
+ "tracing",
  "uuid",
 ]
 

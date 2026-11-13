@@ -38,6 +38,9 @@ pub struct PiProvider {
     /// Whether auth.json carries credentials for this provider: pi serves
     /// its models only then, so the picker marks the rest.
     pub has_auth: bool,
+    /// pi's wire api for this provider (`anthropic-messages`), when stated —
+    /// the manox bridge maps it onto the kernel's endpoint wire keys.
+    pub api: Option<String>,
     pub models: Vec<PiModelInfo>,
 }
 
@@ -100,6 +103,7 @@ fn list_at(dir: &std::path::Path) -> Result<Vec<PiProvider>, String> {
                 })
                 .collect();
             providers.push(PiProvider {
+                api: entry.api,
                 has_auth: auth.contains_key(&id),
                 id,
                 name: entry.name.unwrap_or_default(),
@@ -114,6 +118,7 @@ fn list_at(dir: &std::path::Path) -> Result<Vec<PiProvider>, String> {
 #[derive(Deserialize)]
 struct ProviderDoc {
     name: Option<String>,
+    api: Option<String>,
     models: Option<Vec<ModelDoc>>,
 }
 
