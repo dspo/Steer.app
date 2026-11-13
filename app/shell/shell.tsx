@@ -2,10 +2,7 @@ import { keymap, List, PanResponder, Scroll, signal, Text, token, View } from "n
 import { DockArea, Input, Menu, MenuItem, MenuSeparator, type DockAreaLayout } from "nsh/base";
 import { Window } from "nsh/desktop";
 import { containerTitle } from "../canvas/titles";
-import { loadSettings, setSidebarWidth, sidebarWidth, SIDEBAR_DEFAULT_WIDTH } from "../stores/settings";
-import { setSlashActions } from "../stores/slash";
-import { connect, disconnect, lastError, phase, recovered, retry, type EnginePhase } from "../stores/engine";
-import { piTransport } from "../harness/pi-acp/acp";
+import { loadSettings, setSidebarWidth, sidebarWidth, SIDEBAR_DEFAULT_WIDTH } from "./settings";
 import {
   closeSheet,
   activeContainerId,
@@ -17,14 +14,13 @@ import {
   liveContainers,
   loadContainers,
   onPanelActive,
-  openFilesSheet,
   openHomeSheet,
-  openPath,
   setLayout,
   setZoom,
+  sheetOrder,
   switchContainer,
   zoomedPanel,
-} from "../stores/containers";
+} from "../core/containers";
 import {
   containerProject,
   containersIn,
@@ -32,23 +28,15 @@ import {
   openHero,
   orderedProjects,
   projectError,
-} from "../stores/projects";
-import { ProjectDialog } from "../sheets/hero";
-import { panelIds } from "../stores/dock";
-import { error as sessionError, refreshSessions, sessions } from "../stores/sessions";
+} from "../core/projects";
+import { ProjectDialog, openProjectDialog } from "./project-dialog";
+import { panelIds } from "../core/dock";
 import { SheetBody, sheetGlyph, sheetTitle } from "../canvas/sheets";
-import { externalKindLabel } from "../stores/terminals";
-import { saveActiveEditor } from "../stores/editors";
-import { openChangesSheet, openHistorySheet } from "../stores/git";
-import { openProblemsSheet } from "../sheets/lsp-ui";
+import { dispatchIntent, moduleSearch, titlebarActions, type SearchHit } from "../core/registry";
+import { setShellActions } from "../core/shell-actions";
 import { K, t } from "../ui/i18n";
-
-import { UIHost, unsupportedMethods } from "../ui/ui-host";
-import { dropBrowserPages, openBrowserSheet } from "../stores/browser";
-import {
-  openActiveInVSCode,
-} from "../stores/vscode";
-import { containerMatches, sessionMatches } from "../stores/search";
+import { openActiveInVSCode } from "./vscode";
+import { containerMatches } from "./search";
 import { Chip, Dot, Glyph, type GlyphName, motionStyle, shadowCard, shadowRaised } from "../ui/ui";
 import { TabBarPlus } from "../canvas/tab-plus";
 
@@ -57,31 +45,18 @@ import { TabBarPlus } from "../canvas/tab-plus";
  * status bar. A container owns one canvas and its layout stash; switching a
  * container saves the current DockArea tree, then restores the target's.
  *
- * The titlebar is Steer's single row: a sidebar toggle, a window-centered
- * session picker, and "open the active project in VS Code" + the tools
- * overflow. There is no bottom status bar: a compact inline indicator carries
+ * The titlebar is a single row: a sidebar toggle, the window drag band,
+ * "open the active project in VS Code" and the tools overflow. There is no bottom status bar: a compact inline indicator carries
  * an engine state only while it is not the normal connected state, and the
  * overflow holds the engine controls.
  */
 
 /**
- * Boots the shell: loads the containers, the projects and the settings, then
- * nothing else waits on a process. Since the cutover the default transport
- * is the per-turn ACP harness — there is no sidecar to start and no socket
- * to dial, and the folds read `zu/state` files directly. The legacy engine
- * transport (`ZU_PI_TRANSPORT=engine`) still connects first, because its
- * pi sessions ride the sidecar.
+ * Boots the shell: loads the containers, the projects and the settings. There
+ * is no process to start and no socket to dial — every read is a `zu/state`
+ * file and every conversation is a per-turn harness process owned by a module.
  */
 export async function bootShell(): Promise<void> {
-  if (piTransport() === "engine") {
-    await connect();
-    if (phase() === "connected") {
-      await loadContainers();
-      await loadProjects();
-      await loadSettings();
-    }
-    return;
-  }
   await loadContainers();
   await loadProjects();
   await loadSettings();
@@ -105,24 +80,6 @@ function shortPath(path: string): string {
   const parts = path.split("/").filter(Boolean);
   return parts.slice(-2).join("/");
 }
-
-const PHASE_KEY: Record<EnginePhase, string> = {
-  stopped: K.phase.stopped,
-  starting: K.phase.starting,
-  connected: K.phase.connected,
-  recovering: K.phase.recovering,
-  incompatible: K.phase.incompatible,
-  error: K.phase.error,
-};
-
-const PHASE_TINT: Record<EnginePhase, string> = {
-  stopped: "faint",
-  starting: "warn",
-  connected: "up",
-  recovering: "warn",
-  incompatible: "destructive",
-  error: "destructive",
-};
 
 /** The titlebar's height: compact, with the traffic lights still centered. */
 const TITLEBAR_HEIGHT = 40;
@@ -246,9 +203,7 @@ function ContainerRow(props: { container: any }) {
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           <Text style={{ fontSize: 10.5, color: token("faint"), numberOfLines: 1 }}>{shortPath(container().cwd)}</Text>
           <Text style={{ fontSize: 10.5, color: token("faint") }}>
-            {container().kind === "Pi"
-              ? t(K.container.sessions, { count: container().sessions.length })
-              : externalKindLabel(container().kind)}
+            {String((sheetOrder()[container().id] ?? []).length)}
           </Text>
         </View>
       </View>
@@ -258,14 +213,7 @@ function ContainerRow(props: { container: any }) {
           testID={`archive-${container().id}`}
           accessibilityLabel={`${t(K.container.archive)} ${containerTitle(container())}`}
           class="h-6 w-5 items-center justify-center rounded-lg hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-          onPress={() =>
-            void archiveContainer(container().id).then(() => {
-              // The container's browser state is UI only; it goes with it.
-              if (!containers().some((row) => row.id === container().id)) {
-                dropBrowserPages(container().id);
-              }
-            })
-          }
+          onPress={() => void archiveContainer(container().id)}
         >
           <Glyph name="archive" size={11} tint={token("faint")} />
         </View>
@@ -349,21 +297,15 @@ function RecentGroup() {
   );
 }
 
-/** The first text of a session row. */
-function sessionLabel(row: any): string {
-  return row.name || row.preview || row.id;
-}
-
 type SearchEntry =
   | { kind: "section"; key: string; label: string; count: number }
   | { kind: "container"; key: string; container: any }
-  | { kind: "session"; key: string; session: any };
+  | { kind: "hit"; key: string; hit: SearchHit };
 
 /**
- * The filtering view: container hits (title/cwd/project), then session hits
- * (name/preview/cwd/path). The all-sessions list is not part of the resting
- * sidebar; it appears only while a query is active, which is the one place
- * the shell still shows sessions that no container holds.
+ * The filtering view: container hits (title/cwd/project), then the hits the
+ * registered modules contribute (a harness's own conversation index). The
+ * resting sidebar never lists one.
  */
 function searchEntries(): SearchEntry[] {
   const query = sidebarQuery();
@@ -376,33 +318,30 @@ function searchEntries(): SearchEntry[] {
       entries.push({ kind: "container", key: `container:${container.id}`, container });
     }
   }
-  const sessionHits = sessions().filter((session) => sessionMatches(session, query));
-  if (sessionHits.length > 0) {
-    entries.push({ kind: "section", key: "section-sessions", label: t(K.sidebar.sessions), count: sessionHits.length });
-    for (const session of sessionHits) {
-      entries.push({ kind: "session", key: `session:${session.path}`, session });
-    }
+  const hits = moduleSearch(query);
+  if (hits.length > 0) {
+    entries.push({ kind: "section", key: "section-sessions", label: t(K.sidebar.sessions), count: hits.length });
+    for (const hit of hits) entries.push({ kind: "hit", key: `hit:${hit.id}`, hit });
   }
   return entries;
 }
 
-/** A session hit: opens (or attaches) the session's own container. */
-function SessionSearchRow(props: { session: any }) {
+/** One module search hit: opens whatever the owning module says. */
+function SearchHitRow(props: { hit: SearchHit }) {
   return (
     <View
       role="button"
-      testID={`session-result-${props.session.id}`}
-      accessibilityLabel={`Open ${sessionLabel(props.session)}`}
+      testID={`search-hit-${props.hit.id}`}
+      accessibilityLabel={`Open ${props.hit.title}`}
       class="hover:bg-hover active:bg-accent/60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
       style={{ marginHorizontal: 8, marginVertical: 1, paddingHorizontal: 7, paddingVertical: 6, borderRadius: 10, gap: 2, ...motionStyle("medium") }}
-      onPress={() => void openPath(props.session.path)}
+      onPress={() => props.hit.open()}
     >
-      <Text style={{ fontSize: 12.5, color: token("foreground"), numberOfLines: 1 }}>{sessionLabel(props.session)}</Text>
+      <Text style={{ fontSize: 12.5, color: token("foreground"), numberOfLines: 1 }}>{props.hit.title}</Text>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-        <Text style={{ fontSize: 10.5, color: token("faint"), numberOfLines: 1 }}>{shortPath(props.session.cwd)}</Text>
+        <Text style={{ fontSize: 10.5, color: token("faint"), numberOfLines: 1 }}>{props.hit.subtitle}</Text>
         <View style={{ flex: 1 }} />
-        <Text style={{ fontSize: 10.5, color: token("faint") }}>{`${props.session.messageCount}`}</Text>
-        <Text style={{ fontSize: 10.5, color: token("faint") }}>{relative(props.session.modified)}</Text>
+        <Text style={{ fontSize: 10.5, color: token("faint") }}>{props.hit.meta ?? ""}</Text>
       </View>
     </View>
   );
@@ -550,7 +489,7 @@ function Sidebar() {
         }
       >
         <List
-          testID="session-list"
+          testID="search-results"
           each={searchEntries()}
           keyExtractor={(entry) => entry.key}
           style={{ flex: 1 }}
@@ -565,44 +504,9 @@ function Sidebar() {
             const row = entry();
             if (row.kind === "section") return <SearchSection label={row.label} count={row.count} />;
             if (row.kind === "container") return <ContainerRow container={row.container} />;
-            return <SessionSearchRow session={row.session} />;
+            return <SearchHitRow hit={row.hit} />;
           }}
         </List>
-      </If>
-    </View>
-  );
-}
-
-/**
- * The engine's inline state: a tinted dot, with words only while it is not
- * the normal connected state. Pressing it retries a stopped or failed
- * engine, so the old status bar's retry affordance is still one gesture.
- * The ACP transport has no resident process to watch — no dot at all.
- */
-function EngineIndicator() {
-  const label = () => t(PHASE_KEY[phase()]);
-  const abnormal = () => phase() !== "connected";
-  if (piTransport() !== "engine") return null;
-  const retryEngine = () => {
-    if (phase() === "stopped") void bootShell();
-    else if (phase() !== "starting" && phase() !== "recovering") void retry();
-  };
-  return (
-    <View
-      role="button"
-      testID="engine-state"
-      accessibilityLabel={label()}
-      tooltip={label()}
-      disabled={!abnormal()}
-      class="h-6 flex-row items-center gap-1.5 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-      style={{ ...motionStyle("fast") }}
-      onPress={() => {
-        if (abnormal()) retryEngine();
-      }}
-    >
-      <Dot tint={token(PHASE_TINT[phase()] as any)} size={5.5} />
-      <If when={abnormal()}>
-        <Text class="text-[10px] font-medium text-muted-foreground">{label()}</Text>
       </If>
     </View>
   );
@@ -621,10 +525,7 @@ function TitleBar() {
   // bar is hidden; reserve its reported width (plus the row's own inset).
   const padLeft = () => (titlebar().height > 0 ? titlebar().left + 12 : 14);
   const hasContainer = () => activeContainerId() !== null;
-  const engineTransport = () => piTransport() === "engine";
-  const canStop = () => engineTransport() && (phase() === "connected" || phase() === "starting" || phase() === "recovering");
-  const canRetry = () => engineTransport() && phase() !== "connected" && phase() !== "starting";
-  const failure = () => sessionError() ?? containerError() ?? projectError() ?? lastError();
+  const failure = () => containerError() ?? projectError();
   const openEditor = async () => {
     const result = await openActiveInVSCode();
     if (result.kind === "no-folder") note(t(K.titlebar.noFolder));
@@ -650,9 +551,6 @@ function TitleBar() {
         />
       </View>
       <View style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, minWidth: 0 }}>
-        <If when={!!recovered()}>
-          <Chip label={t(K.engine.recovered, { generation: recovered()?.to ?? 0 })} tint={token("up")} />
-        </If>
         <If when={!!failure()}>
           <Text class="text-[10px] text-destructive" style={{ maxWidth: 260, flexShrink: 1, numberOfLines: 1 }}>
             {failure() ?? ""}
@@ -663,7 +561,6 @@ function TitleBar() {
             {shellNote() ?? ""}
           </Text>
         </If>
-        <EngineIndicator />
         <BarIcon
           testID="open-vscode"
           label={t(K.titlebar.openVSCode)}
@@ -687,46 +584,18 @@ function TitleBar() {
           popupClass="rounded-xl border border-border bg-popover p-1"
           popupStyle={{ width: 196, boxShadow: shadowRaised() }}
         >
-          <MenuItem testID="open-files" disabled={!hasContainer()} class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => openFilesSheet()}>
-            <Text class="text-[12px] text-foreground">{t(K.files.title)}</Text>
-          </MenuItem>
-          {/* The browser is the one sheet a canvas without a container can
-              hold (DESIGN §4.1); the rest name a workspace. */}
-          <MenuItem testID="open-browser" class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => openBrowserSheet()}>
-            <Text class="text-[12px] text-foreground">{t(K.browser.open)}</Text>
-          </MenuItem>
-          <MenuItem testID="open-changes" disabled={!hasContainer()} class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => openChangesSheet()}>
-            <Text class="text-[12px] text-foreground">{t(K.git.changesTitle)}</Text>
-          </MenuItem>
-          <MenuItem testID="open-history" disabled={!hasContainer()} class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => openHistorySheet()}>
-            <Text class="text-[12px] text-foreground">{t(K.git.historyTitle)}</Text>
-          </MenuItem>
-          <MenuItem testID="open-problems" disabled={!hasContainer()} class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => openProblemsSheet()}>
-            <Text class="text-[12px] text-foreground">{t(K.lsp.problems)}</Text>
-          </MenuItem>
-
-          <MenuItem testID="engine-refresh" class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => void refreshSessions()}>
-            <Text class="text-[12px] text-foreground">{t(K.engine.refresh)}</Text>
-          </MenuItem>
-          <If when={canRetry()}>
-            <MenuItem
-              testID="engine-retry"
-              class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-              onSelect={() => void (phase() === "stopped" ? bootShell() : retry())}
-            >
-              <Text class="text-[12px] text-foreground">{t(K.engine.retry)}</Text>
-            </MenuItem>
-          </If>
-          <If when={canStop()}>
-            <MenuItem testID="engine-stop" class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent" onSelect={() => void disconnect()}>
-              <Text class="text-[12px] text-foreground">{t(K.engine.stop)}</Text>
-            </MenuItem>
-          </If>
-          <If when={unsupportedMethods().length > 0}>
-            <MenuItem testID="unsupported-methods" disabled class="rounded-lg px-2.5 py-1.5">
-              <Text class="text-[12px] text-muted-foreground">{t(K.status.unsupported, { count: unsupportedMethods().length })}</Text>
-            </MenuItem>
-          </If>
+          <Each of={titlebarActions()} key={(action) => action.id}>
+            {(action) => (
+              <MenuItem
+                testID={action().testID}
+                disabled={action().enabled ? !action().enabled?.() : false}
+                class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+                onSelect={() => action().onPress()}
+              >
+                <Text class="text-[12px] text-foreground">{action().label()}</Text>
+              </MenuItem>
+            )}
+          </Each>
         </Menu>
         <View style={{ width: 10 }} />
       </View>
@@ -890,17 +759,16 @@ function Canvas() {
 
 /** The workbench: titlebar · sidebar + canvas (no boot side effects). */
 export function Workbench() {
-  // The app's Mod+S saves the editor sheet on screen; a binding made while a
-  // component renders goes with the component, and the workbench lives as
-  // long as the app.
-  keymap.bind("mod+s", () => saveActiveEditor());
-  // `/resume` (the composer's slash table) opens the sidebar's search: the
-  // shell owns that surface, so it installs the action.
-  setSlashActions({
+  // The app's Mod+S saves the editor sheet on screen; the files module owns
+  // the action, so the shell dispatches an intent.
+  keymap.bind("mod+s", () => void dispatchIntent("editor.saveActive", {}, { containerId: activeContainerId() }));
+  // Host services modules may call: the sidebar search and the project dialog.
+  setShellActions({
     openSidebarSearch: () => {
       sidebarVisible.set(true);
       sidebarFilterOpen.set(true);
     },
+    openProjectDialog: (onCreated) => openProjectDialog(onCreated),
   });
   // New is a scratch canvas wherever the user is; the sidebar's button and
   // a project row's `+` reach the same canvas.
@@ -923,7 +791,6 @@ export function Workbench() {
         </View>
         <Canvas />
       </View>
-      <UIHost />
       <ProjectDialog />
     </View>
   );

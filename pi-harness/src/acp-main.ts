@@ -1,11 +1,10 @@
 /**
  * pi-harness distro, ACP entry: the agent side of ACP v1 over stdio ndjson
- * JSON-RPC 2.0 (docs/zu-pi-harness-ARCHITECTURE.v2.md §4/§5).
+ * JSON-RPC 2.0 (docs/pi-acp-ARCHITECTURE.md §4/§5).
  *
  * stdout carries the protocol and nothing else — every log line goes to
  * stderr. The process serves one connection; the client closing stdin is the
  * graceful exit (flush and dispose), signals are the fallback. The legacy
- * loopback engine (src/server.ts) stays the app's engine until v2 P4.
  */
 
 import { ndJsonStream } from "@agentclientprotocol/sdk";

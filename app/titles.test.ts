@@ -1,12 +1,16 @@
 import { expect, test } from "nsh/test";
-import { activeContainerId, containers, layout, noteSheetOpened, setLayout, sheetOrder } from "./stores/containers";
-import { appendSheet, defaultLayoutForSessions, removeSheet, sessionSheetId } from "./stores/dock";
-import { applyBrowserNavigation, browserSheetId, ensureBrowserPage } from "./stores/browser";
-import { seedSession } from "./stores/sessions";
-import { terminalInfo, terminalSheetId } from "./stores/terminals";
-import { editorSheetId } from "./stores/editors";
+import { activeContainerId, containers, layout, noteSheetOpened, setLayout, sheetOrder } from "./core/containers";
+import { appendSheet, removeSheet } from "./core/dock";
+import { defaultLayoutForSessions, sessionSheetId } from "./modules/pi/sheets";
+import { applyBrowserNavigation, browserSheetId, ensureBrowserPage } from "./modules/browser/store";
+import { seedSession } from "./modules/pi/sessions";
+import { terminalInfo, terminalSheetId } from "./domains/pty";
+import { editorSheetId } from "./modules/files/editors";
 import { sheetTitle } from "./canvas/sheets";
 import { containerTitle } from "./canvas/titles";
+import { registerAllModules } from "./modules/register-all";
+
+registerAllModules();
 
 // §2.1-5 (S2): a container's title is its earliest-created surviving sheet's,
 // and each kind names itself — a session its name, a terminal its OSC title,
@@ -92,13 +96,10 @@ test("opening and closing sheets records creation order; an empty one falls back
   // Creation order, not tab order: s2 was opened first.
   expect(sheetOrder().c1).toEqual([sessionSheetId("s2"), sessionSheetId("s1")]);
 
-  // No sheets at all: the captain's name, else the folder.
+  // No sheets at all: the folder is all a container is.
   setLayout(removeSheet(removeSheet(layout(), sessionSheetId("s2")), sessionSheetId("s1")));
   expect(sheetOrder().c1).toEqual([]);
-  expect(containerTitle(container)).toBe("Alpha");
-  // A container without a named captain falls back to its folder.
-  const unnamed = { ...container, sessions: [] };
-  expect(containerTitle(unnamed)).toBe("alpha");
+  expect(containerTitle(container)).toBe("alpha");
 });
 
 test("a workspace sheet opened first names the container", () => {

@@ -3,18 +3,15 @@ import {
   SCRATCH_SHEET,
   activePanelIds,
   appendSheet,
-  defaultLayoutForSessions,
   hasSheet,
   homeSheetContainer,
   homeSheetId,
-  layoutSessions,
   panelIds,
   replaceSheet,
   sheetCount,
   pruneLayout,
-  sessionIdOfSheet,
-  sessionSheetId,
-} from "./stores/dock";
+} from "./core/dock";
+import { defaultLayoutForSessions, layoutSessions, sessionIdOfSheet, sessionSheetId } from "./modules/pi/sheets";
 
 test("a container's default layout holds one sheet per session", () => {
   const layout = defaultLayoutForSessions(["a", "b"]);
@@ -47,9 +44,9 @@ test("a zoom leaves only the zoomed panel visible (the throttle's input)", () =>
 
 test("pruning drops sheets of sessions a container no longer has", () => {
   const layout = defaultLayoutForSessions(["a", "b"]);
-  const pruned = pruneLayout(layout, ["a"]);
+  const pruned = pruneLayout(layout, new Set(["session:a"]));
   expect(layoutSessions(pruned)).toEqual(["a"]);
-  const emptied = pruneLayout(layout, []);
+  const emptied = pruneLayout(layout, new Set());
   expect(layoutSessions(emptied)).toEqual([]);
   expect(activePanelIds(emptied)).toEqual([]);
 });

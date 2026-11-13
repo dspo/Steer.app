@@ -1,20 +1,19 @@
 import { expect, test } from "nsh/test";
-import { Engine, Fs, State } from "zu/native";
-import { readState, resetStateCache, writeState, STATE_VERSION } from "./stores/zu-state";
+import { Fs, State } from "zu/native";
+import { readState, resetStateCache, writeState, STATE_VERSION } from "./domains/state";
 import {
   loadContainers,
-  createContainer,
   archiveContainer,
   containers,
   activeContainerId,
   layout,
   flushLayout,
   setMembershipWriter,
-} from "./stores/containers";
-import { loadProjects, createProject, projects, membership, setProjectTransport } from "./stores/projects";
-import { loadSettings, setSidebarWidth, sidebarWidth, setSettingsTransport } from "./stores/settings";
-import { refreshSessions, sessions } from "./stores/sessions";
-import { setPiTransport } from "./harness/pi-acp/acp";
+} from "./core/containers";
+import { createContainer } from "./modules/pi/container";
+import { loadProjects, createProject, projects, membership, setProjectTransport } from "./core/projects";
+import { loadSettings, setSidebarWidth, sidebarWidth, setSettingsTransport } from "./shell/settings";
+import { refreshSessions, sessions } from "./modules/pi/sessions";
 
 // The v2 writer inversion (B2): the registry, the projects, the settings,
 // the layouts and the session list are the UI's folds over `zu/state` files
@@ -25,10 +24,9 @@ import { setPiTransport } from "./harness/pi-acp/acp";
 const stateDir = `/tmp/zu-state-test-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const agentDir = `/tmp/zu-state-agent-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
-Engine.setStateDir(stateDir);
-Engine.setNoExtensions(true);
+State.setStateDir(stateDir);
 State.setAgentDir(agentDir);
-setPiTransport("acp"); // containers mint ACP local captains: no process at all
+await Fs.mkdir("/tmp", agentDir.slice("/tmp/".length));
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -37,13 +35,14 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  * opposite: the fold works with no engine of ours running, so the setup
  * clears whatever a previous file left behind before the assertions look. */
 async function ensureNoEngine(): Promise<void> {
-  await Engine.kill();
   await sleep(50);
 }
 
 /** Writes one pi session file shaped like pi's own, through `zu/fs`. */
 async function writeSessionFile(id: string, body: string[]): Promise<string> {
   const dir = `sessions/--tmp-demo--`;
+  await Fs.mkdir("/tmp", agentDir.slice("/tmp/".length));
+  await Fs.mkdir(agentDir, "sessions");
   await Fs.mkdir(agentDir, dir);
   const name = `2026-07-20T03-38-58-867Z_${id}.jsonl`;
   const header = `{"type":"session","version":3,"id":"${id}","timestamp":"2026-07-20T03:38:58.868Z","cwd":"/tmp/demo"}\n`;
@@ -53,8 +52,6 @@ async function writeSessionFile(id: string, body: string[]): Promise<string> {
 
 test("the engine is not running and the state files are ours", async () => {
   await ensureNoEngine();
-  expect(Engine.pid()).toBe(0);
-  expect(Engine.port()).toBe(0);
   expect((await State.read("registry.json")) === null).toBe(true);
 });
 
@@ -90,8 +87,7 @@ test("containers are created, archived and restored from the registry fold", asy
   expect(sessionId).toBeTruthy();
   expect(sessionId.startsWith("acp-local-")).toBe(true);
   expect(containers().length).toBe(1);
-  expect(containers()[0].kind).toBe("Pi");
-  expect(containers()[0].sessions[0].sessionId).toBe(sessionId);
+  expect(containers()[0].id).toBe(`pi:${sessionId}`);
   expect(activeContainerId()).toBe(containers()[0].id);
   const containerId = containers()[0].id;
   // The registry write-through landed on disk, engine-shaped (the write is
@@ -200,10 +196,8 @@ test("the session list is a file fold with an mtime watermark", async () => {
 }, 30000);
 
 test("leaves the shared runner clean", () => {
-  Engine.setStateDir("");
+  State.setStateDir("");
   State.setAgentDir("");
-  Engine.setNoExtensions(false);
-  setPiTransport(null);
   setMembershipWriter(null);
   resetStateCache();
 });

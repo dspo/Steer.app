@@ -30,11 +30,6 @@
     "../native/manox"
   ],
   "capabilities": {
-    "network": {
-      "hosts": [
-        "127.0.0.1"
-      ]
-    },
     "process": {
       "env": [
         "ZU_PORT",

@@ -15,31 +15,35 @@
 | C8 | 三包布局：`app/` + `native/` + `pi-harness/`，`contracts/` 留根 |
 | ACP cutover | P0–P3：distro ACP 入口、`zu/acp` 泵、注册表/布局写者反转、控制面切换（默认 ACP） |
 | manox M1 | 真宿主 in-proc（manox v0.9.1）、panic 边界、折叠对账门禁、能对话回路 |
+| sheet 模块化 | S0–S3 全部落地（`contracts/module.ts`、`app/core/registry.ts`、`app/domains/`、`app/modules/`、容器去 harness 身份、通知按 sheet id、旧 wire 删除）；门禁 215 用例 207 通过 / 8 skip |
 
-下一批只有一条主线：**sheet 模块化（S0–S3）**。它同时收掉「pi 是内置、其他是扩展」的耦合。
+下一批是产品打磨（见 §2 的剩余项），不再有结构性迁移。
 
-## 1. 主线：sheet 模块化
+## 1. sheet 模块化（已完成）
 
-目标与契约见 [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md)。每阶段独立验收、全量回绿；
-行为不变优先于结构好看。
+契约与目标见 [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md)。落地结果：
 
-| 阶段 | 内容 | 验收 |
+| 阶段 | 产出 | 证据 |
 |---|---|---|
-| **S0 门禁与契约** | `contracts/module.ts`；`core/registry` + `registerModule`；`home` 与 `browser` 先走新路径 | 依赖门禁上线；browser（零 native）跑通；全量测试绿 |
-| **S1 域收口** | 拆 `app/domains/`；sheet 不再 import `zu/native` 的类型 | `zu/native` 只出现在 `domains/`；测试绿 |
-| **S2 工作台模块化** | files/git/terminal/problems 搬成模块；删 `SheetKind` 闭集与壳侧分支 | `canvas/sheets.tsx` 只剩 registry + 未知 kind 占位 |
-| **S3 harness 模块化** | pi/manox 搬成模块；容器去 `kind`/`sessions`；通知按 sheet id；删旧 wire（P4） | `App.tsx` 只 import 模块；壳零 harness 词汇；旧 wire 零残留 |
+| S0 | `contracts/module.ts`、`app/core/registry.ts`、`registerModule/startModules`；home/browser 先注册 | `sheet-modules.test.tsx`；`check-layers.mjs` |
+| S1 | `app/domains/`（fs/git/lsp/pty/state/pimodels/acp/manox/picker/instance）；`zu/native` 只在此出现 | `check-layers.mjs` 零违例 |
+| S2 | files/git/terminal/problems 模块化；`canvas/sheets.tsx` 只剩 registry 查找 + 未知占位 | `nsh test app` 全绿 |
+| S3 | pi/manox 模块化；容器去 `kind`/`sessions`；通知按 sheet id；旧 wire 与 `pi-engine` 删除 | 同上；pi-harness 36 单测、manox 门禁绿 |
 
-每阶段的迁移清单（现存违例即 checklist）在目标文档 §1。
+## 2. 遗留能力项（架构落地之外，已归档）
 
-## 2. 独立修复（可与主线并行）
+这些不是 sheet 模块化的缺口——S0–S3 的验收与它们无关；它们是 P4 删除 legacy engine 后的能力面，
+按「下一个产品批次」归档，不阻塞本次交付：
 
-| # | 问题 | 要点 | 验收 |
+| # | 问题 | 现状与原因 | 后继条件 |
 |---|---|---|---|
-| F1 | 打包缺 `pi-acp` | `script/bundle-mac.sh` 只复制 `pi-engine`；ACP 默认路径需要 `Contents/Helpers/pi-acp` | 打包后 app 能跑一轮真实 pi turn；脚本断言两个入口都在 |
-| F2 | ACP 的审批与扩展 UI | `session/request_permission` 与扩展 UI 桥在 ACP 映射里仍缺席 | agent 停下提问时能应答；至少一条 stub client 测试 |
-| F3 | 模型/effort 的真源 | Hero 对两条 harness 都用 pi catalog；按模块贡献 picker | manox 用自己的 provider 集（或明确记录共用 pi 的裁决） |
-| F4 | 旧 wire 的残留面 | `ZU_PI_TRANSPORT=engine` 仍可走；P4 未删 | 与 S3 同批删除，零残留 |
+| G1 | ACP 的审批与扩展 UI | 旧引擎的 `bindExtensions`/扩展 UI 桥随 P4 删除；ACP 映射尚未覆盖 `session/request_permission` | ACP 权限卡阶段；在那之前不声称扩展 UI 可用 |
+| G2 | 会话内模型/effort/压缩 | ACP 未映射 `/model`、`/thinking`、`/compact`；Hero 的首次选择已生效（Q104），UI 对三条命令给明确提示 | distro 补齐 modes/setModel/compact 或 x-zu 等价方法 |
+| G3 | 子代理数据面 | 旧 `dispatch` 扩展随 legacy engine 删除；ACP 无 dispatch（P5 generic agents），名册显示不可用 | P5 或把名册入口从产品面移除 |
+| G4 | 打包产物真机启动 | `script/bundle-mac.sh` 已绿、`Helpers` 含 `pi-acp`；未在打包后的 app 里跑一轮真实 turn | 发布前的真机冒烟 |
+
+**本轮移除并归档**：legacy engine wire（`contracts/protocol.*`、`stores/engine.ts`、`pi-engine`）、
+扩展 UI 桥、子代理 dispatch 数据面、会话内模型/思考/压缩的旧通道。决策见 Q107。
 
 ## 3. 挂起 / 不做
 
@@ -47,7 +51,7 @@
 - **归档容器的恢复入口**：按 Q34 暂不提供 UI。
 - **托盘点击、真实通知投递、真实更新安装、第二进程实拦**：需签名 bundle 与真机，未验证。
 - **manox 的扩展产品面**：Steer 式审批瀑布、draft、compact、fetchTurns、模型切换、workspaces 同步等，
-  按「能对话」边界不做（原双 harness 设计 §4.4）。
+  按「能对话」边界不做（范围裁决见 [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md) §8）。
 - **B2 markdown 偶发纯文本**：现场已丢失，保留样本后再修。
 
 ## 4. 门禁
@@ -59,7 +63,8 @@ nsh test app                                    # 全量（ZU_SKIP_LIVE=1 跳过
 ZU_MANOX_GATE=1 nsh test app/manox.test.ts      # manox 折叠对账/panic 恢复（hermetic）
 MANOX_RUN_LIVE=1 ZU_MANOX_GATE=1 nsh test app/manox.test.ts   # 真内核 live turn（可选）
 ZU_MANOX_GATE=1 nsh test app/manox.ui.test.tsx  # manox sheet 门禁
-script/bundle-mac.sh                            # 打包冒烟（含 Helpers 断言）
+node script/check-layers.mjs                    # 依赖门禁（模块/域/主干）
+script/bundle-mac.sh                            # 打包冒烟（Helpers/pi-acp 断言）
 ```
 
 依赖门禁（S0 起成为 `nsh check` 的前置）：

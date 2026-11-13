@@ -6,10 +6,13 @@ import {
   layout,
   loadContainers,
   setContainerTransport,
-} from "../stores/containers";
-import { phase } from "../stores/engine";
-import { error as sessionError, seedSession } from "../stores/sessions";
-import { terminalInfo } from "../stores/terminals";
+} from "../core/containers";
+import { error as sessionError, seedSession } from "../modules/pi/sessions";
+import { terminalInfo } from "../domains/pty";
+import { sheetOrder } from "../core/containers";
+import { registerAllModules } from "../modules/register-all";
+
+registerAllModules();
 
 /**
  * §2.1.1 F2: a Pi container's Hero opens terminals *of that container*.
@@ -87,9 +90,9 @@ function Probe() {
   );
 }
 
+sheetOrder.set({ c1: ["session:s1", "home:c1"] });
 setContainerTransport(transport);
 void loadContainers().then(() => {
-  phase.set("connected");
   sessionError.set(null);
   containerError.set(null);
   mount(() => (

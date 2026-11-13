@@ -1,9 +1,11 @@
 import { mount } from "nsh";
 import { Workbench } from "../shell/shell";
-import { containerError, loadContainers, setContainerTransport } from "../stores/containers";
-import { phase } from "../stores/engine";
-import { error as sessionError } from "../stores/sessions";
-import { seedSession } from "../stores/sessions";
+import { containerError, loadContainers, setContainerTransport, sheetOrder } from "../core/containers";
+import { error as sessionError } from "../modules/pi/sessions";
+import { seedSession } from "../modules/pi/sessions";
+import { registerAllModules } from "../modules/register-all";
+
+registerAllModules();
 
 /**
  * Two containers without an engine: the container store talks to an
@@ -57,6 +59,12 @@ const records = [
     sessions: [{ sessionId: "s2", path: "/tmp/beta.jsonl", name: "Beta" }],
   },
 ] as any[];
+
+sheetOrder.set({
+  c1: ["session:s1", "session:s3"],
+  c2: ["session:s2"],
+  c3: ["session:s3", "session:s1"],
+});
 
 const layouts: Record<string, { layout: any; zoom: string | null }> = {
   c1: {
@@ -119,7 +127,6 @@ setContainerTransport(transport);
 void loadContainers().then(() => {
   // No engine in this fixture: the shell's status line is the only piece
   // that would otherwise show "connecting"/"offline".
-  phase.set("connected");
   sessionError.set(null);
   containerError.set(null);
   mount(Workbench);

@@ -6,10 +6,12 @@ import {
   layout,
   loadContainers,
   setContainerTransport,
-} from "../stores/containers";
-import { panelIds } from "../stores/dock";
-import { phase } from "../stores/engine";
-import { error as sessionError, seedSession } from "../stores/sessions";
+} from "../core/containers";
+import { panelIds } from "../core/dock";
+import { error as sessionError, seedSession } from "../modules/pi/sessions";
+import { registerAllModules } from "../modules/register-all";
+
+registerAllModules();
 
 /**
  * Q69's own fixture: one Pi container whose canvas is a session and its
@@ -83,7 +85,6 @@ function Probe() {
 
 setContainerTransport(transport);
 void loadContainers().then(() => {
-  phase.set("connected");
   sessionError.set(null);
   containerError.set(null);
   mount(() => (

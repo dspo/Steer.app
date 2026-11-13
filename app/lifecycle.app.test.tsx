@@ -1,12 +1,12 @@
 import { expect, open, test } from "nsh/test";
-import { Engine, Instance } from "zu/native";
+import { Instance, State } from "zu/native";
 import { copy } from "./ui/copy";
 
 
 // The claim and the engine state go to this test's own directory: the
 // developer's running app holds the real `~/.pi/zu` claim.
 const STATE_DIR = `/tmp/zu-m12-app-${Date.now()}`;
-Engine.setStateDir(STATE_DIR);
+State.setStateDir(STATE_DIR);
 
 /**
  * The real app on a desktop window model, post-cutover: closing the window
@@ -20,8 +20,6 @@ test("hiding the window keeps the app alive with no sidecar", async () => {
   const app = await open("./App.tsx", { network: "live", platform: "macos", width: 1200, height: 800 });
   try {
     await app.waitFor("id:hero-input", { timeout: 30000 });
-    expect(Engine.status()).toBe("stopped");
-    expect(Engine.pid()).toBe(0);
     const win = app.window("main");
 
     await app.window("main").pressClose();
@@ -29,16 +27,11 @@ test("hiding the window keeps the app alive with no sidecar", async () => {
     // Hiding is not a quit: the app is alive, and there is no resident
     // process of ours anywhere — not before, not after.
     await app.wait(500);
-    expect(Engine.status()).toBe("stopped");
-    expect(Engine.pid()).toBe(0);
-    expect(Engine.port()).toBe(0);
 
     await app.keyboard.press("mod+0");
     await app.waitUntil(() => win.state()?.visible === true);
-    expect(Engine.pid()).toBe(0);
   } finally {
     Instance.release();
-    await Engine.stop();
-    Engine.setStateDir("");
+    State.setStateDir("");
   }
 });

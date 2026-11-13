@@ -1,7 +1,8 @@
 import { expect, test } from "nsh/test";
-import { containers } from "./stores/containers";
-import { containerMatches, sessionMatches } from "./stores/search";
-import { membership, projects } from "./stores/projects";
+import { containers } from "./core/containers";
+import { containerMatches } from "./shell/search";
+import { sessionMatches } from "./modules/pi/search";
+import { membership, projects } from "./core/projects";
 
 // The sidebar's search: case-insensitive containment over the faces a row
 // is known by. The rows themselves are the sidebar's; only the rules live

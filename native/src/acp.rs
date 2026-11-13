@@ -19,8 +19,7 @@
 //!
 //! When TSX names no command, the harness binary is resolved here: a packaged
 //! app's `Contents/Helpers/pi-acp` first, then the repository's build — the
-//! same policy as the legacy engine sidecar, and for the same reason (the UI
-//! cannot know the install location). An explicit `command` (tests, a stub
+//! UI cannot know the install location. An explicit `command` (tests, a stub
 //! agent) wins.
 
 use std::{

@@ -6,12 +6,14 @@ import {
   layout,
   loadContainers,
   setContainerTransport,
-} from "../stores/containers";
-import { editorDocs } from "../stores/editors";
-import { phase } from "../stores/engine";
-import { error as sessionError } from "../stores/sessions";
-import { baseName } from "../stores/fs";
+} from "../core/containers";
+import { editorDocs } from "../modules/files/editors";
+import { error as sessionError } from "../modules/pi/sessions";
+import { baseName } from "../domains/fs";
 import { GIT_CONTAINER, GIT_ROOT } from "./m9-paths";
+import { registerAllModules } from "../modules/register-all";
+
+registerAllModules();
 
 // The M9 acceptance fixture: the real `Workbench` (its top bar is the entry
 // the acceptance names) around one container whose cwd is a real repository.
@@ -80,7 +82,6 @@ void Storage.getItem("zu-m9-root")
   })
   .then(() => {
     activeContainerId.set(GIT_CONTAINER);
-    phase.set("connected");
     sessionError.set(null);
     containerError.set(null);
     mount(GitFixture);

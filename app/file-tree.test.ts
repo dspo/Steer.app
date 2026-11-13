@@ -6,17 +6,17 @@ import {
   editorSheetPath,
   encodePath,
   languageFor,
-} from "./stores/editors";
-import { ROOT_KEY, fileRowKey, fileRows, sortEntries, type DirState } from "./stores/file-tree";
-import { panelIds, removeSheet, visiblePanels, type DockAreaLayout } from "./stores/dock";
+} from "./modules/files/editors";
+import { ROOT_KEY, fileRowKey, fileRows, sortEntries, type DirState } from "./modules/files/file-tree";
+import { panelIds, removeSheet, visiblePanels, type DockAreaLayout } from "./core/dock";
 import {
   activeContainerId,
   containers,
   layout,
-  openFilesSheet,
   setContainerTransport,
-} from "./stores/containers";
-import { baseName, relativeTo } from "./stores/fs";
+} from "./core/containers";
+import { openFilesSheet } from "./modules/files/manifest";
+import { baseName, relativeTo } from "./domains/fs";
 
 // The M8 identities and tree helpers without a screen: an editor sheet id
 // must survive a layout stash (a container id with colons and a path with
@@ -128,12 +128,10 @@ test("the shell's files action opens the active container's tree sheet", () => {
   containers.set([
     {
       id: "pi:m8-files",
-      kind: "Pi",
       cwd: "/tmp",
       archived: false,
       createdAt: 0,
       updatedAt: 0,
-      sessions: [],
     },
   ]);
   activeContainerId.set("pi:m8-files");

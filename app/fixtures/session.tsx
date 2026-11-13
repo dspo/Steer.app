@@ -1,7 +1,7 @@
 import { mount } from "nsh";
-import { seedSession } from "../stores/sessions";
-import { SessionBody } from "../canvas/sheets";
-import { visiblePanels } from "../stores/dock";
+import { seedSession } from "../modules/pi/sessions";
+import { SessionBody } from "../modules/pi/view";
+import { visiblePanels } from "../core/dock";
 
 // A conversation with a fixed transcript: the sheet renders history, the
 // tool line and the assistant's prose without an engine.

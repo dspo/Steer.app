@@ -12,7 +12,7 @@ import {
   request,
   setManoxHermetic,
   startConnection,
-} from "./harness/manox/ahp";
+} from "./modules/manox/ahp";
 import {
   chatOf,
   chatResource,
@@ -20,7 +20,7 @@ import {
   isArchived,
   sendManoxMessage,
   sessionResource,
-} from "./harness/manox/stores";
+} from "./modules/manox/stores";
 import { sessionReducer } from "../contracts/ahp/reducers";
 import { SessionStatus, SessionLifecycle } from "../contracts/ahp/channels-session/state";
 import type { SessionState } from "../contracts/ahp/channels-session/state";

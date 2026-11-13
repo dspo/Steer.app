@@ -1,5 +1,5 @@
 import { expect, test } from "nsh/test";
-import type { DockAreaLayout, DockNode } from "./stores/dock";
+import type { DockAreaLayout, DockNode } from "./core/dock";
 import { tabBarBoxes } from "./canvas/tab-plus";
 
 /**

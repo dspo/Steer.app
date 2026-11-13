@@ -1,6 +1,6 @@
 import { expect, open, test } from "nsh/test";
 import { Fs, Git } from "zu/native";
-import { fileRowTestId } from "./stores/file-tree";
+import { fileRowTestId } from "./modules/files/file-tree";
 
 // M9's acceptance, through the real Workbench: the top bar opens Changes,
 // a real changed file is staged and committed there, and the test reads the

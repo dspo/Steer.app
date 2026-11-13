@@ -1,8 +1,8 @@
 //! The manox harness's in-proc pump: it owns the AHP host half as an
 //! application singleton and pushes its frames to TSX as opaque strings.
 //!
-//! The design (docs/nsh-pi-dual-harness-DESIGN.md §3.4) gives the in-proc leg
-//! three engineering boundaries, all landed here:
+//! The design (docs/sheet-module-ARCHITECTURE.md §8, docs/architecture.md §3.3)
+//! gives the in-proc leg three engineering boundaries, all landed here:
 //!
 //! - **Crash isolation is asymmetric** (the architecture's largest inherent
 //!   cost): there is no process boundary around the host half, so a panic

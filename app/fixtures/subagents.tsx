@@ -1,10 +1,12 @@
 import { mount, View } from "nsh";
 import { Workbench } from "../shell/shell";
-import { activeContainerId, containers, layout, setContainerTransport, syncVisible } from "../stores/containers";
-import { openSubagents, setSubagentTransport } from "../stores/subagents";
-import { seedSession } from "../stores/sessions";
-import { defaultLayoutForSessions } from "../stores/dock";
-import { phase } from "../stores/engine";
+import { activeContainerId, containers, layout, setContainerTransport, sheetOrder, syncVisible } from "../core/containers";
+import { openSubagents, setSubagentTransport } from "../modules/pi/subagents";
+import { seedSession } from "../modules/pi/sessions";
+import { defaultLayoutForSheets } from "../core/dock";
+import { registerAllModules } from "../modules/register-all";
+
+registerAllModules();
 
 seedSession("s1", [{ role: "assistant", text: "captain body" }], {
   path: "/tmp/captain.jsonl",
@@ -23,9 +25,9 @@ containers.set([
   },
 ] as any);
 activeContainerId.set("c1");
-layout.set(defaultLayoutForSessions(["s1"]));
+layout.set(defaultLayoutForSheets(["session:s1"]));
+sheetOrder.set({ c1: ["session:s1"] });
 syncVisible();
-phase.set("connected");
 
 const runs = [
   {

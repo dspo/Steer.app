@@ -6,20 +6,22 @@ import {
   layout,
   loadContainers,
   setContainerTransport,
-} from "../stores/containers";
-import { editorDocs, editorSheetId } from "../stores/editors";
-import { phase } from "../stores/engine";
-import { error as sessionError } from "../stores/sessions";
-import { baseName } from "../stores/fs";
+} from "../core/containers";
+import { editorDocs, editorSheetId } from "../modules/files/editors";
+import { error as sessionError } from "../modules/pi/sessions";
+import { baseName } from "../domains/fs";
 import {
   diagnosticsFor,
   lastReveal,
   lspServers,
   problemsFor,
   setLspCommandResolver,
-} from "../stores/lsp";
+} from "../domains/lsp";
 import { M11_UI_CONTAINER, M11_UI_ROOT, M11_UI_SERVER } from "./m11-paths";
-import { HoverCard } from "../sheets/lsp-ui";
+import { HoverCard } from "../ui/hover-card";
+import { registerAllModules } from "../modules/register-all";
+
+registerAllModules();
 
 // The M11 UI acceptance fixture: the real `Workbench` around one container
 // whose cwd is a real /tmp project. The language server is a **controlled
@@ -89,7 +91,6 @@ setContainerTransport(transport);
 
 void loadContainers().then(() => {
   activeContainerId.set(M11_UI_CONTAINER);
-  phase.set("connected");
   sessionError.set(null);
   containerError.set(null);
   mount(LspFixture);

@@ -1,8 +1,8 @@
 import { mount, signal, Text, View } from "nsh";
 import type { NotificationPermission } from "nsh";
-import { UpdatesDialog } from "../sheets/updates-ui";
-import { openUpdates, setUpdateService, type UpdateEnv } from "../stores/updates";
-import { setNotifier } from "../stores/notifications";
+import { UpdatesDialog } from "../shell/updates-ui";
+import { openUpdates, setUpdateService, type UpdateEnv } from "../shell/updates";
+import { setNotifier } from "../core/notifications";
 
 /**
  * The Updates dialog without `nsh/updater`: a fake service for a packaged

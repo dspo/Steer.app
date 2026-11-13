@@ -1,5 +1,5 @@
 import { expect, open, test } from "nsh/test";
-import { Engine, Instance } from "zu/native";
+import { Instance, State } from "zu/native";
 
 // The Quit path a desktop app menu takes. `Application.quit()` is a no-op
 // in a headless run, so the observable half is the claim: the app took it
@@ -10,7 +10,7 @@ import { Engine, Instance } from "zu/native";
 // The lock lives in this test's own state directory: the developer's
 // running app owns the real one.
 const STATE_DIR = `/tmp/zu-m12-quit-${Date.now()}`;
-Engine.setStateDir(STATE_DIR);
+State.setStateDir(STATE_DIR);
 
 test("the app menu's Quit releases the single-instance claim", async () => {
   const app = await open("./fixtures/lifecycle-quit.tsx", { platform: "macos", width: 900, height: 600 });
@@ -29,6 +29,6 @@ test("the app menu's Quit releases the single-instance claim", async () => {
     expect(String(claim.path).startsWith(STATE_DIR)).toBe(true);
   } finally {
     Instance.release();
-    Engine.setStateDir("");
+    State.setStateDir("");
   }
 });

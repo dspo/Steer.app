@@ -1,4 +1,4 @@
-import { setModelTransport } from "../stores/sessions";
+import { setModelTransport } from "../modules/pi/sessions";
 
 /** The model picker's fake engine: two providers, one switchable session. */
 export function installModelTransport(): void {

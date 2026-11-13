@@ -1,6 +1,6 @@
 import { mount, Text, View } from "nsh";
 import { Fs, State } from "zu/native";
-import { error as sessionError, openSession, refreshSessions, sessions } from "../stores/sessions";
+import { error as sessionError, openSession, refreshSessions, sessions } from "../modules/pi/sessions";
 
 // Probe: the store's openSession against the REAL agent dir, in the app VM.
 async function run(): Promise<string> {

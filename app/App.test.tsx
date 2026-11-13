@@ -16,7 +16,7 @@ test("the shell is a Steer titlebar over the project sidebar, with no status bar
   // The resting sidebar is Project → SessionContainer; the all-sessions list
   // only appears while filtering.
   expect(app.texts()).not.toContain(copy("全部会话", "All sessions"));
-  expect(app.count("id:session-list")).toBe(0);
+  expect(app.count("id:search-results")).toBe(0);
   // The sidebar toggle hides the whole left column (the titlebar stays).
   await app.press("id:sidebar-toggle");
   await app.waitUntil(() => app.count("id:new-container") === 0, { timeout: 5000 });

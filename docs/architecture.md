@@ -38,28 +38,31 @@ manox 是进程内 AHP 宿主（`native/manox`）。两者都只是容器里的�
 
 ```
 Zu.app（nsh TSX / AppKit）
-├─ shell + canvas + core stores
-├─ harness/pi-acp      ACP client（JSON-RPC over ndjson stdio）
+├─ core/ + shell/ + canvas/   关系模型与外壳（零 harness 语义）
+├─ modules/pi           pi 模块：ACP client（JSON-RPC over ndjson stdio）
 │    └─ 每条 turn spawn 一个 pi-acp ──▶ pi 1.5.0（Bun 单文件）
 │         durable: ~/.pi/agent/sessions/*.jsonl
-├─ harness/manox       AHP client（vendored reducers 折叠）
+├─ modules/manox        manox 模块：AHP client（vendored reducers 折叠）
 │    └─ zu/native 的 Manox 单例 ──▶ in-proc 宿主半边（manox v0.9.1）
 │         durable: ~/.manox/core/*（journal）
-├─ domains/stores ──▶ zu/native（Rust）：fs / git / lsp / pty / state / pimodels / acp
-└─ 旧 engine wire（仅 ZU_PI_TRANSPORT=engine）：loopback WS + pi-engine
+└─ domains/ ──▶ zu/native（Rust）：acp / fs / git / lsp / pty / state / pimodels / picker / instance
 ```
 
 ### 3.2 pi 线（ACP，默认）
 
 - **传输是轮级的**：每条 turn spawn 一个 `pi-acp` 子进程（`native/src/acp.rs` 负责进程与字节，TS 侧
-  `app/harness/pi-acp/{jsonrpc,acp}.ts` 负责 JSON-RPC id、超时与事件分派）。握手 `initialize` →
+  `app/modules/pi/acp/{jsonrpc,acp}.ts` 负责 JSON-RPC id、超时与事件分派）。握手 `initialize` →
   `session/new` 或 `session/load` → `session/prompt` → `session/update` 流 → settle 后关闭 stdin 退出。
 - **恢复 = 再 spawn**：ACP 没有「重连」；进程意外退出按远端错误上抛，UI 标中断，下一次输入重新加载会话文件。
 - **看门狗**：60 s 内未 ready 的 harness 视为启动失败，带 stderr 报错。
 - **读面**：`zu/state` 的 `scan_sessions(watermark)` 扫 `~/.pi` 会话目录（只读 header/名字/首条用户文本/消息数），
   UI 侧 fold 成会话视图；没有活引擎也能浏览。
-- **旧引擎**：`ZU_PI_TRANSPORT=engine` 才启用的 loopback WS 路径（`stores/engine.ts`、`contracts/protocol.ts`），
-  是迁移期的回退通道；P4 删除批未做（见 §7）。
+- **只有一条传输**：旧 loopback engine（`contracts/protocol.ts`、`stores/engine.ts`、`pi-engine` 入口）
+  已在 P4 删除；`ZU_PI_TRANSPORT` 不再存在。
+- **模型与 effort**：Hero 的选择随 spawn env 生效（`ZU_PI_MODEL`/`ZU_PI_EFFORT`，distro 在
+  `session/new` 时应用到 `ModelRuntime`）；会话内的 `/model`、`/thinking`、`/compact` 尚未映射到 ACP。
+- **容器 ↔ 会话**：`pi` 模块维护自己的 `containerId → sessionIds` 投影（不再写进容器记录）；
+  容器记录只存 `sheetOrder`（标题序，可持久化）。
 - 协议细节与 P0–P4 的验收见 [pi-acp-ARCHITECTURE.md](pi-acp-ARCHITECTURE.md)。
 
 ### 3.3 manox 线（in-proc AHP）
@@ -69,6 +72,9 @@ Zu.app（nsh TSX / AppKit）
 - **崩溃隔离不对称**：宿主半边 panic 的爆炸半径是整壳；泵边界 `catch_unwind` 把 panic 转成
   `transport-error`，UI 走 `Manox.restart` + `reconnect`。这是结构性的缓解，不是进程隔离。
 - **客户端零翻译**：`contracts/ahp/` 是 vendored 的 AHP 类型 + reducers；消息区直接绑定折叠态。
+- **模型目录共用（Q104）**：`native/manox` 的 boot 把 `~/.pi` 的 `models.json`/`auth.json` 翻译成内核的
+  provider 注册（`register_providers_yaml`），app 侧把 pi ref 组合成 registration-qualified
+  `{provider}-{wire}/{model}`；两条 harness 用同一份模型列表，不再各养一套。
 - **折叠对账门禁**：同一 chat 的「快照腿」与「journal 重放腿」喂同一份 reducer，最终状态必须相等；
   TS 与 Rust reducers 的漂移用同一组 fixtures 在两侧测试（`app/manox.test.ts` + manox 仓的 reducer 测试）。
 - **范围**：「能对话」最小回路（发送 → 流式 → 工具卡 → 最小审批/elicitation → settle/取消）；
@@ -78,18 +84,18 @@ Zu.app（nsh TSX / AppKit）
 
 | 面 | 位置 | 归属 |
 |---|---|---|
-| 旧 engine wire | `contracts/protocol.ts` + `protocol.md` | 迁移期回退通道，P4 删除 |
+| Sheet 模块契约 | `contracts/module.ts`（SheetKindSpec、SheetModule、意图/贡献） | 核心 |
 | AHP | `contracts/ahp/`（PIN.md 记录上游版本与同步脚本） | manox 模块 |
-| ACP / x-zu | `app/harness/pi-acp/` 内的窄类型 | pi 模块 |
-| Zu 状态与布局 | `app/stores/zu-state.ts` 的 TS 形状 | 核心（`zu/state` 只做读写） |
+| ACP 词汇 | `app/modules/pi/acp/` 内的窄类型 + `app/modules/pi/protocol.ts` | pi 模块 |
+| Zu 状态与布局 | `app/domains/state.ts` 的 TS 形状 | 核心（`zu/state` 只做读写） |
 
-目标态下，壳不 import 任何一侧的协议类型；`contracts/` 只留跨模块词汇（sheet id、module 接口）。
+壳不 import 任何一侧的协议类型；`contracts/` 只留跨模块词汇。
 
 ### 3.5 能力面（`nsh.json`）
 
-当前声明：`network.hosts: ["127.0.0.1"]`（旧引擎回环）、`webview.hosts: ["*"]`（浏览器）、
-`notifications: true`、`statusBar: true`、`openUrl.schemes: ["vscode"]`、`process.env` 白名单
-（`ZU_PORT`、`ZU_STATE_DIR`、`ZU_PI_TRANSPORT`、`MANOX_RUN_LIVE`、`ZU_SKIP_LIVE`、`ZU_MANOX_GATE`）。
+当前声明：`webview.hosts: ["*"]`（浏览器）、`notifications: true`、`statusBar: true`、
+`openUrl.schemes: ["vscode"]`、`process.env` 白名单（`ZU_PORT`、`ZU_STATE_DIR`、`MANOX_RUN_LIVE`、
+`ZU_SKIP_LIVE`、`ZU_MANOX_GATE`）。旧引擎的回环网络能力已随 wire 删除。
 
 **威胁模型**：能力面保护的是 **UI/TSX 代码**被攻破时的爆炸半径；**agent 的动作不受它约束**——
 harness 的 bash/工具仍以用户权限运行，由各自引擎的权限模型负责。不要把「最小能力面」读成「agent 沙箱」。
@@ -109,8 +115,8 @@ UI 不持 fs / process：文件读写只经 `zu/fs`，进程只经 native 域。
   agents/、subagents/  # pi 的子代理定义与子会话（1 级）
 ```
 
-**写者反转（v2）**：这些文件的读写由 UI 经 `zu/state` 完成（`read`/`write`/`scan_sessions`），
-旧引擎只在 `ZU_PI_TRANSPORT=engine` 时被指向 `engine/` 子目录，不再 touch 这些文件。
+**写者反转（v2）**：这些文件只由 UI 经 `zu/state` 完成读写（`read`/`write`/`scan_sessions`）；
+没有引擎子目录、没有第二个写者。
 `zu/state` 的 `write` 是临时文件 + rename，并拒绝 `v` 更新的覆盖（`ERR_STATE_STALE`）。
 
 **版本化**：每个持久文件顶层 `{ "v": 1, ... }`；高版本只读打开，迁移失败不阻塞启动。
@@ -132,17 +138,15 @@ UI 不持 fs / process：文件读写只经 `zu/fs`，进程只经 native 域。
 | `Instance` | 单实例锁：临时文件 + `hard_link`、pid 判活、死锁回收 | module |
 | `Picker` | Finder 目录选择 | module |
 | `PiModels` | 模型目录（`~/.pi`）+ 无模型原因 | module |
-| `Engine` | 旧引擎 sidecar 的启停与端口（仅回退通道） | module |
 | `Manox` | AHP 宿主单例 + 帧泵 + `restart` | module（另一注册面） |
 
 重型集成一律在 native 侧；TS 侧只做协议与 UI。
 
 ### 3.8 分发与构建
 
-- **构建**：`pi-harness/package.json` 的 `build` 产出 `dist/pi-engine`（旧）与 `dist/pi-acp`（默认），
-  以及两个 WASM 资产（photon/QuickJS）。
-- **打包**：`script/bundle-mac.sh` 把 `.app`、`Contents/Helpers` 与 ad-hoc 签名串起来。当前脚本只复制
-  `pi-engine` 与两个 WASM；ACP 默认路径需要 `pi-acp` 也在 Helpers 里（见 §7 已知问题）。
+- **构建**：`pi-harness/package.json` 的 `build` 产出 `dist/pi-acp` 与两个 WASM 资产（photon/QuickJS）。
+- **打包**：`script/bundle-mac.sh` 把 `.app`、`Contents/Helpers/pi-acp`（含两个 WASM）与 ad-hoc 签名串起来，
+  并断言三个文件都在。
 - **签名**：nsh 只做 ad-hoc；正式发布需 Developer ID + 嵌套签名 + JIT entitlement + 公证（未做，M13）。
 - **更新**：`nsh/updater` 未配置（无 release/公钥）；`updates.ts` 诚实区分 development/未配置/可检查，
   不伪造更新源。
@@ -152,18 +156,17 @@ UI 不持 fs / process：文件读写只经 `zu/fs`，进程只经 native 域。
 ### 4.1 分层
 
 ```
-App.tsx（装配点：注册 pack、跟随系统语言、lifecycle）
-└─ shell/     workbench、sidebar、titlebar、tab-plus、lifecycle-ui
-   canvas/    sheet 注册表、标题、`+` 覆盖层
-   stores/    域状态与 typed face（engine/fs/git/lsp/pty/sessions/containers/…）
-   sheets/    各 sheet 的实体界面
-   ui/        无状态原语、token、图标、i18n
-   harness/    pi-acp（传输 + fold）、manox（AHP + 对话面）
+App.tsx（装配点：startModules() + 跟随系统语言 + lifecycle）
+└─ core/       registry、containers、dock、projects、lifecycle、shell-actions、types
+   shell/      workbench、sidebar、titlebar、tab-plus、lifecycle-ui、project-dialog、settings/search/updates
+   canvas/     sheet 解析（registry 查找）与容器标题、`+` 覆盖层
+   modules/    home、browser、files、git、terminal、problems、pi、manox
+   domains/    能力型面（唯一 import zu/native 的地方）
+   ui/         无状态原语、token、图标、i18n
 ```
 
-依赖自上而下：`shell → sheets/canvas → stores → ui`；`harness/*` 是模块，装配点 import，壳不 import。
-这是**当前**形状；目标态把每个 harness/工作台 sheet 收成 `modules/<id>/`，见
-[sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md)。
+依赖自上而下：`modules → core/domains/ui`，`shell → core/ui`，`core`/`shell` 不 import 模块；
+装配点 `App.tsx` 是唯一 import 模块的地方。规则由 `script/check-layers.mjs` 守卫。
 
 ### 4.2 panel 与 sheet
 
@@ -189,19 +192,19 @@ App.tsx（装配点：注册 pack、跟随系统语言、lifecycle）
 
 `⌘W` 关闭 sheet、`⌘1-9` 切 sheet、`⌘K` 命令面板（后续）、`⌘0` 显示主窗口。焦点/zoom 由 DockArea 处理。
 
-### 4.5 扩展宿主（pi，旧引擎路径）
+### 4.5 扩展宿主（pi，ACP 待补）
 
-扩展 UI 契约（`bindExtensions({ mode: "rpc", uiContext })`、confirm/select/input/editor、notify/status/title、
-no-op 的 `custom` 等）实现于旧引擎传输；ACP 映射当前只覆盖会话/模型/工具，`session/request_permission`
-与扩展 UI 仍在后续 P 阶段（`pi-harness/src/acp/mapping.ts` 的显式缺席清单）。
-**不要**在 ACP 路径上声称扩展 UI 已可用。
+旧引擎的扩展 UI 桥（`bindExtensions`、confirm/select/input/editor、notify/status/title）已随 P4 删除。
+ACP 映射当前只覆盖会话/模型/工具，`session/request_permission` 与扩展 UI 在后续阶段
+（`pi-harness/src/acp/mapping.ts` 的显式缺席清单）。**不要**在 ACP 路径上声称扩展 UI 已可用；
+这也是 pi 的 project trust/审批面回到产品级前的缺口。
 
 ### 4.6 常驻、通知与更新
 
 - 关窗收起不退出；托盘 Show/Hide；`⌘Q` 先释放单实例锁再退出。
 - 单实例锁在状态目录（`~/.pi/zu/instance.lock`），pid 判活；第二实例只显示提示、不启引擎。
-- 通知只在主窗口不可见/失焦时发；turn settle 与子代理 settle 各一条，按 id 替换、5 s 去重、
-  按下恢复窗口并打开对应 sheet。当前路由键仍是 pi 的 session id（目标态改为 sheet id）。
+- 通知只在主窗口不可见/失焦时发；pi 的 turn settle 由模块调用 `core/notifications.notifySettled`
+  （以 sheet id 为单位），按 id 替换、5 s 去重；按下恢复窗口、切到该 sheet 的容器并打开它。
 - 更新三态（development / 未配置 / 可检查）；安装成功即退出进程，UI 保持「正在安装」。
 
 ## 5. 对象模型
@@ -226,25 +229,14 @@ no-op 的 `custom` 等）实现于旧引擎传输；ACP 映射当前只覆盖会
 
 ### 5.3 SessionContainer
 
-**当前形状**（迁移中）：
-
 ```ts
-{ id: `pi:${sessionId}` | `external:${kindLower}:${uuid}`,
-  kind: "Pi" | "Terminal" | "Claude" | "Codex" | "Copilot",
-  cwd, projectId,
-  sessions: { sessionId, path, name }[],   // Pi 型：可持多个 pi 会话
-  sheetOrder: string[] }
+{ id, cwd, projectId?, archived, createdAt, updatedAt, sheetOrder?: string[] }
 ```
 
-**目标形状**（[sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md) §3）：
-
-```ts
-{ id, cwd, projectId, sheetOrder }
-```
-
-`kind` 与 `sessions[]` 消失：容器的身份完全由它持有的 sheet 推导；「外部终端容器」变成 terminal 模块的
-一个 intent（铸容器 + 开 terminal sheet）。pi 的「一个容器多个会话」变成 pi 模块自己的
-`containerId → sessionIds` 投影。
+容器**没有 harness 身份**：`kind`、`sessions[]` 已删除（S3）。哪些 sheet 属于它由布局与
+`sheetOrder` 表达；「这个容器的会话是哪些」是 pi 模块自己的 `containerId → sessionIds` 投影。
+新建容器的模块调用 `createContainerRecord({ id, cwd, projectId, sheets })`；外部终端容器是
+terminal 模块的一个 intent。
 
 ### 5.4 生命周期
 
@@ -266,9 +258,9 @@ no-op 的 `custom` 等）实现于旧引擎传输；ACP 映射当前只覆盖会
 
 ### 5.6 子代理（pi 模块）
 
-engine 内置的 `dispatch` 扩展只注册在 captain 会话；子会话由进程内 `SubagentManager` 创建，
-`parentSession` 指向 captain，`noExtensions`，落 `~/.pi/zu/subagents/{captainId}/`。
-live run 只在内存，settled 写注册表；只允许两级。目标态整体属于 pi 模块，壳只提供容器与通知。
+旧的 `dispatch` 扩展随 legacy engine 一起删除；ACP distro 尚未提供 dispatch（P5 的 generic agents）。
+pi 模块保留名册 sheet 与只读转录的界面，但 `loadSubagents` 在 ACP 下明确说「不可用」而不是空转。
+shell 只提供容器与通知；子代理的数据面回来时只改 pi 模块。
 
 ### 5.7 不变量
 
@@ -288,7 +280,7 @@ live run 只在内存，settled 写注册表；只允许两级。目标态整体
 | 领域 | 选型 | 依据 |
 |---|---|---|
 | UI | nsh（TSX root，AppKit 后端） | 原生输入/滚动/无障碍；DockArea/TextView/Editor/DiffView 现成 |
-| pi | 精确 pin `1.5.0`，Bun `--compile` 双入口（`pi-engine` 旧 / `pi-acp` 默认） | 官方支持 bun 二进制分发 |
+| pi | 精确 pin `1.5.0`，Bun `--compile` 单入口 `pi-acp` | 官方支持 bun 二进制分发 |
 | pi 传输 | ACP over stdio，轮级子进程 | 进程隔离、公共协议、恢复 = 再 spawn |
 | manox | git pin `v0.9.1`，in-proc AHP | 内核即宿主，零进程；接受崩溃域不对称 |
 | 重型集成 | Rust native module，按域拆注册面 | Q28/Q31 |
@@ -302,20 +294,17 @@ live run 只在内存，settled 写注册表；只允许两级。目标态整体
 
 ## 7. 状态与已知问题（2026-11-13）
 
-**已交付**：M0–M12（地基、对话、契约、容器、项目、子代理、轮廓、终端、编辑器、Git、浏览器、LSP、常驻/通知/更新）；
-Casing II（Hero sheet、容器标题、一体化外壳、侧栏拖拽、composer、斜杠、页签、Lilex）；
-C8 三包布局；ACP cutover（P0–P3：distro ACP 入口、`zu/acp` 泵、UI 读写反转、控制面切换）；manox 真宿主（M1）。
+**已交付**：M0–M12（地基、对话、契约、容器、项目、轮廓、终端、编辑器、Git、浏览器、LSP、常驻/通知/更新）；
+Casing II；C8 三包布局；ACP cutover（P0–P4：distro ACP 入口、`zu/acp` 泵、UI 读写反转、控制面切换、
+旧 wire 删除）；manox 真宿主（M1）；**sheet 模块化 S0–S3**（注册表、domains、工作台与 harness 模块、
+容器去 harness 身份、通知按 sheet id）。
 
 **待做**：
 
-1. **P4 删除批**：旧 `contracts/protocol.ts`、`stores/engine.ts`、心跳/重连/`generation`/WS token 与
-   `shell.tsx` 的 `piTransport` 分支。不删，壳永远是新旧混合体。
-2. **打包缺口**：`script/bundle-mac.sh` 只复制 `pi-engine`，默认 ACP 路径需要 `Contents/Helpers/pi-acp`；
-   当前打包产物会 spawn 失败。修法：复制并签名两个入口，断言两者都在。
-3. **ACP 的审批/扩展 UI**：`session/request_permission` 与扩展 UI 桥未实现（映射文件里有显式缺席清单）。
-4. **模型与 effort 的真源**：Hero 的模型列表对两条 harness 都取 pi catalog；manox 的 provider 集未使用。
-   目标态由各模块贡献自己的 picker。
-5. **sheet 模块化**：`sheet-module-ARCHITECTURE.md` 的 S0–S3 尚未开始。
+1. **ACP 的审批/扩展 UI**：`session/request_permission` 与扩展 UI 桥未实现（映射文件里有显式缺席清单）。
+2. **会话内的模型/effort/压缩**：`/model`、`/thinking`、`/compact` 在 ACP 尚未映射
+   （Hero 的首次选择已生效；见 §3.2）。
+3. **子代理数据面**：ACP 侧没有 dispatch（P5 generic agents）；名册目前明确显示不可用。
 
 **已知问题（非决策）**：
 
@@ -331,6 +320,7 @@ C8 三包布局；ACP cutover（P0–P3：distro ACP 入口、`zu/acp` 泵、UI 
 - **malachite-bigint 双版本**：生成的 `.nsh/rust/Cargo.lock` 需 `cargo update -p malachite-bigint@0.14.0 --precise 0.12.0`
   （`native/manox/Cargo.toml` 有注释）。
 - **manox provider 路径**：上游 v0.9.1 直查 `$HOME/.manox`，测试隔离需 `MANOX_HOME`+`MANOX_CLAUDE_HOME`+`HOME` 三变量。
+- **子代理界面**：ACP 下没有 dispatch，roster 显示不可用；不再有 legacy engine 可作为回退。
 
 ## 8. 文档
 
@@ -339,6 +329,6 @@ C8 三包布局；ACP cutover（P0–P3：distro ACP 入口、`zu/acp` 泵、UI 
 | [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md) | 扩展机制：sheet 模块契约、能力域、迁移 S0–S3（目标态） |
 | [pi-acp-ARCHITECTURE.md](pi-acp-ARCHITECTURE.md) | pi 模块：ACP 协议映射、能力矩阵、P 线迁移 |
 | [DESIGN.md](DESIGN.md) | 视觉规格：token、外壳几何、表面、动效、各 sheet |
-| [decisions.md](decisions.md) | 决策台账（Q1–Q103） |
+| [decisions.md](decisions.md) | 决策台账（Q1–Q107） |
 | [plan.md](plan.md) | 执行计划与门禁 |
 | [evidence/](evidence/) | 可再生的验证产物（截图、实测记录） |

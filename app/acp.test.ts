@@ -1,16 +1,14 @@
 import { expect, test } from "nsh/test";
 import { Acp } from "zu/native";
-import { JsonrpcChannel, JsonrpcFailure } from "./harness/pi-acp/jsonrpc";
+import { JsonrpcChannel, JsonrpcFailure } from "./modules/pi/acp/jsonrpc";
 import {
   activeTurn,
   isTurnActive,
   loadTranscript,
-  piTransport,
-  setPiTransport,
   startTurn,
-} from "./harness/pi-acp/acp";
-import { transcriptFromReplay, updateToStoreEvents } from "./harness/pi-acp/fold";
-import { acpEnabled } from "./stores/sessions";
+} from "./modules/pi/acp/acp";
+import { transcriptFromReplay, updateToStoreEvents } from "./modules/pi/acp/fold";
+import { acpEnabled } from "./modules/pi/sessions";
 
 // The ACP transport without pi: the native `Acp` pump is driven against a
 // stub agent (fixtures/acp-stub-agent.sh) that speaks the same ndjson method
@@ -57,19 +55,6 @@ test("a turn streams its updates live", async () => {
   expect(kinds).toContain("tool_call");
   expect(kinds).toContain("agent_message_chunk");
   expect(kinds).toContain("tool_call_update");
-});
-
-test("the transport switch defaults to the ACP harness and pins for tests", () => {
-  setPiTransport(null);
-  // The headless runner's env is not ours to mutate; the default stands
-  // (the cutover's flip: ACP unless ZU_PI_TRANSPORT=engine).
-  expect(piTransport()).toBe("acp");
-  setPiTransport("engine");
-  expect(piTransport()).toBe("engine");
-  setPiTransport("acp");
-  expect(piTransport()).toBe("acp");
-  setPiTransport(null);
-  expect(piTransport()).toBe("acp");
 });
 
 test("the native pump frames ndjson lines both ways", async () => {
@@ -241,16 +226,11 @@ test("the replay fold groups chunked messages and settles tool cards", () => {
   expect(rows[2].tool?.state).toBe("done");
 });
 
-test("the store-level ACP branch follows the pinned transport", () => {
-  setPiTransport("acp");
+test("the store-level ACP branch is the only transport", () => {
   expect(acpEnabled()).toBe(true);
-  setPiTransport("engine");
-  expect(acpEnabled()).toBe(false);
-  setPiTransport(null);
 });
 
 test("leaves the transport unpinned", () => {
-  setPiTransport(null);
   expect(activeTurn("nothing")).toBeNull();
 });
 

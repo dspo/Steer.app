@@ -1,9 +1,9 @@
 import { mount, signal, Text, View, token } from "nsh";
-import type { ContainerRecord } from "../../contracts/protocol";
-import { activeContainerId, containers } from "../stores/containers";
-import { visiblePanels } from "../stores/dock";
-import { TerminalBody } from "../canvas/sheets";
-import { closeTerminal, terminalInfo, terminalRef, terminalSheetId, terminalSize } from "../stores/terminals";
+import type { ContainerRecord } from "../core/types";
+import { activeContainerId, containers } from "../core/containers";
+import { visiblePanels } from "../core/dock";
+import { TerminalBody } from "../modules/terminal/view";
+import { closeTerminal, terminalInfo, terminalRef, terminalSheetId, terminalSize } from "../domains/pty";
 import { Glyph } from "../ui/ui";
 
 // A headless acceptance fixture for the real terminal sheet: one external
@@ -14,12 +14,10 @@ import { Glyph } from "../ui/ui";
 const CONTAINER = "external:terminal:fixture";
 const container: ContainerRecord = {
   id: CONTAINER,
-  kind: "Terminal",
   cwd: "/tmp",
   archived: false,
   createdAt: 0,
   updatedAt: 0,
-  sessions: [],
 };
 
 containers.set([container]);

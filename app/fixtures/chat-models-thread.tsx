@@ -1,7 +1,7 @@
 import { mount } from "nsh";
-import { seedSession } from "../stores/sessions";
-import { SessionBody } from "../canvas/sheets";
-import { visiblePanels } from "../stores/dock";
+import { seedSession } from "../modules/pi/sessions";
+import { SessionBody } from "../modules/pi/view";
+import { visiblePanels } from "../core/dock";
 import { installModelTransport, MODEL_SEED } from "./chat-models-data";
 
 // The same model picker in an existing conversation's composer.

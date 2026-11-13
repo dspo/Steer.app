@@ -1,8 +1,10 @@
 import { mount } from "nsh";
 import { Workbench } from "../shell/shell";
-import { phase } from "../stores/engine";
-import { sessions } from "../stores/sessions";
-import { activeContainerId } from "../stores/containers";
+import { sessions } from "../modules/pi/sessions";
+import { activeContainerId } from "../core/containers";
+import { registerAllModules } from "../modules/register-all";
+
+registerAllModules();
 
 // 700 sessions, no containers: the sidebar's virtualized list must keep the
 // rendered row set small while scrolling to the end.
@@ -18,5 +20,4 @@ const rows = Array.from({ length: 700 }, (_, index) => ({
 }));
 sessions.set(rows);
 activeContainerId.set(null);
-phase.set("connected");
 mount(Workbench);

@@ -1,11 +1,11 @@
 import { expect, test } from "nsh/test";
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-import { containers, setContainerTransport } from "./stores/containers";
-import { openModelMenuRequest } from "./stores/slash";
-import { membership, projects } from "./stores/projects";
-import { runSlash, setSlashActions, slashCandidates } from "./stores/slash";
-import { seedSession, sessions, setModelTransport, setSessionTransport, viewFor } from "./stores/sessions";
+import { containers, setContainerTransport } from "./core/containers";
+import { openModelMenuRequest } from "./modules/pi/slash";
+import { membership, projects } from "./core/projects";
+import { runSlash, setSlashActions, slashCandidates } from "./modules/pi/slash";
+import { seedSession, sessions, setModelTransport, setSessionTransport, viewFor } from "./modules/pi/sessions";
 
 // §2.2-11a: one test per mapping. The table in `slash.ts` decides local /
 // prompt / unsupported; the engine legs (`session.setThinking`,
@@ -98,7 +98,7 @@ function activeContainerIdScratch(): boolean {
   return containerActiveIsNull();
 }
 
-import { activeContainerId } from "./stores/containers";
+import { activeContainerId } from "./core/containers";
 function containerActiveIsNull(): boolean {
   return activeContainerId() === null;
 }

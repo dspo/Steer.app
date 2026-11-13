@@ -1,10 +1,11 @@
 import { expect, open, test } from "nsh/test";
-import { Engine, Fs, State } from "zu/native";
+import { Fs, State } from "zu/native";
 import { bootShell } from "./shell/shell";
-import { createContainer, containers, activeContainerId } from "./stores/containers";
-import { createSession, refreshSessions, send, stop, sessions, openSession, messages, activeId, turnActive, viewFor } from "./stores/sessions";
-import { setAcpCommandOverride, setPiTransport } from "./harness/pi-acp/acp";
-import { resetStateCache } from "./stores/zu-state";
+import { containers, activeContainerId } from "./core/containers";
+import { createContainer } from "./modules/pi/container";
+import { createSession, refreshSessions, send, stop, sessions, openSession, messages, activeId, turnActive, viewFor } from "./modules/pi/sessions";
+import { setAcpCommandOverride } from "./modules/pi/acp/acp";
+import { resetStateCache } from "./domains/state";
 
 // The cutover's acceptance (v2 §12 P4 line, B3): the default boot starts no
 // engine, opens no listening port, and pi conversations ride stdio harness
@@ -16,10 +17,9 @@ const stateDir = `/tmp/zu-cutover-${Date.now()}-${Math.floor(Math.random() * 1e6
 const agentDir = `/tmp/zu-cutover-agent-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const STUB = new URL("./fixtures/acp-stub-agent.sh", import.meta.url).pathname;
 
-Engine.setStateDir(stateDir);
-Engine.setNoExtensions(true);
+State.setStateDir(stateDir);
 State.setAgentDir(agentDir);
-setPiTransport(null); // the default: ACP
+await Fs.mkdir("/tmp", agentDir.slice("/tmp/".length));
 resetStateCache();
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -36,9 +36,6 @@ test("booting the shell starts no engine and listens on no port", async () => {
   await bootShell();
   // The sidecar's process table is empty and it published no port: a `ps`
   // on this machine shows no pi-engine of ours, and nothing listens.
-  expect(Engine.pid()).toBe(0);
-  expect(Engine.port()).toBe(0);
-  expect(Engine.status()).toBe("stopped");
   // Nothing has been written yet (an empty registry is written on the first
   // mutation); the read answers null rather than a stale file.
   expect((await State.read("registry.json")) === null).toBe(true);
@@ -54,8 +51,6 @@ test("a container and a session are minted without any process", async () => {
   expect(containers().length).toBe(1);
   expect(activeContainerId()).toBe(containers()[0].id);
   // Still no engine: creating a container spawned nothing.
-  expect(Engine.pid()).toBe(0);
-  expect(Engine.port()).toBe(0);
 });
 
 test("a conversation runs over a stdio harness subprocess and settles", async () => {
@@ -96,6 +91,8 @@ test("a closed session reopens from its file through the harness", async () => {
   setAcpCommandOverride({ command: "/bin/sh", args: [STUB], env: { STUB_LOAD_REPLAY: "1" } });
   try {
     // A session file pi could have written, under the scan's root.
+    await Fs.mkdir("/tmp", agentDir.slice("/tmp/".length));
+    await Fs.mkdir(agentDir, "sessions");
     await Fs.mkdir(agentDir, "sessions/--tmp-cutover--");
     const id = "cccc2222-0000-0000-0000-000000000002";
     const name = `2026-07-20T03-38-58-867Z_${id}.jsonl`;
@@ -113,8 +110,6 @@ test("a closed session reopens from its file through the harness", async () => {
     expect(rows.some((row) => row.role === "user" && row.text === "earlier question")).toBe(true);
     expect(rows.some((row) => row.role === "assistant" && row.text === "earlier answer")).toBe(true);
     // And the boot's no-engine property still holds after all of it.
-    expect(Engine.pid()).toBe(0);
-    expect(Engine.port()).toBe(0);
   } finally {
     setAcpCommandOverride(null);
   }
@@ -124,16 +119,12 @@ test("the app renders its sidebar with no engine alive", async () => {
   const { open } = await import("nsh/test");
   const app = await open("./App.tsx", { network: "live", width: 1280, height: 800 });
   await app.waitUntil(() => app.texts().includes("zu-cutover-a"), { timeout: 60000 });
-  expect(Engine.pid()).toBe(0);
-  expect(Engine.port()).toBe(0);
   // No engine dot in the titlebar: the ACP transport has no resident state.
   expect(app.shows("id:engine-state")).toBe(false);
 }, 60000);
 
 test("leaves the runner clean", () => {
-  Engine.setStateDir("");
+  State.setStateDir("");
   State.setAgentDir("");
-  Engine.setNoExtensions(false);
-  setPiTransport(null);
   resetStateCache();
 });

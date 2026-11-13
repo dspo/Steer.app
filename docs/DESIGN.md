@@ -1,8 +1,9 @@
 # Zu 轮廓设计系统（M6 · Casing）
 
 **参照**：[Steer.app](https://steer.app) 的浅色外壳。目标是同一张界面在 1100pt 宽下并排看时，
-表面语言、密度与反馈一致，而不是复制它的功能。本文记录 M6 的 token、几何、表面语言和动效清单；
-实现落在 `theme.json`、`ui.tsx` 与各屏的 TSX 中。
+表面语言、密度与反馈一致，而不是复制它的功能。本文记录 token、几何、表面语言和动效清单；
+实现落在 `theme.json`、`ui.tsx` 与各 sheet 模块的 TSX 中。模块边界（谁拥有 composer、谁拥有消息区）
+见 [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md)；本文只定视觉。
 
 ## 1. 设计立场
 
@@ -151,6 +152,12 @@ Hero 的两排动作使用各 CLI 的品牌图标（24pt 光学尺寸）：
 
 未知命令（不在上表）按扩展命令原文发送；输入 `/` 时弹层即过滤，Enter 对
 `/` 草稿执行命令而不是发送。
+
+**ACP 现状（2026-11-13）**：`/model`、`/thinking`、`/compact` 的**会话内**切换尚未映射到 ACP
+（`pi-harness/src/acp/mapping.ts` 有显式缺席清单），UI 会报「ACP 下不可用」而不是静默失败。
+Hero 的模型/effort 选择已生效：pi 走 spawn env（`ZU_PI_MODEL`/`ZU_PI_EFFORT`），manox 走
+registration-qualified ref（Q104）。`/model` 的模型菜单本身仍打开；只是切换不到会话。
+本节描述的是 pi 面当前的 hairline composer；manox 面在自己的模块里有独立 composer（Steer 风格）。
 
 ### 3.7 拖拽页签
 

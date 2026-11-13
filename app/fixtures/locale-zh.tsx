@@ -1,11 +1,13 @@
 import { mount, Text, View } from "nsh";
 import { locale } from "nsh";
 import { setLocale } from "nsh/i18n";
-import { containerError, loadContainers, setContainerTransport } from "../stores/containers";
+import { containerError, loadContainers, setContainerTransport } from "../core/containers";
 import { Workbench } from "../shell/shell";
-import { phase } from "../stores/engine";
 import { followSystemLocale, shellLocale } from "../ui/i18n";
-import { error as sessionError } from "../stores/sessions";
+import { error as sessionError } from "../modules/pi/sessions";
+import { registerAllModules } from "../modules/register-all";
+
+registerAllModules();
 
 /** A Chinese system: `setLocale` is what the platform reports to `locale()`. */
 setLocale("zh-CN");
@@ -21,7 +23,6 @@ setContainerTransport(async (type: string) => {
 });
 
 void loadContainers().then(() => {
-  phase.set("connected");
   sessionError.set(null);
   containerError.set(null);
   mount(() => (

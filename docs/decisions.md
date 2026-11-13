@@ -165,23 +165,29 @@
 
 | # | 问题 | 裁决 | 落点 |
 |---|---|---|---|
-| Q97 | pi 的传输形态 | **ACP over stdio，轮级子进程**：每条 turn spawn 一个 `pi-acp`，`initialize` → `session/new`/`load` → `prompt` → `update` 流 → settle 退出；恢复 = 再 spawn。旧 loopback engine（`contracts/protocol.ts` + `stores/engine.ts`）仅 `ZU_PI_TRANSPORT=engine` 回退，P4 删除 | `pi-harness/src/acp/`、`app/harness/pi-acp/`、`native/src/acp.rs`；[pi-acp-ARCHITECTURE.md](pi-acp-ARCHITECTURE.md) |
+| Q97 | pi 的传输形态 | **ACP over stdio，轮级子进程**：每条 turn spawn 一个 `pi-acp`，`initialize` → `session/new`/`load` → `prompt` → `update` 流 → settle 退出；恢复 = 再 spawn。旧 loopback engine 与 `pi-engine` 入口已于 2026-11-13 删除（P4） | `pi-harness/src/acp/`、`app/harness/pi-acp/`、`native/src/acp.rs`；[pi-acp-ARCHITECTURE.md](pi-acp-ARCHITECTURE.md) |
 | Q98 | manox 的接入形态与范围 | **in-proc AHP 单例**（`native/manox` 装配 manox v0.9.1 宿主半边）；泵边界 `catch_unwind` 把 panic 转 transport error，UI 走 restart + reconnect；折叠对账门禁保留。范围 = 「能对话」最小回路，不扩到 Steer 产品面 | `native/manox/`、`app/harness/manox/`；arch §3.3 |
 | Q99 | pi 与 manox 的地位 | **同级公民**：都是容器里的 sheet（`session` / `manox-chat`），harness 属于 sheet 的 kind，不属于容器或壳；pi 不再享有「内置」特判，Manox 不再是「扩展」 | [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md) |
 | Q100 | 扩展单位 | **sheet 模块**：模块拥有 kind（可多个）、呈现、自己的 store、Hero/侧栏/命令/搜索贡献、能力声明与 intent；壳只渲染 registry，未知 kind 降级占位；模块之间禁止 import | 同上 §4、§7 |
 | Q101 | native 的粒度 | **能力域，不是每 sheet 一个 crate**：`fs`/`git`/`pty`/`lsp`/`acp`/`state`/`pimodels`/`manox`；一个域服务多张 sheet；只有 `app/domains/` 可以 import `zu/native`；纯 TS 能做的（浏览器、SVG 预览）不碰 native | 同上 §5；`native/src/lib.rs` 的单一注册面 |
 | Q102 | 容器模型 | **去 harness 身份**：容器 = `{ id, cwd, projectId, sheetOrder }`，`kind` 与 `sessions[]` 消失；容器标题仍由最早存活的 sheet 推导；「外部终端容器」变成 terminal 模块的 intent；pi 的多会话变成模块内投影 | arch §5.3；迁移 S3 |
 | Q103 | 文档治理 | **权威链 + 状态锚点**：architecture（当前）/ sheet-module（目标）/ pi-acp（协议）/ DESIGN（视觉）/ decisions（裁决）/ plan（执行）；只有 plan §0 与 architecture §7 写状态；`docs/evidence/` 只放可再生的验证产物，过程叙事删除、历史留 git | [plan.md](plan.md) §5 |
+| Q104 | 两条 harness 的模型目录 | **共用一份 pi 目录，不各养一套**：`native/manox` 的 boot 把 `~/.pi` 的 `models.json`/`auth.json` 翻译进内核 provider 注册（`register_providers_yaml`），app 侧把 pi ref 组合成 registration-qualified `{provider}-{wire}/{model}`；pi 侧把 Hero 的选择经 spawn env（`ZU_PI_MODEL`/`ZU_PI_EFFORT`）应用到 `ModelRuntime` | `native/manox/src/real.rs`、`app/stores/pi-models.ts`、`app/harness/pi-acp/acp.ts`、`pi-harness/src/acp/pi-session.ts`；bb94e6f |
+| Q105 | 侧栏的 harness 分组 | **不设 harness 专属组**：manox 的侧栏组随 `ContributedSection` seam 一起移除（Hero 的 harness 段已是入口；一个侧栏只能说一种行的语言）。已开的 thread 经 sheet 与布局 stash 可达；后继是**合并的项目投影**，不是恢复分组 | `app/shell/contrib.tsx`、`app/harness/manox/register.tsx`、`app/shell/shell.tsx`；7d2d523 |
+
+| Q106 | sheet 模块的落地形态 | **S0–S3 一次落地**：`contracts/module.ts` 是唯一契约；`app/core/registry.ts` 提供 `registerModule/startModules`；`app/domains/` 是唯一 import `zu/native` 的地方；`app/modules/` 收编 home/browser/files/git/terminal/problems/pi/manox；容器记录只剩 `{id,cwd,projectId,sheetOrder}`；通知以 sheet id 为单位；依赖门禁 `script/check-layers.mjs` 零白名单 | `contracts/module.ts`、`app/core/registry.ts`、`app/modules/register-all.ts`、`app/sheet-modules.test.tsx` |
+| Q107 | 旧 wire 与 legacy distro 的删除 | **P4 完成**：删 `contracts/protocol.{ts,md}`、`stores/engine.ts`、`native` 的 `Engine` 模块、`pi-harness/src/{server,store,subagents}.ts` 与 `dist/pi-engine`；打包只带 `Helpers/pi-acp`。代价：ACP distro 尚无 dispatch，子代理名册在 UI 上明确显示不可用（P5 hexagonal generic agents 再说） | `script/bundle-mac.sh`、`native/src/lib.rs`、`pi-harness/package.json`、`app/modules/pi/subagents.ts` |
 
 ## 决策编号说明
 
-- Q1–Q103 覆盖全部已讨论的问题，**无未决项**。历史横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、
+- Q1–Q107 覆盖全部已讨论的问题，**无未决项**。历史横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、
   文件读写归属（Q56）、git 执行与根/路径边界（Q58）、协议版本与幂等（旧 §3.3）、归档可达性（Q34）、
   浏览器能力/降级（Q61/Q62）、LSP 传输/同步（Q64）、单实例与通知（Q65/Q66）、更新源（Q67）、
   模型注册表（Q81）、容器内终端资源（Q82）、scratch 与铸容器（Q83）、动作矩阵（Q84）、容器标题（Q85）、
   语言跟随系统（Q86）、自动归档（Q87）、S3 几何（Q88）、侧栏宽度（Q89）、picker 移除（Q90）、
   composer 收尾（Q91）、斜杠映射（Q92）、红绿灯/页签（Q93）、品牌图标（Q94）、拖拽抽象物（Q95）、
   三包布局（Q96）、ACP 传输（Q97）、manox 接入（Q98）、双 harness 同级（Q99）、sheet 模块（Q100）、
-  native 能力域（Q101）、容器去 harness 身份（Q102）、文档治理（Q103）。
+  native 能力域（Q101）、容器去 harness 身份（Q102）、文档治理（Q103）、模型目录共用（Q104）、
+  侧栏不设 harness 分组（Q105）、sheet 模块落地（Q106）、旧 wire 删除（Q107）。
 - 原 engine/ui/domain 三份文档里的 E/U 编号已废弃，统一并入本表。
 - 已完成与下一批工作见 [plan.md](plan.md)；条件性里程碑（M-tty / M-arch / M-web）的触发条件也记在那里。

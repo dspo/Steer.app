@@ -1,8 +1,11 @@
 # Sheet 模块架构
 
-> 状态：**目标架构已定（2026-11-13），迁移未开始**。
-> 本文取代 [nsh-pi-dual-harness-DESIGN.md](nsh-pi-dual-harness-DESIGN.md) 的 §3.1/§4.1（pack 分层与对话面分家），
-> 并扩展 [pi-acp-ARCHITECTURE.md](pi-acp-ARCHITECTURE.md) 的 P 线：pi 不再享有「内置」地位，
+> 状态：**已落地（2026-11-13，S0–S3）**。门禁：`nsh check app` ✓、`nsh test app` 215 用例 207 通过 / 8 skip、
+> `node script/check-layers.mjs` ✓（ALLOW 为空）、manox 两档门禁 ✓、`pi-harness` 36 单测 ✓。
+> 门禁规则内保留本文 §5 明确列出的基础设施例外（`core/shell` 经 `domains/state` 持久化、shell 用
+> `domains/instance`/`picker` 两个宿主服务），不是白名单条目。
+> 本文取代已删除的 `nsh-pi-dual-harness-DESIGN.md` 的 §3.1/§4.1（pack 分层与对话面分家；该文档的
+> 仍成立约束已收进 §8，历史见 git），并扩展 [pi-acp-ARCHITECTURE.md](pi-acp-ARCHITECTURE.md) 的 P 线：pi 不再享有「内置」地位，
 > 与 manox、终端、浏览器、文件一样，是注册进来的一个 sheet 模块。
 > 关系模型与视觉规格仍以 [architecture.md](architecture.md) / [DESIGN.md](DESIGN.md) 为准，本文只定义扩展机制。
 
@@ -12,22 +15,21 @@
 模块拥有自己的 kind、呈现、状态、入口贡献与能力声明；壳只拥有关系模型（Project → Container → Sheet），
 不 import 任何模块。native 不是模块的必备另一半——它是「能力域」的实现方式之一，一个域服务多张 sheet。
 
-## 1. 要解决的病
+## 1. 迁移前的审计（已全部消除）
 
-当前注册面已经存在（[`app/shell/contrib.tsx`](../app/shell/contrib.tsx) 的 `registerSheetKind` /
-`registerHeroSubmitter` / `setSidebarSection`），但它只服务「非内置」：**pi 是默认，是一堆写进主干的特判**。
-审计结果（迁移 checklist）：
+迁移前只有一层薄 seam（`registerSheetKind` / `registerHeroSubmitter`），且只服务「非内置」：
+**pi 是默认，是一堆写进主干的特判**。下表是当时的审计，保留作迁移记录；落点列是旧路径。
 
 | 层 | 现状 | 位置 |
 |---|---|---|
 | 组装 | `App.tsx` 只注册 manox；pi 没有 pack | `app/App.tsx` |
 | Sheet | 闭集 `SheetKind` + 逐 kind 分支；`session`/`subagents`/`home` 在主干的 registry 里 | `app/canvas/sheets.tsx:48-66, 106-166` |
-| Hero | 默认 harness 写死 `"pi"`；`hostsPi()`；`loadPiModels`；模型列表对两条腿都取 pi catalog | `app/sheets/hero.tsx:85, 103, 328` |
-| 容器 | `ContainerKind` 来自旧 pi wire；`kind !== "Pi"` 决定默认布局；`sessions[]` 是 pi 会话；`isPiContainer` | `app/stores/containers.ts:198, 243, 445`；`contracts/protocol.ts` |
+| Hero | 默认 harness 写死 `"pi"`；`hostsPi()`；`loadPiModels`；模型列表对两条腿都取 pi catalog（共用是 Q104 的裁决，不是巧合） | `app/sheets/hero.tsx:85, 103, 328` |
+| 容器 | ~~`ContainerKind` 来自旧 pi wire；`kind !== "Pi"` 决定默认布局；`sessions[]` 是 pi 会话~~ | 已改为 `{id,cwd,projectId,sheetOrder}`；pi 模块自持会话投影 |
 | 域 store | `sessions` / `subagents` / `slash` / `pi-models` 在主干；`containers.ts` 直接 import `createSession` 等 | `app/stores/*` |
-| 传输 | 旧 engine wire 仍在主干（`ZU_PI_TRANSPORT=engine` 才走）；`shell.tsx` 保留引擎分支 | `app/stores/engine.ts`、`app/shell/shell.tsx:76` |
+| 传输 | ~~旧 engine wire 仍在主干~~ | 已删除（P4）：`contracts/protocol.ts`、`stores/engine.ts`、`pi-engine` |
 | 通知 | intent 以 pi `sessionId` 为路由键 | `app/stores/notifications.ts:187-194` |
-| native 直连 | sheet 直接 import `zu/native` 的类型 | `app/sheets/git-ui.tsx:30` |
+| native 直连 | ~~sheet 直接 import `zu/native` 的类型~~ | 已收进 `app/domains/` |
 
 结论：缺的不是一层 registry，而是**「harness 属于 sheet，不属于容器与壳」**这个关系模型，
 以及**一条所有 kind 都走的注册路径**。
@@ -46,23 +48,25 @@
 
 ```
 app/
-  contracts/            # 跨模块词汇：SheetId 规则、module 接口、事件类型（无实现）
-  ui/                   # 无状态原语、token、图标、i18n（零领域）
-  core/                 # 关系模型：projects / containers / dock / layout / lifecycle / registry
-  shell/                # 外壳：workbench、sidebar、titlebar、tab-plus（只画 core 的形状）
-  domains/              # 能力的 TS 型面：fs / git / pty / lsp / acp / manox / state / pimodels
+  core/                 # 关系模型：registry / containers / dock / projects / lifecycle / notifications / shell-actions / types
+  shell/                # 外壳：workbench、sidebar、titlebar、tab-plus、project-dialog、settings/search/updates
+  canvas/               # sheet 解析（registry 查找）与容器标题、`+`
+  domains/              # 能力的 TS 型面（唯一 import zu/native）：fs / git / lsp / pty / state / pimodels / acp / manox / picker / instance
   modules/
-    home/               # 容器起始页（core module）
+    home/               # kind: home              能力：—（起始页，core 注册）
     browser/            # kind: webview           能力：—
     terminal/           # kind: terminal          能力：pty
     files/              # kinds: files/editor/diff 能力：fs
     git/                # kinds: changes/history  能力：git
     problems/           # kind: problems          能力：lsp
-    pi/                 # kind: session           能力：acp, state, pimodels
+    pi/                 # kinds: session/subagents 能力：acp, state, pimodels
     manox/              # kind: manox-chat        能力：manox
-  App.tsx               # 唯一装配点
+  App.tsx               # 唯一装配点（startModules()）
+contracts/
+  module.ts             # 模块契约（跨模块词汇）
+  ahp/                  # vendored AHP
 native/
-  src/                  # 一个 zu/native 注册面：fs/git/pty/lsp/state/pimodels/acp
+  src/                  # 一个 zu/native 注册面：acp/fs/git/pty/lsp/state/pimodels/picker/instance
   manox/                # manox/native 注册面
 ```
 
@@ -116,7 +120,8 @@ export interface SheetModule {
     starters?: HeroStarter[];              // 一段对话/动作的入口
     footer?: FooterSlot[];                 // 模型、effort 等输入框底栏槽位
   };
-  sidebar?: SidebarSection;                // 侧栏分组（pi 的「全部会话」、manox 的 thread 组）
+  sidebar?: SidebarSection;                // 侧栏分组：**当前 seam 已移除**（7d2d523），
+                                           // S0 不恢复；等「合并的项目投影」有真实消费者再定形状
   titlebar?: ActionContribution[];
   commands?: CommandContribution[];        // ⌘K 与斜杆候选
   search?: SearchProvider;                 // 侧栏搜索的额外来源
@@ -129,9 +134,9 @@ export interface SheetModule {
 }
 ```
 
-贡献面的类型（`HeroStarter`、`SidebarSection`、`ActionContribution`、`CommandContribution`、`SearchProvider`）
-沿用/扩展现有 `contrib.tsx` 的 `ContributedTool` / `ContributedSection` / `HeroSubmitter`，
-统一收进 `contracts/module.ts`；壳只渲染，不解释内容。
+贡献面的类型（`HeroStarter`、`ActionContribution`、`CommandContribution`、`SearchProvider`）沿用/扩展现有
+`contrib.tsx` 的 `ContributedTool` 与 `HeroSubmitter`；`SidebarSection` 当前不存在（7d2d523 移除了
+`ContributedSection`），S0 不恢复，等合并的项目投影需要时再定形状。壳只渲染，不解释内容。
 
 ### 4.1 装配
 
@@ -164,6 +169,9 @@ return spec.body({ id, containerId, visible: isVisible(id) });
 ## 5. 能力域与 native
 
 - **规则**：`zu/native` 只允许出现在 `app/domains/`。sheet 与模块只 import 域型面。
+- **基础设施例外（唯一）**：`core/containers.ts`、`core/projects.ts` 与 `shell/settings.ts` 经 `domains/state` 持久化
+  （registry、projects、layout、settings）。`state` 是基础设施而不是面向模块的能力；`check-layers.mjs`
+  显式允许 `core/shell → domains/state`（以及 shell 的 `instance`/`picker` 宿主服务），其余零例外。
 - **域是能力的唯一实现点**：`fs` 服务 Files/Editor/Diff/Problems/SVG（若将来要监视文件）；
   `git` 服务 Changes/History；`pty` 服务 Terminal 与 TUI 动作；`acp` + `state` + `pimodels` 服务 pi；
   `manox` 服务 manox 对话。
@@ -182,7 +190,10 @@ return spec.body({ id, containerId, visible: isVisible(id) });
 | 关闭 | core | 从布局移除；模块自己决定是否释放资源（PTY 属于域，不随 sheet 卸载） |
 | 归档 | core → 模块 `onContainerArchive` | 结束 PTY、LSP、连接；模块不碰布局 |
 | 不可见 | core 提供 `visible` | 模块自行降级（浏览器卸载 WebView、会话只画占位） |
-| 通知 | 模块 → core `notify({sheetId,...})` | 壳按 sheet id 路由；按下 → `open(sheetId)` |
+| 通知 | 模块 → `stores/notifications.notifySettled({sheetId,...})` | 壳按 sheet id 路由；按下 → 切容器并 `openSheet(sheetId)` |
+| 显示 | core → `onContainerShown(containerId)` | pi 种子它的会话投影并 hydrate 可见转录 |
+| 布局变化 | core → `onLayoutChanged(openIds)` | terminal 关掉消失的 PTY |
+| 初始化 | `startModules` → `initialize()` | pi 启动会话索引扫描 |
 
 ## 7. 跨模块交互
 
@@ -201,9 +212,10 @@ return spec.body({ id, containerId, visible: isVisible(id) });
 | | pi | manox |
 |---|---|---|
 | kind | `session`（+ `subagents`） | `manox-chat` |
-| 能力 | `acp`（轮级子进程）、`state`（会话索引）、`pimodels`（模型目录） | `manox`（in-proc AHP） |
-| Hero | starter `pi`，footer 贡献模型/effort | starter `manox`，footer 贡献自己的模型（后续） |
-| 侧栏 | 「全部会话」搜索/无主会话 | thread 组 |
+| 能力 | `acp`（轮级子进程）、`state`（会话索引）、`pimodels`（模型目录） | `manox`（in-proc AHP）；模型经 native 桥注册 pi 的 provider（Q104） |
+| Hero | starter `pi`，footer 贡献模型/effort（spawn env 生效） | starter `manox`（registration-qualified model ref） |
+| 搜索 | `search` 贡献会话索引（`modules/pi/search.ts`） | 无独立搜索源 |
+| 子代理 | kind `subagents`；ACP 下数据面缺席，名册明确说不可用 | — |
 | 崩溃域 | 进程隔离（每条 turn 一个 `pi-acp`） | 应用内单例；泵边界 `catch_unwind`，panic → transport error → 重连 |
 | 权威 | `~/.pi` 会话文件 | `~/.manox` journal |
 
@@ -245,12 +257,12 @@ App.tsx                         # + registerModule(svgModule)
 
 ## 11. 门禁
 
-1. **依赖图**：`ui ← core ← shell`、`modules → core/domains/ui`、`modules ⇸ modules`、
-   `core/shell ⇸ modules/domains`；任一违例失败。做成 `nsh check` 的前置脚本或 CI 步骤。
+1. **依赖图**：`modules → core/domains/ui`、`modules ⇸ modules`、`core/shell ⇸ modules`；
+   任一违例失败。`node script/check-layers.mjs`（S0 起常绿，零白名单）。
 2. **native 收口**：`zu/native` / `manox/native` 的 import 只允许在 `app/domains/`（grep 级）。
-3. **未知 kind**：布局注入一个不存在的 kind，壳画占位、不抛错。
-4. **模块装配测试**：注册 → intent 打开 → 拿到 id → body 用假域渲染。
-5. **契约测试**：每个 `kinds[]` 的 `parse`/`restore` 对坏 id 返回 null/false，不抛。
+3. **未知 kind**：布局注入一个不存在的 kind，壳画占位、不抛错（`canvas/sheets.tsx`）。
+4. **模块契约测试**：`app/sheet-modules.test.tsx` 覆盖注册、重复 kind、未知 kind、`restore` 剪枝、
+   titlebar/搜索贡献与 intent 分发。
 
 ## 12. 迁移
 
@@ -258,20 +270,31 @@ App.tsx                         # + registerModule(svgModule)
 
 | 阶段 | 内容 | 验收 |
 |---|---|---|
-| **S0 门禁与契约** | `contracts/module.ts`、`core/registry`、`registerModule`；`home` 与 `browser` 先走新路径 | 依赖门禁上线；browser 零 native 跑通；全量测试绿 |
-| **S1 域收口** | 拆 `app/domains/`；`sheets/*-ui.tsx` 不再 import native 类型 | `zu/native` 只出现在 `domains/`；测试绿 |
-| **S2 工作台模块化** | files/git/terminal/problems 搬成模块；删 `SheetKind` 闭集与壳侧分支 | `canvas/sheets.tsx` 只剩 registry + 占位；所有 kind 走同一路径 |
-| **S3 harness 模块化** | pi/manox 搬成模块；容器去 `kind`/`sessions`；通知按 sheet id；删旧 wire（P4） | 两条 harness 都不在主干；`App.tsx` 只 import 模块；旧 wire 零残留 |
+| S0 ✅ | `contracts/module.ts`、`core/registry`、`registerModule`；home/browser 注册 | 门禁上线；全量绿 |
+| S1 ✅ | `app/domains/`；`zu/native` 只在 domains | `check-layers` 零违例 |
+| S2 ✅ | files/git/terminal/problems 模块化；删闭集 | `canvas/sheets.tsx` 只剩 registry + 占位 |
+| S3 ✅ | pi/manox 模块化；容器去 `kind`/`sessions`；通知按 sheet id；旧 wire 删除 | `App.tsx` 只 import 模块；壳零 harness 词汇 |
 
-迁移期间的兼容：布局与 `registry.json` 的旧形状（`kind`、`sessions[]`）在读时迁移，
-写入只用新形状；`restore` 对旧 id 返回 false 即静默移除。
+兼容：旧 `registry.json` 的 `kind`/`sessions[]` 字段被忽略（读时无感）；`sheetOrder` 在记录里持久化，
+写入只用新形状；`restore` 对已死资源返回 false 即静默移除。
+
+## 12.1 范围外（已归档）
+
+以下能力不属于本架构的验收，也不由 S0–S3 承诺：
+
+- ACP 的 `session/request_permission` 与扩展 UI 桥（旧引擎实现随 P4 删除）；
+- 会话内 `/model`、`/thinking`、`/compact` 的 ACP 映射；
+- 子代理 dispatch 数据面（ACP distro 尚未提供，P5 的 generic agents）。
+
+它们连同打包后的真机冒烟，都在 [plan.md](plan.md) §2 归档为「遗留能力项」，后继条件各自写明。
+本架构保证的是：这些能力回来时，接线点是模块（pi / 扩展宿主）而不是壳。
 
 ## 13. 风险与边界
 
 1. **同等公民 ≠ 功能对等**：模型、斜杆、子代理是 pi 的能力；manox 有 elicitation；终端没有会话。
    契约给的是同一套挂载点，不是同一组功能。壳里出现「如果不是 pi 就……」就是设计错了。
 2. **native 是稀缺资源**：默认模板是纯 TS 模块；只有进程、宿主策略、Rust 依赖才开域。
-3. **一次性大搬迁会打断全部门禁**：按 S0–S3 每步搬一类，测试跟着模块走（`app/modules/<id>/*.test.ts`），
-   主干测试用假模块。
+3. **一次性大搬迁会打断全部门禁**：按 S0–S3 每步搬一类。测试留在 `app/` 根（`nsh test` 的发现面），
+   模块契约由 `app/sheet-modules.test.tsx` 守住；UI 测试通过 fixtures 装配全部模块。
 4. **状态归属**：模块 store 必须是单例，组件卸载不丢；否则拖 tab/切容器就是数据丢失。
 5. **文档**：模块的实现文档放 `docs/modules/<id>.md`（按需），架构只保留共同规则。

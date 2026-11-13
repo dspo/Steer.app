@@ -1,7 +1,7 @@
 import { mount } from "nsh";
-import { seedSession } from "../stores/sessions";
-import { SessionBody } from "../canvas/sheets";
-import { visiblePanels } from "../stores/dock";
+import { seedSession } from "../modules/pi/sessions";
+import { SessionBody } from "../modules/pi/view";
+import { visiblePanels } from "../core/dock";
 
 // An empty session with a model and context window already known: the start
 // page's hero and its inline composer, without an engine.

@@ -1,5 +1,5 @@
 import { expect, open, test } from "nsh/test";
-import { Engine, Instance } from "zu/native";
+import { Instance, State } from "zu/native";
 
 // A headless app must not take the single-instance lock: the test runner
 // opens many apps, and a fixture that claimed would make the next one look
@@ -10,7 +10,7 @@ import { Engine, Instance } from "zu/native";
 // the real `~/.pi/zu` claim, which is exactly the behavior under test, not a
 // reason for a test to fail.
 const STATE_DIR = `/tmp/zu-m12-lifecycle-${Date.now()}`;
-Engine.setStateDir(STATE_DIR);
+State.setStateDir(STATE_DIR);
 
 test("a headless run claims no instance lock", async () => {
   const app = await open("./App.tsx", { network: "live", width: 1200, height: 800 });
@@ -30,7 +30,6 @@ test("a headless run claims no instance lock", async () => {
       await app.press("id:titlebar-tools");
       if (app.shows("id:engine-stop")) await app.press("id:engine-stop");
     }
-    await Engine.stop();
-    Engine.setStateDir("");
+    State.setStateDir("");
   }
 });

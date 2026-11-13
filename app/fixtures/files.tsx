@@ -6,10 +6,11 @@ import {
   layout,
   setContainerTransport,
   setLayout,
-} from "../stores/containers";
-import { panelIds, visiblePanels } from "../stores/dock";
-import { editorDocs, saveActiveEditor } from "../stores/editors";
+} from "../core/containers";
+import { panelIds, visiblePanels } from "../core/dock";
+import { editorDocs, saveActiveEditor } from "../modules/files/editors";
 import { SheetBody } from "../canvas/sheets";
+import { registerAllModules } from "../modules/register-all";
 import { M8_ROOT } from "./m8-paths";
 
 // A headless acceptance fixture for M8: one Pi container whose cwd is a real
@@ -21,17 +22,16 @@ const CONTAINER = "pi:fixture-m8";
 
 // The canvas is not connected to an engine: layout saves are accepted and
 // dropped, while the sheet registry and the stores are the app's own.
+registerAllModules();
 setContainerTransport(async () => ({}));
 
 containers.set([
   {
     id: CONTAINER,
-    kind: "Pi",
     cwd: M8_ROOT,
     archived: false,
     createdAt: 0,
     updatedAt: 0,
-    sessions: [],
   },
 ]);
 activeContainerId.set(CONTAINER);

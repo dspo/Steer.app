@@ -1,11 +1,11 @@
 import { afterAll, beforeEach, expect, open, test } from "nsh/test";
-import { Engine, Fs, State } from "zu/native";
+import { Fs, State } from "zu/native";
 import { copy } from "./ui/copy";
-import { activeContainerId, containers, loadContainers, openPath } from "./stores/containers";
-import { createProject, projects } from "./stores/projects";
-import { messages, refreshSessions } from "./stores/sessions";
-import { resetStateCache } from "./stores/zu-state";
-import { setPiTransport } from "./harness/pi-acp/acp";
+import { activeContainerId, containers, loadContainers } from "./core/containers";
+import { openPath, sessionIdsOfContainer } from "./modules/pi/container";
+import { createProject, projects } from "./core/projects";
+import { messages, refreshSessions } from "./modules/pi/sessions";
+import { resetStateCache } from "./domains/state";
 
 // §2.1-2's acceptance, in the post-cutover world: the app opens on the
 // registry's active container and draws its conversation without a click —
@@ -14,12 +14,8 @@ import { setPiTransport } from "./harness/pi-acp/acp";
 // and exits), and the scratch Hero's project action lands on the matching
 // sheet.
 
-setPiTransport(null); // the default: ACP
-
 const agentDir = `/tmp/zu-s21-agent-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 let stateDir = `/tmp/zu-s21-2-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-
-Engine.setNoExtensions(true);
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -44,21 +40,17 @@ async function writeStartupSession(): Promise<void> {
 // Each case gets its own registry: `open` runs the app in a VM that shares
 // the native module's process-wide state.
 beforeEach(async () => {
-  await Engine.kill();
   // A fresh registry per case: the second case starts on the scratch canvas.
   stateDir = `/tmp/zu-s21-2-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-  Engine.setStateDir(stateDir);
+  State.setStateDir(stateDir);
   State.setAgentDir(agentDir);
   resetStateCache();
   await loadContainers();
 });
 
 afterAll(async () => {
-  await Engine.kill();
-  Engine.setStateDir("");
+  State.setStateDir("");
   State.setAgentDir("");
-  Engine.setNoExtensions(false);
-  setPiTransport(null);
   resetStateCache();
 });
 
@@ -68,9 +60,7 @@ test("startup shows the registry's active container and hydrates its conversatio
   // container and makes it active — the whole registry write is UI-side.
   await refreshSessions();
   await openPath(SESSION_PATH);
-  const row = containers().find((container) =>
-    container.sessions.some((session) => session.path === SESSION_PATH),
-  );
+  const row = containers().find((container) => sessionIdsOfContainer(container.id).length > 0);
   expect(row).toBeTruthy();
   await sleep(150); // the write-through settle
 
@@ -83,8 +73,6 @@ test("startup shows the registry's active container and hydrates its conversatio
   // transcript's own drawing is covered at the store level (cutover.test's
   // reopen leg), which is where its truth lives.
   await app.waitUntil(() => app.texts().includes("startup marker alpha"), { timeout: 60000 });
-  expect(Engine.pid()).toBe(0);
-  expect(Engine.port()).toBe(0);
   // The canvas is this container's sheet, not a page and not the Hero.
   expect(app.shows("id:hero-input")).toBe(false);
   expect(activeContainerId() !== null || containers().length === 1).toBe(true);

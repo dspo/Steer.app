@@ -1,5 +1,5 @@
 import { expect, test } from "nsh/test";
-import { defaultAction, terminalResource, terminalSheetContainer, terminalSheetId } from "./stores/terminals";
+import { defaultAction, registerTerminal, terminalAction, terminalResource, terminalSheetContainer, terminalSheetId } from "./domains/pty";
 
 // A terminal is a resource of a container (`terminal:{containerId}:{n}`), so
 // one container can hold a shell beside an agent TUI. Container ids carry
@@ -18,10 +18,12 @@ test("a terminal sheet id names one resource of one container", () => {
   expect(terminalSheetContainer("home:pi:abc")).toBeNull();
 });
 
-test("a container's own terminal runs its kind's CLI", () => {
-  expect(defaultAction("Pi")).toBe("shell");
-  expect(defaultAction("Terminal")).toBe("shell");
-  expect(defaultAction("Claude")).toBe("Claude");
-  expect(defaultAction("Codex")).toBe("Codex");
-  expect(defaultAction("Copilot")).toBe("Copilot");
+test("a terminal's action is what its opener registered", () => {
+  // No container kind decides it any more: the sheet's opener does, and a
+  // restored sheet falls back to a plain shell.
+  expect(defaultAction()).toBe("shell");
+  const id = terminalSheetId("external:claude:u-2", 1);
+  registerTerminal(id, "Claude");
+  expect(terminalAction(id)).toBe("Claude");
+  expect(terminalAction(terminalSheetId("external:claude:u-2", 2))).toBeUndefined();
 });

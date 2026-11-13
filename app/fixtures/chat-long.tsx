@@ -1,10 +1,8 @@
 import { mount } from "nsh";
-import { seedSession } from "../stores/sessions";
-import { Conversation } from "../sheets/chat-view";
-import { phase } from "../stores/engine";
+import { seedSession } from "../modules/pi/sessions";
+import { Conversation } from "../modules/pi/chat-view";
 
 // A long transcript: the list must render only what is near the viewport.
-phase.set("connected");
 const rows = Array.from({ length: 2000 }, (_, i) => ({
   role: (i % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
   text: `row ${i}`,

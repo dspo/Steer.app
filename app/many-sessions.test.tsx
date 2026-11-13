@@ -12,5 +12,5 @@ test("700 session search hits keep the virtualized list small", async () => {
   // The list mounts rows near the viewport only: the other ~650 do not exist.
   expect(rendered()).toBeGreaterThan(10);
   expect(rendered()).toBeLessThan(80);
-  expect(app.count("id:session-list")).toBe(1);
+  expect(app.count("id:search-results")).toBe(1);
 }, 30000);

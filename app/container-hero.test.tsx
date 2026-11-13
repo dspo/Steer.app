@@ -1,8 +1,9 @@
 import { expect, open, test } from "nsh/test";
-import { Engine, Fs, State } from "zu/native";
-import { containers, loadContainers, openPath } from "./stores/containers";
-import { error as sessionStoreError, messages, refreshSessions, viewFor } from "./stores/sessions";
-import { resetStateCache } from "./stores/zu-state";
+import { Fs, State } from "zu/native";
+import { containers, loadContainers } from "./core/containers";
+import { createContainer, openPath, sessionIdsOfContainer } from "./modules/pi/container";
+import { error as sessionStoreError, messages, refreshSessions, viewFor } from "./modules/pi/sessions";
+import { resetStateCache } from "./domains/state";
 import { copy, shellCopyLocale } from "./ui/copy";
 import { K, t } from "./ui/i18n";
 
@@ -17,8 +18,7 @@ const agentDir = `/tmp/zu-hero-agent-${Date.now()}-${Math.floor(Math.random() * 
 const SESSION_ID = "ffff5555-0000-0000-0000-000000000005";
 const SESSION_PATH = `${agentDir}/sessions/--tmp-zu-hero-a--/2026-07-20T03-38-58-867Z_${SESSION_ID}.jsonl`;
 
-Engine.setStateDir(stateDir);
-Engine.setNoExtensions(true);
+State.setStateDir(stateDir);
 State.setAgentDir(agentDir);
 resetStateCache();
 
@@ -42,9 +42,7 @@ test("switching to a container with a conversation shows its transcript, not the
   // makes it active — the whole write is UI-side.
   await refreshSessions();
   await openPath(SESSION_PATH);
-  const row = containers().find((container) =>
-    container.sessions.some((session) => session.path === SESSION_PATH),
-  );
+  const row = containers().find((container) => sessionIdsOfContainer(container.id).length > 0);
   expect(row).toBeTruthy();
   const aId = String(row?.id ?? "");
   // The transcript over ACP: the fold feeds the load's cwd, the harness
@@ -79,9 +77,8 @@ test("switching to a container with a conversation shows its transcript, not the
 }, 240000);
 
 async function createEmptyContainer(cwd: string): Promise<string> {
-  const { createContainer } = await import("./stores/containers");
   const key = String((await createContainer(cwd)) ?? "");
-  return containers().find((row) => row.sessions.some((s) => s.sessionId === key))?.id ?? "";
+  return containers().find((row) => row.id === `pi:${key}`)?.id ?? "";
 }
 
 /** B's row label: an untouched captain's folder. */
@@ -91,8 +88,7 @@ function bContainerTitle(id: string): string {
 }
 
 test("leaves the runner clean", () => {
-  Engine.setStateDir("");
+  State.setStateDir("");
   State.setAgentDir("");
-  Engine.setNoExtensions(false);
   resetStateCache();
 });

@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, expect, open, test } from "nsh/test";
-import { Engine } from "zu/native";
-import { createProject } from "./stores/projects";
+import { State } from "zu/native";
+import { createProject } from "./core/projects";
 import { copy } from "./ui/copy";
 
 
@@ -10,37 +10,37 @@ import { copy } from "./ui/copy";
 // output is exercised by terminal.ui.test.tsx; here the concern is the shell
 // wiring and the registry row.
 
-Engine.setNoExtensions(true);
-
 // Each case gets its own registry and a fresh sidecar: `open` runs the app in
 // a VM that shares the native module's process-wide state, and another test
 // file may have pointed it at the real `~/.pi/zu` since this module loaded.
 beforeEach(async () => {
-  await Engine.kill();
-  Engine.setStateDir(`/tmp/zu-m7-ui-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
+  State.setStateDir(`/tmp/zu-m7-ui-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
 });
 
 afterAll(async () => {
-  await Engine.kill();
-  Engine.setStateDir("");
-  Engine.setNoExtensions(false);
+  State.setStateDir("");
 });
 
 /**
  * The Hero's tools that mint a workspace need a project (DESIGN §4.1), so
  * each case gives the scratch canvas one and picks it from the chip.
  */
-async function pickProject(app: any): Promise<void> {
-  // The projects file is the UI's fold (zu/state): the store writes it, the
-  // app's own fold reads it — no sidecar anywhere.
+async function makeProject(): Promise<string> {
+  // The projects file is the UI's fold (zu/state): write it before the app
+  // boots so its own fold reads it — no sidecar anywhere.
   const made = await createProject("M7", [{ path: "/tmp", primary: true }]);
+  return made?.id ?? "";
+}
+
+async function pickProject(app: any, projectId: string): Promise<void> {
   await app.waitFor("id:hero-input", { timeout: 20000 });
   await app.press("id:hero-project");
-  await app.waitFor(`id:hero-project-${made?.id}`, { timeout: 20000 });
-  await app.press(`id:hero-project-${made?.id}`);
+  await app.waitFor(`id:hero-project-${projectId}`, { timeout: 20000 });
+  await app.press(`id:hero-project-${projectId}`);
 }
 
 test("the Hero opens an external terminal container without a composer", async () => {
+  const projectId = await makeProject();
   const app = await open("./App.tsx", { network: "live", width: 1200, height: 800 });
   // The ACP boot mounts the folds at once; no phase label exists to wait on.
   // No containers: the canvas is the scratch canvas, whose only sheet is
@@ -48,7 +48,7 @@ test("the Hero opens an external terminal container without a composer", async (
   await app.waitFor("id:external-terminal");
   expect(app.texts()).toContain(copy("开始", "Home"));
   await app.waitFor("id:tab-plus-home:scratch");
-  await pickProject(app);
+  await pickProject(app, projectId);
   await app.waitUntil(() => app.enabled("id:external-terminal"), { timeout: 20000 });
   await app.press("id:external-terminal");
   // The terminal sheet, titled by the container's kind and cwd, takes the
@@ -69,9 +69,10 @@ test("the Hero opens an external terminal container without a composer", async (
 }, 60000);
 
 test("a terminal's own exit archives its container", async () => {
+  const projectId = await makeProject();
   const app = await open("./App.tsx", { network: "live", width: 1200, height: 800 });
   await app.waitFor("id:external-terminal");
-  await pickProject(app);
+  await pickProject(app, projectId);
   await app.waitUntil(() => app.enabled("id:external-terminal"), { timeout: 20000 });
   await app.press("id:external-terminal");
   await app.waitFor("id:terminal-view", { timeout: 20000 });

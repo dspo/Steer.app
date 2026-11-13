@@ -1,5 +1,5 @@
 import { token, View } from "nsh";
-import { activePanelIds, type DockAreaLayout, type DockNode } from "../stores/dock";
+import { activePanelIds, type DockAreaLayout, type DockNode } from "../core/dock";
 import { K, t } from "../ui/i18n";
 import { Glyph, motionStyle } from "../ui/ui";
 

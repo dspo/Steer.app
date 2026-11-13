@@ -24,33 +24,32 @@ Project → Container → Sheet 的关系模型；契约与迁移见
 
 | Doc | 内容 |
 |---|---|
-| [docs/sheet-module-ARCHITECTURE.md](docs/sheet-module-ARCHITECTURE.md) | **目标**：sheet 模块契约、能力域、依赖门禁、迁移 S0–S3 |
+| [docs/sheet-module-ARCHITECTURE.md](docs/sheet-module-ARCHITECTURE.md) | sheet 模块契约、能力域、依赖门禁（S0–S3 已落地） |
 | [docs/architecture.md](docs/architecture.md) | **当前**：约束、两条 harness、存储、native 域、对象模型、风险 |
 | [docs/pi-acp-ARCHITECTURE.md](docs/pi-acp-ARCHITECTURE.md) | pi 模块：ACP 协议映射、能力矩阵、P 线迁移 |
 | [docs/DESIGN.md](docs/DESIGN.md) | 视觉规格：token、外壳几何、表面、动效、各 sheet |
-| [docs/decisions.md](docs/decisions.md) | 决策台账 Q1–Q103（问题 → 裁决 → 落点） |
+| [docs/decisions.md](docs/decisions.md) | 决策台账 Q1–Q107（问题 → 裁决 → 落点） |
 | [docs/plan.md](docs/plan.md) | 执行计划：主线、独立修复、门禁 |
 | [docs/evidence/](docs/evidence/) | 可再生的验证产物（截图、实测记录） |
 
 ## 代码地图
 
 ```
-app/                 nsh 应用（nsh.json、App.tsx、五层、测试与 fixtures）
-  shell/             工作台、侧栏、顶栏、生命周期与托盘
-  canvas/            sheet 注册表、容器标题、tab `+`
-  stores/            域状态与 typed face（sessions/containers/fs/git/lsp/pty/…）
-  sheets/            各 sheet 的实体界面（chat、terminal、files、git、browser、hero…）
+app/                 nsh 应用（nsh.json、App.tsx、测试与 fixtures）
+  core/              关系模型：registry、containers、dock、projects、lifecycle、notifications、shell-actions
+  shell/             工作台、侧栏、顶栏、生命周期与托盘、项目对话框、设置/搜索/更新
+  canvas/            sheet 解析与容器标题、tab `+`
+  domains/           能力型面（唯一 import zu/native 的地方）：fs、git、lsp、pty、state、acp、manox、picker…
+  modules/           每个 sheet 内容的模块：home、browser、files、git、terminal、problems、pi、manox
   ui/                无状态原语、token、品牌图标、i18n
-  harness/pi-acp/    ACP 客户端：jsonrpc、连接/回合、update → store 的 fold
-  harness/manox/     AHP 客户端：连接/订阅/reducer 折叠、会话 sheet 与 composer
   assets/            托盘图标（TSX 资产）
-native/              zu-native crate（Rust native 域）
+native/              zu-native crate（Rust 能力域）
   src/               acp、fs、git、lsp、pty、instance、picker、pimodels、state
   manox/             独立 crate：manox 宿主半边 in-proc + 帧泵
   assets/fonts/      Lilex（随 crate）
-pi-harness/          完整 pi 发行版：ACP 入口、旧引擎、内置扩展；bun 编译成 sidecar
-contracts/           跨侧共享面：旧 engine wire（P4 删除）与 vendored AHP
-script/              打包与发布脚本
+pi-harness/          完整 pi 发行版：ACP 入口、内置扩展；bun 编译成 `dist/pi-acp`
+contracts/           跨侧共享面：`module.ts`（模块契约）与 vendored AHP
+script/              打包脚本与 `check-layers.mjs`（依赖门禁）
 ```
 
 `app/nsh.json` 的 `"rust": ["../native", "../native/manox"]`；nsh 命令一律以 `app` 为应用目录。
@@ -69,9 +68,10 @@ nsh test app                 # 全量测试（ZU_SKIP_LIVE=1 跳过 live 模型/
 改了 `pi-harness/src` 或 `native/` 后：
 
 ```sh
-cd pi-harness && bun run build     # 产出 dist/pi-engine 与 dist/pi-acp
+cd pi-harness && bun run build     # 产出 dist/pi-acp 与两个 WASM
 cd pi-harness && bun run models:parity   # 与 pi --list-models 对比
-script/bundle-mac.sh               # 打包冒烟
+node script/check-layers.mjs       # 依赖门禁（core/shell/domains/modules）
+script/bundle-mac.sh               # 打包冒烟（Helpers/pi-acp）
 ```
 
 完整门禁（含 manox 的 hermetic/live 两档）见 [docs/plan.md](docs/plan.md) §4。

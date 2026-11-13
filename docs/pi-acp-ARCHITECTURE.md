@@ -1,10 +1,12 @@
-# Zu × pi-harness 架构设计 v2（ACP 转向，落地稿）
+# pi 模块架构（ACP）：zu-pi-harness v2 落地稿
 
-> 状态：**决策已定**（2026-11-13），待实施。本文取代 `zu-pi-harness-ARCHITECTURE.md`（v1，2026-11-12）。
+> 状态：**P0–P4 已落地（2026-11-13）**。ACP 是 pi 会话的唯一传输；旧 loopback engine、
+> `pi-engine` 入口与私有 wire 已删除。本文是 **pi 模块**的协议参考，
+> 当前系统形态见 [architecture.md](architecture.md)，扩展机制见 [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md)。
 > v1 → v2 的差异由一轮审查与 reviu（`~/projects/github/reviu`，量产中的通用 ACP 宿主）对照驱动，
 > 逐条见 §15；否决方向台账见 §2，不变量见 §11，迁移路径见 §12。
 > **宿主裁决（本稿的第一原则）**：Zu.app 只做薄宿主——进程、文件、状态、UI；一切 agent 能力落在
-> pi-harness distro。实施指导按 §12 落进 nsh-pi `docs/plan.md`，本文随裁决转入 `docs/architecture.md` 体系。
+> pi-harness distro。目标态下 pi 是 `modules/pi`，与 manox 同级。
 
 ## 0. 一句话
 
@@ -394,7 +396,7 @@ dump 请求体做 diff。门禁脚本进仓：`pi-harness/scripts/cache-parity.*
 | **P1** | Zu：`zu/acp`（薄传输）+ `jsonrpc.ts`/`acp.ts` + `contracts/acp-xzu/`；与现有引擎**双跑 parity**（`ZU_STATE_DIR` 隔离，防旧 registry 与新 zu/state 对账打架） | cache 三断言（§9.1）+ turn 生命周期 + 60s 看门狗 + 冷启动预算定数（§13.3） |
 | **P2** | 读面切换：`zu/fs` 增量读 + 扫描 op + `zu/state`；注册表写者反转（读旧 registry.json 迁移入 zu/state）；fold 与 wire 读对账 | 「引擎不在也能浏览」；启动不等待；中断 turn 的 fold 判定 |
 | **P3** | 控制面切换：dispatch 扩展 port 进 distro；子代理/名册/交付；通知信号源切换（prompt 边沿 + `x-zu/subagent`）；`engine.ts` 全部 wire 用途改走 ACP | 全量门禁 + 崩溃演练 + 真实扩展冒烟 |
-| **P4** | **删除批**：`engine/`（旧 distro）、`contracts/` 私有 wire 部分、WS/token/心跳/generation/snapshot/LRU、`zu/engine` 监督 | 全量门禁 + grep 门禁（wire 词汇零残留） |
+| **P4** ✅ | **删除批**：旧 distro（`server/store/subagents`）、`contracts/` 私有 wire、WS/token/心跳/`zu/engine` 监督 | 全量门禁 + grep 门禁（wire 词汇零残留） |
 | **P5** | 可选增强（逐项开关）：fs/terminal 反向委托；generic agents（§5.6） | 逐项验收；与 distro 会话并存不混用 |
 
 UI 侧各 store 的**对外行为**保持（侧栏/画布/composer 的用户可见语义不变），但内部数据面按 §6 重构——
@@ -417,8 +419,8 @@ v1「store 接口不变」的说法收窄为这句话：`snapshot/subscribe` 语
 
 ## 14. 参考
 
-- nsh-pi `docs/architecture.md`（现状）、`docs/research/absorption-candidates.md`（A1–A12 沿用）
-- `zu-pi-harness-ARCHITECTURE.md`（v1）、`dspo/pi-harness-ARCHITECTURE.rejected.md`（manox 前稿）
+- nsh-pi `docs/architecture.md`（当前形态）、`docs/sheet-module-ARCHITECTURE.md`（模块边界）
+- `dspo/pi-harness-ARCHITECTURE.rejected.md`（manox 前稿）
 - ACP：v1 规范（agentclientprotocol.com）；`session/resume` stabilized 公告与 v2 RFD（replayFrom 游标）；
   官方 SDK：Rust `agent-client-protocol` 0.11.1、TS `@agentclientprotocol/sdk` 2.x
 - **reviu**（`~/projects/github/reviu`）：`agent_acp`（ACP client 核心、`_session/steering`、权限卡、

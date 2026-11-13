@@ -1,20 +1,15 @@
 import { expect, open, test } from "nsh/test";
-import { Engine } from "zu/native";
-import { connect } from "./stores/engine";
-import { createContainer, containers, loadContainers } from "./stores/containers";
-import { resetStateCache } from "./stores/zu-state";
+import { containers, loadContainers } from "./core/containers";
+import { createContainer } from "./modules/pi/container";
+import { resetStateCache } from "./domains/state";
 import { State } from "zu/native";
-import { setPiTransport } from "./harness/pi-acp/acp";
 
 
 // A state directory of this run: the user's registry is never touched.
 // Since the writer inversion the registry is the UI's fold over `zu/state`,
-// so the containers are minted through the store — with the ACP transport
-// pinned, no captain process or sidecar is needed at all.
+// so the containers are minted through the store — no process is needed.
 const stateDir = `/tmp/zu-switch-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-Engine.setStateDir(stateDir);
-Engine.setNoExtensions(true);
-setPiTransport("acp");
+State.setStateDir(stateDir);
 resetStateCache();
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -31,14 +26,11 @@ async function untilActive(id: string, timeoutMs = 15000): Promise<boolean> {
 }
 
 test("pressing a container row switches the active container", async () => {
-  // The shell's boot still waits for the engine (B3 removes that); the
-  // registry itself is already the UI's fold.
-  await connect();
   await loadContainers();
   const a = await createContainer("/tmp/zu-switch-a");
   const b = await createContainer("/tmp/zu-switch-b");
-  const aId = containers().find((row) => row.sessions.some((s) => s.sessionId === a))?.id ?? "";
-  const bId = containers().find((row) => row.sessions.some((s) => s.sessionId === b))?.id ?? "";
+  const aId = String(a ? `pi:${a}` : "");
+  const bId = String(b ? `pi:${b}` : "");
   expect(aId).toBeTruthy();
   expect(bId).toBeTruthy();
 

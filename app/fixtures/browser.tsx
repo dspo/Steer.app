@@ -7,16 +7,18 @@ import {
   loadContainers,
   openHomeSheet,
   setContainerTransport,
-} from "../stores/containers";
-import { phase } from "../stores/engine";
-import { error as sessionError } from "../stores/sessions";
+} from "../core/containers";
+import { error as sessionError } from "../modules/pi/sessions";
 import {
   applyBrowserNavigation,
   browserPage,
   logBrowserMessage,
   reportBrowserError,
-} from "../stores/browser";
-import { panelIds, visiblePanels } from "../stores/dock";
+} from "../modules/browser/store";
+import { panelIds, visiblePanels } from "../core/dock";
+import { registerAllModules } from "../modules/register-all";
+
+registerAllModules();
 
 /**
  * The M10 browser fixture: the real `Workbench` around one container. The
@@ -93,7 +95,6 @@ setContainerTransport(transport);
 
 void loadContainers().then(() => {
   activeContainerId.set(CONTAINER);
-  phase.set("connected");
   sessionError.set(null);
   containerError.set(null);
   mount(BrowserFixture);

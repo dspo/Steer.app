@@ -4,7 +4,7 @@
  * adapter embeds the SDK, no RPC subprocess).
  *
  * This is the createAgentSession wiring of the legacy loopback engine
- * (src/server.ts) reshaped for a protocol peer: no Zu registry, no wire
+ * reshaped for a protocol peer: no Zu registry, no wire
  * events, no containers — the ACP sessionId is pi's sessionId and pi's
  * session files stay the only durable authority. The dispatch/subagent
  * extension is deliberately absent (v2 §12: P3), and the legacy server keeps

@@ -68,7 +68,9 @@ test("the Hero starts a conversation and then shows its container", async () => 
   expect(app.count("id:hero-model")).toBe(1);
   await app.submit("id:hero-input");
   await app.waitUntil(() => !app.texts().includes("开始你的对话"));
-  expect(app.texts()).toContain("Chat");
+  // The minted container belongs to Chats (the shell's default locale is the
+  // fixture bundle's source language).
+  expect(app.texts().some((text) => text === "聊天" || text === "Chats")).toBe(true);
   expect(app.texts()).toContain("hello from launcher");
 });
 
@@ -244,11 +246,12 @@ test("the scratch canvas holds a browser page and moves it into the container it
   await app.press("id:hero-project-p2");
   await app.type("id:hero-input", "mint from scratch");
   await app.submit("id:hero-input");
-  await app.waitUntil(() => scratchState(app).active === "c3", { timeout: 10000 });
+  await app.waitUntil(() => scratchState(app).active.startsWith("pi:"), { timeout: 10000 });
   const state = scratchState(app);
-  expect(state.panels).toContain("webview:c3:1");
+  const minted = state.active;
+  expect(state.panels).toContain(`webview:${minted}:1`);
   expect(state.panels).not.toContain("webview:scratch:");
-  expect(state.pages).toContain("webview:c3:1=https://example.org");
+  expect(state.pages).toContain(`webview:${minted}:1=https://example.org`);
   // The container belongs to Project Two: the picked chip is the mint's target.
   expect(state.project).toBe("p2");
 }, 60000);

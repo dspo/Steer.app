@@ -1,7 +1,7 @@
 import { signal } from "nsh";
 import { Application, Tray, Window, isAvailable as desktopAvailable } from "nsh/desktop";
-import { claimInstance, releaseInstance, type InstanceClaim } from "../stores/instance";
-import { flushNotificationIntents } from "../stores/notifications";
+import { claimInstance, releaseInstance, type InstanceClaim } from "../domains/instance";
+import { flushNotificationIntents } from "../core/notifications";
 import { bootShell } from "./shell";
 import { K, t } from "../ui/i18n";
 
@@ -12,7 +12,7 @@ import { K, t } from "../ui/i18n";
  * A desktop app claims the state directory before it starts the sidecar.
  * When another live process owns it, this instance renders the
  * "already running" state instead and never boots an engine: the fixed
- * engine port and `~/.pi/zu` belong to the first instance, and a second
+ * state directory (`~/.pi/zu`) belongs to the first instance, and a second
  * sidecar would collide with it. The claim's file and pid check live in
  * `src/instance.rs`; this module only decides what the window shows.
  *

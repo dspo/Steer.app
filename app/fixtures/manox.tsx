@@ -1,15 +1,17 @@
 import { mount, signal, Text, View } from "nsh";
-import { setManoxHermetic } from "../harness/manox/ahp";
+import { setManoxHermetic } from "../modules/manox/ahp";
 import { Workbench } from "../shell/shell";
-import { registerManoxPack, openManoxChat } from "../harness/manox/register";
+import { openManoxChat } from "../modules/manox/manifest";
 import {
   createManoxThread,
   manoxChatSheetId,
   sendManoxMessage,
-} from "../harness/manox/stores";
-import { containerError, loadContainers, setContainerTransport } from "../stores/containers";
-import { error as sessionError } from "../stores/sessions";
-import { phase } from "../stores/engine";
+} from "../modules/manox/stores";
+import { containerError, loadContainers, setContainerTransport } from "../core/containers";
+import { error as sessionError } from "../modules/pi/sessions";
+import { registerAllModules } from "../modules/register-all";
+
+registerAllModules();
 
 // This fixture runs only under ZU_MANOX_GATE (see manox.ui.test.tsx): its
 // host is the hermetic one.
@@ -32,14 +34,12 @@ setManoxHermetic();
 
 setContainerTransport(async () => ({}));
 
-registerManoxPack();
 
 export const fixtureState = signal<string>("booting");
 
 void loadContainers().then(async () => {
   // No engine in this fixture: the shell's status line is the only piece
   // that would otherwise show "connecting"/"offline".
-  phase.set("connected");
   sessionError.set(null);
   containerError.set(null);
   try {

@@ -5,7 +5,7 @@ import {
   removeProjectRoot,
   rootPayload,
   setPrimaryProjectRoot,
-} from "./sheets/project-roots";
+} from "./core/project-roots";
 
 test("a picked path is normalized and must be absolute", () => {
   expect(normalizeRootPath("  /Users/me/Project/  ")).toBe("/Users/me/Project");

@@ -1,13 +1,15 @@
 import { mount, Text, View } from "nsh";
 import { Workbench } from "../shell/shell";
-import { activeContainerId, containers, layout, setContainerTransport, syncVisible } from "../stores/containers";
-import { browserPages } from "../stores/browser";
-import { panelIds } from "../stores/dock";
-import { phase } from "../stores/engine";
-import { containerProject, membership, projects, setProjectTransport } from "../stores/projects";
-import { seedSession } from "../stores/sessions";
-import { defaultLayoutForSessions } from "../stores/dock";
-import { setFolderPicker } from "../stores/picker";
+import { activeContainerId, containers, layout, setContainerTransport, sheetOrder, syncVisible } from "../core/containers";
+import { browserPages } from "../modules/browser/store";
+import { panelIds } from "../core/dock";
+import { containerProject, membership, projects, setProjectTransport } from "../core/projects";
+import { seedSession } from "../modules/pi/sessions";
+import { defaultLayoutForSheets } from "../core/dock";
+import { setFolderPicker } from "../domains/picker";
+import { registerAllModules } from "../modules/register-all";
+
+registerAllModules();
 
 // Headless tests never launch Finder: the picker answers with the next
 // folder in this list, so the dialog's add/remove/primary flow is real.
@@ -60,9 +62,9 @@ projects.set([projectOne, projectTwo] as any);
 containers.set(records);
 membership.set(membershipMap);
 activeContainerId.set("c1");
-layout.set(defaultLayoutForSessions(["s1"]));
+layout.set(defaultLayoutForSheets(["session:s1"]));
+sheetOrder.set({ c1: ["session:s1"], c2: ["session:s2"] });
 syncVisible();
-phase.set("connected");
 
 async function containerTransport(type: string, payload: any = {}): Promise<any> {
   switch (type) {

@@ -163,6 +163,18 @@ impl State {
             .filter(|home| !home.is_empty())
     }
 
+    /// Points the state directory (registry, layouts, settings) at `path`.
+    /// Tests use it to isolate a run; the packaged app never calls it.
+    pub fn set_state_dir(path: String) {
+        if let Ok(mut dir) = crate::STATE_DIR.lock() {
+            *dir = if path.trim().is_empty() {
+                None
+            } else {
+                Some(PathBuf::from(path.trim()))
+            };
+        }
+    }
+
     /// Points pi's home for the session index at `path`; an empty string
     /// restores `~/.pi/agent`. Tests use it to scan a fixture directory.
     pub fn set_agent_dir(path: String) {
