@@ -17,6 +17,7 @@
 | ACP cutover | P0–P3：distro ACP 入口、`zu/acp` 泵、注册表/布局写者反转、控制面切换（默认 ACP） |
 | manox M1 | 真宿主 in-proc（manox v0.9.1）、panic 边界、折叠对账门禁、能对话回路 |
 | sheet 模块化 | S0–S3 全部落地（`contracts/module.ts`、`app/core/registry.ts`、`app/domains/`、`app/modules/`、容器去 harness 身份、通知按 sheet id、旧 wire 删除）；门禁 215 用例 207 通过 / 8 skip |
+| 页签切换器 | 外壳页签取画廊的 section switcher 语言：`switcherTrack/Pill/TabFrame`、轨道内 `+`、`shadow-inset` token；DESIGN §3.2 | `app/ui/ui.tsx`、`app/shell/shell.tsx`、`app/theme.json` |
 | Pi × ACP 会话运行时 | A0–F0 落地：一会话一持久 `pi-acp`、config/mode/resume/close、usage/commands/info/compaction、permission/elicitation、扩展 UI、子代理 `_zu/subagents/*`、sheet/容器/退出生命周期；协议/宿主测试补齐 |
 
 门禁：`nsh check app` ✓、`check-layers` ✓、`nsh test app` 219 用例 211 通过 / 8 skip、
