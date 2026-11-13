@@ -158,6 +158,8 @@ Hero 的两排动作使用各 CLI 的品牌图标（24pt 光学尺寸）：
 Hero 的模型/effort 选择已生效：pi 走 spawn env（`ZU_PI_MODEL`/`ZU_PI_EFFORT`），manox 走
 registration-qualified ref（Q104）。`/model` 的模型菜单本身仍打开；只是切换不到会话。
 本节描述的是 pi 面当前的 hairline composer；manox 面在自己的模块里有独立 composer（Steer 风格）。
+Pi 会话的完整交互状态（审批卡、elicitation、命令候选、恢复/休眠）以
+[pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §9 为准；视觉 token 仍取本文。
 
 ### 3.7 拖拽页签
 

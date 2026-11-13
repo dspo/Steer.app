@@ -26,10 +26,11 @@ Project → Container → Sheet 的关系模型；契约与迁移见
 |---|---|
 | [docs/sheet-module-ARCHITECTURE.md](docs/sheet-module-ARCHITECTURE.md) | sheet 模块契约、能力域、依赖门禁（S0–S3 已落地） |
 | [docs/architecture.md](docs/architecture.md) | **当前**：约束、两条 harness、存储、native 域、对象模型、风险 |
-| [docs/pi-acp-ARCHITECTURE.md](docs/pi-acp-ARCHITECTURE.md) | pi 模块：ACP 协议映射、能力矩阵、P 线迁移 |
+| [docs/pi-acp-IMPLEMENTATION.md](docs/pi-acp-IMPLEMENTATION.md) | **设计稿（待审）**：Pi × ACP 的会话运行时、协议面、UI/UX 与 A0–F0 |
+| [docs/pi-acp-PROTOCOL.md](docs/pi-acp-PROTOCOL.md) | pi 模块：ACP 协议映射与历史裁决（P0–P4，已冻结） |
 | [docs/DESIGN.md](docs/DESIGN.md) | 视觉规格：token、外壳几何、表面、动效、各 sheet |
 | [docs/decisions.md](docs/decisions.md) | 决策台账 Q1–Q107（问题 → 裁决 → 落点） |
-| [docs/plan.md](docs/plan.md) | 执行计划：主线、独立修复、门禁 |
+| [docs/plan.md](docs/plan.md) | 执行计划：状态、批次、门禁 |
 | [docs/evidence/](docs/evidence/) | 可再生的验证产物（截图、实测记录） |
 
 ## 代码地图
@@ -78,8 +79,8 @@ script/bundle-mac.sh               # 打包冒烟（Helpers/pi-acp）
 
 ## 文档治理
 
-- **单一事实源**：架构进 `architecture.md`，裁决进 `decisions.md`，执行进 `plan.md`，视觉进 `DESIGN.md`；
-  同一事实不复制到两处。
+- **单一事实源**：架构进 `architecture.md`，Pi 的目标实现进 `pi-acp-IMPLEMENTATION.md`，裁决进
+  `decisions.md`，执行进 `plan.md`，视觉进 `DESIGN.md`；同一事实不复制到两处。
 - **状态锚点**：只有 `plan.md` §0 与 `architecture.md` §7 写「已完成/待做/已知问题」。
 - **证据可再生**：`docs/evidence/` 只放验证产物（截图、实测输出、未验证项的记录），不写「我们如何走到这里」；
   过程叙事以 git 历史为准。

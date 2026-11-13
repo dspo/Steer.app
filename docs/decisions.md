@@ -165,7 +165,7 @@
 
 | # | 问题 | 裁决 | 落点 |
 |---|---|---|---|
-| Q97 | pi 的传输形态 | **ACP over stdio，轮级子进程**：每条 turn spawn 一个 `pi-acp`，`initialize` → `session/new`/`load` → `prompt` → `update` 流 → settle 退出；恢复 = 再 spawn。旧 loopback engine 与 `pi-engine` 入口已于 2026-11-13 删除（P4） | `pi-harness/src/acp/`、`app/harness/pi-acp/`、`native/src/acp.rs`；[pi-acp-ARCHITECTURE.md](pi-acp-ARCHITECTURE.md) |
+| Q97 | pi 的传输形态 | **ACP over stdio，轮级子进程**：每条 turn spawn 一个 `pi-acp`，`initialize` → `session/new`/`load` → `prompt` → `update` 流 → settle 退出；恢复 = 再 spawn。旧 loopback engine 与 `pi-engine` 入口已于 2026-11-13 删除（P4） | `pi-harness/src/acp/`、`app/harness/pi-acp/`、`native/src/acp.rs`；[pi-acp-PROTOCOL.md](pi-acp-PROTOCOL.md) |
 | Q98 | manox 的接入形态与范围 | **in-proc AHP 单例**（`native/manox` 装配 manox v0.9.1 宿主半边）；泵边界 `catch_unwind` 把 panic 转 transport error，UI 走 restart + reconnect；折叠对账门禁保留。范围 = 「能对话」最小回路，不扩到 Steer 产品面 | `native/manox/`、`app/harness/manox/`；arch §3.3 |
 | Q99 | pi 与 manox 的地位 | **同级公民**：都是容器里的 sheet（`session` / `manox-chat`），harness 属于 sheet 的 kind，不属于容器或壳；pi 不再享有「内置」特判，Manox 不再是「扩展」 | [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md) |
 | Q100 | 扩展单位 | **sheet 模块**：模块拥有 kind（可多个）、呈现、自己的 store、Hero/侧栏/命令/搜索贡献、能力声明与 intent；壳只渲染 registry，未知 kind 降级占位；模块之间禁止 import | 同上 §4、§7 |
@@ -176,7 +176,21 @@
 | Q105 | 侧栏的 harness 分组 | **不设 harness 专属组**：manox 的侧栏组随 `ContributedSection` seam 一起移除（Hero 的 harness 段已是入口；一个侧栏只能说一种行的语言）。已开的 thread 经 sheet 与布局 stash 可达；后继是**合并的项目投影**，不是恢复分组 | `app/shell/contrib.tsx`、`app/harness/manox/register.tsx`、`app/shell/shell.tsx`；7d2d523 |
 
 | Q106 | sheet 模块的落地形态 | **S0–S3 一次落地**：`contracts/module.ts` 是唯一契约；`app/core/registry.ts` 提供 `registerModule/startModules`；`app/domains/` 是唯一 import `zu/native` 的地方；`app/modules/` 收编 home/browser/files/git/terminal/problems/pi/manox；容器记录只剩 `{id,cwd,projectId,sheetOrder}`；通知以 sheet id 为单位；依赖门禁 `script/check-layers.mjs` 零白名单 | `contracts/module.ts`、`app/core/registry.ts`、`app/modules/register-all.ts`、`app/sheet-modules.test.tsx` |
-| Q107 | 旧 wire 与 legacy distro 的删除 | **P4 完成**：删 `contracts/protocol.{ts,md}`、`stores/engine.ts`、`native` 的 `Engine` 模块、`pi-harness/src/{server,store,subagents}.ts` 与 `dist/pi-engine`；打包只带 `Helpers/pi-acp`。代价：ACP distro 尚无 dispatch，子代理名册在 UI 上明确显示不可用（P5 hexagonal generic agents 再说） | `script/bundle-mac.sh`、`native/src/lib.rs`、`pi-harness/package.json`、`app/modules/pi/subagents.ts` |
+| Q107 | 旧 wire 与 legacy distro 的删除 | **P4 完成**：删 `contracts/protocol.{ts,md}`、`stores/engine.ts`、`native` 的 `Engine` 模块、`pi-harness/src/{server,store,subagents}.ts` 与 `dist/pi-engine`；打包只带 `Helpers/pi-acp`。代价：ACP distro 尚无 dispatch，子代理名册在 UI 上明确显示不可用（后续以 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) E0 恢复） | `script/bundle-mac.sh`、`native/src/lib.rs`、`pi-harness/package.json`、`app/modules/pi/subagents.ts` |
+
+## 待审设计（不计入 Q 编号）
+
+[pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) 的 D1–D7 是**设计稿**，尚未成为裁决：
+
+- D1 一会话一持久 `pi-acp` 进程（容器级复用延后）
+- D2 留在 stable ACP v1，补齐会话语义面
+- D3 配置/命令/上下文是协议状态，删除客户端代偿
+- D4 权限策略在 distro 扩展里
+- D5 子代理 = Pi 扩展 + `_zu/subagents/*`
+- D6 ACP 宿主是独立进程，不是 Pi 扩展
+- D7 不采用 `pi-ahp`
+
+审查通过后，这些条目按 Q108 起登记；在此之前，plan 只把 A0–F0 标为"设计待审"。
 
 ## 决策编号说明
 

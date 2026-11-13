@@ -1,8 +1,9 @@
 # 架构
 
 > 决策文档：记录 Zu 的当前架构形态与「为什么这样定」。决策的来龙去脉见 [decisions.md](decisions.md)。
-> 三层文档分工：**本文 = 当前系统**；[sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md) = 扩展机制的目标架构与迁移；
-> [pi-acp-ARCHITECTURE.md](pi-acp-ARCHITECTURE.md) = pi 模块的 ACP 协议细节与 P 线计划。
+> 文档分工：**本文 = 当前系统**；[sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md) = 扩展机制；
+> [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) = pi 模块的 ACP 目标实现（设计稿，待审）；
+> [pi-acp-PROTOCOL.md](pi-acp-PROTOCOL.md) = ACP 协议映射与历史裁决。
 > 视觉规格见 [DESIGN.md](DESIGN.md)；执行计划见 [plan.md](plan.md)。
 
 ## 0. 一句话
@@ -63,7 +64,9 @@ Zu.app（nsh TSX / AppKit）
   `session/new` 时应用到 `ModelRuntime`）；会话内的 `/model`、`/thinking`、`/compact` 尚未映射到 ACP。
 - **容器 ↔ 会话**：`pi` 模块维护自己的 `containerId → sessionIds` 投影（不再写进容器记录）；
   容器记录只存 `sheetOrder`（标题序，可持久化）。
-- 协议细节与 P0–P4 的验收见 [pi-acp-ARCHITECTURE.md](pi-acp-ARCHITECTURE.md)。
+- 协议映射与 P0–P4 的历史裁决见 [pi-acp-PROTOCOL.md](pi-acp-PROTOCOL.md)。
+- **目标实现（设计稿，待审）**：一会话一持久 `pi-acp` 进程、`configOptions`/`set_config_option`、
+  `resume`、权限/elicitation、命令表与子代理；见 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md)。
 
 ### 3.3 manox 线（in-proc AHP）
 
@@ -195,9 +198,9 @@ App.tsx（装配点：startModules() + 跟随系统语言 + lifecycle）
 ### 4.5 扩展宿主（pi，ACP 待补）
 
 旧引擎的扩展 UI 桥（`bindExtensions`、confirm/select/input/editor、notify/status/title）已随 P4 删除。
-ACP 映射当前只覆盖会话/模型/工具，`session/request_permission` 与扩展 UI 在后续阶段
-（`pi-harness/src/acp/mapping.ts` 的显式缺席清单）。**不要**在 ACP 路径上声称扩展 UI 已可用；
-这也是 pi 的 project trust/审批面回到产品级前的缺口。
+目标实现把扩展 UI 映射到 `elicitation/create`/`notice`/`session_info_update`，工具审批映射到
+`session/request_permission`，见 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §6–§7。
+在实施完成前，**不要**在 ACP 路径上声称扩展 UI 已可用。
 
 ### 4.6 常驻、通知与更新
 
@@ -258,9 +261,9 @@ terminal 模块的一个 intent。
 
 ### 5.6 子代理（pi 模块）
 
-旧的 `dispatch` 扩展随 legacy engine 一起删除；ACP distro 尚未提供 dispatch（P5 的 generic agents）。
-pi 模块保留名册 sheet 与只读转录的界面，但 `loadSubagents` 在 ACP 下明确说「不可用」而不是空转。
-shell 只提供容器与通知；子代理的数据面回来时只改 pi 模块。
+旧的 `dispatch` 扩展随 legacy engine 一起删除；目标形态是在 ACP 进程内恢复 dispatch 扩展，
+用 `_zu/subagents/*` 暴露名册/转录/派发/中止，见 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §7。
+在实施完成前，`loadSubagents` 在 ACP 下明确说「不可用」而不是空转。
 
 ### 5.7 不变量
 
@@ -301,10 +304,9 @@ Casing II；C8 三包布局；ACP cutover（P0–P4：distro ACP 入口、`zu/ac
 
 **待做**：
 
-1. **ACP 的审批/扩展 UI**：`session/request_permission` 与扩展 UI 桥未实现（映射文件里有显式缺席清单）。
-2. **会话内的模型/effort/压缩**：`/model`、`/thinking`、`/compact` 在 ACP 尚未映射
-   （Hero 的首次选择已生效；见 §3.2）。
-3. **子代理数据面**：ACP 侧没有 dispatch（P5 generic agents）；名册目前明确显示不可用。
+1. **Pi × ACP 集成（设计稿待审）**：会话运行时、配置/命令/用量、权限与扩展 UI、子代理；
+   见 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md)。它在一次迁移里覆盖旧的 G1–G3。
+2. **打包产物真机启动**：脚本已绿；发布前跑一轮真实 turn。
 
 **已知问题（非决策）**：
 
@@ -326,8 +328,9 @@ Casing II；C8 三包布局；ACP cutover（P0–P4：distro ACP 入口、`zu/ac
 
 | Doc | 内容 |
 |---|---|
-| [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md) | 扩展机制：sheet 模块契约、能力域、迁移 S0–S3（目标态） |
-| [pi-acp-ARCHITECTURE.md](pi-acp-ARCHITECTURE.md) | pi 模块：ACP 协议映射、能力矩阵、P 线迁移 |
+| [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md) | 扩展机制：sheet 模块契约、能力域、S0–S3 落地 |
+| [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) | **设计稿（待审）**：Pi × ACP 的会话运行时、协议面、UI/UX、A0–F0 |
+| [pi-acp-PROTOCOL.md](pi-acp-PROTOCOL.md) | pi 模块：ACP 协议映射与历史裁决（P0–P4） |
 | [DESIGN.md](DESIGN.md) | 视觉规格：token、外壳几何、表面、动效、各 sheet |
 | [decisions.md](decisions.md) | 决策台账（Q1–Q107） |
 | [plan.md](plan.md) | 执行计划与门禁 |

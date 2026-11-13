@@ -1,7 +1,8 @@
 # 计划
 
-> 唯一执行指导。架构见 [architecture.md](architecture.md)，扩展机制的目标态见
-> [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md)，决策见 [decisions.md](decisions.md)。
+> 唯一执行指导。架构见 [architecture.md](architecture.md)，扩展机制见
+> [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md)，Pi 的目标实现见
+> [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md)，决策见 [decisions.md](decisions.md)。
 > 已完成的工作不再逐批叙述——细节在 git 历史与测试里；本文件只保留**待做**与**门禁**。
 
 ## 0. 当前状态（2026-11-13）
@@ -17,7 +18,8 @@
 | manox M1 | 真宿主 in-proc（manox v0.9.1）、panic 边界、折叠对账门禁、能对话回路 |
 | sheet 模块化 | S0–S3 全部落地（`contracts/module.ts`、`app/core/registry.ts`、`app/domains/`、`app/modules/`、容器去 harness 身份、通知按 sheet id、旧 wire 删除）；门禁 215 用例 207 通过 / 8 skip |
 
-下一批是产品打磨（见 §2 的剩余项），不再有结构性迁移。
+下一批是 **Pi × ACP 集成**：[设计稿](pi-acp-IMPLEMENTATION.md) 已出，**待审查**；审查通过后按
+A0–F0 入批次。sheet 模块化之后不再有结构性迁移。
 
 ## 1. sheet 模块化（已完成）
 
@@ -30,20 +32,24 @@
 | S2 | files/git/terminal/problems 模块化；`canvas/sheets.tsx` 只剩 registry 查找 + 未知占位 | `nsh test app` 全绿 |
 | S3 | pi/manox 模块化；容器去 `kind`/`sessions`；通知按 sheet id；旧 wire 与 `pi-engine` 删除 | 同上；pi-harness 36 单测、manox 门禁绿 |
 
-## 2. 遗留能力项（架构落地之外，已归档）
+## 2. Pi × ACP 集成（设计稿，待审）
 
-这些不是 sheet 模块化的缺口——S0–S3 的验收与它们无关；它们是 P4 删除 legacy engine 后的能力面，
-按「下一个产品批次」归档，不阻塞本次交付：
+**设计稿**：[pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md)。审查通过前不改代码。
+它用一次结构迁移覆盖旧的 G1–G3（审批/扩展 UI、会话内模型/档位/压缩、子代理数据面）：
 
-| # | 问题 | 现状与原因 | 后继条件 |
-|---|---|---|---|
-| G1 | ACP 的审批与扩展 UI | 旧引擎的 `bindExtensions`/扩展 UI 桥随 P4 删除；ACP 映射尚未覆盖 `session/request_permission` | ACP 权限卡阶段；在那之前不声称扩展 UI 可用 |
-| G2 | 会话内模型/effort/压缩 | ACP 未映射 `/model`、`/thinking`、`/compact`；Hero 的首次选择已生效（Q104），UI 对三条命令给明确提示 | distro 补齐 modes/setModel/compact 或 x-zu 等价方法 |
-| G3 | 子代理数据面 | 旧 `dispatch` 扩展随 legacy engine 删除；ACP 无 dispatch（P5 generic agents），名册显示不可用 | P5 或把名册入口从产品面移除 |
-| G4 | 打包产物真机启动 | `script/bundle-mac.sh` 已绿、`Helpers` 含 `pi-acp`；未在打包后的 app 里跑一轮真实 turn | 发布前的真机冒烟 |
+| 包 | 内容 | 依赖 |
+|---|---|---|
+| A0 | `AcpHost`：一会话一持久进程、单飞、崩溃/resume、sheet/容器/退出生命周期（无 cap/TTL） | — |
+| B0 | stable v1 会话语义面：config/mode、resume/close、usage/commands/info/compaction/notice | A0 |
+| C0 | SessionView 收口；删 env/静态斜杆/假不可用/旧 transport | B0 |
+| D0 | permission + elicitation + 扩展 UI + project trust | B0 |
+| E0 | dispatch 扩展 + `_zu/subagents/*` + 持久索引 | A0/B0 |
+| F0 | conformance/进程/产品/live/性能 + 删除死代码 + 文档销账 | A0–E0 |
 
-**本轮移除并归档**：legacy engine wire（`contracts/protocol.*`、`stores/engine.ts`、`pi-engine`）、
-扩展 UI 桥、子代理 dispatch 数据面、会话内模型/思考/压缩的旧通道。决策见 Q107。
+**G4（打包真机冒烟）** 不依赖本设计，留在发布清单：脚本已绿，真机启动未验。
+
+**已归档**：legacy engine wire、扩展 UI 桥、子代理 dispatch 数据面、会话内模型/思考/压缩的旧通道
+（Q107）；它们在 A0–F0 里以新形态回来。
 
 ## 3. 挂起 / 不做
 
@@ -78,8 +84,9 @@ script/bundle-mac.sh                            # 打包冒烟（Helpers/pi-acp 
 
 ## 5. 文档纪律
 
-- **权威链**：`architecture.md`（当前形态）→ `sheet-module-ARCHITECTURE.md`（目标机制）→
-  `pi-acp-ARCHITECTURE.md`（pi 协议）→ `DESIGN.md`（视觉）→ `decisions.md`（裁决）→ 本文件（执行）。
+- **权威链**：`architecture.md`（当前形态）→ `sheet-module-ARCHITECTURE.md`（扩展机制）→
+  `pi-acp-IMPLEMENTATION.md`（Pi 目标实现，设计待审）→ `pi-acp-PROTOCOL.md`（协议映射/历史）→
+  `DESIGN.md`（视觉）→ `decisions.md`（裁决）→ 本文件（执行）。
 - **状态锚点**：只有本文件 §0 与 `architecture.md` §7 写「已完成/待做」；其他文档不复制状态。
 - **证据可再生**：`docs/evidence/` 只放验证产物（截图、实测输出），不写过程叙事；历史在 git。
 - **决策先行**：改架构先改 `decisions.md` 与对应架构文档，再改代码。

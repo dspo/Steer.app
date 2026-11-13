@@ -1,17 +1,33 @@
-# pi 模块架构（ACP）：zu-pi-harness v2 落地稿
+# pi 模块：ACP 协议映射与历史裁决
 
-> 状态：**P0–P4 已落地（2026-11-13）**。ACP 是 pi 会话的唯一传输；旧 loopback engine、
-> `pi-engine` 入口与私有 wire 已删除。本文是 **pi 模块**的协议参考，
-> 当前系统形态见 [architecture.md](architecture.md)，扩展机制见 [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md)。
-> v1 → v2 的差异由一轮审查与 reviu（`~/projects/github/reviu`，量产中的通用 ACP 宿主）对照驱动，
-> 逐条见 §15；否决方向台账见 §2，不变量见 §11，迁移路径见 §12。
-> **宿主裁决（本稿的第一原则）**：Zu.app 只做薄宿主——进程、文件、状态、UI；一切 agent 能力落在
-> pi-harness distro。目标态下 pi 是 `modules/pi`，与 manox 同级。
+> 状态：**P0–P4 已落地（2026-11-13）；本文冻结为协议参考**。
+> 当前系统形态见 [architecture.md](architecture.md)，扩展机制见
+> [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md)，**目标实现与 UI/UX 见
+> [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md)**。
+> 本文只回答"ACP 词汇怎样映射到 Pi"以及"P0–P4 当时为何这样裁决"；§12 的迁移路径与 §5 的
+> "deliberately absent" 清单是历史记录，后续工作以 IMPLEMENTATION 的 A0–F0 为准，
+> 不再回写本文。
+
+## 阅读边界（P0–P4 冻结，先读）
+
+本文冻结于 P0–P4。**下列内容已被 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) 取代**，
+不要照着它们规划或改代码：
+
+| 本文位置 | 历史裁决 | 目标（IMPLEMENTATION） |
+|---|---|---|
+| §0/§7 进程模型 | 轮级子进程，settle 即退出，无监督 | D1/A0：一会话一持久进程 + resume |
+| §5.2/§13 | models/thinking/compaction/permission 缺席 | B0/C0/D0：协议原生 config/usage/commands/permission/elicitation |
+| §7.4 | "为什么轮级而非 session 级" | 已推翻：产品需要会话状态，轮级的代价大于收益 |
+| §12 | P0–P4 迁移路径 | 已全部完成；下一步是 A0–F0 |
+
+仍然有效：§4 的 ACP 方法/会话身份约束、§5 的 payload 映射、§10 的失败矩阵、§11 的协议不变量
+（帧、错误、取消语义）。
 
 ## 0. 一句话
 
 **Zu 是零 agent 语义的 ACP 薄宿主，pi-harness 是会说 ACP 的 pi 发行版**：读面以 pi 会话文件为唯一权威、
-UI 本地 fold、零进程可读；写面是轮级 harness 子进程，ACP over stdio，settle 即退出；宿主↔distro 的协议
+UI 本地 fold、零进程可读；写面是 harness 子进程，ACP over stdio（P0–P4 为轮级、settle 即退出；
+目标形态见 IMPLEMENTATION D1）；宿主↔distro 的协议
 是公共标准（ACP 0.11 基线），私有面收缩为 `_session/steering`（生态惯例）+ 少量 `x-zu` 方法，全部可降级。
 
 ## 1. 动机、约束与原则
@@ -252,7 +268,10 @@ spawn 命令由用户给出，UI 标注「未 pin，随生态更新」。代价�
   fold 的自然结果。启动：fold zu 状态（毫秒级）→ 立即渲染 → 异步扫索引，画布不等任何进程。
 - 写者唯一性：进程表按 sessionPath 键控，一键一会话；外部 pi CLI 并发写由游标校验转只读（不变量 10）。
 
-## 7. 进程模型（轮级 + 预热）
+## 7. 进程模型（历史：轮级 + 预热）
+
+> **已被 IMPLEMENTATION D1 推翻**。本节保留 P0–P4 的论证与边界；目标是一会话一持久 `pi-acp`
+> 进程（`AcpHost`），轮级只作为迁移前的历史形态。
 
 ### 7.1 生命周期
 
@@ -286,7 +305,7 @@ sessionPath 认领后补），settle 退出时自删——宿主 SIGKILL 后标�
 pid 判活、孤儿一律 kill（控制端已死无法收养，durable 内容全在文件）。id 形状用
 `{millis}-{pid}-{counter}`（reviu 配方：双实例同秒不撞）。
 
-### 7.4 为什么轮级而非 session 级
+### 7.4 为什么轮级而非 session 级（历史论证，已被 D1 推翻）
 
 ACP 生态默认（Zed）与 reviu 的实现都是 session 级：暖会话、付空闲内存、生命周期管理回来（reviu 的
 `AgentSession` 是「Drop kills the child」+ 每会话 driver task + channel 组）。轮级把失败半径压到一个
@@ -386,7 +405,10 @@ dump 请求体做 diff。门禁脚本进仓：`pi-harness/scripts/cache-parity.*
 10. 宿主不说 pi 方言，harness 不说 Zu 方言；私有面只有 `_session/steering` 与 x-zu，其唯一事实源在
     `contracts/acp-xzu/`。
 
-## 12. 迁移路径
+## 12. 迁移路径（历史，已完成）
+
+> 本节是 P0–P4 的历史记录；P4 已完成。后续的会话运行时、配置面、权限、子代理见
+> [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §12。
 
 每阶段独立验收；P4 单独成批（删除也是一类改动），守「每步可全量回绿」。
 
@@ -403,7 +425,10 @@ UI 侧各 store 的**对外行为**保持（侧栏/画布/composer 的用户可�
 v1「store 接口不变」的说法收窄为这句话：`snapshot/subscribe` 语义消失，containers 注册表写者反转，
 这是数据面重构，不是换传输。
 
-## 13. 开放问题
+## 13. 开放问题（历史，已转入 IMPLEMENTATION）
+
+> 本节的问题已由 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) 的 A0–F0 重新拆解；
+> 不再作为待办来源。
 
 1. **冷启动预算与回退阈值**：预热后首 token 延迟 P50/P95 的实测数（P1 定）；不可掩时的 session 级回退
    触发线（建议：P95 > 1.5s 或预热命中率 < 60%）。

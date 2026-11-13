@@ -1,7 +1,7 @@
 /**
  * The ACP agent-side method surface, served on the official SDK
  * (`@agentclientprotocol/sdk`, ACP v1 — the "0.11 baseline" vocabulary of
- * docs/pi-acp-ARCHITECTURE.md §5).
+ * docs/pi-acp-PROTOCOL.md §5).
  *
  * The SDK owns the wire: ndjson framing with a 32 MiB line cap (§7.3), JSON-RPC
  * 2.0 id pairing, batch-array rejection, and error responses for parse /

@@ -7,7 +7,7 @@
  * stop reasons into ACP stop reasons. The module is dependency-free beyond
  * ACP types, so `bun test` exercises it without pi and without network.
  *
- * Deliberately absent here (later P stages, per docs/pi-acp-ARCHITECTURE.md):
+ * Deliberately absent here (later P stages, per docs/pi-acp-PROTOCOL.md):
  * thinking levels as session modes, model selection, compaction state events,
  * usage updates, permission requests, `_session/steering`.
  */

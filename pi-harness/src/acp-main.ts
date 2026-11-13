@@ -1,6 +1,6 @@
 /**
  * pi-harness distro, ACP entry: the agent side of ACP v1 over stdio ndjson
- * JSON-RPC 2.0 (docs/pi-acp-ARCHITECTURE.md §4/§5).
+ * JSON-RPC 2.0 (docs/pi-acp-PROTOCOL.md §4/§5).
  *
  * stdout carries the protocol and nothing else — every log line goes to
  * stderr. The process serves one connection; the client closing stdin is the

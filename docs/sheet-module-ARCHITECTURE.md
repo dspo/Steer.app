@@ -5,7 +5,7 @@
 > 门禁规则内保留本文 §5 明确列出的基础设施例外（`core/shell` 经 `domains/state` 持久化、shell 用
 > `domains/instance`/`picker` 两个宿主服务），不是白名单条目。
 > 本文取代已删除的 `nsh-pi-dual-harness-DESIGN.md` 的 §3.1/§4.1（pack 分层与对话面分家；该文档的
-> 仍成立约束已收进 §8，历史见 git），并扩展 [pi-acp-ARCHITECTURE.md](pi-acp-ARCHITECTURE.md) 的 P 线：pi 不再享有「内置」地位，
+> 仍成立约束已收进 §8，历史见 git），并扩展 [pi-acp-PROTOCOL.md](pi-acp-PROTOCOL.md) 的 P 线：pi 不再享有「内置」地位，
 > 与 manox、终端、浏览器、文件一样，是注册进来的一个 sheet 模块。
 > 关系模型与视觉规格仍以 [architecture.md](architecture.md) / [DESIGN.md](DESIGN.md) 为准，本文只定义扩展机制。
 
@@ -215,7 +215,7 @@ return spec.body({ id, containerId, visible: isVisible(id) });
 | 能力 | `acp`（轮级子进程）、`state`（会话索引）、`pimodels`（模型目录） | `manox`（in-proc AHP）；模型经 native 桥注册 pi 的 provider（Q104） |
 | Hero | starter `pi`，footer 贡献模型/effort（spawn env 生效） | starter `manox`（registration-qualified model ref） |
 | 搜索 | `search` 贡献会话索引（`modules/pi/search.ts`） | 无独立搜索源 |
-| 子代理 | kind `subagents`；ACP 下数据面缺席，名册明确说不可用 | — |
+| 子代理 | kind `subagents`；目标形态见 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §7 | — |
 | 崩溃域 | 进程隔离（每条 turn 一个 `pi-acp`） | 应用内单例；泵边界 `catch_unwind`，panic → transport error → 重连 |
 | 权威 | `~/.pi` 会话文件 | `~/.manox` journal |
 
@@ -226,7 +226,8 @@ return spec.body({ id, containerId, visible: isVisible(id) });
 - **读面权威在磁盘**：两个 harness 都零活进程可读；manox 的折叠对账门禁（快照腿 vs journal 重放腿喂
   同一份 vendored reducer）保留。
 - **范围纪律**：manox 的「能对话」清单仍是边界；不因为架构统一而扩大产品面。
-- **pi 的 ACP 迁移**（P0–P3 已完成，P4 待做）不变，见 [pi-acp-ARCHITECTURE.md](pi-acp-ARCHITECTURE.md)。
+- **pi 的 ACP 迁移**（P0–P4 已完成）见 [pi-acp-PROTOCOL.md](pi-acp-PROTOCOL.md)；
+  下一步的会话运行时/权限/子代理见 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md)。
 
 ## 9. 现有 sheet 的归类
 
@@ -286,8 +287,8 @@ App.tsx                         # + registerModule(svgModule)
 - 会话内 `/model`、`/thinking`、`/compact` 的 ACP 映射；
 - 子代理 dispatch 数据面（ACP distro 尚未提供，P5 的 generic agents）。
 
-它们连同打包后的真机冒烟，都在 [plan.md](plan.md) §2 归档为「遗留能力项」，后继条件各自写明。
-本架构保证的是：这些能力回来时，接线点是模块（pi / 扩展宿主）而不是壳。
+它们的实现设计（A0–F0）见 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md)，执行状态见
+[plan.md](plan.md) §2。本架构保证的是：这些能力回来时，接线点是模块（pi / 扩展宿主）而不是壳。
 
 ## 13. 风险与边界
 
