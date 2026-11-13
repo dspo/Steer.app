@@ -31,7 +31,7 @@ import {
 } from "../core/projects";
 import { ProjectDialog, openProjectDialog } from "./project-dialog";
 import { panelIds } from "../core/dock";
-import { SheetBody, sheetGlyph, sheetTitle } from "../canvas/sheets";
+import { sheetGlyph, sheetTitle } from "../canvas/sheets";
 import { dispatchIntent, moduleSearch, titlebarActions, type SearchHit } from "../core/registry";
 import { setShellActions } from "../core/shell-actions";
 import { K, t } from "../ui/i18n";
@@ -40,6 +40,7 @@ import { containerMatches } from "./search";
 import { Chip, Dot, Glyph, type GlyphName, motionStyle, shadowCard, shadowRaised, switcherBar, switcherPill, switcherTab, switcherTabFrame } from "../ui/ui";
 import { TabBarPlus } from "../canvas/tab-plus";
 import { TabSwitcher } from "../canvas/tab-switcher";
+import { GroupCarousels } from "../canvas/group-carousel";
 
 /**
  * Zu's shell: the titlebar, the project/container sidebar, the canvas and the
@@ -707,6 +708,8 @@ function Canvas() {
         tabBarStyle={switcherBar()}
         tabStyle={switcherTabFrame()}
         tabClass="group focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-0 active:opacity-80"
+        // The slots in it are empty and must not catch what the carousel below
+        // draws: `none` takes no touches for the frame and its subtree.
         contentClass="flex-1 bg-background overflow-hidden"
         handleClass="basis-px bg-line"
         dropIndicatorClass="rounded-lg border-2 border-brand bg-brand-tint"
@@ -755,7 +758,11 @@ function Canvas() {
             </If>
           </View>
         )}
-        renderPanel={(panel) => <SheetBody id={panel.id} />}
+        // A slot holds nothing: the sheets are the content carousel's slides
+        // (`canvas/group-carousel.tsx`), so both of two can be drawn while
+        // they move. `DockArea` still mounts the slot, keeps its place and
+        // hides it.
+        renderPanel={() => <View style={{ flex: 1 }} />}
         renderEmpty={() => (
           // A canvas with no sheet: the Hero is one click away, and it is a
           // sheet like any other (closing it leaves this state).
@@ -775,6 +782,14 @@ function Canvas() {
             </View>
           </View>
         )}
+      />
+      {/* The sheets, one carousel a group (DESIGN §3.2): over `DockArea`'s
+          empty slots, so the slides take the presses; under the `+`. */}
+      <GroupCarousels
+        layout={layout()}
+        width={measured().width}
+        height={measured().height}
+        zoomed={zoomedPanel()}
       />
       <TabBarPlus
         layout={layout()}

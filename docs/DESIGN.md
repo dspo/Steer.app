@@ -110,6 +110,25 @@ tab bar 没有尾部插槽，它由 app 覆盖层画在每组右端（[architect
 **不要**为了位移动画自己接管 tab bar：拖拽换位、分组、`+` 的几何都在 `DockArea` 里；
 覆盖层只读 `layout()`，不参与命中。
 
+#### 内容：一组一沓页
+
+面板内容不再由 `renderPanel` 画，而是每组一个 `nsh/base` 的 `Carousel`（画廊
+Carousel → Onboarding 的同款用法，`canvas/group-carousel.tsx`）：每个 sheet 一页，
+`index` 是布局的 `activeIndex`，页签条就是它的分页器。按下页签 → 原生滚动（约 300ms，
+`carousel.rs` 的 `scroll_to(target, !reduce_motion())`）把两页一起滑过去；横滑内容 →
+`onChange` 经 `showSheet()` 回写同一份布局。`DockArea` 仍拥有页签条、拖拽、分组与拖放指示，
+面板槽留空（`renderPanel` 返回一个空 View）。
+
+- **两页同时在画**：这是 `DockArea` 的 `hidden` 槽永远给不了的，也是改用 Carousel 的唯一理由。
+- **离屏页必须离开键盘与读屏**：每页的包装层 `focusable: false` +
+  `accessibilityElementsHidden` + `importantForAccessibility: "no-hide-descendants"`
+  （不是 `shown` 的那页）。少一条，Tab 会走进看不见的 composer。
+- **横滑会翻页**：这是 Carousel 的手势，也是它与编辑器横向滚动、文本横拖的边界。
+  区域内的横向手势先归内容自己，推到边界后翻页。
+- **层序**：carousel 在 `DockArea` 之后（拿命中）、`+` 之前；`DockArea` 自己的浮层
+  （分组拖放的色块）因此在它下面——拖页签到内容区分组时看不到那块预览，是已知代价。
+- 组几何（内容框 = 组矩形去掉 38pt 页签条）与轨道、药丸、`+` 读同一张 `tabBarBoxes` 表。
+
 验收：静态看截图（轨道、药丸、标签对齐）；位移看 `--trace` 里药丸的 `(Transform(0), n)`
 原生绑定，以及把弹簧临时调慢（如 3 / 1.5）后的逐帧截图——测试宿主的步骤会等动画落定，
 按 504 / 38 的实际速度抓不到中间帧。

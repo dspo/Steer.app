@@ -177,6 +177,16 @@ export function containerOfSheet(id: string): string | null {
   return active && panelIds(layout()).includes(id) ? active : null;
 }
 
+/**
+ * Displays a sheet the canvas already holds — the tab strip's own activation
+ * (`DockAreaRef.selectPanel`), which reports the new layout back. The content
+ * carousel calls it when its index moves, so a swipe and a tab press land in
+ * the same place.
+ */
+export function showSheet(id: string): void {
+  dock?.selectPanel(id);
+}
+
 /** Gives the store the DockArea it restores zoom through. */
 export function bindDock(ref: DockAreaRef | undefined): void {
   dock = ref;
