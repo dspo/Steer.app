@@ -373,6 +373,7 @@ export const en: Record<string, string> = {
   "app.project.removeRoot": "Remove root",
   "app.project.noRoots": "No roots yet; choose at least one folder.",
   "app.hero.model": "Model",
+  "app.hero.effort": "Reasoning effort",
   "app.hero.modelNone": "no usable model in this machine's pi config",
   "app.hero.orOpen": "or open directly",
   "app.external.pi": "Pi",

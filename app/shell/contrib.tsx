@@ -109,8 +109,12 @@ export interface HeroSubmitter {
   label: string;
   /** Starts the conversation: creates the session, opens its sheet and
    * dispatches the first message. `cwd` is the chosen project's primary
-   * root (null for Chats); `model` is the selected `provider/model` id. */
-  submit: (text: string, context: { cwd: string | null; model: string | null; sheetId: string }) => Promise<void>;
+   * root (null for Chats); `model` is the selected `provider/model` id;
+   * `effort` is pi's reasoning-effort level. */
+  submit: (
+    text: string,
+    context: { cwd: string | null; model: string | null; effort: string; sheetId: string },
+  ) => Promise<void>;
 }
 
 const heroSubmitters = new Map<string, HeroSubmitter>();

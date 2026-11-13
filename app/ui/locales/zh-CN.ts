@@ -373,6 +373,7 @@ export const zhCN: Record<string, string> = {
   "app.project.removeRoot": "移除根目录",
   "app.project.noRoots": "还没有根目录；至少选择一个文件夹。",
   "app.hero.model": "模型",
+  "app.hero.effort": "思考强度",
   "app.hero.modelNone": "本机 pi 配置中没有可用模型",
   "app.hero.orOpen": "或直接打开",
   "app.external.pi": "Pi",

@@ -51,3 +51,6 @@ export async function loadPiModels(): Promise<void> {
     errorSignal.set(String(failure));
   }
 }
+
+/** pi's reasoning-effort ladder, low to high (the composer's own order). */
+export const PI_EFFORTS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;

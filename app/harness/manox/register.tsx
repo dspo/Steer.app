@@ -50,6 +50,7 @@ export function registerManoxPack(): void {
       const { threadId, chatId } = await createManoxThread({
         cwd: context.cwd,
         model: context.model,
+        effort: context.effort,
       });
       openManoxChat(threadId, chatId);
       sendManoxMessage(threadId, chatId, text);

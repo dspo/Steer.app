@@ -1,5 +1,5 @@
 import { effect, keymap, signal, Text, token, View } from "nsh";
-import { Dialog, Input, Menu, MenuItem, MenuSeparator } from "nsh/base";
+import { Dialog, Input, Menu, MenuItem, MenuSeparator, Submenu } from "nsh/base";
 import { K, t } from "../ui/i18n";
 import { baseName } from "../stores/fs";
 import {
@@ -36,6 +36,7 @@ import {
   piModelsError,
   usableModels,
 } from "../stores/pi-models";
+import { PI_EFFORTS } from "../stores/pi-models";
 import { BrandIcon } from "../ui/brand-icons";
 import { pickFolder } from "../stores/picker";
 import {
@@ -86,6 +87,8 @@ const EXTERNAL_ACTION: Record<Exclude<ContainerKind, "Pi">, TerminalAction> = {
 const heroHarness = signal<string>("pi");
 /** The selected model id (`provider/model`), from the machine's pi list. */
 const heroModelId = signal<string | null>(null);
+/** The selected reasoning effort (pi's own levels; high is the everyday default). */
+const heroEffort = signal<string>("high");
 
 export function HeroSheet(props: { id: string }) {
   const draft = signal("");
@@ -143,7 +146,7 @@ export function HeroSheet(props: { id: string }) {
     const harness = submitter();
     if (harness) {
       void harness
-        .submit(text, { cwd: projectCwd(), model: chosenModel(), sheetId: props.id })
+        .submit(text, { cwd: projectCwd(), model: chosenModel(), effort: heroEffort(), sheetId: props.id })
         .catch(() => {})
         .finally(done);
       return;
@@ -319,36 +322,37 @@ export function HeroSheet(props: { id: string }) {
               borderWidth: 0,
             }}
           />
-        </View>
-
-        {/* Below the composer, left-aligned: the harness segment (Pi — the
-            built-in distro over ACP — or a contributed one, today Manox
-            in-proc) and the model picker. One model list for every harness:
-            the machine's pi configuration (cx's provider set is not used). */}
-        <View class="flex-row items-center gap-2.5">
+          {/* The pickers live INSIDE the composer, on its bottom bar (the
+              Steer idiom): the harness toggle and the model/effort menus are
+              footer controls of the input, not a row beneath it. One model
+              list for every harness: the machine's pi configuration (cx's
+              provider set is not used). */}
           <View
-            class="flex-row items-center rounded-lg border border-line bg-inset p-0.5"
-            style={{ ...motionStyle("fast") }}
+            class="flex-row items-center gap-2"
+            style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: token("line") }}
           >
-            <HarnessOption testID="hero-harness-pi" label="Pi" active={heroHarness() === "pi"} onPress={() => heroHarness.set("pi")} />
-            <Each of={contributedHeroSubmitters()} key={(row) => row.id}>
-              {(row) => (
-                <HarnessOption
-                  testID={`hero-harness-${row().id}`}
-                  label={row().label}
-                  active={heroHarness() === row().id}
-                  onPress={() => heroHarness.set(row().id)}
-                />
-              )}
-            </Each>
+            <View class="flex-row items-center rounded-md bg-inset" style={{ padding: 2, ...motionStyle("fast") }}>
+              <HarnessOption testID="hero-harness-pi" label="Pi" active={heroHarness() === "pi"} onPress={() => heroHarness.set("pi")} />
+              <Each of={contributedHeroSubmitters()} key={(row) => row.id}>
+                {(row) => (
+                  <HarnessOption
+                    testID={`hero-harness-${row().id}`}
+                    label={row().label}
+                    active={heroHarness() === row().id}
+                    onPress={() => heroHarness.set(row().id)}
+                  />
+                )}
+              </Each>
+            </View>
+            <ModelPicker
+              testID="hero-model"
+              selected={chosenModel()}
+              onSelect={(id) => heroModelId.set(id)}
+              refresh={() => void loadPiModels()}
+            />
+            <EffortPicker selected={heroEffort()} onSelect={(level) => heroEffort.set(level)} />
+            <View style={{ flex: 1 }} />
           </View>
-          <ModelPicker
-            testID="hero-model"
-            selected={chosenModel()}
-            onSelect={(id) => heroModelId.set(id)}
-            refresh={() => void loadPiModels()}
-          />
-          <View style={{ flex: 1 }} />
         </View>
 
         {/* Or-open divider, then the direct entries as generous pills. */}
@@ -663,25 +667,33 @@ function HarnessOption(props: { testID: string; label: string; active: boolean; 
       accessibilityLabel={props.label}
       class={
         props.active
-          ? "h-6.5 min-w-13 items-center justify-center rounded-md border border-border bg-background px-2.5"
-          : "h-6.5 min-w-13 items-center justify-center rounded-md px-2.5"
+          ? "h-5.5 items-center justify-center rounded bg-background px-2 shadow-[0_0_0_1px_token(border)]"
+          : "h-5.5 items-center justify-center rounded px-2"
       }
       style={{ ...motionStyle("fast") }}
       onPress={props.onPress}
     >
-      <Text class={props.active ? "text-[11.5px] font-semibold text-foreground" : "text-[11.5px] font-medium text-muted-foreground"}>
+      <Text class={props.active ? "text-[10.5px] font-semibold text-foreground" : "text-[10.5px] font-medium text-muted-foreground"}>
         {props.label}
       </Text>
     </View>
   );
 }
 
-/** The model picker: the machine's pi list (providers with credentials
- * first), one menu, the chosen `provider/model` on the trigger. An empty
- * list states why instead of pretending. */
+/** The model picker: the machine's pi list behind a two-level menu — one
+ * submenu per provider, its models inside. The trigger reads like the
+ * session composer's own footer control (`provider · model`). */
 function ModelPicker(props: { testID: string; selected: string | null; onSelect: (id: string) => void; refresh: () => void }) {
   const rows = () => usableModels();
   const error = () => piModelsError();
+  const providers = () => {
+    const seen = new Map<string, { id: string; name: string }>();
+    for (const row of rows()) {
+      if (!seen.has(row.provider.id)) seen.set(row.provider.id, { id: row.provider.id, name: row.provider.name || row.provider.id });
+    }
+    return [...seen.values()];
+  };
+  const modelsOf = (providerId: string) => rows().filter((row) => row.provider.id === providerId);
   const label = () => {
     const id = props.selected;
     const hit = rows().find((row) => modelId(row.provider.id, row.model.id) === id);
@@ -695,19 +707,18 @@ function ModelPicker(props: { testID: string; selected: string | null; onSelect:
           role="button"
           testID={props.testID}
           accessibilityLabel={t(K.hero.model)}
-          class="h-7 flex-row items-center gap-1 rounded-lg px-2 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+          class="h-6 min-w-0 flex-row items-center gap-1 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
           style={{ ...motionStyle("fast") }}
           onPress={props.refresh}
         >
-          <Glyph name="chat" size={11} tint={token("faint")} />
-          <Text class="text-[11.5px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
+          <Text class="min-w-0 text-[11px] text-muted-foreground" style={{ numberOfLines: 1 }}>
             {label()}
           </Text>
-          <Glyph name="caret-down" size={9} tint={token("faint")} />
+          <Glyph name="caret-down" size={8} tint={token("faint")} />
         </View>
       }
       popupClass="rounded-xl border border-border bg-popover p-1"
-      popupStyle={{ boxShadow: shadowRaised() }}
+      popupStyle={{ width: 300, maxHeight: 420, boxShadow: shadowRaised() }}
     >
       <If
         when={rows().length > 0}
@@ -717,24 +728,82 @@ function ModelPicker(props: { testID: string; selected: string | null; onSelect:
           </MenuItem>
         }
       >
-        <Each of={rows()} key={(row) => modelId(row.provider.id, row.model.id)}>
-          {(row) => {
-            const value = row();
-            const id = modelId(value.provider.id, value.model.id);
-            return (
-              <MenuItem
-                testID={`hero-model-${value.provider.id}-${value.model.id}`}
-                class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-                onSelect={() => props.onSelect(id)}
-              >
-                <Text class="text-[12px] text-foreground">
-                  {`${value.provider.name || value.provider.id} · ${modelLabel(value)}`}
-                </Text>
-              </MenuItem>
-            );
-          }}
+        <Each of={providers()} key={(provider) => provider.id}>
+          {(provider) => (
+            <Submenu
+              trigger={
+                <View
+                  role="button"
+                  testID={`hero-provider-${provider().id}`}
+                  accessibilityLabel={provider().name}
+                  class="flex-row items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+                  style={{ ...motionStyle("fast") }}
+                >
+                  <Text class="text-[12px] font-medium text-foreground" style={{ numberOfLines: 1, flex: 1 }}>
+                    {provider().name}
+                  </Text>
+                  <Glyph name="chevron-right" size={10} tint={token("faint")} />
+                </View>
+              }
+            >
+              <Each of={modelsOf(provider().id)} key={(row) => modelId(row.provider.id, row.model.id)}>
+                {(row) => {
+                  const value = row();
+                  const id = modelId(value.provider.id, value.model.id);
+                  return (
+                    <MenuItem
+                      testID={`hero-model-${value.provider.id}-${value.model.id}`}
+                      class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+                      onSelect={() => props.onSelect(id)}
+                    >
+                      <Text class="text-[12px] text-foreground" style={{ numberOfLines: 1 }}>
+                        {modelLabel(value)}
+                      </Text>
+                    </MenuItem>
+                  );
+                }}
+              </Each>
+            </Submenu>
+          )}
         </Each>
       </If>
+    </Menu>
+  );
+}
+
+/** The reasoning-effort picker: pi's own ladder, one small menu. */
+function EffortPicker(props: { selected: string; onSelect: (level: string) => void }) {
+  return (
+    <Menu
+      trigger={
+        <View
+          role="button"
+          testID="hero-effort"
+          accessibilityLabel={t(K.hero.effort)}
+          class="h-6 min-w-0 flex-row items-center gap-1 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+          style={{ ...motionStyle("fast") }}
+        >
+          <Glyph name="chat" size={10} tint={token("faint")} />
+          <Text class="text-[11px] text-muted-foreground">{props.selected}</Text>
+          <Glyph name="caret-down" size={8} tint={token("faint")} />
+        </View>
+      }
+      popupClass="rounded-xl border border-border bg-popover p-1"
+      popupStyle={{ width: 160, boxShadow: shadowRaised() }}
+    >
+      <Each of={[...PI_EFFORTS]} key={(level) => level}>
+        {(level) => (
+          <MenuItem
+            testID={`hero-effort-${level()}`}
+            class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+            onSelect={() => props.onSelect(level())}
+          >
+            <Text class={level() === props.selected ? "text-[12px] font-semibold text-foreground" : "text-[12px] text-foreground"}>
+              {level()}
+            </Text>
+          </MenuItem>
+        )}
+      </Each>
     </Menu>
   );
 }

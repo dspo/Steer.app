@@ -143,6 +143,7 @@ export const K = {
     project: "app.hero.project",
     starting: "app.hero.starting",
     model: "app.hero.model",
+    effort: "app.hero.effort",
     modelNone: "app.hero.modelNone",
     orOpen: "app.hero.orOpen",
   },

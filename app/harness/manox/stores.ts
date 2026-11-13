@@ -126,7 +126,7 @@ export function mintId(): string {
  * fold once its channel subscribes. Returns the chat id the sheet opens.
  */
 export async function createManoxThread(
-  options: { cwd?: string | null; model?: string | null } = {},
+  options: { cwd?: string | null; model?: string | null; effort?: string | null } = {},
 ): Promise<{ threadId: string; chatId: string }> {
   const threadId = mintId();
   await ensureConnection();
@@ -135,7 +135,12 @@ export async function createManoxThread(
   // selected model as the session config (the machine's pi list, not cx's).
   await createSessionOn(sessionResource(threadId), {
     ...(options.cwd ? { workingDirectories: [`file://${options.cwd}`] } : {}),
-    ...(options.model ? { config: { model: options.model } } : {}),
+    ...((options.model || options.effort) && {
+      config: {
+        ...(options.model ? { model: options.model } : {}),
+        ...(options.effort && options.effort !== "off" ? { reasoningEffort: options.effort } : {}),
+      },
+    }),
   });
   await ensureConnection([sessionResource(threadId)]);
   // The session fold names the default chat (AHP 1.0's one-chat catalogue);
