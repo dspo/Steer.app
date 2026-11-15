@@ -243,6 +243,20 @@ function activateCanvas(container: ContainerRecord, next: DockAreaLayout, zoom: 
   notifyContainerShown(container.id);
 }
 
+/** Drops the put-aside canvases of containers that are gone: a parked web
+ * page must not keep running for a container nobody can open. */
+function pruneHeld(): void {
+  const live = new Set(liveContainers().map((row) => row.id));
+  const held = heldLayouts();
+  const kept: Record<string, DockAreaLayout> = {};
+  let changed = false;
+  for (const [id, layout] of Object.entries(held)) {
+    if (live.has(id)) kept[id] = layout;
+    else changed = true;
+  }
+  if (changed) heldLayouts.set(kept);
+}
+
 /** Puts the canvas being replaced aside, so its sheets stay mounted. */
 function stashHeld(): void {
   const current = activeContainerId();
@@ -419,6 +433,7 @@ export async function archiveContainer(id: string): Promise<void> {
       const data = (await transport("container.archive", { containerId: id }, 30000)) as ContainerListData;
       LayoutAnimation.configureNext(LayoutAnimation.create(180));
       containers.set(data.containers ?? []);
+      pruneHeld();
       notifyContainerArchived(id);
       if (activeContainerId() === id) {
         savedFor = null;
@@ -441,6 +456,7 @@ export async function archiveContainer(id: string): Promise<void> {
       containers().map((row) => (row.id === id ? { ...row, archived: true, updatedAt: Date.now() } : row)),
     );
     void saveRegistry();
+    pruneHeld();
     notifyContainerArchived(id);
     if (activeContainerId() === id) {
       savedFor = null;
