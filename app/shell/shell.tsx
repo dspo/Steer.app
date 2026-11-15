@@ -10,6 +10,7 @@ import {
   bindDock,
   containerError,
   containers,
+  heldLayouts,
   layout,
   liveContainers,
   loadContainers,
@@ -40,7 +41,7 @@ import { containerMatches } from "./search";
 import { Chip, Dot, Glyph, type GlyphName, motionStyle, shadowCard, shadowRaised, switcherBar, switcherPill, switcherTab, switcherTabFrame } from "../ui/ui";
 import { TabBarPlus } from "../canvas/tab-plus";
 import { TabSwitcher } from "../canvas/tab-switcher";
-import { GroupCarousels } from "../canvas/group-carousel";
+import { SheetHost } from "../canvas/sheet-host";
 
 /**
  * Zu's shell: the titlebar, the project/container sidebar, the canvas and the
@@ -710,7 +711,10 @@ function Canvas() {
         tabClass="group focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-0 active:opacity-80"
         // The slots in it are empty and must not catch what the carousel below
         // draws: `none` takes no touches for the frame and its subtree.
-        contentClass="flex-1 bg-background overflow-hidden"
+        // The frame a group's content would fill is a hole: the sheets are
+        // the host's, above, and this takes no touches for its subtree.
+        contentClass="flex-1 overflow-hidden"
+        contentStyle={{ pointerEvents: "none" }}
         handleClass="basis-px bg-line"
         dropIndicatorClass="rounded-lg border-2 border-brand bg-brand-tint"
         renderDragPreview={(tab) => (
@@ -767,7 +771,7 @@ function Canvas() {
         renderEmpty={() => (
           // A canvas with no sheet: the Hero is one click away, and it is a
           // sheet like any other (closing it leaves this state).
-          <View class="flex-1 items-center justify-center gap-2 bg-card">
+          <View class="flex-1 items-center justify-center gap-2 bg-card" style={{ pointerEvents: "auto" }}>
             <Text class="text-sm font-semibold text-foreground">{t(K.canvas.emptyTitle)}</Text>
             <Text class="text-xs text-muted-foreground">{t(K.canvas.emptyNote)}</Text>
             <View
@@ -784,10 +788,13 @@ function Canvas() {
           </View>
         )}
       />
-      {/* The sheets, one carousel a group (DESIGN §3.2): over `DockArea`'s
-          empty slots, so the slides take the presses; under the `+`. */}
-      <GroupCarousels
+      {/* Every sheet the app holds open, placed by the projection: over the
+          content frame (which is a hole), under the tab bar's overlay. A body
+          here is never made again — that is what keeps a web page, a
+          terminal and a conversation as they were. */}
+      <SheetHost
         layout={layout()}
+        held={heldLayouts()}
         width={measured().width}
         height={measured().height}
         zoomed={zoomedPanel()}

@@ -130,14 +130,15 @@ test("a container switch keeps the browser address and title", async () => {
   await app.press("id:seed-nav");
   await app.waitUntil(() => app.texts().includes("Example Domain"));
 
-  // The other container has no browser sheet; switching back restores the
-  // first container's layout and the UI store's page state.
+  // The other container has no browser sheet; switching back finds the same
+  // sheet body (a container switch shows another canvas, it does not rebuild
+  // one): its bar keeps what was typed, and its page was never loaded again.
   await app.press("Open container zu-browser-2");
   await app.waitUntil(() => !app.shows("id:browser-address"));
   // The first container is titled by its earliest sheet — the page (S2).
   await app.press("Open container Example Domain");
   await app.waitFor("id:browser-address");
-  expect(app.value("id:browser-address")).toBe("https://example.com/");
+  expect(app.value("id:browser-address")).toBe("https://example.com");
   expect(app.texts()).toContain("Example Domain");
   expect(pageDebug(app)).toContain("webview:pi:browser-fixture:1");
 });

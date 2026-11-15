@@ -39,6 +39,11 @@ export const containers = signal<ContainerRecord[]>([]);
 export const activeContainerId = signal<string | null>(null);
 /** The active canvas's DockArea layout. */
 export const layout = signal<DockAreaLayout>(defaultLayoutForSheets([]));
+/**
+ * The canvases put aside, by container id. Their sheets stay mounted
+ * (`canvas/sheet-host.tsx`): a browser keeps its page, a terminal its screen.
+ */
+export const heldLayouts = signal<Record<string, DockAreaLayout>>({});
 /** The scratch canvas's layout: in memory only, like the canvas itself. */
 const scratchLayout = signal<DockAreaLayout>(defaultScratchLayout());
 /** The zoomed panel's id, or null (DockArea keeps zoom outside the layout). */
@@ -226,6 +231,7 @@ function upsertContainer(container: ContainerRecord): void {
 
 /** Puts `container` on the canvas with `next` as its layout. */
 function activateCanvas(container: ContainerRecord, next: DockAreaLayout, zoom: string | null): void {
+  stashHeld();
   upsertContainer(container);
   activeContainerId.set(container.id);
   savedFor = container.id;
@@ -235,6 +241,13 @@ function activateCanvas(container: ContainerRecord, next: DockAreaLayout, zoom: 
   syncVisible();
   void saveRegistry();
   notifyContainerShown(container.id);
+}
+
+/** Puts the canvas being replaced aside, so its sheets stay mounted. */
+function stashHeld(): void {
+  const current = activeContainerId();
+  if (!current) return; // the scratch canvas keeps its own (`scratchLayout`)
+  heldLayouts.set({ ...heldLayouts(), [current]: layout() });
 }
 
 /** Loads the registry and shows its active container (startup). */

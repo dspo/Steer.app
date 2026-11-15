@@ -35,7 +35,9 @@ test("containers switch their layouts and throttle hidden sessions", async () =>
   expect(app.texts()).toContain("Gamma");
   expect(app.texts()).not.toContain("gamma body");
 
-  await app.press("Gamma >> nth=1");
+  // The tab itself, by its sheet: every sheet of every canvas is in the
+  // tree now, so a title is not a unique name.
+  await app.press("id:tab-session:s3");
   await app.waitFor("text:gamma body");
   expect(app.texts()).toContain("gamma body");
   expect(app.texts()).not.toContain("alpha body");

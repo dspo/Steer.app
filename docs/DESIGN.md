@@ -110,28 +110,38 @@ tab bar 没有尾部插槽，它由 app 覆盖层画在每组右端（[architect
 **不要**为了位移动画自己接管 tab bar：拖拽换位、分组、`+` 的几何都在 `DockArea` 里；
 覆盖层只读 `layout()`，不参与命中。
 
-#### 内容：一组一沓页
+#### 内容：sheet 归注册表，画布只是投影
 
-面板内容不再由 `renderPanel` 画，而是每组一个 `nsh/base` 的 `Carousel`（画廊
-Carousel → Onboarding 的同款用法，`canvas/group-carousel.tsx`）：每个 sheet 一页，
-`index` 是布局的 `activeIndex`，页签条就是它的分页器。按下页签 → 原生滚动（约 300ms，
-`carousel.rs` 的 `scroll_to(target, !reduce_motion())`）把两页一起滑过去；横滑内容 →
-`onChange` 经 `showSheet()` 回写同一份布局。`DockArea` 仍拥有页签条、拖拽、分组与拖放指示，
-面板槽留空（`renderPanel` 返回一个空 View）。
+**不变量：一个 sheet 的 body 由注册表拥有，不由任何画布拥有。画布只决定它*放在哪*、*是否显示*，
+永不决定它*是否存在*。**
 
-- **两页同时在画**：这是 `DockArea` 的 `hidden` 槽永远给不了的，也是改用 Carousel 的唯一理由。
-- **离屏页必须离开键盘与读屏**：每页的包装层 `focusable: false` +
-  `accessibilityElementsHidden` + `importantForAccessibility: "no-hide-descendants"`
-  （不是 `shown` 的那页）。少一条，Tab 会走进看不见的 composer。
-- **横滑会翻页**：这是 Carousel 的手势，也是它与编辑器横向滚动、文本横拖的边界。
-  区域内的横向手势先归内容自己，推到边界后翻页。
-- **层序**：carousel 在 `DockArea` 之后（拿命中）、`+` 之前；`DockArea` 自己的浮层
-  （分组拖放的色块）因此在它下面——拖页签到内容区分组时看不到那块预览，是已知代价。
-- 组几何（内容框 = 组矩形去掉 38pt 页签条）与轨道、药丸、`+` 读同一张 `tabBarBoxes` 表。
+nsh 里组件体只跑一次，行按 key 保留（`coding-guides.md` 的表）；所以 body 消亡只有一种原因：
+它从树里消失。过去画布由 `layout()` 派生、切容器时整棵树被换掉，浏览器 sheet 因此每次回来都重新加载。
+现在：
 
-验收：静态看截图（轨道、药丸、标签对齐）；位移看 `--trace` 里药丸的 `(Transform(0), n)`
-原生绑定，以及把弹簧临时调慢（如 3 / 1.5）后的逐帧截图——测试宿主的步骤会等动画落定，
-按 504 / 38 的实际速度抓不到中间帧。
+- `core/projection.ts`：纯数据。`tabBarBoxes` 给出每组的矩形，`groupFrames` 去掉 38pt 页签条，
+  `sheetFrames` 给出每个 sheet 的 `{ 矩形, offset, shown }`——`offset = (位置 − 显示中位置) × 组宽`。
+- `canvas/sheet-host.tsx`：**一个扁平列表**，`Each of={openSheetIds} key={id}`，覆盖活动画布与
+  被搁置画布的并集（`heldLayouts` 在切走时存下）。切页签、切容器、拖页签、分屏、zoom 都只改这些
+  sheet 的矩形与 offset，行的 key 不变，body 不重生：**浏览器页面不重载，终端不丢屏，对话不丢滚动位置**。
+- 每个 sheet 是一个裁到组内容框的 frame，body 在 frame 内按 offset 平移；不是 `shown` 的那页
+  `opacity: 0` + `pointerEvents: none`（frame 与内层都设，命中不吃）+
+  `accessibilityElementsHidden` + `focusable: false`。
+- 位移与药丸共用 `motion.move`（504 / 38）：一组页跟着药丸一起滑，旧页滑出、新页滑入。
+  窗口/分屏改变宽度时直接落位（`set`），不播动画——换的是尺寸，不是页签。
+- 显示中的 sheet 最后绘制，滑动途中按它仍然是命中的那一页。
+
+层序：`SheetHost` 在 `DockArea` **之后**（拿到命中）、`+` 之前；`DockArea` 的内容框是一个洞
+（`pointerEvents: none`，不铺底色），空画布的空态自己 `pointerEvents: auto`。页签条与轨道在
+`DockArea` 里，仍在 sheet 之下、`+` 之上。`DockArea` 自己的分组拖放色块因此被 sheet 盖住——
+拖页签到内容区时看不到那块预览，是已知代价。
+
+**不要**把 body 放回 `renderPanel`：`DockArea` 只画显示中的面板，切容器时它的整棵子树会被换掉，
+body 就会重生（这正是本设计要消除的那种依赖）。
+
+验收：`--target macos` 下给浏览器 body 加一个挂载计数（临时），开一页 → 切容器 → 切回，
+计数保持 `1`；切页签同样保持 `1`。`core/projection.test.ts` 钉住矩形、offset、shown 与
+zoom/compact 的投影。
 
 ### 3.3 顶栏无 picker（2026-11-11 调整）
 

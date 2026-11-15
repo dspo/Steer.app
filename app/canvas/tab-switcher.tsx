@@ -1,7 +1,7 @@
 import { createAnimatedValue, effect, reduceMotion, token, View } from "nsh";
 import type { DockAreaLayout } from "nsh/base";
 import { shadowCard, switcher, switcherPillAt, switcherTrack, SWITCHER_CONTENT_INSET } from "../ui/ui";
-import { tabBarBoxes, type TabBarBox } from "./tab-plus";
+import { tabBarBoxes, type TabBarBox } from "../core/projection";
 
 /**
  * The sheets' section switcher, painted under the tabs: the gallery's
