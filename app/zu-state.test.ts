@@ -11,6 +11,7 @@ import {
   setMembershipWriter,
 } from "./core/containers";
 import { createContainer } from "./modules/pi/container";
+import { setAcpCommandOverride } from "./modules/pi/acp/acp";
 import { loadProjects, createProject, projects, membership, setProjectTransport } from "./core/projects";
 import { loadSettings, setSidebarWidth, sidebarWidth, setSettingsTransport } from "./shell/settings";
 import { refreshSessions, sessions } from "./modules/pi/sessions";
@@ -27,6 +28,13 @@ const agentDir = `/tmp/zu-state-agent-${Date.now()}-${Math.floor(Math.random() *
 State.setStateDir(stateDir);
 State.setAgentDir(agentDir);
 await Fs.mkdir("/tmp", agentDir.slice("/tmp/".length));
+
+// The file's mints ride the stub: createContainer spawns the harness once
+// (session/new), and CI never builds `dist/pi-acp` for it to resolve. The
+// assertions here are registry- and file-side, so the stub's canned answers
+// carry everything they need.
+const STUB = new URL("./fixtures/acp-stub-agent.sh", import.meta.url).pathname;
+setAcpCommandOverride({ command: "/bin/sh", args: [STUB] });
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 

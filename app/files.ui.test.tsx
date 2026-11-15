@@ -41,7 +41,9 @@ test("a real file opens, edits, saves, and the disk agrees", async () => {
   const app = await open("./fixtures/files.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:files-root");
   const row = `id:${fileRowTestId("note.txt")}`;
-  await app.waitFor(row);
+  // The first tree scan on a cold box (the CI runner's first VM) walks past
+  // the default window; the generous waits here are the file's own idiom.
+  await app.waitFor(row, { timeout: 20000 });
   await shot(app, "m8-files-light");
   await app.press(row);
   await app.waitFor("id:editor-view");
@@ -129,7 +131,7 @@ test("find and replace all in the real Editor writes through zu/fs", async () =>
   const app = await open("./fixtures/files.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:files-root");
   const row = `id:${fileRowTestId("find.txt")}`;
-  await app.waitFor(row);
+  await app.waitFor(row, { timeout: 20000 });
   await app.press(row);
   await app.waitFor("id:editor-view");
   await app.waitUntil(() => app.texts().some((text) => text.includes("find.txt:ready:clean:rw")), {

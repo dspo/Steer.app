@@ -79,13 +79,15 @@ test("the tree sorts directories first and flattens expansion lazily", () => {
   const collapsed = fileRows(tree, []);
   expect(collapsed.map((row) => row.kind)).toEqual(["entry", "entry", "entry"]);
   const expanded = fileRows(tree, [`${root}/src`]);
+  // A listing in flight shows no rows of its own: its arrival is a pure add,
+  // where a `loading:` row would have to be replaced by `entry:` rows — a
+  // keyed flip the List's diff does not survive on the headless Linux
+  // runner (the CI gate caught it: the count updated, the rows never did).
   expect(expanded.map((row) => (row.kind === "entry" ? row.entry.name : row.kind))).toEqual([
     "src",
-    "loading",
     "A.txt",
     "b.txt",
   ]);
-  expect(expanded[1].kind === "loading" ? expanded[1].depth : -1).toBe(1);
 
   const failed = fileRows(
     {

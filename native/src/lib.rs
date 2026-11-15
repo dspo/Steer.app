@@ -37,8 +37,8 @@ pub use instance::{Instance, InstanceClaim};
 pub use lsp::{Lsp, LspExit, LspOptions};
 pub use picker::Picker;
 pub use pimodels::{PiModelInfo, PiModels, PiProvider};
-pub use state::{ScanSession, SessionScan, State, StateRead, StateWrite};
 pub use pty::{Pty, PtyExit, PtyOptions};
+pub use state::{ScanSession, SessionScan, State, StateRead, StateWrite};
 
 /// Extension paths the host adds to the standard pi locations (tests and
 /// development builds use it; a packaged app leaves it empty).

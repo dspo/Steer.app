@@ -166,10 +166,7 @@ impl Control {
         let mut frame = line.as_bytes().to_vec();
         frame.push(b'\n');
         if pending.saturating_add(frame.len()) > MAX_INPUT_BYTES {
-            return Err(acp_error(
-                ERR_INPUT,
-                "the harness is not reading its stdin",
-            ));
+            return Err(acp_error(ERR_INPUT, "the harness is not reading its stdin"));
         }
         *pending += frame.len();
         drop(pending);
@@ -397,7 +394,10 @@ impl Acp {
                 })
                 .map_err(|error| {
                     kill_group(pid);
-                    acp_error(ERR_SPAWN, format!("cannot start the ACP stderr reader: {error}"))
+                    acp_error(
+                        ERR_SPAWN,
+                        format!("cannot start the ACP stderr reader: {error}"),
+                    )
                 })?;
         }
 
@@ -583,7 +583,10 @@ fn exit_signal_of(_status: &std::process::ExitStatus) -> Option<String> {
 fn explicit_cwd(raw: Option<&str>) -> Result<PathBuf, JsError> {
     let raw = raw.map(str::trim).filter(|value| !value.is_empty());
     let Some(raw) = raw else {
-        return Err(acp_error(ERR_CWD, "a harness process needs an explicit cwd"));
+        return Err(acp_error(
+            ERR_CWD,
+            "a harness process needs an explicit cwd",
+        ));
     };
     let path = Path::new(raw);
     if !path.is_absolute() {
@@ -673,9 +676,7 @@ impl LineFramer {
             lines.push(line);
         }
         if self.buffer.len() > MAX_LINE_BYTES {
-            return Err(format!(
-                "a line is over the {MAX_LINE_BYTES}-byte limit"
-            ));
+            return Err(format!("a line is over the {MAX_LINE_BYTES}-byte limit"));
         }
         Ok(lines)
     }
@@ -750,7 +751,10 @@ mod tests {
     fn a_cwd_is_required_absolute_and_real() {
         assert_eq!(explicit_cwd(None).unwrap_err().code(), Some(ERR_CWD));
         assert_eq!(explicit_cwd(Some("")).unwrap_err().code(), Some(ERR_CWD));
-        assert_eq!(explicit_cwd(Some("relative")).unwrap_err().code(), Some(ERR_CWD));
+        assert_eq!(
+            explicit_cwd(Some("relative")).unwrap_err().code(),
+            Some(ERR_CWD)
+        );
         assert_eq!(
             explicit_cwd(Some("/definitely/not/a/dir"))
                 .unwrap_err()

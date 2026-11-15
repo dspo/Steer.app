@@ -4,7 +4,7 @@ import { expect, open, test } from "nsh/test";
 // semantics are Rust-tested, and the real "two processes" case cannot be
 // started from one test run without killing or racing the user's app.
 test("the second instance explains who owns the state directory", async () => {
-  const app = await open("./fixtures/lifecycle.tsx");
+  const app = await open("./lifecycle-fixture.tsx");
   expect(app.texts()).toContain("Zu 已在运行");
   expect(app.texts().some((text) => text.includes("4321"))).toBe(true);
   expect(app.texts().some((text) => text.includes("/tmp/zu-m12/instance.lock"))).toBe(true);

@@ -79,7 +79,12 @@ GUI 菜单未逐一手动驱动；它们调用已实测的 `closeContainerSessio
 ```sh
 nsh check app                                   # crate check + TSX typecheck（crate 在 native/）
 (cd native && cargo check --all-targets)        # 必须
-nsh test app                                    # 全量（ZU_SKIP_LIVE=1 跳过 live 模型/LSP）
+cd native && cargo fmt --all --check            # rustfmt（与 manox 各一遍：两个独立 workspace）
+cd native/manox && cargo fmt --all --check
+cd native && cargo clippy --all-targets -- -D warnings
+cd native/manox && cargo clippy --all-targets -- -D warnings
+nsh test app                                    # 全量（ZU_SKIP_LIVE=1 跳过 live 模型/LSP 与真 harness 探针
+                                                # acp-load-probe；其余 harness 触点走 stub 替身）
 ZU_MANOX_GATE=1 nsh test app/manox.test.ts      # manox 折叠对账/panic 恢复（hermetic）
 MANOX_RUN_LIVE=1 ZU_MANOX_GATE=1 nsh test app/manox.test.ts   # 真内核 live turn（可选）
 ZU_MANOX_GATE=1 nsh test app/manox.ui.test.tsx  # manox sheet 门禁

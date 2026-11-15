@@ -171,7 +171,13 @@ const LIB = `pub fn add(left: i32, right: i32) -> i32 {
 }
 `;
 
-test("rust-analyzer reports a real type error, hover, definition and completion", async () => {
+// The three servers are the machine's own tooling, not a fixture the repo
+// ships: a bare CI image has none of them, which is what ZU_SKIP_LIVE's
+// 「跳过 live 模型/LSP」口径 has always meant. The missing-server behaviors
+// below run everywhere.
+const live = process.env?.["ZU_SKIP_LIVE"] === "1" ? test.skip : test;
+
+live("rust-analyzer reports a real type error, hover, definition and completion", async () => {
   await Fs.mkdir("/tmp", FOLDER);
   await Fs.write(
     ROOT,
@@ -381,7 +387,7 @@ async function initializeOn(client: Client, root: string, languageId: string, fi
   return { initialize, uri };
 }
 
-test("typescript-language-server reports a real type error", async () => {
+live("typescript-language-server reports a real type error", async () => {
   const folder = `zu-m11-ts-${TAG}`;
   const root = `/tmp/${folder}`;
   await Fs.mkdir("/tmp", folder);
@@ -417,7 +423,7 @@ test("typescript-language-server reports a real type error", async () => {
   }
 }, 180000);
 
-test("gopls reports a real type error", async () => {
+live("gopls reports a real type error", async () => {
   const folder = `zu-m11-go-${TAG}`;
   const root = `/tmp/${folder}`;
   await Fs.mkdir("/tmp", folder);

@@ -10,12 +10,52 @@
 #
 # 环境要点（都是实测出来的约束，改镜像/依赖前先读）：
 # - nsh CLI 用预编译发行版（linux x86_64 only → runner 固定 amd64），
-#   NSH_VERSION 与 native/Cargo.toml 的 nsh git pin（506b5392 = 0.4.0）严格一致。
+#   NSH_VERSION 与 native/Cargo.toml 的 nsh git pin（f4d68f7 = v0.5.0）严格一致。
 # - nsh 的 Linux 运行时按 pinned checkout 源码构建，无条件依赖 GTK4/GStreamer
 #   开发包（nsh-platform-linux 的 target.'cfg(target_os = "linux")' 段），
 #   因此镜像用 rust:slim-trixie（glibc 2.41 ≥ 发行版要求的 2.39，GTK 4.18 ≥ 4.14；
 #   bookworm 的 glibc 2.36 / GTK 4.8 都不够）并 apt 安装两组 -dev。
-# - ZU_SKIP_LIVE=1 是 README「完整门禁」的口径：跳过 live 模型/LSP。
+# - rust:slim-trixie 不带 curl CLI（apt 里只有 libcurl3t64-gnutls 这类库），
+#   而 nsh 与 bun 的安装脚本都硬依赖 curl，必须显式装 curl + ca-certificates。
+# - 流水线脚本由 dash 执行：没有 pipefail，`curl … | sh` 里 curl 失败会被 sh 的
+#   退出码 0 掩盖，故障漂到下一句才炸成 127 command not found。下载一律先落盘再执行。
+# - 卷只能挂在「镜像里本来是空」的路径上：copy-on-write 卷会直接盖住挂载路径下
+#   镜像自带的文件（只有 `data` 类型才会先把容器内容复制进卷）。rust 镜像用
+#   rustup 安装（--no-modify-path），cargo/rustc 的 shim 就在 $CARGO_HOME/bin，
+#   所以挂 CARGO_HOME 根 /usr/local/cargo 会把 cargo 一起盖掉，直到某个 stage
+#   才报「error run cargo metadata (is Rust installed?)」；改成只挂两个缓存子目录。
+# - nsh 安装脚本会整体替换安装目录（mv $dir $dir.old → mv 新目录 过去），而挂载点
+#   不能 rename：直接把 NSH_INSTALL_DIR 指向卷根 /root/.nsh 会死在
+#   `mv: cannot move '/root/.nsh' to '/root/.nsh.old': Device or resource busy`。
+#   所以按版本装到卷内的子目录 dist/$NSH_VERSION：rename 落在普通子目录上，runtime 与
+#   component 同目录（nsh 把 component 装在 CLI 旁边），缓存仍在卷里。
+# - ZU_SKIP_LIVE=1 是 README「完整门禁」的口径：跳过 live 模型/LSP，以及唯一
+#   要真 dist/pi-acp 的探针（acp-load-probe）。其余 harness 触点在测试里走
+#   stub 替身（fixtures/acp-stub-agent.sh），CI 不构建 pi-harness（其编译
+#   目标 pin 了 bun-darwin-arm64）。
+# - 镜像的 Rust 是 `rustup-init --profile minimal`，按发布 channel manifest
+#   `minimal = [rustc, cargo, rust-std, rust-mingw]` —— **不含 clippy/rustfmt**。
+#   rust lint stage 依赖先 `rustup component add clippy rustfmt`（~7MB）。
+#   组件落在 $RUSTUP_HOME=/usr/local/rustup，那里全是镜像自带内容，**不能挂卷**
+#   （同一类盖掉问题），所以这 7MB 每构建重下，这是代价而不是漏配。
+# - manox 在 Linux 上的依赖图需要两个系统包（native 不需要，所以本地 macOS 跑
+#   不出来）：`libssl-dev`（openssl-sys 未开 vendored，走 pkg-config 找系统
+#   OpenSSL；路径 reqwest → hyper-tls → native-tls）与 `libffi-dev`（libffi-sys 的
+#   `system` feature 被点亮 → `cargo:rustc-link-lib=dylib=ffi`；`cargo check` 不链接
+#   看不出，到 `cargo test` 才死）。其余 -sys 已逐个核过不需要系统包：
+#   libsqlite3-sys 走 bundled、zstd-sys/onig_sys 走 cc 编 vendored 源码、
+#   xz-sys 是纯 Rust（无 build script）、rav1e 的 `asm` feature 未开（不需 nasm）。
+# - `native` 与 `native/manox` 是**两个独立 workspace**（manox 自带 [workspace]
+#   与 Cargo.lock；native 的 `cargo metadata` 只返 members: [zu-app]）。任何
+#   workspace 级的 cargo 门禁都必须两处各跑一遍，写成一处会静默漏掉一半代码。
+# - 生成出来的 app 级 workspace（`app/.nsh/rust`，整目录被 ignore）会**新鲜解析**
+#   自己的 Cargo.lock，而 pymath 0.2.0 把 `malachite-bigint` 写成 `version = "0"`：
+#   新鲜解析给 pymath 挑最新的 0.14，rustpython-* 却钉在 0.12，两份副本共存时
+#   rustpython-stdlib 编译失败（E0277/E0308）。两份已提交的 lock 都已被手动收成
+#   单副本，所以 `cargo check`/`clippy` 看不出来；只有走 nsh 的构建会炸。
+#   native/manox/Cargo.toml 里记了这个坑与恢复命令，`build (nsh check)` 把它自动化。
+#   这份 lock 不可预先提交：成员包名带路径哈希、nsh-* 版本跟着 CLI 版本走，
+#   只能在生成之后就地修。
 #
 # 缓存：docker.volumes 默认 copy-on-write，流水线成功后合并回共享卷；
 # push 与 PR 事件共用同一组卷（PR 并发写安全，由 COW 解决）。
@@ -27,40 +67,107 @@
   docker:
     image: rust:slim-trixie
     volumes:
-      - /usr/local/cargo          # rust:slim 的 CARGO_HOME（registry + git 依赖）
-      - /root/.nsh                # nsh 发行版 + tsc 原生编译器
-      - /root/.bun/install/cache  # bun 全局安装缓存
-      - ./native/target           # native 工作区 target
+      # 以下路径在镜像/新鲜 clone 里本来都不存在，不会被误当成镜像内容盖掉（见文件头）。
+      - /usr/local/cargo/registry   # crates.io 索引与下载缓存（CARGO_HOME 的子目录）
+      - /usr/local/cargo/git        # nsh 的 git 依赖 checkout
+      - /root/.nsh                  # nsh 发行版（dist/<version>/bin + runtime/component）~160MB
+      - /root/.bun/install/cache    # bun 全局安装缓存
+      - ./app/target              # nsh 生成 workspace 的 target（不挂则两遍从头编译）
+      - ./native/target             # native 工作区 target
   env:
-    NSH_VERSION: v0.4.0
+    NSH_VERSION: v0.5.0
     ZU_SKIP_LIVE: "1"
+    DEBIAN_FRONTEND: noninteractive
     PATH: /usr/local/cargo/bin:/root/.local/bin:/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
   stages:
-    # ── toolchain：apt 系统依赖 + nsh/bun。镜像自带 Rust（含 rustfmt/clippy）。──
+    # ── toolchain：apt 系统依赖 + nsh/bun + rust lint 组件。──
     - name: toolchain
       script: |
         set -eu
         apt-get update -qq
         apt-get install -y -qq --no-install-recommends \
-          git pkg-config clang unzip nodejs \
-          libgtk-4-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
-        curl -fsSL https://nsh.dev/install.sh | sh   # → ~/.local/bin/nsh
-        curl -fsSL https://bun.sh/install | bash     # → ~/.bun/bin/bun
-        nsh --version && bun --version && node --version
+          git pkg-config clang unzip curl ca-certificates \
+          nodejs vim htop \
+          libgtk-4-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+          libssl-dev libffi-dev
+        # 先落盘再执行（dash 无 pipefail，见文件头「环境要点」）。
+        curl -fsSL https://nsh.dev/install.sh -o /tmp/nsh-install.sh
+        # 装到卷内的版本子目录：挂载点不能被安装脚本 rename。
+        nsh_home="$HOME/.nsh/dist/${NSH_VERSION:?NSH_VERSION must pin the nsh release}"
+        if [ -x "$nsh_home/bin/nsh" ]; then
+          echo "nsh cache hit: $("$nsh_home/bin/nsh" --version)"
+        else
+          NSH_INSTALL_DIR="$nsh_home" sh /tmp/nsh-install.sh
+        fi
+        # /root/.local/bin 不是卷，每次构建都是新容器：链接得自己补（缓存命中时脚本没跑）。
+        ln -sf "$nsh_home/bin/nsh" "$HOME/.local/bin/nsh"
+        curl -fsSL https://bun.sh/install -o /tmp/bun-install.sh
+        bash /tmp/bun-install.sh        # → ~/.bun/bin/bun
+        # 镜像是 --profile minimal，clippy/rustfmt 要自己装（见文件头「环境要点」）。
+        rustup component add clippy rustfmt
+        # 七个工具在本 stage 一次性验完：cargo 不在这里检查的话，它被卷盖住只会
+        # 表现为两个 stage 之后的「is Rust installed?」，名字完全指向错地方。
+        nsh --version && bun --version && node --version \
+          && cargo --version && rustc --version \
+          && cargo clippy --version && cargo fmt --version
 
     # ── lint：sheet-module 依赖门禁（core/shell 不许 import modules 等，
     #    docs/sheet-module-ARCHITECTURE.md §11；新违规立即红）。零编译，秒级。──
     - name: lint (layer gate)
       script: node script/check-layers.mjs
 
-    # ── build：crate check + TSX typecheck（nsh check 是唯一的类型检查口）。──
+    # ── rust lint：fmt + clippy 硬门禁。两个 workspace 各跑一遍（见文件头）。
+    #    基线已在 rustc 1.99.1（与镜像同版）本地清空，所以直接用 -D warnings：
+    #    告警要么当场清掉，要么留在代码里无人认领。──
+    - name: lint (rust gate)
+      script: |
+        set -eu
+        cd native
+        cargo fmt --all --check
+        cargo clippy --all-targets -- -D warnings
+        cd manox
+        cargo fmt --all --check
+        cargo clippy --all-targets -- -D warnings
+
+    # ── build：crate check + TSX typecheck（nsh check 是唯一的类型检查口）。
+    #    nsh check 除了逐 crate 的 cargo check，还会在生成的 app workspace 里真
+    #    编译一遍依赖 —— 那里是新鲜解析，几乎每次都会碰 malachite-bigint 分裂
+    #    （见文件头），首试注定带着一墙 E0277/E0308 失败。这面墙落盘不进日志：
+    #    只有失败**不是**已知分裂时才原样打印并保持红色——绿色构建的日志应当
+    #    干净，真失败一个字不少。──
     - name: build (nsh check)
-      script: nsh check app
+      script: |
+        set -eu
+        if nsh check app > /tmp/nsh-check-first.log 2>&1; then
+          exit 0
+        fi
+        lock=app/.nsh/rust/Cargo.lock
+        dup=$(grep -A1 'name = "malachite-bigint"' "$lock" 2>/dev/null \
+          | sed -n 's/^version = "\(.*\)"/\1/p' | grep -v '^0\.12\.0$' | head -1)
+        if [ -z "$dup" ]; then
+          echo "nsh check 失败，且不是已知 malachite 分裂——完整首试日志："
+          cat /tmp/nsh-check-first.log
+          exit 1
+        fi
+        echo "malachite-bigint 分裂成 0.12.0 + $dup（新鲜解析），降回单副本后重试"
+        cargo update --manifest-path app/.nsh/rust/Cargo.toml \
+          -p "malachite-bigint@$dup" --precise 0.12.0
+        nsh check app
 
     # ── test：cargo test（native + manox）+ TSX headless 测试。──
     - name: test (nsh test)
       script: nsh test app
+
+    # ── manox hermetic 门禁：两条都是 docs/plan.md §4 单列的必须项。文件内
+    #    `gated = process.env.ZU_MANOX_GATE === "1"`，不带这个变量时断言会静默
+    #    跳过 —— 裸 `nsh test app` 看着绿，其实折叠对账/panic 恢复/sheet 门禁
+    #    一句没跑。──
+    - name: test (manox gate)
+      script: |
+        set -eu
+        ZU_MANOX_GATE=1 nsh test app/manox.test.ts
+        ZU_MANOX_GATE=1 nsh test app/manox.ui.test.tsx
 
     # ── pi-harness 自检：版本台账守卫（src/version.ts = package.json pin）+ bun 测试。
     #    不跑 bun run build：其编译目标 pin 了 bun-darwin-arm64，Linux 上不适用。──

@@ -2,6 +2,7 @@ import { expect, open, test } from "nsh/test";
 import { Fs, State } from "zu/native";
 import { containers, loadContainers } from "./core/containers";
 import { createContainer, openPath, sessionIdsOfContainer } from "./modules/pi/container";
+import { setAcpCommandOverride } from "./modules/pi/acp/acp";
 import { error as sessionStoreError, messages, refreshSessions, viewFor } from "./modules/pi/sessions";
 import { resetStateCache } from "./domains/state";
 import { copy, shellCopyLocale } from "./ui/copy";
@@ -21,6 +22,13 @@ const SESSION_PATH = `${agentDir}/sessions/--tmp-zu-hero-a--/2026-07-20T03-38-58
 State.setStateDir(stateDir);
 State.setAgentDir(agentDir);
 resetStateCache();
+
+// The transcript load runs on the stub: the real `dist/pi-acp` is a developer
+// build CI never makes, and `STUB_FILE_REPLAY` streams the fixture file's own
+// rows — what the real distro does — so the "hello A"/"answer A" assertions
+// read the file, not canned text.
+const STUB = new URL("./fixtures/acp-stub-agent.sh", import.meta.url).pathname;
+setAcpCommandOverride({ command: "/bin/sh", args: [STUB], env: { STUB_FILE_REPLAY: "1" } });
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -55,7 +63,7 @@ test("switching to a container with a conversation shows its transcript, not the
   const b = await createEmptyContainer("/tmp/zu-hero-b");
   await sleep(150);
 
-  const app = await open("./App.tsx", { network: "live", width: 1280, height: 800 });
+  const app = await open("./app-stub-acp.tsx", { network: "live", width: 1280, height: 800, host: { params: { acpStub: STUB } } });
   await app.waitFor(`id:container-row-${aId}`, { timeout: 60000 });
 
   // The row's own pressable carries the id; the colon in `pi:<id>` is fine

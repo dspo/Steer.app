@@ -54,7 +54,8 @@ fn agent_dir() -> Result<PathBuf, String> {
     if let Some(dir) = std::env::var_os("PI_CODING_AGENT_DIR") {
         return Ok(PathBuf::from(dir));
     }
-    let home = std::env::var_os("HOME").ok_or_else(|| err(ERR_HOME, "no HOME to find pi's agent dir"))?;
+    let home =
+        std::env::var_os("HOME").ok_or_else(|| err(ERR_HOME, "no HOME to find pi's agent dir"))?;
     Ok(PathBuf::from(home).join(".pi/agent"))
 }
 
@@ -77,43 +78,42 @@ impl PiModels {
 
 /// The synchronous core, so tests can point at a fixture dir directly.
 fn list_at(dir: &std::path::Path) -> Result<Vec<PiProvider>, String> {
-        let doc: ModelsDoc = serde_json::from_str(
-            &std::fs::read_to_string(dir.join("models.json"))
-                .map_err(|e| err(ERR_READ, format!("models.json: {e}")))?,
-        )
-        .map_err(|e| err(ERR_PARSE, format!("models.json: {e}")))?;
-        let auth: serde_json::Map<String, serde_json::Value> =
-            std::fs::read_to_string(dir.join("auth.json"))
-                .ok()
-                .and_then(|text| serde_json::from_str(&text).ok())
-                .unwrap_or_default();
-        let mut providers = Vec::new();
-        for (id, value) in doc.providers {
-            let Ok(entry) = serde_json::from_value::<ProviderDoc>(value.clone()) else {
-                continue; // one malformed provider must not hide the rest
-            };
-            let models = entry
-                .models
-                .unwrap_or_default()
-                .into_iter()
-                .map(|model| PiModelInfo {
-                    name: model.name.unwrap_or_else(|| model.id.clone()),
-                    id: model.id,
-                    context_window: model.context_window,
-                })
-                .collect();
-            providers.push(PiProvider {
-                api: entry.api,
-                has_auth: auth.contains_key(&id),
-                id,
-                name: entry.name.unwrap_or_default(),
-                models,
-            });
-        }
-        providers.sort_by_key(|provider| !provider.has_auth);
-        Ok(providers)
+    let doc: ModelsDoc = serde_json::from_str(
+        &std::fs::read_to_string(dir.join("models.json"))
+            .map_err(|e| err(ERR_READ, format!("models.json: {e}")))?,
+    )
+    .map_err(|e| err(ERR_PARSE, format!("models.json: {e}")))?;
+    let auth: serde_json::Map<String, serde_json::Value> =
+        std::fs::read_to_string(dir.join("auth.json"))
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default();
+    let mut providers = Vec::new();
+    for (id, value) in doc.providers {
+        let Ok(entry) = serde_json::from_value::<ProviderDoc>(value.clone()) else {
+            continue; // one malformed provider must not hide the rest
+        };
+        let models = entry
+            .models
+            .unwrap_or_default()
+            .into_iter()
+            .map(|model| PiModelInfo {
+                name: model.name.unwrap_or_else(|| model.id.clone()),
+                id: model.id,
+                context_window: model.context_window,
+            })
+            .collect();
+        providers.push(PiProvider {
+            api: entry.api,
+            has_auth: auth.contains_key(&id),
+            id,
+            name: entry.name.unwrap_or_default(),
+            models,
+        });
+    }
+    providers.sort_by_key(|provider| !provider.has_auth);
+    Ok(providers)
 }
-
 
 #[derive(Deserialize)]
 struct ProviderDoc {

@@ -108,11 +108,9 @@ pub(crate) fn start(on_frame: Callback<crate::ManoxFrame>, cx: CallCx<'_>) -> Re
                 // within a runtime" panic — deterministic, not environmental.
                 // boot() is the process singleton (try_runtime short-circuits),
                 // so the sessions spawned inside supervise only reuse it.
-                if let Err(error) = (|| {
-                    std::panic::catch_unwind(crate::real::boot)
-                        .unwrap_or_else(|panic| Err(format!("the manox boot panicked: {panic:?}")))
-                        .map(|_| ())
-                })() {
+                let booted = std::panic::catch_unwind(crate::real::boot)
+                    .unwrap_or_else(|panic| Err(format!("the manox boot panicked: {panic:?}")));
+                if let Err(error) = booted.map(|_| ()) {
                     let _ = events.blocking_send(PumpEvent::TransportError(error));
                     return;
                 }
@@ -242,9 +240,8 @@ async fn supervise(
     // The first host session comes up with the supervisor: `start` promises a
     // live host half (its frames answer `initialize` from then on), not a
     // quiet wire until the first `restart`.
-    let mut session: Option<host::Session> = Some(host::Session::spawn(PumpSender {
-        tx: events.clone(),
-    }));
+    let mut session: Option<host::Session> =
+        Some(host::Session::spawn(PumpSender { tx: events.clone() }));
     while let Some(command) = commands_rx.recv().await {
         match command {
             Command::Frame(text) => {

@@ -36,7 +36,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ahp_types::messages::JsonRpcMessage;
-use serde_json::Value;
 use manox_ahp::transport::{HostTransport, Sink, Source, TransportError, TransportFuture};
 use manox_ahp_runtime::ahp::runtime::AhpRuntime;
 use manox_ahp_runtime::error::RuntimeError;
@@ -44,11 +43,11 @@ use manox_ahp_runtime::runtime_trait::{
     ClientToolSpec, ForkIntent, QuestionResponse, RenameOutcome, SessionIntent, SessionRuntime,
     TerminalSnapshot,
 };
+use serde_json::Value;
 
 /// The error message a model-less turn settles with. It names the fix, not
 /// the internals.
-const NO_MODEL_MESSAGE: &str =
-    "no model is configured — add a provider in cx Settings (~/.manox/cx.providers.config.yaml) \
+const NO_MODEL_MESSAGE: &str = "no model is configured — add a provider in cx Settings (~/.manox/cx.providers.config.yaml) \
      and try again";
 
 /// The pi-provider bridge: registers the machine's pi providers (its
@@ -65,7 +64,9 @@ const NO_MODEL_MESSAGE: &str =
 fn register_pi_providers() {
     let dir = std::env::var_os("PI_CODING_AGENT_DIR")
         .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| std::path::PathBuf::from(home).join(".pi/agent")));
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| std::path::PathBuf::from(home).join(".pi/agent"))
+        });
     let Some(dir) = dir else { return };
     let Some(yaml) = pi_providers_yaml(&dir) else {
         return;
@@ -73,7 +74,10 @@ fn register_pi_providers() {
     let registry = manox_agent::provider_glue::global();
     match manox_harness::provider::register_providers_yaml(&registry, &yaml) {
         Ok(count) if count > 0 => {
-            tracing::info!(count, "registered the machine's pi providers into the manox kernel")
+            tracing::info!(
+                count,
+                "registered the machine's pi providers into the manox kernel"
+            )
         }
         Ok(_) => {}
         Err(error) => tracing::warn!(%error, "the pi provider bridge registered nothing"),
@@ -83,10 +87,8 @@ fn register_pi_providers() {
 /// Builds the cx-provider YAML for pi's config, seeding one env var per
 /// credentialed provider. `None` when pi's config is absent or empty.
 fn pi_providers_yaml(dir: &std::path::Path) -> Option<String> {
-    let models: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(dir.join("models.json")).ok()?,
-    )
-    .ok()?;
+    let models: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("models.json")).ok()?).ok()?;
     let auth: serde_json::Value = std::fs::read_to_string(dir.join("auth.json"))
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
@@ -95,9 +97,13 @@ fn pi_providers_yaml(dir: &std::path::Path) -> Option<String> {
     let mut yaml = String::from("providers:\n");
     let mut any = false;
     for (id, entry) in providers {
-        let Some(api) = entry.get("api").and_then(|v| v.as_str()) else { continue };
+        let Some(api) = entry.get("api").and_then(|v| v.as_str()) else {
+            continue;
+        };
         let Some(wire) = wire_key(api) else { continue };
-        let Some(base) = entry.get("baseUrl").and_then(|v| v.as_str()) else { continue };
+        let Some(base) = entry.get("baseUrl").and_then(|v| v.as_str()) else {
+            continue;
+        };
         let Some(secret) = auth
             .get(id)
             .filter(|a| a.get("type").and_then(|t| t.as_str()) == Some("api_key"))
@@ -115,7 +121,9 @@ fn pi_providers_yaml(dir: &std::path::Path) -> Option<String> {
         ));
         if let Some(models) = entry.get("models").and_then(|m| m.as_array()) {
             for model in models {
-                let Some(mid) = model.get("id").and_then(|v| v.as_str()) else { continue };
+                let Some(mid) = model.get("id").and_then(|v| v.as_str()) else {
+                    continue;
+                };
                 let context = model.get("contextWindow").and_then(|v| v.as_u64());
                 let max = model.get("maxTokens").and_then(|v| v.as_u64());
                 yaml.push_str(&format!("      {mid}:\n"));
@@ -231,10 +239,10 @@ pub(crate) fn boot() -> Result<Arc<AhpRuntime>, String> {
 /// session's claim never anchors on the filesystem root.
 fn anchor_cwd() -> PathBuf {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    if !cwd.is_absolute() || cwd.as_path() == Path::new("/") {
-        if let Some(home) = manox_agent::paths::home_dir() {
-            return home;
-        }
+    if (!cwd.is_absolute() || cwd.as_path() == Path::new("/"))
+        && let Some(home) = manox_agent::paths::home_dir()
+    {
+        return home;
     }
     cwd
 }
@@ -309,10 +317,10 @@ impl SessionRuntime for ModelGuardRuntime {
         // the first turn materializes it. (Catalogue ANNOUNCEMENT is a
         // different fact: the sidebar list scans journal files, so a
         // deferred session joins `root/sessionAdded` at its first turn.)
-        if let Some(objects) = manox_agent::object_store::ObjectStore::try_global() {
-            if let Some(id) = intent.session_id.as_deref() {
-                objects.create_conversation(id, intent.project.as_deref());
-            }
+        if let Some(objects) = manox_agent::object_store::ObjectStore::try_global()
+            && let Some(id) = intent.session_id.as_deref()
+        {
+            objects.create_conversation(id, intent.project.as_deref());
         }
         Ok(())
     }
@@ -379,7 +387,11 @@ impl SessionRuntime for ModelGuardRuntime {
             .await
     }
 
-    async fn set_reasoning_effort(&self, session_id: &str, effort: &str) -> Result<(), RuntimeError> {
+    async fn set_reasoning_effort(
+        &self,
+        session_id: &str,
+        effort: &str,
+    ) -> Result<(), RuntimeError> {
         self.inner.set_reasoning_effort(session_id, effort).await
     }
 
@@ -468,10 +480,7 @@ impl SessionRuntime for ModelGuardRuntime {
             .await
     }
 
-    fn journal_feed(
-        &self,
-        session_id: &str,
-    ) -> Option<manox_agent::thread::ThreadHandle> {
+    fn journal_feed(&self, session_id: &str) -> Option<manox_agent::thread::ThreadHandle> {
         self.inner.journal_feed(session_id)
     }
 
@@ -597,10 +606,8 @@ pub(crate) mod test_support {
     pub(crate) fn isolated_home() -> PathBuf {
         static HOME: OnceLock<PathBuf> = OnceLock::new();
         HOME.get_or_init(|| {
-            let home = std::env::temp_dir().join(format!(
-                "zu-manox-test-home-{}",
-                std::process::id()
-            ));
+            let home =
+                std::env::temp_dir().join(format!("zu-manox-test-home-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&home);
             std::fs::create_dir_all(home.join("core")).expect("create the isolated manox home");
             // SAFETY: test-process setup, before any kernel boot in this
@@ -630,10 +637,17 @@ mod pi_bridge_tests {
                 "models": [{"id": "qwen3.8-max", "contextWindow": 1000000, "maxTokens": 131072}]}}}"#,
         )
         .unwrap();
-        std::fs::write(dir.join("auth.json"), r#"{"bailian": {"type": "api_key", "key": "k"}}"#).unwrap();
+        std::fs::write(
+            dir.join("auth.json"),
+            r#"{"bailian": {"type": "api_key", "key": "k"}}"#,
+        )
+        .unwrap();
         let yaml = pi_providers_yaml(&dir).unwrap();
         assert!(yaml.contains("name: bailian"), "{yaml}");
-        assert!(yaml.contains("apikey_source: env:ZU_PI_KEY_BAILIAN"), "{yaml}");
+        assert!(
+            yaml.contains("apikey_source: env:ZU_PI_KEY_BAILIAN"),
+            "{yaml}"
+        );
         assert!(yaml.contains("anthropic: https://x.example"), "{yaml}");
         assert!(yaml.contains("qwen3.8-max:"), "{yaml}");
         assert!(yaml.contains("context: 1000000"), "{yaml}");
@@ -662,21 +676,28 @@ mod pi_bridge_tests {
     #[ignore = "reads the developer's real ~/.pi credentials"]
     fn the_real_pi_config_registers_and_resolves() {
         let dir = std::path::PathBuf::from(
-            std::env::var("PI_CODING_AGENT_DIR").unwrap_or_else(|_| {
-                format!("{}/.pi/agent", std::env::var("HOME").unwrap())
-            }),
+            std::env::var("PI_CODING_AGENT_DIR")
+                .unwrap_or_else(|_| format!("{}/.pi/agent", std::env::var("HOME").unwrap())),
         );
         let yaml = pi_providers_yaml(&dir).expect("this machine's pi config bridges");
         let registry = manox_harness::core::provider_registry::ProviderRegistry::new();
         let count = manox_harness::provider::register_providers_yaml(&registry, &yaml).unwrap();
         assert!(count > 0, "registered {count}");
         // The composed ref the app sends: bailian-anthropic/<first model>.
-        let models: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(dir.join("models.json")).unwrap(),
-        )
-        .unwrap();
-        let provider = models["providers"].as_object().unwrap().keys().next().unwrap().clone();
-        let model = models["providers"][&provider]["models"][0]["id"].as_str().unwrap().to_owned();
+        let models: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("models.json")).unwrap())
+                .unwrap();
+        let provider = models["providers"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .next()
+            .unwrap()
+            .clone();
+        let model = models["providers"][&provider]["models"][0]["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
         let reference = format!("bailian-anthropic/{model}");
         assert!(
             manox_harness::model_ref::resolve_model_ref(&registry, &reference).is_some(),

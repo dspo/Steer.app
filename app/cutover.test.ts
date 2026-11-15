@@ -42,15 +42,22 @@ test("booting the shell starts no engine and listens on no port", async () => {
 });
 
 test("a container and a session are minted without any process", async () => {
-  // The conversation's folder exists (the harness spawn checks it).
-  await Fs.mkdir("/tmp", "zu-cutover-a");
-  const key = await createSession("/tmp/zu-cutover-a");
-  expect(key).toBeTruthy();
-  const sessionId = await createContainer("/tmp/zu-cutover-a");
-  expect(sessionId).toBeTruthy();
-  expect(containers().length).toBe(1);
-  expect(activeContainerId()).toBe(containers()[0].id);
-  // Still no engine: creating a container spawned nothing.
+  // The mint rides the stub, like the conversation legs below it: CI never
+  // builds `dist/pi-acp` for the mint's spawn to resolve.
+  setAcpCommandOverride({ command: "/bin/sh", args: [STUB] });
+  try {
+    // The conversation's folder exists (the harness spawn checks it).
+    await Fs.mkdir("/tmp", "zu-cutover-a");
+    const key = await createSession("/tmp/zu-cutover-a");
+    expect(key).toBeTruthy();
+    const sessionId = await createContainer("/tmp/zu-cutover-a");
+    expect(sessionId).toBeTruthy();
+    expect(containers().length).toBe(1);
+    expect(activeContainerId()).toBe(containers()[0].id);
+    // Still no engine: creating a container spawned nothing.
+  } finally {
+    setAcpCommandOverride(null);
+  }
 });
 
 test("a conversation runs over a stdio harness subprocess and settles", async () => {

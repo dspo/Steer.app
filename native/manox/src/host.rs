@@ -189,7 +189,7 @@ async fn run_half(
 
 #[cfg(test)]
 mod tests {
-    use super::{Ctl, Session, SessionEnd, INJECTED_PANIC};
+    use super::{Ctl, INJECTED_PANIC, Session, SessionEnd};
     use crate::pump::{PumpEvent, PumpSender};
     use crate::real::test_support::isolated_home;
     use serde_json::{Value, json};
@@ -241,11 +241,7 @@ mod tests {
     /// answer a later subscribe before an earlier create on another lane —
     /// so a test, like the real client, awaits each answer before the next
     /// step.
-    async fn request_and_wait(
-        session: &Session,
-        events: &mut EventReader,
-        frame: Value,
-    ) -> Value {
+    async fn request_and_wait(session: &Session, events: &mut EventReader, frame: Value) -> Value {
         let id = frame["id"].as_f64().expect("test frames carry ids");
         session.inbound.send(frame.to_string()).unwrap();
         loop {
@@ -254,8 +250,8 @@ mod tests {
                     let parsed: Value = serde_json::from_str(&text).unwrap();
                     // Any response shape counts: a `null` result is a real
                     // answer (createSession answers null).
-                    let is_response =
-                        parsed["id"] == id && (parsed.get("result").is_some() || parsed.get("error").is_some());
+                    let is_response = parsed["id"] == id
+                        && (parsed.get("result").is_some() || parsed.get("error").is_some());
                     if is_response {
                         return parsed;
                     }

@@ -1,5 +1,11 @@
 import { expect, open, test } from "nsh/test";
 
+// The three cases that mint through the Hero's submit hand the fixture the
+// stub's path over `host.params` (an app VM cannot locate repo files): CI
+// never builds `dist/pi-acp` for the mint's spawn to resolve.
+const STUB = new URL("./fixtures/acp-stub-agent.sh", import.meta.url).pathname;
+const acpStubHost = { host: { params: { acpStub: STUB } } };
+
 /** Writes the picture when the run draws the app (`nsh test --target macos`). */
 async function shot(app: { screenshot: (path?: string | null) => Promise<Uint8Array> }, name: string): Promise<void> {
   try {
@@ -49,7 +55,7 @@ test("a project header's + opens the Hero without collapsing the group", async (
 });
 
 test("the Hero starts a conversation and then shows its container", async () => {
-  const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
+  const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800, ...acpStubHost });
   await app.waitFor("text:alpha body");
   await app.press("id:new-container");
   await app.waitFor("text:开始你的对话");
@@ -178,7 +184,7 @@ test("the Hero's tools are two left-aligned rows with plain labels", async () =>
 });
 
 test("Enter sends, Cmd+Enter sends and an empty composer never starts", async () => {
-  const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
+  const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800, ...acpStubHost });
   await app.waitFor("text:alpha body");
   await app.press("id:new-container");
   await app.waitFor("text:开始你的对话");
@@ -211,7 +217,7 @@ function scratchState(app: { texts: () => string[] }): {
 }
 
 test("the scratch canvas holds a browser page and moves it into the container it mints", async () => {
-  const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800 });
+  const app = await open("./fixtures/projects.tsx", { width: 1200, height: 800, ...acpStubHost });
   await app.waitFor("text:alpha body");
 
   // New → the scratch canvas's Hero; the project chip picks the target.

@@ -41,7 +41,8 @@ export function sortEntries(entries: FileEntry[]): FileEntry[] {
 
 /**
  * The rows the tree shows: every entry of every expanded directory, in
- * order, with a loading/empty/error row under a directory that is not ready.
+ * order, with an empty/error row under a directory that is not ready. A
+ * listing still in flight shows nothing (see the walk below).
  * `expanded` holds directory paths (not the root key, which is always open).
  */
 export function fileRows(tree: Record<string, DirState>, expanded: string[]): FileRow[] {
@@ -49,12 +50,11 @@ export function fileRows(tree: Record<string, DirState>, expanded: string[]): Fi
   const rows: FileRow[] = [];
   const walk = (key: string, depth: number): void => {
     const state = tree[key];
-    if (!state) {
-      rows.push({ kind: "loading", path: key, depth });
-      return;
-    }
-    if (state.status === "loading") {
-      rows.push({ kind: "loading", path: key, depth });
+    if (!state || state.status === "loading") {
+      // A listing in flight shows no rows: its arrival is a pure add, while
+      // a `loading:` row would have to be *replaced* by `entry:` rows — a
+      // keyed flip the List's diff does not survive on the headless Linux
+      // runner (the count updates, the rows never do).
       return;
     }
     if (state.status === "error") {

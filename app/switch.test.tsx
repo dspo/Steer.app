@@ -1,6 +1,7 @@
 import { expect, open, test } from "nsh/test";
 import { containers, loadContainers } from "./core/containers";
 import { createContainer } from "./modules/pi/container";
+import { setAcpCommandOverride } from "./modules/pi/acp/acp";
 import { resetStateCache } from "./domains/state";
 import { Fs, State } from "zu/native";
 
@@ -11,6 +12,13 @@ import { Fs, State } from "zu/native";
 const stateDir = `/tmp/zu-switch-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 State.setStateDir(stateDir);
 resetStateCache();
+
+// The mint rides the stub: CI never builds `dist/pi-acp` for the spawn to
+// resolve, and the assertions are registry-side, not transcript-side. The
+// id comes back unique per spawn: the file mints a and b, and a fixed
+// session id would collapse both into one `pi:<sessionId>` registry row.
+const STUB = new URL("./fixtures/acp-stub-agent.sh", import.meta.url).pathname;
+setAcpCommandOverride({ command: "/bin/sh", args: [STUB], env: { STUB_UNIQUE_SESSION: "1" } });
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -36,7 +44,7 @@ test("pressing a container row switches the active container", async () => {
   expect(aId).toBeTruthy();
   expect(bId).toBeTruthy();
 
-  const app = await open("./App.tsx", { network: "live", width: 1280, height: 800 });
+  const app = await open("./app-stub-acp.tsx", { network: "live", width: 1280, height: 800, host: { params: { acpStub: STUB } } });
   await app.waitUntil(() => app.texts().includes("zu-switch-a"), { timeout: 60000 });
   await app.waitUntil(() => app.texts().includes("zu-switch-b"), { timeout: 60000 });
 

@@ -8,8 +8,12 @@ import { open, test } from "nsh/test";
 // banner, model line and composer; Ctrl+C returns to the shell. A real turn
 // was attempted by hand and the CLI reported `API error · Retrying`, so this
 // test does not claim a completed conversation.
+//
+// The `claude` binary is the machine's own tooling, nothing the repo ships —
+// a bare CI image has none, which ZU_SKIP_LIVE (the CI 口径) skips.
+const t = process.env?.["ZU_SKIP_LIVE"] === "1" ? test.skip : test;
 
-test("Claude Code's TUI draws in the terminal and Ctrl+C returns to the shell", async () => {
+t("Claude Code's TUI draws in the terminal and Ctrl+C returns to the shell", async () => {
   const app = await open("./fixtures/terminal.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:terminal-screen");
   await app.type("id:terminal-view", "claude");

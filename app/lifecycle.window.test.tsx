@@ -11,7 +11,7 @@ import { expect, open, test } from "nsh/test";
  * docs/evidence/m12-lifecycle.md.
  */
 test("closing the window hides it and show/hide repeat", async () => {
-  const app = await open("./fixtures/lifecycle-window.tsx", { platform: "macos", width: 900, height: 600 });
+  const app = await open("./lifecycle-window-fixture.tsx", { platform: "macos", width: 900, height: 600 });
   const win = app.window("main");
   expect(win.state()?.visible).toBe(true);
   expect(app.texts()).toContain("window visible");

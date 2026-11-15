@@ -7,12 +7,13 @@ publish = false
 [workspace]
 
 [dependencies]
-# nsh 0.4.0 pinned to the commit that has `nsh/base`'s `Terminal` (its `term`
-# feature); the crates.io 0.4.0 release predates it and has no terminal. The
-# nsh CLI sees the git source, builds the generated hosts from the same
+# nsh 0.5.0 pinned to the `v0.5.0` tag commit (f4d68f7 = `nsh --version`).
+# The app's TS side uses 0.5.0 APIs (`Notifications`, `nsh/updater`,
+# `nsh/i18n`, `WindowModule.get`), so CI's NSH_VERSION must stay 0.5.0 too —
+# the nsh CLI sees the git source, builds the generated hosts from the same
 # checkout, and patches the registry so the app and the runner share one core.
-nsh-core = { git = "https://github.com/longbridge/nsh.git", rev = "506b539284e070f506cd8ac5f554326b58f99483" }
-nsh-base = { git = "https://github.com/longbridge/nsh.git", rev = "506b539284e070f506cd8ac5f554326b58f99483" }
+nsh-core = { git = "https://github.com/longbridge/nsh.git", rev = "f4d68f7f9f31eb7b3ecc8a4cbc31096d5c6238a1" }
+nsh-base = { git = "https://github.com/longbridge/nsh.git", rev = "f4d68f7f9f31eb7b3ecc8a4cbc31096d5c6238a1" }
 portable-pty = "0.9.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

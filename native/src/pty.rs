@@ -39,7 +39,8 @@ const MAX_INPUT: usize = 1 << 20;
 /// How a PTY starts.
 #[derive(Debug, Clone, Default, JsObject)]
 pub struct PtyOptions {
-    /// The program; `$SHELL`, else `/bin/zsh`, when left out.
+    /// The program; `$SHELL`, else the platform's login shell (`/bin/zsh` on
+    /// macOS, `/bin/bash` elsewhere), when left out.
     command: Option<String>,
     /// The program's arguments, none for the default shell.
     args: Option<Vec<String>>,
@@ -234,7 +235,16 @@ impl Pty {
                     .ok()
                     .filter(|shell| !shell.is_empty())
             })
-            .unwrap_or_else(|| "/bin/zsh".to_owned());
+            // The fallback is the platform's own login shell, not a Mac-ism:
+            // a Linux box without `$SHELL` set has no `/bin/zsh`, and the
+            // terminal must still start (the CI runner is exactly that box).
+            .unwrap_or_else(|| {
+                if cfg!(target_os = "macos") {
+                    "/bin/zsh".to_owned()
+                } else {
+                    "/bin/bash".to_owned()
+                }
+            });
         let mut argv = args.unwrap_or_default();
         if argv.len() > MAX_ARGS {
             return Err(format!("too many arguments (at most {MAX_ARGS})"));

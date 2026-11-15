@@ -1,10 +1,11 @@
-import { mount, Text, View } from "nsh";
+import { host, mount, Text, View } from "nsh";
 import { Workbench } from "../shell/shell";
 import { activeContainerId, containers, layout, setContainerTransport, sheetOrder, syncVisible } from "../core/containers";
 import { browserPages } from "../modules/browser/store";
 import { panelIds } from "../core/dock";
 import { containerProject, membership, projects, setProjectTransport } from "../core/projects";
 import { seedSession } from "../modules/pi/sessions";
+import { setAcpCommandOverride } from "../modules/pi/acp/acp";
 import { defaultLayoutForSheets } from "../core/dock";
 import { setFolderPicker } from "../domains/picker";
 import { registerAllModules } from "../modules/register-all";
@@ -162,6 +163,15 @@ function Probe() {
 
 setContainerTransport(containerTransport);
 setProjectTransport(projectTransport);
+// The Hero's mint spawns the harness itself (the transport fakes the
+// container commands, not the ACP spawn), and CI never builds `dist/pi-acp`
+// — the stub stands in for it. The stub's path rides `host.params` (an app
+// VM's `import.meta.url` is no file path); tests that mint pass it, the rest
+// run with no override at all.
+const stubPath = (host.params as { acpStub?: string } | null)?.acpStub;
+if (stubPath) {
+  setAcpCommandOverride({ command: "/bin/sh", args: [stubPath] });
+}
 mount(() => (
   <View class="flex-1" style={{ flexDirection: "column", minHeight: 0 }}>
     <Probe />

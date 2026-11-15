@@ -3,6 +3,7 @@ import { Fs, State } from "zu/native";
 import { copy } from "./ui/copy";
 import { activeContainerId, containers, loadContainers } from "./core/containers";
 import { openPath, sessionIdsOfContainer } from "./modules/pi/container";
+import { setAcpCommandOverride } from "./modules/pi/acp/acp";
 import { createProject, projects } from "./core/projects";
 import { messages, refreshSessions } from "./modules/pi/sessions";
 import { resetStateCache } from "./domains/state";
@@ -16,6 +17,13 @@ import { resetStateCache } from "./domains/state";
 
 const agentDir = `/tmp/zu-s21-agent-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 let stateDir = `/tmp/zu-s21-2-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+
+// The openPath load runs on the stub: the real `dist/pi-acp` is a developer
+// build CI never makes, and `STUB_FILE_REPLAY` streams the fixture file's
+// own rows — what the real distro does — so the "startup marker alpha"
+// assertions read the file, not canned text.
+const STUB = new URL("./fixtures/acp-stub-agent.sh", import.meta.url).pathname;
+setAcpCommandOverride({ command: "/bin/sh", args: [STUB], env: { STUB_FILE_REPLAY: "1" } });
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -64,7 +72,7 @@ test("startup shows the registry's active container and hydrates its conversatio
   expect(row).toBeTruthy();
   await sleep(150); // the write-through settle
 
-  const app = await open("./App.tsx", { network: "live", width: 1280, height: 800 });
+  const app = await open("./app-stub-acp.tsx", { network: "live", width: 1280, height: 800, host: { params: { acpStub: STUB } } });
   // No clicks: the startup switch draws the container's sheet and hydrates
   // its visible session — through an ACP load of the file, with no engine
   // process anywhere.
@@ -79,14 +87,20 @@ test("startup shows the registry's active container and hydrates its conversatio
   expect(messages().some((message) => message.text === "startup marker alpha")).toBe(true);
 }, 240000);
 
-test("the scratch Hero's project action opens its sheets", async () => {
+// The Hero's tools spawn real CLIs (`pi`, `claude`, `codex`, `copilot`) in a
+// real terminal — the machine's own tooling, nothing the repo ships. A bare
+// CI image has none of them, which ZU_SKIP_LIVE (the CI 口径) skips; the
+// sheets themselves are exercised everywhere by projects.ui's Hero cases.
+const t = process.env?.["ZU_SKIP_LIVE"] === "1" ? test.skip : test;
+
+t("the scratch Hero's project action opens its sheets", async () => {
   // The Hero's minting tools need a project (DESIGN §4.1); this case is
   // about the sheets they produce, so give the scratch canvas one.
   const made = await createProject("S21", [{ path: "/tmp", primary: true }]);
   expect(made).toBeTruthy();
   expect(projects().some((project) => project.id === made?.id)).toBe(true);
 
-  const app = await open("./App.tsx", { network: "live", width: 1280, height: 800 });
+  const app = await open("./app-stub-acp.tsx", { network: "live", width: 1280, height: 800, host: { params: { acpStub: STUB } } });
   await app.waitFor("id:hero-project", { timeout: 20000 });
   await app.press("id:hero-project");
   await app.waitFor(`id:hero-project-${made?.id}`, { timeout: 20000 });

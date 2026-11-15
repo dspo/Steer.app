@@ -84,7 +84,16 @@ test("closing a PTY kills its program", async () => {
 
 test("the default shell is $SHELL", async () => {
   const pty = Pty.open({ cwd: "/tmp" }, () => {});
-  expect(pty.title).toBe(process.env.SHELL || "/bin/zsh");
+  const expected = process.env.SHELL;
+  if (expected) {
+    expect(pty.title).toBe(expected);
+  } else {
+    // No `$SHELL`: the fallback is the platform's own login shell. The
+    // headless runner's `platform.os` is a fiction (it names the emulated
+    // device, not this box), so the assertion reads the contract, not a
+    // literal: whichever login shell pty.rs picked, it is one of them.
+    expect(pty.title).toMatch(/^\/bin\/(z|ba)?sh$/);
+  }
   pty.close();
   pty.dispose();
 }, 30000);

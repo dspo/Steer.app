@@ -102,10 +102,38 @@ export function FilesBody(props: { containerId: string }) {
   const load = (key: string, dir: string): void => {
     const workspace = root();
     if (!workspace) return;
-    tree.update((previous) => ({
-      ...previous,
-      [key]: { status: "loading", entries: previous[key]?.entries ?? [], error: null },
-    }));
+    // The tree never flips its rows to a loading key: replacing
+    // `loading:<path>` rows with `entry:<path>` ones breaks the List's keyed
+    // diff on the headless Linux runner (the CI gate caught it — the entries
+    // count updates, the rows never do). A first load shows no rows until
+    // they arrive (a pure add, the transcript's proven shape); a rescan
+    // keeps the shown rows until the fresh ones land — stale-until-fresh
+    // reads better than a flash of 「读取中…」 anyway.
+    const stale = tree()[key];
+    if (stale?.status === "loading") return;
+    if (stale && stale.entries.length > 0) {
+      void canonicalRoot(workspace)
+        .then((canonical) => {
+          if (!alive) return [];
+          base.set(canonical);
+          return listDir(canonical, dir);
+        })
+        .then((entries) => {
+          if (!alive) return;
+          tree.update((previous) => ({
+            ...previous,
+            [key]: { status: "ready", entries: sortEntries(entries), error: null },
+          }));
+        })
+        .catch((error: unknown) => {
+          if (!alive) return;
+          tree.update((previous) => ({
+            ...previous,
+            [key]: { status: "error", entries: [], error: failure(error) },
+          }));
+        });
+      return;
+    }
     void canonicalRoot(workspace)
       .then((canonical) => {
         if (!alive) return [];

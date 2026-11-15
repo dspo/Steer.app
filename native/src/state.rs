@@ -121,7 +121,9 @@ impl State {
         let Ok(metadata) = fs::metadata(&path) else {
             return Ok(None);
         };
-        let bytes = fs::read(&path).map_err(|error| state_error(ERR_IO, format!("cannot read {}: {error}", path.display())))?;
+        let bytes = fs::read(&path).map_err(|error| {
+            state_error(ERR_IO, format!("cannot read {}: {error}", path.display()))
+        })?;
         let version: Option<f64> = serde_json::from_slice::<serde_json::Value>(&bytes)
             .ok()
             .and_then(|value| value.get("v").and_then(|v| v.as_f64()));
@@ -248,10 +250,14 @@ fn state_file(name: &str) -> Result<PathBuf, JsError> {
 /// The write policy against an explicit path: the JSON object check, the
 /// version staleness check, then the atomic rename. The tests' entry point.
 fn write_in(path: &Path, text: &str) -> Result<StateWrite, JsError> {
-    let incoming: serde_json::Value = serde_json::from_str(text.trim())
-        .map_err(|error| state_error(ERR_JSON, format!("the state to write is not JSON: {error}")))?;
+    let incoming: serde_json::Value = serde_json::from_str(text.trim()).map_err(|error| {
+        state_error(ERR_JSON, format!("the state to write is not JSON: {error}"))
+    })?;
     if !incoming.is_object() {
-        return Err(state_error(ERR_JSON, "the state to write must be a JSON object"));
+        return Err(state_error(
+            ERR_JSON,
+            "the state to write must be a JSON object",
+        ));
     }
     let incoming_version = incoming.get("v").and_then(|v| v.as_f64());
     if let Ok(on_disk) = fs::read(path)
@@ -270,7 +276,8 @@ fn write_in(path: &Path, text: &str) -> Result<StateWrite, JsError> {
         .with("version", on_disk_version));
     }
     atomic_write(path, text.trim().as_bytes())?;
-    let metadata = fs::metadata(path).map_err(|error| state_error(ERR_IO, format!("cannot stat {}: {error}", path.display())))?;
+    let metadata = fs::metadata(path)
+        .map_err(|error| state_error(ERR_IO, format!("cannot stat {}: {error}", path.display())))?;
     Ok(StateWrite {
         path: path.display().to_string(),
         size: metadata.len() as f64,
@@ -324,10 +331,19 @@ fn atomic_write(target: &Path, bytes: &[u8]) -> Result<(), JsError> {
         path: temp.clone(),
         keep: false,
     };
-    file.write_all(bytes).map_err(|error| state_error(ERR_IO, format!("cannot write {}: {error}", temp.display())))?;
-    file.sync_all().map_err(|error| state_error(ERR_IO, format!("cannot flush {}: {error}", temp.display())))?;
+    file.write_all(bytes).map_err(|error| {
+        state_error(ERR_IO, format!("cannot write {}: {error}", temp.display()))
+    })?;
+    file.sync_all().map_err(|error| {
+        state_error(ERR_IO, format!("cannot flush {}: {error}", temp.display()))
+    })?;
     drop(file);
-    fs::rename(&temp, target).map_err(|error| state_error(ERR_IO, format!("cannot move {} into place: {error}", temp.display())))?;
+    fs::rename(&temp, target).map_err(|error| {
+        state_error(
+            ERR_IO,
+            format!("cannot move {} into place: {error}", temp.display()),
+        )
+    })?;
     guard.keep = true;
     if let Ok(directory) = fs::File::open(parent) {
         let _ = directory.sync_all();
@@ -342,13 +358,25 @@ fn create_temp(parent: &Path) -> Result<(PathBuf, fs::File), JsError> {
     for _ in 0..16 {
         let n = NEXT.fetch_add(1, Ordering::Relaxed);
         let path = parent.join(format!(".zu-state-{pid}-{n}.tmp"));
-        match fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
             Ok(file) => return Ok((path, file)),
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(state_error(ERR_IO, format!("cannot make a temporary file: {error}"))),
+            Err(error) => {
+                return Err(state_error(
+                    ERR_IO,
+                    format!("cannot make a temporary file: {error}"),
+                ));
+            }
         }
     }
-    Err(state_error(ERR_IO, "cannot make a temporary file beside the target"))
+    Err(state_error(
+        ERR_IO,
+        "cannot make a temporary file beside the target",
+    ))
 }
 
 fn state_error(code: &str, message: impl Into<String>) -> JsError {
@@ -390,7 +418,9 @@ fn dir_watermark(dir: &Path) -> f64 {
     };
     let mut children = Vec::new();
     for entry in entries.by_ref().flatten() {
-        let Ok(metadata) = entry.metadata() else { continue };
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
         if metadata.is_dir() {
             children.push(entry.path());
         } else {
@@ -414,7 +444,9 @@ fn collect_jsonl(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        let Ok(metadata) = entry.metadata() else { continue };
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
         if metadata.is_dir() {
             collect_jsonl(&path, depth + 1, out);
         } else if path.extension().and_then(|ext| ext.to_str()) == Some("jsonl") {
@@ -453,7 +485,11 @@ fn scan_session(path: &Path) -> Option<ScanSession> {
         return None;
     }
     let id = header.get("id")?.as_str()?.to_owned();
-    let cwd = header.get("cwd").and_then(|v| v.as_str()).unwrap_or("").to_owned();
+    let cwd = header
+        .get("cwd")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_owned();
     let created = timestamp_ms(header.get("timestamp").and_then(|v| v.as_str()));
     // Within the scanned head: the name and the first user text.
     let mut name = String::new();
@@ -528,8 +564,15 @@ fn count_pattern(path: &Path, pattern: &[u8]) -> usize {
         match file.read(&mut buffer) {
             Ok(0) => break,
             Ok(n) => {
-                let chunk: Vec<u8> = tail.iter().copied().chain(buffer[..n].iter().copied()).collect();
-                count += chunk.windows(pattern.len()).filter(|w| *w == pattern).count();
+                let chunk: Vec<u8> = tail
+                    .iter()
+                    .copied()
+                    .chain(buffer[..n].iter().copied())
+                    .collect();
+                count += chunk
+                    .windows(pattern.len())
+                    .filter(|w| *w == pattern)
+                    .count();
                 let keep = pattern.len().saturating_sub(1).min(chunk.len());
                 tail = chunk[chunk.len() - keep..].to_vec();
             }
@@ -611,7 +654,6 @@ fn mtime_ms(metadata: &fs::Metadata) -> f64 {
         .unwrap_or(0.0)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -653,13 +695,42 @@ mod tests {
     #[test]
     fn a_name_is_one_json_segment() {
         let root = TempRoot::new();
-        assert_eq!(state_file_in(root.path(), "registry").unwrap_err().code(), Some(ERR_NAME));
-        assert_eq!(state_file_in(root.path(), "../escape.json").unwrap_err().code(), Some(ERR_NAME));
-        assert_eq!(state_file_in(root.path(), ".hidden.json").unwrap_err().code(), Some(ERR_NAME));
-        assert_eq!(state_file_in(root.path(), "no-extension").unwrap_err().code(), Some(ERR_NAME));
-        assert_eq!(state_file_in(root.path(), "a/b/c.json").unwrap_err().code(), Some(ERR_NAME));
-        assert_eq!(state_file_in(root.path(), "layouts/../x.json").unwrap_err().code(), Some(ERR_NAME));
-        assert_eq!(state_file_in(root.path(), "/abs.json").unwrap_err().code(), Some(ERR_NAME));
+        assert_eq!(
+            state_file_in(root.path(), "registry").unwrap_err().code(),
+            Some(ERR_NAME)
+        );
+        assert_eq!(
+            state_file_in(root.path(), "../escape.json")
+                .unwrap_err()
+                .code(),
+            Some(ERR_NAME)
+        );
+        assert_eq!(
+            state_file_in(root.path(), ".hidden.json")
+                .unwrap_err()
+                .code(),
+            Some(ERR_NAME)
+        );
+        assert_eq!(
+            state_file_in(root.path(), "no-extension")
+                .unwrap_err()
+                .code(),
+            Some(ERR_NAME)
+        );
+        assert_eq!(
+            state_file_in(root.path(), "a/b/c.json").unwrap_err().code(),
+            Some(ERR_NAME)
+        );
+        assert_eq!(
+            state_file_in(root.path(), "layouts/../x.json")
+                .unwrap_err()
+                .code(),
+            Some(ERR_NAME)
+        );
+        assert_eq!(
+            state_file_in(root.path(), "/abs.json").unwrap_err().code(),
+            Some(ERR_NAME)
+        );
         assert!(state_file_in(root.path(), "registry.json").is_ok());
         assert!(state_file_in(root.path(), "layouts%3Aa.json").is_ok());
         assert!(state_file_in(root.path(), "layouts/pi%3Aabc.json").is_ok());
@@ -671,18 +742,35 @@ mod tests {
     fn a_write_is_atomic_and_stale_checked() {
         let root = TempRoot::new();
         // A first write with no file present.
-        let written = write_in(&root.path().join("registry.json"), r#"{"v":1,"containers":[]}"#).unwrap();
+        let written = write_in(
+            &root.path().join("registry.json"),
+            r#"{"v":1,"containers":[]}"#,
+        )
+        .unwrap();
         assert!(written.size > 0.0);
         // A same-version rewrite passes.
-        write_in(&root.path().join("registry.json"), r#"{"v":1,"containers":["a"]}"#).unwrap();
+        write_in(
+            &root.path().join("registry.json"),
+            r#"{"v":1,"containers":["a"]}"#,
+        )
+        .unwrap();
         // An older build writing an older version is refused, file intact.
         let error = write_in(&root.path().join("registry.json"), r#"{"v":0}"#).unwrap_err();
         assert_eq!(code(&error), Some(ERR_STALE));
         let on_disk = fs::read_to_string(root.path().join("registry.json")).unwrap();
-        assert!(on_disk.contains("\"a\""), "the newer file stands: {on_disk}");
+        assert!(
+            on_disk.contains("\"a\""),
+            "the newer file stands: {on_disk}"
+        );
         // Non-JSON and non-object payloads are refused before touching disk.
-        assert_eq!(code(&write_in(&root.path().join("x.json"), "[1]").unwrap_err()), Some(ERR_JSON));
-        assert_eq!(code(&write_in(&root.path().join("x.json"), "nope").unwrap_err()), Some(ERR_JSON));
+        assert_eq!(
+            code(&write_in(&root.path().join("x.json"), "[1]").unwrap_err()),
+            Some(ERR_JSON)
+        );
+        assert_eq!(
+            code(&write_in(&root.path().join("x.json"), "nope").unwrap_err()),
+            Some(ERR_JSON)
+        );
         // No temporary files are left behind.
         let leftovers: Vec<_> = fs::read_dir(root.path())
             .unwrap()
@@ -693,13 +781,13 @@ mod tests {
         assert!(leftovers.is_empty(), "temporary files left: {leftovers:?}");
     }
 
-
     #[test]
     fn a_session_file_scans_to_an_index_entry() {
         let root = TempRoot::new();
         let sessions = root.path().join("sessions").join("--tmp-demo--");
         fs::create_dir_all(&sessions).unwrap();
-        let file = sessions.join("2026-07-20T03-38-58-867Z_a2326702-1b70-4587-920a-0fba0f2c1455.jsonl");
+        let file =
+            sessions.join("2026-07-20T03-38-58-867Z_a2326702-1b70-4587-920a-0fba0f2c1455.jsonl");
         fs::write(
             &file,
             concat!(
@@ -722,7 +810,11 @@ mod tests {
         assert_eq!(entry.name, "the demo session");
         assert_eq!(entry.preview, "hello there");
         assert_eq!(entry.message_count, 2.0);
-        assert!(entry.created > 1_700_000_000_000.0, "created parses: {}", entry.created);
+        assert!(
+            entry.created > 1_700_000_000_000.0,
+            "created parses: {}",
+            entry.created
+        );
         assert!(entry.modified > 0.0);
     }
 
@@ -745,7 +837,9 @@ mod tests {
     }
 
     fn header_line(id: &str, cwd: &str) -> String {
-        format!(r#"{{"type":"session","version":3,"id":"{id}","timestamp":"2026-07-20T03:38:58.868Z","cwd":"{cwd}"}}"#)
+        format!(
+            r#"{{"type":"session","version":3,"id":"{id}","timestamp":"2026-07-20T03:38:58.868Z","cwd":"{cwd}"}}"#
+        )
     }
 
     #[test]
@@ -774,8 +868,14 @@ mod tests {
 
     #[test]
     fn timestamps_parse_and_truncation_stays_on_chars() {
-        assert_eq!(timestamp_ms(Some("2026-07-20T03:38:58.868Z")), 1_784_518_738_868.0);
-        assert_eq!(timestamp_ms(Some("2026-07-20T03:38:58Z")), 1_784_518_738_000.0);
+        assert_eq!(
+            timestamp_ms(Some("2026-07-20T03:38:58.868Z")),
+            1_784_518_738_868.0
+        );
+        assert_eq!(
+            timestamp_ms(Some("2026-07-20T03:38:58Z")),
+            1_784_518_738_000.0
+        );
         assert_eq!(timestamp_ms(Some("nope")), 0.0);
         assert_eq!(truncate_chars("hello", 10), "hello");
         let truncated = truncate_chars("你好世界", 3);
