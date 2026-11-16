@@ -27,6 +27,7 @@ test("the thinking block folds and unfolds its reasoning", async () => {
   const app = await open("./fixtures/manox-conversation.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:chat-thinking");
   expect(app.shows("id:chat-thinking-text")).toBe(false);
+  expect(app.texts()).toContain("思考了");
   await app.press("id:chat-thinking >> nth=0");
   await app.waitFor("id:chat-thinking-text");
   expect(app.texts()).toContain("The suite is the fastest signal; run it before reading anything.");
@@ -84,4 +85,19 @@ test("a reader scrolled up stays put when the chat grows", async () => {
   // the list is following again), and the new bottom is reachable.
   await app.press("id:chat-jump-latest");
   await app.waitUntil(() => !app.shows("id:chat-jump-latest"), { timeout: 10000 });
+});
+
+test("the thinking block opens while it thinks and folds when the turn settles", async () => {
+  const app = await open("./fixtures/manox-conversation-live.tsx", { width: 1200, height: 800 });
+  await app.waitFor("id:chat-thinking");
+  // Live: open by default, streaming label, text visible without a press.
+  expect(app.shows("id:chat-thinking-text")).toBe(true);
+  expect(app.texts()).toContain("思考中…");
+  // Settled: folded to its completion label; the reader can reopen it.
+  await app.press("id:fixture-settle");
+  await app.waitUntil(() => !app.shows("id:chat-thinking-text"), { timeout: 5000 });
+  expect(app.texts()).toContain("思考了");
+  expect(app.texts()).toContain("It is /tmp.");
+  await app.press("id:chat-thinking");
+  await app.waitFor("id:chat-thinking-text");
 });

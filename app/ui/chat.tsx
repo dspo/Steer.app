@@ -69,18 +69,24 @@ export function ThinkingBlock(props: {
   id: string;
   text: string;
   label: string;
+  /** The turn is running: the block stays open until it settles. */
+  live: boolean;
+  /** The reasoning text is still growing (the turn's tail). */
   streaming: boolean;
-  seconds?: number;
 }) {
-  const open = () => thoughtsOpen()[props.id] ?? false;
-  const toggle = () => thoughtsOpen.set({ ...thoughtsOpen(), [props.id]: !open() });
-  const shown = () => (props.seconds !== undefined ? `${props.label} · ${props.seconds}s` : props.label);
+  // The gallery's reasoning interaction: open and live while the turn runs,
+  // then folded to its label once it settles; the reader toggles it after.
+  const open = () => props.live || (thoughtsOpen()[props.id] ?? false);
+  const toggle = () => {
+    if (props.live) return;
+    thoughtsOpen.set({ ...thoughtsOpen(), [props.id]: !open() });
+  };
   return (
     <View style={{ gap: 6 }}>
       <View
         role="button"
         testID="chat-thinking"
-        accessibilityLabel={shown()}
+        accessibilityLabel={props.label}
         accessibilityState={{ selected: open() }}
         class="flex-row items-center gap-1.5 self-start rounded-md px-1 hover:bg-hover active:bg-accent focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
         style={{ height: 26, ...motionStyle("fast") }}
@@ -90,7 +96,7 @@ export function ThinkingBlock(props: {
           <Spinner size={12} tint={token("muted-foreground")} />
         </If>
         <Text class="text-[12.5px] text-muted-foreground" style={{ fontVariant: ["tabular-nums"] }}>
-          {shown()}
+          {props.label}
         </Text>
         <View
           style={{

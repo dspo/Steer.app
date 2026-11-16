@@ -58,7 +58,7 @@ import type {
 type Row =
   | { kind: "day"; id: string; at: string }
   | { kind: "user"; id: string; text: string; attachments: string[] }
-  | { kind: "part"; id: string; chatId: string; turnId: string; part: ResponsePart; streaming: boolean }
+  | { kind: "part"; id: string; chatId: string; turnId: string; part: ResponsePart; streaming: boolean; live: boolean }
   | { kind: "actions"; id: string; turnId: string; text: string };
 
 /** A completed or active turn, as the projector reads it. */
@@ -118,6 +118,7 @@ function rowsOf(chat: ChatState | null, chatId: string): Row[] {
         turnId: turn.id,
         part,
         streaming: active && index === last,
+        live: active,
       });
     }
     if (!active) {
@@ -408,7 +409,8 @@ function PartRow(props: { row: Extract<Row, { kind: "part" }> }) {
         <ThinkingBlock
           id={reasoning.id}
           text={reasoning.content ?? ""}
-          label={props.row.streaming ? t(K.manox.reasoningStreaming) : t(K.manox.reasoning)}
+          label={props.row.streaming ? t(K.manox.reasoningStreaming) : t(K.manox.reasoningDone)}
+          live={props.row.live}
           streaming={props.row.streaming}
         />
       );
