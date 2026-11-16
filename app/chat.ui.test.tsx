@@ -114,6 +114,17 @@ test("the effort picker localizes the levels and sets the thought level", async 
   expect(app.texts()).toContain("最高");
 });
 
+test("the composer card holds at the minimum window", async () => {
+  const app = await open("./fixtures/chat-idle.tsx", { width: 900, height: 600 });
+  await app.waitFor("id:session-input");
+  // The footer's two clusters share the card at 900pt: nothing folds away
+  // and the model name gives way before the action does.
+  for (const id of ["session-attach", "session-mode", "session-context", "model-picker", "session-thinking", "session-send"]) {
+    expect(app.shows(`id:${id}`)).toBe(true);
+  }
+  await shot(app, "ui-s22-11-idle-narrow");
+});
+
 test("an interrupted or failed turn is a quiet line, not a banner", async () => {
   const app = await open("./fixtures/chat-idle.tsx", { width: 1200, height: 800 });
   await app.type("id:session-input", "this request will fail without an engine");
