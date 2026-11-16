@@ -100,8 +100,15 @@ test("answering a live card resolves it in-process without the wire", async () =
 });
 
 test("the user's own send supersedes the waiting cards", async () => {
-  setAcpCommandOverride(stubCommand({ STUB_UNIQUE_SESSION: "1" }));
+  setAcpCommandOverride(stubCommand({ STUB_PENDING_ASKS: "1", STUB_ASK_ANSWER: "1", STUB_UNIQUE_SESSION: "1" }));
   try {
+    // A seeded-style card (no live waiter) on the still-live session: the
+    // send retires it on the harness via the wire sentinel, so a restart
+    // will not re-seed the question the user answered by typing.
+    const id = "bbbb1111-0000-0000-0000-000000000001";
+    pendingAsks.set({ [`${id}:tc-pending`]: { sessionId: id, toolCallId: "tc-pending", args: ARGS } });
+    await send("never mind, I picked for you", id);
+    await until("the seeded card to drop", () => pendingAsks()[`${id}:tc-pending`] === undefined);
     const key = String(await createSession("/tmp/zu-ask-a"));
     pendingAsks.set({
       [`${key}:tc-live`]: { sessionId: key, toolCallId: "tc-live", args: ARGS },

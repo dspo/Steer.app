@@ -7,6 +7,7 @@ import {
   liveSession,
   openExistingSession,
   openNewSession,
+  SUPERSEDE_RESPONSE,
   type AcpSession,
   type ElicitationRequest,
   type PermissionRequest,
@@ -378,13 +379,31 @@ function attachSession(key: string, session: AcpSession): void {
   syncProtocolState(key);
 }
 
-/** Drops a session's question cards before the user's own message prompts;
- * the harness supersedes its live waits when the prompt lands (B2). */
+/** Drops a session's question cards before the user's own message prompts.
+ * Live waits are superseded by the harness when the prompt lands; seeded
+ * cards (no live waiter after a restart) are retired on the harness via the
+ * wire sentinel — without it the next open would re-seed questions the user
+ * answered by typing (B2). Best-effort: a dead process has nothing left to
+ * retire, and the next seed would surface what is still genuinely pending. */
 function supersedePendingAsks(key: string): void {
   const entries = Object.entries(pendingAsks());
   const keep = entries.filter(([, entry]) => entry.sessionId !== key);
   if (keep.length === entries.length) return;
+  const wireRetires = entries.filter(
+    ([, entry]) => entry.sessionId === key && !entry.resolve,
+  );
   pendingAsks.set(Object.fromEntries(keep));
+  const session = liveSession(key);
+  if (!session || session.dead) return;
+  for (const [, entry] of wireRetires) {
+    void session
+      .requestCustom("_zu/ask/answer", {
+        sessionId: key,
+        toolCallId: entry.toolCallId,
+        response: SUPERSEDE_RESPONSE,
+      })
+      .catch(() => {});
+  }
 }
 
 /** Pulls `_zu/ask/pending` after an open so questions that outlived a restart

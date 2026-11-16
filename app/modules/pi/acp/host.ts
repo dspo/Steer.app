@@ -51,6 +51,11 @@ export interface ElicitationRequest {
   requestedSchema?: unknown;
 }
 
+/** What a superseded wait resolves with — the value the harness's mailbox
+ * resolves live waits with; a wire answer carrying it retires a seeded card
+ * without being treated as an answer (B2). */
+export const SUPERSEDE_RESPONSE = { action: "supersede" } as const;
+
 /** One model-initiated structured question (B2 types the shape, A1 ships the
  * `_zu/ask/create` lane that sends it). */
 export interface AskRequest {

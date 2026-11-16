@@ -53,6 +53,13 @@ export const TOOL_RESPONSE_TYPE = "zu.tool-response";
 /** What a superseded wait resolves with; the tool answers with the ack. */
 export const SUPERSEDE_RESPONSE = { action: "supersede" } as const;
 
+/** True for the supersede sentinel, by value: across the wire it arrives as a
+ * freshly parsed object, so reference equality would miss it. The value is
+ * reserved — real ask answers (option/custom/discuss) carry no `action`. */
+export function isSupersedeResponse(response: unknown): boolean {
+  return isRecord(response) && response.action === "supersede";
+}
+
 interface ToolCallRef {
   id: string;
   name: string;
@@ -248,6 +255,16 @@ export class AnswerRegistry {
       return { delivered: "live" };
     }
     if (this.hasReceipt(toolCallId)) return { delivered: "late" };
+    // A seeded card (no live waiter after a restart) the user skipped by
+    // typing arrives as the sentinel: retire it with a receipt only. The
+    // sentinel is not an answer — it must never reach describeResponse and
+    // be injected into the conversation as one.
+    if (isSupersedeResponse(response)) {
+      if (!this.pending().some((ask) => ask.toolCallId === toolCallId)) return { delivered: "none" };
+      this.manager.appendCustomEntry(ASK_ANSWER_TYPE, { toolCallId, response });
+      this.hooks.log(`superseded parked ask ${toolCallId} in ${this.manager.getSessionId()}`);
+      return { delivered: "late" };
+    }
     const ask = this.lateAsk(toolCallId);
     if (!ask) return { delivered: "none" };
     const text = ask.tool.describeResponse(ask.args, response);

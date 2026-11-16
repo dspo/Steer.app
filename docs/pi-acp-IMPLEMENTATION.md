@@ -895,6 +895,11 @@ UI 重启后问题卡片消失；用户等得不耐烦自己打字时，卡住�
   waiter，工具侧见哨兵即答 pending ack，同时给每个被跳过的 ask 写 receipt（否则下次
   open 会把用户已跳过的问题重新种成卡片）。announce entry 保留：历史不改写。
   `prompt()` 开头固定跑 `supersedeAll()`——用户的话优先于悬着的问题。
+- **wire 哨兵退休 seeded 卡**：重启后的卡没有 live waiter，用户打字跳过时 app 侧对它
+  发 `_zu/ask/answer` 携哨兵；`answer()` 按值识别哨兵（跨 wire 是新 parse 的对象，
+  引用相等必失效；真答案的 option/custom/discuss 形状不带 `action`），只写 receipt、
+  返回 `late`，不走 `describeResponse`——哨兵不是答案，绝不注入对话。未知 id 或
+  receipt 已在（二次退休）分别得 `none` / `late`，不产生多余 receipt。
 
 ### 20.4 ACP 面（`app.ts` / `host.ts` / `sessions.ts`）
 
@@ -908,7 +913,9 @@ UI 重启后问题卡片消失；用户等得不耐烦自己打字时，卡住�
   ${toolCallId}`）。open 后 `seedPendingAsks` 拉 `_zu/ask/pending` 把重启幸存的问题
   重新种成可答卡片（best-effort：旧 harness method_not_found 是诚实结果，静默跳过）；
   卡片无 waiter 走 wire，有 waiter 进程内 resolve；`supersedePendingAsks(key)` 在
-  send 前清掉该会话的卡；waiting_user 判定纳入 pendingAsks，协议状态随投影同步。
+  send 前清掉该会话的卡，其中无 resolve 的 seeded 卡以 wire 哨兵退休（best-effort，
+  死进程无卡可退休，下次 seed 会呈现仍真悬着的问题）；waiting_user 判定纳入
+  pendingAsks，协议状态随投影同步。
 
 ### 20.5 测试与门禁
 

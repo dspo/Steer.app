@@ -242,6 +242,40 @@ describe("AnswerRegistry", () => {
     expect(manager.getBranch().filter((entry) => entry.type === "custom" && entry.customType === ASK_ANSWER_TYPE).length).toBe(1);
   });
 
+  test("a wire supersede retires a seeded ask without injecting it", async () => {
+    const manager = makeManager();
+    appendUser(manager, "go");
+    appendAssistantCalls(manager, [{ id: "tc17", name: "ask_user_question" }]);
+    manager.appendCustomEntry(ASK_ANNOUNCE_TYPE, { toolCallId: "tc17", args: { question: "which?" } });
+    repairDanglingInteractiveCalls(manager, FIXTURE_TOOLS);
+    const injected: string[] = [];
+    const registry = new AnswerRegistry(manager, FIXTURE_TOOLS, {
+      inject: async (text) => {
+        injected.push(text);
+      },
+      log: () => {},
+    });
+    expect(registry.pending().map((ask) => ask.toolCallId)).toEqual(["tc17"]);
+    // Across the wire the sentinel is a freshly parsed object — the match
+    // must be by value, not reference.
+    const reply = await registry.answer("tc17", { action: "supersede" });
+    expect(reply).toEqual({ delivered: "late" });
+    expect(injected).toEqual([]);
+    const receipts = manager
+      .getBranch()
+      .filter((entry) => entry.type === "custom" && entry.customType === ASK_ANSWER_TYPE);
+    expect(receipts.length).toBe(1);
+    expect(receipts[0]!.data).toEqual({ toolCallId: "tc17", response: { action: "supersede" } });
+    expect(registry.pending()).toEqual([]);
+    const reopened = SessionManager.open(manager.getSessionFile(), join(manager.getSessionFile(), ".."));
+    expect(pendingAsksOf(reopened, FIXTURE_TOOLS)).toEqual([]);
+    // A second sentinel is a receipt hit, not a second receipt.
+    expect(await registry.answer("tc17", SUPERSEDE_RESPONSE)).toEqual({ delivered: "late" });
+    expect(manager.getBranch().filter((entry) => entry.type === "custom" && entry.customType === ASK_ANSWER_TYPE).length).toBe(1);
+    // A sentinel for an unknown ask stays an error, not a stray receipt.
+    expect(await registry.answer("tc-absent", SUPERSEDE_RESPONSE)).toEqual({ delivered: "none" });
+  });
+
   test("an unknown tool call id answers none", async () => {
     const manager = makeManager();
     const registry = new AnswerRegistry(manager, FIXTURE_TOOLS, {
