@@ -415,7 +415,9 @@ export function ManoxModel(props: { threadId: string }) {
     const row = currentRow();
     return row ? modelLabel(row) : current() || t(K.session.model);
   };
-  const loaded = () => piProviders() != null;
+  // A failed first load leaves the providers null but the error set; the
+  // menu must show the reason rather than a spinner that never ends.
+  const loaded = () => piProviders() !== null || piModelsError() !== null;
   const groups = (): Array<{ provider: PiProvider; models: PiModelInfo[] }> => {
     const out: Array<{ provider: PiProvider; models: PiModelInfo[] }> = [];
     const byId = new Map<string, PiModelInfo[]>();
@@ -449,9 +451,9 @@ export function ManoxModel(props: { threadId: string }) {
         <View
           role="button"
           testID="manox-model"
-          accessibilityLabel={current() || t(K.session.model)}
+          accessibilityLabel={display()}
           accessibilityState={{ expanded: open(), hasPopup: true }}
-          tooltip={current() || t(K.session.model)}
+          tooltip={current() || display()}
           class={`${footerTrigger(open())} min-w-0 gap-1 px-1.5`}
           style={{ ...motionStyle("fast") }}
         >

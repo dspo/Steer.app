@@ -1,4 +1,4 @@
-import { mount, signal, Text, View } from "nsh";
+import { mount, Storage, View } from "nsh";
 import { channels, connectionStatus, setManoxFrameSink } from "../modules/manox/ahp";
 import { ManoxComposer } from "../modules/manox/composer";
 import { setPiModelsTransport } from "../domains/pimodels";
@@ -18,13 +18,12 @@ import type { ChatState } from "../../contracts/ahp/channels-chat/state";
  */
 
 /** The dispatches the composer made, parsed back from the wire frames. */
-export const frames: Array<Record<string, any>> = [];
-/** The same capture as one screen line, so the headless test can read it. */
-const framesLog = signal("frames:[]");
+const frames: Array<Record<string, any>> = [];
 
 setManoxFrameSink((frame) => {
   frames.push(JSON.parse(frame));
-  framesLog.set(`frames:${JSON.stringify(frames)}`);
+  // The test runs in another engine: storage is the bridge it can read.
+  void Storage.setItem("manox-frames", JSON.stringify(frames));
 });
 
 // The model catalogue without the host: one provider, two models, both
@@ -73,9 +72,11 @@ const ROOT: RootState = {
 // The session channel: the config schema the host would advertise (the
 // writable enums) and the current values the fold carries.
 const SESSION: SessionState = {
+  resource: "ahp-session:/thread",
   provider: "bailian-anthropic",
   title: "composer fixture",
   status: 1,
+  modifiedAt: "2026-11-16T00:00:00.000Z",
   lifecycle: "ready",
   activeClients: [],
   chats: [],
@@ -135,10 +136,7 @@ channels.set({
 connectionStatus.set("ready");
 
 mount(() => (
-  <View class="flex-1 bg-background" style={{ padding: 16 }}>
+  <View class="flex-1 bg-background" style={{ padding: 16, justifyContent: "flex-end" }}>
     <ManoxComposer threadId="thread" chatId="chat" />
-    <Text testID="manox-fixture-frames" class="text-[10px] text-faint">
-      {framesLog()}
-    </Text>
   </View>
 ));

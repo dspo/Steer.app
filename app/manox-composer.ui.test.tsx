@@ -9,14 +9,14 @@ async function shot(app: { screenshot: (path?: string | null) => Promise<Uint8Ar
   }
 }
 
-/** The frames the fixture captured, read off the screen line it keeps. */
-function capturedFrames(app: { texts(): string[] }): Array<Record<string, any>> {
-  const line = app.texts().find((text) => text.startsWith("frames:"));
-  return line ? JSON.parse(line.slice("frames:".length)) : [];
+/** The frames the fixture captured, read back through the app's storage. */
+function capturedFrames(app: { storage(): Record<string, string> }): Array<Record<string, any>> {
+  const raw = app.storage()["manox-frames"];
+  return raw ? JSON.parse(raw) : [];
 }
 
 /** The dispatchAction frames of one action type, in dispatch order. */
-function framesOfType(app: { texts(): string[] }, type: string): Array<Record<string, any>> {
+function framesOfType(app: { storage(): Record<string, string> }, type: string): Array<Record<string, any>> {
   return capturedFrames(app).filter(
     (frame) => frame.method === "dispatchAction" && frame.params?.action?.type === type,
   );
@@ -44,9 +44,9 @@ test("the idle card shows every control with its name and a disabled +", async (
   // The trigger names the current access mode in the shell's words.
   expect(app.texts()).toContain("完全访问");
   expect(app.count("label:权限模式：完全访问")).toBe(1);
-  // The model trigger carries the display name; its label is the full ref.
+  // The model trigger carries the display name; its label is the same name.
   expect(app.texts()).toContain("Qwen3.8 Flash");
-  expect(app.count("label:bailian-anthropic/qwen3.8-flash")).toBe(1);
+  expect(app.count("label:Qwen3.8 Flash")).toBe(1);
   // The effort picker localizes the level.
   expect(app.texts()).toContain("最高");
   expect(app.count("label:推理强度：最高")).toBe(1);

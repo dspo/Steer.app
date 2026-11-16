@@ -127,11 +127,6 @@ export function sessionConfigValue(threadId: string, key: string): unknown {
   return key in config.values ? config.values[key] : config.schema.properties[key]?.default;
 }
 
-/** The session's current config values (as the fold carries them). */
-export function sessionConfigValues(threadId: string): Record<string, unknown> {
-  return sessionOf(threadId)?.config?.values ?? {};
-}
-
 /** The thread's raw config model ref (the kernel's `{provider}-{wire}/{model}`). */
 export function manoxModelRefOf(threadId: string): string {
   const value = sessionConfigValue(threadId, "model");
