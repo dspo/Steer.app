@@ -9,6 +9,7 @@ import { describe, expect, test } from "bun:test";
 import { ndJsonStream, type SessionUpdate, type StopReason } from "@agentclientprotocol/sdk";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { DISPATCH_RULE } from "../extensions/prompt-section";
+import { ARTIFACTS_RULE } from "../extensions/artifacts";
 import { hostExtensionFactories } from "./pi-session";
 import {
   createAcpApp,
@@ -774,32 +775,49 @@ describe("method surface", () => {
 });
 
 describe("captain extension assembly", () => {
-  test("factory list binds gate, the zu-dispatch prompt section, then dispatch", () => {
-    const noop = () => {};
-    const gate = { extension: () => () => {} }; // Pick<PermissionGate, "extension">
-    const subagentManager = new SubagentManager({ settledRuns: () => [] } as never);
-    const factories = hostExtensionFactories(gate, subagentManager, "pi-1", noop);
-    expect(factories).toHaveLength(3);
-
-    // The middle factory is the prompt-section one: it registers exactly one
-    // `before_agent_start` handler, which writes the zu-dispatch rule and
-    // returns nothing (a returned systemPrompt would bust the prefix cache).
+  /** Fake ExtensionAPI that records `on` registrations per event name. */
+  function fakePi() {
     const registered = new Map<string, Array<(...args: unknown[]) => unknown>>();
-    const fakePi = {
+    const pi = {
       on(event: string, handler: (...args: unknown[]) => unknown) {
         const list = registered.get(event) ?? [];
         list.push(handler);
         registered.set(event, list);
         return () => {};
       },
-    } as unknown as ExtensionAPI;
-    (factories[1] as (pi: ExtensionAPI) => void)(fakePi);
-    expect([...registered.keys()]).toEqual(["before_agent_start"]);
-    const sections: Record<string, string> = {};
-    const result = (registered.get("before_agent_start")![0] as (e: unknown) => unknown)({
-      systemPromptOptions: { sections },
-    });
-    expect(sections["zu-dispatch"]).toBe(DISPATCH_RULE);
-    expect(result).toBeUndefined();
+    };
+    return { pi: pi as unknown as ExtensionAPI, registered };
+  }
+
+  test("factory list binds gate, the two prompt sections, the artifacts guard, then dispatch", () => {
+    const noop = () => {};
+    const gate = { extension: () => () => {} }; // Pick<PermissionGate, "extension">
+    const subagentManager = new SubagentManager({ settledRuns: () => [] } as never);
+    const factories = hostExtensionFactories(gate, subagentManager, "pi-1", noop);
+    expect(factories).toHaveLength(5);
+
+    // Factories 1–2 are the prompt-section ones: each registers exactly one
+    // `before_agent_start` handler, which writes its named rule and returns
+    // nothing (a returned systemPrompt would bust the prefix cache).
+    for (const [index, section, rule] of [
+      [1, "zu-dispatch", DISPATCH_RULE],
+      [2, "zu-artifacts", ARTIFACTS_RULE],
+    ] as const) {
+      const { pi, registered } = fakePi();
+      (factories[index] as (pi: ExtensionAPI) => void)(pi);
+      expect([...registered.keys()]).toEqual(["before_agent_start"]);
+      const sections: Record<string, string> = {};
+      const result = (registered.get("before_agent_start")![0] as (e: unknown) => unknown)({
+        systemPromptOptions: { sections },
+      });
+      expect(sections[section]).toBe(rule);
+      expect(result).toBeUndefined();
+    }
+
+    // Factory 3 is the artifacts guard: exactly one `tool_call` handler.
+    const guard = fakePi();
+    (factories[3] as (pi: ExtensionAPI) => void)(guard.pi);
+    expect([...guard.registered.keys()]).toEqual(["tool_call"]);
+    expect(guard.registered.get("tool_call")).toHaveLength(1);
   });
 });
