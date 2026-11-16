@@ -203,6 +203,11 @@ G1（审批/扩展 UI）、G2（模型/档位/压缩）、G3（子代理）是�
 | `config_option_update` / `current_mode_update` | 配置/策略变化 |
 | `notice` | 扩展 notify、非致命错误、重试提示 |
 
+工具结果的 `details` 走 `_meta.zu.details`（ACP 的 `_meta` 扩展位）：harness 只在 **end** 更新上携带
+（plain JSON、64 KiB 上限，超限整丢弃不截断），客户端折进工具行，`app/modules/pi/tool-cards.ts`
+按工具名分发卡片，缺省回落紧凑行。**工具 details 只在直播 turn 可见；`session/load` 回放降级为文本**
+（pi 不持久化 details），卡片渲染必须容忍 `details === undefined`。
+
 ### 4.6 为什么不是 ACP v2
 
 v2（`experimental/v2`）提供 `state_update`、`session/status`、`plan_update`、elicitation 等更完整的

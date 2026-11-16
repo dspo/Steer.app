@@ -43,6 +43,10 @@ export function updateToStoreEvents(update: AcpUpdate): StoreEvent[] {
   if (kind === "tool_call_update") {
     const status = String(update.status ?? "");
     if (status !== "completed" && status !== "failed") return [];
+    // The harness forwards the tool's own details under `_meta.zu` (end
+    // only, plain JSON within a cap); a `session/load` replay carries none,
+    // so cards must tolerate their absence.
+    const details = (update._meta as { zu?: { details?: unknown } } | undefined)?.zu?.details;
     return [
       {
         type: "tool.end",
@@ -50,6 +54,7 @@ export function updateToStoreEvents(update: AcpUpdate): StoreEvent[] {
           toolName: update.name !== undefined ? String(update.name) : undefined,
           toolCallId: update.toolCallId !== undefined ? String(update.toolCallId) : undefined,
           isError: status === "failed",
+          ...(details !== undefined ? { details } : {}),
         },
       },
     ];

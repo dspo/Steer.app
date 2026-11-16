@@ -55,7 +55,9 @@ export type Msg = {
   role: Role;
   text: string;
   at?: number;
-  tool?: { id?: string; name: string; state: ToolState };
+  /** `details` is the live tool result's structured payload (end only);
+   * a replayed row never has one. */
+  tool?: { id?: string; name: string; state: ToolState; details?: unknown };
 };
 
 /** One session's projected state. */
@@ -757,8 +759,12 @@ function markInterrupted(id: string): void {
  * `id` is resolved through the ACP alias map first: a view whose pi session
  * id was minted (or re-minted) mid-life is keyed by the id it was opened
  * under, so dock sheets stay stable across the rename.
+ *
+ * Exported as the store's one fold verb: the transport above it translates
+ * updates into store events (`updateToStoreEvents`), and tests drive this
+ * seam directly instead of spawning a harness.
  */
-function foldStoreEvent(rawId: string | undefined, type: string, data: unknown): void {
+export function foldStoreEvent(rawId: string | undefined, type: string, data: unknown): void {
   const id = viewKeyFor(rawId);
   switch (type) {
     case "message.delta": {
@@ -810,7 +816,18 @@ function foldStoreEvent(rawId: string | undefined, type: string, data: unknown):
         });
       } else {
         const state: ToolState = payload.isError ? "failed" : "done";
-        const row = { role: "tool" as const, text: label, tool: { id: callId, name: label, state } };
+        const row = {
+          role: "tool" as const,
+          text: label,
+          tool: {
+            id: callId,
+            name: label,
+            state,
+            // The live end carries the tool's structured details; the start
+            // row above never does, and neither does a replay.
+            ...(payload.details !== undefined ? { details: payload.details as unknown } : {}),
+          },
+        };
         const messages =
           index >= 0
             ? [...list.slice(0, index), row, ...list.slice(index + 1)]

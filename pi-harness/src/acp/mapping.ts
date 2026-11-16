@@ -154,14 +154,45 @@ export function toolCallPartialUpdate(toolCallId: string, partialResult: unknown
   };
 }
 
+/** The largest `details` payload the harness forwards: a bigger one costs
+ * more than a card can carry, so it drops whole (the text still flows). */
+const DETAILS_LIMIT_BYTES = 64 * 1024;
+
+/**
+ * The tool's own details, when they are a bounded plain JSON value.
+ *
+ * pi tool results are `{ content, details }` and `details` is the validated
+ * shape card renderers read — a contract, not UI-private parsing, so it is
+ * forwarded as-is. Anything that is not a plain object/array, or anything
+ * past the byte limit or not serializable, drops whole: no truncation into
+ * half a JSON, no guessing at a shape.
+ */
+export function toolDetails(result: unknown): unknown | undefined {
+  if (!isRecord(result)) return undefined;
+  const details = (result as { details?: unknown }).details;
+  if (details === undefined || details === null) return undefined;
+  if (typeof details !== "object") return undefined;
+  try {
+    if (Buffer.byteLength(JSON.stringify(details), "utf8") > DETAILS_LIMIT_BYTES) return undefined;
+  } catch {
+    return undefined; // circular / non-serializable
+  }
+  return details;
+}
+
 /** `tool_execution_end` → the card settles: completed or failed. */
 export function toolCallEndUpdate(toolCallId: string, result: unknown, isError: boolean): SessionUpdate {
   const content = toolResultContent(result);
+  const details = toolDetails(result);
   return {
     sessionUpdate: "tool_call_update",
     toolCallId,
     status: isError ? "failed" : "completed",
     ...(content.length > 0 ? { content } : {}),
+    // The structured side channel rides `_meta.zu` — ACP's extension point,
+    // and the client folds loose objects. Only the end carries details;
+    // partials stay text-only in v1.
+    ...(details !== undefined ? { _meta: { zu: { details } } } : {}),
   };
 }
 
