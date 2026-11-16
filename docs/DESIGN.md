@@ -227,6 +227,13 @@ manox composer footer 的模型/effort 菜单（Q120）：trigger 用 h-6 的 ch
 Pi 会话的完整交互状态（审批卡、elicitation、命令候选、恢复/休眠）以
 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §9 为准；视觉 token 仍取本文。
 
+**manox 对话（`app/modules/manox/conversation.tsx` + `app/ui/chat.tsx`）**：正文 13.5/19，
+部件取 gallery 的形状——思考折叠（标签行 + 旋转 caret + 左侧 2px hairline 的 14/17 正文）、
+工具卡（28pt 图标块 + 12.5 半粗标题/11.5 详情 + 状态 chip + inset 正文 + 审批动作）、
+回复动作行（复制；AHP 无 retry/fork）、跨天日期分隔、回到底部按钮。列表虚拟化，
+`scrollToIndex` 跟随；读者滚上去后新内容不抢位置。AHP 不提供推理耗时与工具耗时，
+所以思考条落定后只显示标签，不做猜测。
+
 **项目信任对话框**（`app/ui/trust.tsx`，挂在 App 根部，不属于任何 sheet）：
 
 | 项 | 值 |

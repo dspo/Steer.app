@@ -1,8 +1,21 @@
-import { effect, Scroll, signal, Text, token, View } from "nsh";
-import { Input, TextView } from "nsh/base";
+import { Clipboard, effect, List, type ListRef, signal, Text, token, View } from "nsh";
+import { Input } from "nsh/base";
 import { K, t } from "../../ui/i18n";
 import { Glyph, motionStyle, type GlyphName } from "../../ui/ui";
-import { connectionStatus, ensureConnection } from "./ahp";
+import {
+  ActionRow,
+  CardBody,
+  CardLine,
+  DaySeparator,
+  JumpToLatest,
+  MarkdownBlock,
+  ThinkingBlock,
+  ToolCallCard,
+  UserMessage,
+  type ChatAction,
+  type ToolCardStatus,
+} from "../../ui/chat";
+import { ensureConnection } from "./ahp";
 import {
   answerManoxInput,
   chatOf,
@@ -16,147 +29,274 @@ import { ManoxComposer } from "./composer";
 import type {
   ChatState,
   InputRequestResponsePart,
+  Message,
   ResponsePart,
   ToolCallResponsePart,
-  Turn,
 } from "../../../contracts/ahp/channels-chat/state";
-import { ToolCallStatus, TurnState } from "../../../contracts/ahp/channels-chat/state";
-import type { ToolCallCompletedState, MarkdownResponsePart, ReasoningResponsePart, ErrorResponsePart } from "../../../contracts/ahp/channels-chat/state";
+import { ToolCallStatus } from "../../../contracts/ahp/channels-chat/state";
+import type {
+  ToolCallCompletedState,
+  ToolResultContent,
+  MarkdownResponsePart,
+  ReasoningResponsePart,
+  ErrorResponsePart,
+} from "../../../contracts/ahp/channels-chat/state";
 
 /**
  * The manox conversation sheet body (`manox-chat:{threadId}:{chatId}`,
- * DESIGN §3.3/§4.2): the pack's own message area, bound directly to the
- * vendored reducers' fold — zero translation layer. The structure is manox's
- * own implementation; what it reuses from the shell is only the stateless
- * presentation primitives (`TextView` for Markdown, glyphs, motion tokens).
- *
- * Rows: one user row per turn (the turn boundary), then the turn's response
- * parts — streamed Markdown, reasoning blocks, tool-call cards
- * (`chat/toolCallReady`'s minimal approve/deny → `chat/toolCallConfirmed`),
- * elicitation cards (the three actions → `chat/inputCompleted`), and error
- * lines. The active turn renders streaming below the completed ones.
+ * DESIGN §3.3/§4.2): the gallery's chat shapes over the pack's own fold —
+ * zero translation layer. The turn and its response parts go straight into
+ * the presentation kit (`ui/chat.tsx`): Markdown, the thinking collapse, the
+ * tool card, elicitations and error lines. The list is virtualized and
+ * follows the stream only while the reader is at its bottom.
  */
 
-/** One user message row: the turn boundary. */
-function UserRow(props: { text: string }) {
-  return (
-    <View testID="manox-user-message" style={{ alignItems: "flex-end", paddingHorizontal: 4 }}>
-      <View class="rounded-xl bg-card px-3 py-2" style={{ maxWidth: 560 }}>
-        <Text class="text-[13.5px] leading-[19px] text-foreground" style={{ numberOfLines: 20 }}>
-          {props.text}
-        </Text>
-      </View>
-    </View>
-  );
+// --- rows -------------------------------------------------------------------
+
+/** One displayed row: a day line, a user message, a response part, or the
+ * reply's action footer. */
+type Row =
+  | { kind: "day"; id: string; at: string }
+  | { kind: "user"; id: string; text: string; attachments: string[] }
+  | { kind: "part"; id: string; chatId: string; turnId: string; part: ResponsePart; streaming: boolean }
+  | { kind: "actions"; id: string; turnId: string; text: string };
+
+/** A completed or active turn, as the projector reads it. */
+interface DisplayTurn {
+  id: string;
+  startedAt?: string;
+  message: Message;
+  parts: ResponsePart[];
 }
 
-/** The streaming caret: one quiet mark at the growing edge. */
-function StreamingCaret() {
-  return <View testID="manox-streaming-caret" class="h-3.5 w-1.5 rounded-sm bg-brand" style={{ opacity: 0.7 }} />;
+const dayKey = (at: number) => {
+  const date = new Date(at);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+};
+
+/** The turn's Markdown, the text a reply's Copy copies. */
+function turnText(parts: ResponsePart[]): string {
+  return parts
+    .filter((part) => part.kind === "markdown")
+    .map((part) => (part as MarkdownResponsePart).content ?? "")
+    .join("\n\n")
+    .trim();
 }
 
-/** A reasoning block: dimmer, quieter, still part of the stream. */
-function ReasoningRow(props: { content: string; streaming: boolean }) {
-  return (
-    <View testID="manox-reasoning" style={{ paddingHorizontal: 4, gap: 2 }}>
-      <View class="flex-row items-center gap-1.5">
-        <Glyph name="tree" size={10} tint={token("faint")} />
-        <Text class="text-[10.5px] font-medium text-faint">{t(K.manox.reasoning)}</Text>
-      </View>
-      <Text class="text-[11.5px] leading-[16px] text-faint" style={{ numberOfLines: 6 }}>
-        {props.content}
-      </Text>
-      <If when={props.streaming}>
-        <StreamingCaret />
-      </If>
-    </View>
-  );
-}
-
-/** A tool-call card: what it is, what it wants, and the minimal approval. */
-function ToolCallCard(props: { chatId: string; turnId: string; part: ToolCallResponsePart }) {
-  const toolCall = () => props.part.toolCall;
-  const waiting = () => toolCall().status === ToolCallStatus.PendingConfirmation;
-  const statusInk = () => {
-    switch (toolCall().status) {
-      case ToolCallStatus.Completed:
-        return (toolCall() as ToolCallCompletedState).success === false
-          ? token("destructive")
-          : token("up");
-      case ToolCallStatus.Cancelled:
-        return token("faint");
-      default:
-        return token("info");
+/** Flattens the chat's turns and their parts into keyed rows, inserting the
+ * day line wherever the timeline crosses midnight. */
+function rowsOf(chat: ChatState | null, chatId: string): Row[] {
+  if (!chat) return [];
+  const rows: Row[] = [];
+  let lastDay: string | null = null;
+  const project = (turn: DisplayTurn, active: boolean) => {
+    const at = turn.startedAt ? Date.parse(turn.startedAt) : NaN;
+    if (Number.isFinite(at)) {
+      const day = dayKey(at);
+      if (day !== lastDay) {
+        lastDay = day;
+        rows.push({ kind: "day", id: `day:${day}`, at: turn.startedAt! });
+      }
+    }
+    const attachments = (turn.message.attachments ?? [])
+      .map((attachment) => {
+        const record = attachment as { name?: unknown; title?: unknown; uri?: unknown };
+        const value = record.name ?? record.title ?? record.uri;
+        return typeof value === "string" ? value : "";
+      })
+      .filter((name) => name.length > 0);
+    rows.push({ kind: "user", id: `user:${turn.id}`, text: turn.message.text, attachments });
+    const last = turn.parts.length - 1;
+    for (let index = 0; index < turn.parts.length; index += 1) {
+      const part = turn.parts[index];
+      if (!part) continue;
+      const partId = "id" in part && typeof part.id === "string" ? part.id : String(index);
+      rows.push({
+        kind: "part",
+        id: `part:${turn.id}:${partId}`,
+        chatId,
+        turnId: turn.id,
+        part,
+        streaming: active && index === last,
+      });
+    }
+    if (!active) {
+      const text = turnText(turn.parts);
+      if (text.length > 0) rows.push({ kind: "actions", id: `actions:${turn.id}`, turnId: turn.id, text });
     }
   };
-  const statusLabel = () => {
-    switch (toolCall().status) {
-      case ToolCallStatus.Streaming:
-        return t(K.manox.toolStreaming);
-      case ToolCallStatus.PendingConfirmation:
-        return t(K.manox.toolAwaitingApproval);
-      case ToolCallStatus.Completed:
-        return t(K.manox.toolDone);
-      case ToolCallStatus.Cancelled:
-        return t(K.manox.toolCancelled);
-      default:
-        return t(K.manox.toolRunning);
+  for (const turn of chat.turns) {
+    project({ id: turn.id, startedAt: turn.startedAt, message: turn.message, parts: turn.responseParts }, false);
+  }
+  if (chat.activeTurn) {
+    const active = chat.activeTurn;
+    project({ id: active.id, startedAt: active.startedAt, message: active.message, parts: active.responseParts }, true);
+  }
+  return rows;
+}
+
+// --- parts ------------------------------------------------------------------
+
+/** The tool name's line icon (AHP carries no kind, so the name decides). */
+function toolGlyph(name: string): GlyphName {
+  const value = name.toLowerCase();
+  if (/bash|shell|terminal|exec|run/.test(value)) return "terminal";
+  if (/read|view|cat|open/.test(value)) return "file";
+  if (/edit|write|patch|diff|apply/.test(value)) return "diff";
+  if (/search|grep|glob|find/.test(value)) return "search";
+  if (/fetch|web|browser|http/.test(value)) return "globe";
+  if (/test|check/.test(value)) return "check";
+  return "gear";
+}
+
+/** AHP's statuses, in the card's vocabulary. */
+function toolCardStatus(call: ToolCallResponsePart["toolCall"]): ToolCardStatus {
+  switch (call.status) {
+    case ToolCallStatus.Completed:
+      return (call as ToolCallCompletedState).success === false ? "failed" : "done";
+    case ToolCallStatus.Cancelled:
+      return "cancelled";
+    case ToolCallStatus.PendingConfirmation:
+    case ToolCallStatus.PendingResultConfirmation:
+      return "pending";
+    case ToolCallStatus.Streaming:
+      return "streaming";
+    default:
+      return "running";
+  }
+}
+
+function toolStatusLabel(call: ToolCallResponsePart["toolCall"]): string {
+  switch (call.status) {
+    case ToolCallStatus.Streaming:
+      return t(K.manox.toolStreaming);
+    case ToolCallStatus.PendingConfirmation:
+    case ToolCallStatus.PendingResultConfirmation:
+      return t(K.manox.toolAwaitingApproval);
+    case ToolCallStatus.Completed:
+      return (call as ToolCallCompletedState).success === false ? t(K.manox.toolFailed) : t(K.manox.toolDone);
+    case ToolCallStatus.Cancelled:
+      return t(K.manox.toolCancelled);
+    default:
+      return t(K.manox.toolRunning);
+  }
+}
+
+const stringOrMarkdown = (value: unknown): string => {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && typeof (value as { markdown?: unknown }).markdown === "string") {
+    return String((value as { markdown: string }).markdown);
+  }
+  return "";
+};
+
+const clampLines = (text: string, max = 12): string => {
+  const lines = text.split("\n");
+  return lines.length > max ? `${lines.slice(0, max).join("\n")}\n…` : text;
+};
+
+/** One tool result block, rendered by its AHP type. */
+function ResultBlock(props: { block: ToolResultContent }) {
+  const value = props.block;
+  switch (value.type) {
+    case "text":
+      return <CardLine text={clampLines(value.text)} />;
+    case "terminal": {
+      const terminal = value;
+      return (
+        <View style={{ gap: 2 }}>
+          <CardLine
+            text={clampLines(terminal.result?.preview ?? terminal.title)}
+            tone={terminal.result?.exitCode ? "destructive" : "muted"}
+          />
+          <If when={terminal.result?.exitCode !== undefined}>
+            <CardLine
+              text={`${t(K.manox.toolOutput)} · exit ${terminal.result!.exitCode}`}
+              tone={terminal.result!.exitCode === 0 ? "up" : "destructive"}
+            />
+          </If>
+        </View>
+      );
     }
-  };
-  const invocation = () => {
-    const message = toolCall().invocationMessage;
-    return typeof message === "string" ? message : message?.markdown ?? "";
-  };
-  return (
-    <View
-      testID="manox-tool-call"
-      class="rounded-xl border border-line bg-card"
-      style={{ padding: 10, gap: 6, maxWidth: 640 }}
-    >
-      <View class="flex-row items-center gap-2">
-        <Glyph name="gear" size={12} tint={token("muted-foreground")} />
-        <Text
-          class="text-[12px] font-semibold text-foreground"
-          style={{ flex: 1, numberOfLines: 1 }}
-        >
-          {toolCall().displayName || toolCall().toolName}
-        </Text>
-        <Text
-          testID="manox-tool-status"
-          class="text-[10.5px] font-medium"
-          style={{ color: statusInk() }}
-        >
-          {statusLabel()}
-        </Text>
-      </View>
-      <If when={invocation().length > 0}>
-        <Text class="text-[11.5px] leading-[16px] text-muted-foreground">{invocation()}</Text>
-      </If>
-      <If when={waiting()}>
-        <View class="flex-row items-center justify-end gap-2" style={{ paddingTop: 2 }}>
-          <View
-            role="button"
-            testID="manox-deny"
-            accessibilityLabel={t(K.manox.deny)}
-            class="h-7 flex-row items-center rounded-lg border border-line px-3 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-            style={{ ...motionStyle("fast") }}
-            onPress={() => denyManoxToolCall(props.chatId, props.turnId, toolCall().toolCallId)}
-          >
-            <Text class="text-[12px] font-medium text-foreground">{t(K.manox.deny)}</Text>
-          </View>
-          <View
-            role="button"
-            testID="manox-approve"
-            accessibilityLabel={t(K.manox.approve)}
-            class="h-7 flex-row items-center rounded-lg bg-primary px-3 hover:bg-primary/90 active:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-            style={{ ...motionStyle("fast") }}
-            onPress={() => confirmManoxToolCall(props.chatId, props.turnId, toolCall().toolCallId)}
-          >
-            <Text class="text-[12px] font-medium text-primary-foreground">{t(K.manox.approve)}</Text>
+    case "fileEdit": {
+      const edit = value;
+      const path = edit.after?.uri ?? edit.before?.uri ?? "";
+      const added = edit.diff?.added;
+      const removed = edit.diff?.removed;
+      return (
+        <View style={{ gap: 1 }}>
+          <CardLine text={path} tone="muted" />
+          <View class="flex-row items-center gap-2">
+            <If when={removed !== undefined}>
+              <CardLine text={`-${removed}`} tone="destructive" />
+            </If>
+            <If when={added !== undefined}>
+              <CardLine text={`+${added}`} tone="up" />
+            </If>
           </View>
         </View>
+      );
+    }
+    case "subagent": {
+      const subagent = value;
+      return (
+        <CardLine
+          text={`↳ ${subagent.title}${subagent.description ? ` — ${subagent.description}` : ""}`}
+          tone="faint"
+        />
+      );
+    }
+    case "resource":
+      return <CardLine text={value.uri} tone="faint" />;
+    case "embeddedResource":
+      return <CardLine text={value.contentType} tone="faint" />;
+    default:
+      return null;
+  }
+}
+
+/** A tool call: the gallery's card, with the approval actions it may need. */
+function ToolCallPart(props: { chatId: string; turnId: string; part: ToolCallResponsePart }) {
+  const call = () => props.part.toolCall;
+  const completed = () => (call().status === ToolCallStatus.Completed ? (call() as ToolCallCompletedState) : null);
+  const contents = () => completed()?.content ?? [];
+  const detail = () =>
+    call().intention ??
+    stringOrMarkdown((call() as { invocationMessage?: unknown }).invocationMessage ?? "");
+  const waiting = () => call().status === ToolCallStatus.PendingConfirmation;
+  return (
+    <ToolCallCard
+      title={call().displayName || call().toolName}
+      detail={detail()}
+      glyph={toolGlyph(call().toolName || call().displayName)}
+      status={toolCardStatus(call())}
+      statusLabel={toolStatusLabel(call())}
+      actions={
+        <If when={waiting()}>
+          <View class="flex-row items-center justify-end gap-2" style={{ paddingHorizontal: 10, paddingBottom: 10 }}>
+            <CardChip
+              testID="manox-deny"
+              label={t(K.manox.deny)}
+              onPress={() => denyManoxToolCall(props.chatId, props.turnId, call().toolCallId)}
+            />
+            <CardChip
+              testID="manox-approve"
+              label={t(K.manox.approve)}
+              primary
+              onPress={() => confirmManoxToolCall(props.chatId, props.turnId, call().toolCallId)}
+            />
+          </View>
+        </If>
+      }
+    >
+      <If when={contents().length > 0}>
+        <CardBody>
+          <Each of={contents()}>
+            {(block) => <ResultBlock block={block()} />}
+          </Each>
+        </CardBody>
       </If>
-    </View>
+    </ToolCallCard>
   );
 }
 
@@ -164,8 +304,7 @@ function ToolCallCard(props: { chatId: string; turnId: string; part: ToolCallRes
 function InputRequestCard(props: { chatId: string; part: InputRequestResponsePart }) {
   const text = signal("");
   const answered = () => props.part.response != null;
-  const question = () =>
-    (props.part.request.questions ?? []).find((candidate) => candidate.kind === "text");
+  const question = () => (props.part.request.questions ?? []).find((candidate) => candidate.kind === "text");
   const respond = (response: "accept" | "decline" | "cancel") => {
     answerManoxInput(props.chatId, props.part.request.id, response, text());
     text.set("");
@@ -174,14 +313,11 @@ function InputRequestCard(props: { chatId: string; part: InputRequestResponsePar
     <View
       testID="manox-input-request"
       class="rounded-xl border border-line bg-card"
-      style={{ padding: 10, gap: 8, maxWidth: 640 }}
+      style={{ padding: 10, gap: 8 }}
     >
       <View class="flex-row items-center gap-2">
         <Glyph name="alert" size={12} tint={token("info")} />
-        <Text
-          class="text-[12px] font-semibold text-foreground"
-          style={{ flex: 1, numberOfLines: 2 }}
-        >
+        <Text class="text-[12px] font-semibold text-foreground" style={{ flex: 1, numberOfLines: 2 }}>
           {props.part.request.message ?? t(K.manox.askTitle)}
         </Text>
       </View>
@@ -190,9 +326,7 @@ function InputRequestCard(props: { chatId: string; part: InputRequestResponsePar
         else={
           <If when={answered()}>
             <Text testID="manox-ask-answer" class="text-[11px] text-faint">
-              {t(K.manox.askAnswered, {
-                answer: t(`app.manox.ask.${props.part.response}`),
-              })}
+              {t(K.manox.askAnswered, { answer: t(`app.manox.ask.${props.part.response}`) })}
             </Text>
           </If>
         }
@@ -255,49 +389,51 @@ function CardChip(props: { testID: string; label: string; primary?: boolean; onP
 }
 
 /** One response part, dispatched by kind. */
-function PartRow(props: {
-  chatId: string;
-  turnId: string;
-  part: ResponsePart;
-  streaming: boolean;
-}) {
-  const part = () => props.part;
-  switch (part().kind) {
-    case "markdown": {
-      const markdown = part() as MarkdownResponsePart;
+function PartRow(props: { row: Extract<Row, { kind: "part" }> }) {
+  // The list may hand this row a different item while the fold changes under
+  // it: every read is of the current part, and a missing one renders nothing.
+  const part = () => (props.row as { part?: ResponsePart } | undefined)?.part ?? null;
+  const kind = () => part()?.kind;
+  const markdownText = () => {
+    const value = part() as MarkdownResponsePart | null;
+    return typeof value?.content === "string" ? value.content : "";
+  };
+  switch (kind()) {
+    case "markdown":
+      return <MarkdownBlock text={markdownText()} streaming={props.row.streaming} />;
+    case "reasoning": {
+      const reasoning = part() as ReasoningResponsePart | null;
+      if (!reasoning) return null;
       return (
-        <View testID="manox-markdown" style={{ paddingHorizontal: 4 }}>
-          <TextView
-            markdown={markdown.content}
-            selectable
-            codeBlockScrollbar={false}
-            styles={{
-              root: { gap: 8, fontSize: 13.5, lineHeight: 19, color: token("foreground") },
-              heading2: { fontSize: 16, lineHeight: 21 },
-            }}
-          />
-          <If when={props.streaming}>
-            <StreamingCaret />
-          </If>
-        </View>
+        <ThinkingBlock
+          id={reasoning.id}
+          text={reasoning.content ?? ""}
+          label={props.row.streaming ? t(K.manox.reasoningStreaming) : t(K.manox.reasoning)}
+          streaming={props.row.streaming}
+        />
       );
     }
-    case "reasoning": {
-      const reasoning = part() as ReasoningResponsePart;
-      return <ReasoningRow content={reasoning.content} streaming={props.streaming} />;
+    case "toolCall": {
+      const call = part() as ToolCallResponsePart | null;
+      if (!call) return null;
+      return <ToolCallPart chatId={props.row.chatId} turnId={props.row.turnId} part={call} />;
     }
-    case "toolCall":
-      return <ToolCallCard chatId={props.chatId} turnId={props.turnId} part={part() as ToolCallResponsePart} />;
-    case "inputRequest":
-      return <InputRequestCard chatId={props.chatId} part={part() as InputRequestResponsePart} />;
-    case "error": {
-      const failed = part() as ErrorResponsePart;
+    case "inputRequest": {
+      const request = part() as InputRequestResponsePart | null;
+      if (!request) return null;
+      return <InputRequestCard chatId={props.row.chatId} part={request} />;
+    }
+    case "systemNotification":
       return (
-        <View
-          testID="manox-error-line"
-          class="flex-row items-start gap-1.5"
-          style={{ paddingHorizontal: 4 }}
-        >
+        <Text testID="manox-notification" class="px-1 text-[11px] text-faint">
+          {stringOrMarkdown((part() as { content?: unknown }).content ?? "")}
+        </Text>
+      );
+    case "error": {
+      const failed = part() as ErrorResponsePart | null;
+      if (!failed?.error) return null;
+      return (
+        <View testID="manox-error-line" class="flex-row items-start gap-1.5" style={{ paddingHorizontal: 4 }}>
           <View style={{ paddingTop: 2 }}>
             <Glyph name="alert" size={10} tint={token("destructive")} />
           </View>
@@ -307,41 +443,14 @@ function PartRow(props: {
         </View>
       );
     }
+    case "contentRef":
+      return null;
     default:
       return null;
   }
 }
 
-/** One turn: the user row (the boundary) then the response parts. */
-function TurnRows(props: { chatId: string; turn: Turn; streaming: boolean }) {
-  return (
-    <View style={{ gap: 10 }}>
-      <UserRow text={props.turn.message.text} />
-      <Each of={props.turn.responseParts} key="index">
-        {(part, index) => (
-          <PartRow
-            chatId={props.chatId}
-            turnId={props.turn.id}
-            part={part()}
-            streaming={props.streaming && index() === props.turn.responseParts.length - 1}
-          />
-        )}
-      </Each>
-    </View>
-  );
-}
-
-/** The active turn reads as a Turn so one row renderer serves both. */
-function activeTurnAsTurn(active: NonNullable<ChatState["activeTurn"]>): Turn {
-  return {
-    id: active.id,
-    startedAt: active.startedAt,
-    message: active.message,
-    responseParts: active.responseParts,
-    usage: active.usage,
-    state: TurnState.Complete,
-  };
-}
+// --- the sheet --------------------------------------------------------------
 
 /** The manox conversation sheet body. */
 export function ManoxChatBody(props: { id: string }) {
@@ -362,10 +471,71 @@ export function ManoxChatBody(props: { id: string }) {
     void ensureConnection([sessionResource(parsed.threadId), chatUri()]).catch(() => {});
   });
   const chat = () => chatOf(parsed.chatId);
-  const status = () => connectionStatus();
-  const empty = () => (chat()?.turns.length ?? 0) === 0 && chat()?.activeTurn == null;
+  const rows = () => rowsOf(chat(), parsed.chatId);
+  const streaming = () => chat()?.activeTurn != null;
+  const empty = () => rows().length === 0;
+  const copied = signal<string | null>(null);
+
+  let list: ListRef | undefined;
+  /** Whether the reader is at the bottom: the jump button hides there. The
+   * list itself holds the position while new parts stream in. */
+  const following = signal(true);
+  const toEnd = (animated = true) => {
+    following.set(true);
+    // `scrollToIndex` resolves against the list's current sizes, where
+    // `scrollToEnd` can stop short of a row whose height was an estimate.
+    const jump = () => {
+      const last = rows().length - 1;
+      if (last >= 0) list?.scrollToIndex({ index: last, viewPosition: 1, animated });
+    };
+    queueMicrotask(jump);
+    // The heights settle after the data change; a couple of later tries
+    // land on the true end.
+    setTimeout(() => following() && jump(), 150);
+    setTimeout(() => following() && jump(), 600);
+  };
+  // A freshly opened chat reads from its end; after that the list follows
+  // the stream only while it is already at the bottom. `onScroll` keeps
+  // `following` honest for every scroll (a wheel included), and no scroll is
+  // issued while the reader is above the end.
+  let opened = false;
+  let queued = false;
+  effect(() => {
+    const count = rows().length;
+    if (opened && !following()) return;
+    if (!opened) {
+      opened = true;
+      toEnd(false);
+      return;
+    }
+    if (count === 0 || queued) return;
+    queued = true;
+    queueMicrotask(() => {
+      queued = false;
+      if (!following()) return;
+      const last = rows().length - 1;
+      if (last >= 0) list?.scrollToIndex({ index: last, viewPosition: 1, animated: true });
+    });
+  });
+
+  const copy = (turnId: string, text: string) => {
+    Clipboard.writeText(text);
+    copied.set(turnId);
+    setTimeout(() => copied() === turnId && copied.set(null), 1600);
+  };
+
+  const actions = (row: Extract<Row, { kind: "actions" }>): ChatAction[] => [
+    {
+      id: "copy",
+      label: copied() === row.turnId ? t(K.manox.copied) : t(K.manox.copy),
+      glyph: copied() === row.turnId ? "check" : "file",
+      active: copied() === row.turnId,
+      onPress: () => copy(row.turnId, row.text),
+    },
+  ];
+
   return (
-    <View class="flex-1 bg-background">
+    <View class="flex-1 bg-background" style={{ minHeight: 0 }}>
       <If
         when={!empty()}
         else={
@@ -375,32 +545,53 @@ export function ManoxChatBody(props: { id: string }) {
           </View>
         }
       >
-        <Scroll
-          style={{ flex: 1 }}
-          contentStyle={{
-            maxWidth: 820,
-            alignSelf: "center",
-            width: "100%",
-            paddingTop: 14,
-            paddingBottom: 14,
-            gap: 14,
-          }}
-        >
-          <Each of={chat()?.turns ?? []} key={(turn) => turn.id}>
-            {(turn) => <TurnRows chatId={parsed.chatId} turn={turn()} streaming={false} />}
-          </Each>
-          <If when={chat()?.activeTurn}>
-            <TurnRows chatId={parsed.chatId} turn={activeTurnAsTurn(chat()!.activeTurn!)} streaming />
+        <View class="flex-1" style={{ minHeight: 0, width: "100%", maxWidth: 820, alignSelf: "center" }}>
+          <List
+            testID="manox-transcript"
+            ref={(node) => (list = node)}
+            each={rows()}
+            keyExtractor={(row) => row.id}
+            estimatedItemSize={90}
+            style={{ flex: 1 }}
+            contentStyle={{
+              paddingTop: 14,
+              paddingBottom: 14,
+              gap: 10,
+            }}
+            onScroll={(event) => {
+              following.set(event.offset.y + event.size.height >= event.contentSize.height - 40);
+            }}
+          >
+            {(row) => {
+              const current = () => row();
+              switch (current().kind) {
+                case "day":
+                  return <DaySeparator label={(current() as Extract<Row, { kind: "day" }>).at} />;
+                case "user": {
+                  const user = current() as Extract<Row, { kind: "user" }>;
+                  return <UserMessage text={user.text} attachments={user.attachments} />;
+                }
+                case "part":
+                  return <PartRow row={current() as Extract<Row, { kind: "part" }>} />;
+                case "actions":
+                  return (
+                    <ActionRow
+                      testID={`chat-actions:${(current() as Extract<Row, { kind: "actions" }>).turnId}`}
+                      actions={actions(current() as Extract<Row, { kind: "actions" }>)}
+                    />
+                  );
+                default:
+                  return null;
+              }
+            }}
+          </List>
+          <If when={!following()}>
+            <JumpToLatest label={t(K.manox.jumpLatest)} streaming={streaming()} onPress={() => toEnd()} />
           </If>
-          <If when={status() === "connecting"}>
-            <Text testID="manox-connecting" class="px-1 text-[11px] text-faint">
-              {t(K.manox.connecting)}
-            </Text>
-          </If>
-        </Scroll>
+        </View>
       </If>
       <View style={{ paddingHorizontal: 16, paddingBottom: 10 }}>
-        <ManoxComposer threadId={parsed.threadId} chatId={parsed.chatId} />
+        <ManoxComposer threadId={parsed.threadId} chatId={parsed.chatId} onSend={() => toEnd()} />
       </View>
     </View>
   );

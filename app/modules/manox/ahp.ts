@@ -143,6 +143,14 @@ export function setManoxHermetic(): void {
   hermeticBoot = true;
 }
 
+/** Test seam: replaces the handshake entirely, so a fixture can seed channel
+ * cells and render without booting the host. `null` restores the real wire. */
+let connectionSeam: (() => Promise<void>) | null = null;
+
+export function setEnsureConnectionForTest(next: (() => Promise<void>) | null): void {
+  connectionSeam = next;
+}
+
 export function startConnection(): void {
   if (started) return;
   started = true;
@@ -168,6 +176,7 @@ export function startConnection(): void {
  * URI). Used by the thread/chat stores before any read.
  */
 export async function ensureConnection(subscribeUris: URI[] = []): Promise<void> {
+  if (connectionSeam) return connectionSeam();
   startConnection();
   const wanted = subscribeUris.filter((uri) => !channels()[uri]);
   if (connectionStatus() === "ready" && wanted.length === 0) return;

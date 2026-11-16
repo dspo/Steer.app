@@ -297,3 +297,10 @@ export function setManoxModel(threadId: string, ref: string): void {
 export function setManoxEffort(threadId: string, effort: "high" | "max"): void {
   setManoxConfig(threadId, { reasoningEffort: effort });
 }
+
+/** Test seam: puts one chat's folded state in the channel map, so a fixture
+ * renders a conversation without a host (see `setEnsureConnectionForTest`). */
+export function seedChatForTest(chatId: string, state: ChatState): void {
+  const uri = chatResource(chatId);
+  channels.set({ ...channels(), [uri]: { uri, serverSeq: 1, state, pending: [] } });
+}

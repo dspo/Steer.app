@@ -277,7 +277,13 @@ function ManoxEffortPicker(props: { threadId: string }) {
 }
 
 /** The manox composer: the hairline input and one right-aligned footer row. */
-export function ManoxComposer(props: { threadId: string; chatId: string; autofocus?: boolean }) {
+export function ManoxComposer(props: {
+  threadId: string;
+  chatId: string;
+  autofocus?: boolean;
+  /** The message went out (or queued): the conversation scrolls to it. */
+  onSend?: () => void;
+}) {
   const draft = signal("");
   const chatUri = () => chatResource(props.chatId);
   const chat = () => effectiveState<ChatState>(chatUri());
@@ -302,9 +308,11 @@ export function ManoxComposer(props: { threadId: string; chatId: string; autofoc
         id: `queued-${Date.now()}`,
         message,
       } as never);
+      props.onSend?.();
       return;
     }
     void sendManoxMessage(props.threadId, props.chatId, text);
+    props.onSend?.();
   };
   return (
     <View
