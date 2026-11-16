@@ -128,6 +128,11 @@ UI 不持 fs / process：文件读写只经 `zu/fs`，进程只经 native 域。
   agents/、subagents/  # pi 的子代理定义与子会话（1 级）
 ```
 
+工作区侧还有一个引擎产的目录：`<cwd>/.zu/artifacts/` 是 agent 产出物的家（报告/图表/mockup），
+由 pi-harness 的 artifacts 守卫（见 `docs/pi-acp-IMPLEMENTATION.md` §19）首次写入时创建，
+并以 `.zu/.gitignore`、`.zu/artifacts/.gitignore`（内容均为 `*\n`）自忽略；
+它不属于上面的 UI 状态面，写者只有 harness 守卫，UI 只读（files 面板照常显示）。
+
 **写者反转（v2）**：这些文件只由 UI 经 `zu/state` 完成读写（`read`/`write`/`scan_sessions`）；
 没有引擎子目录、没有第二个写者。
 `zu/state` 的 `write` 是临时文件 + rename，并拒绝 `v` 更新的覆盖（`ERR_STATE_STALE`）。

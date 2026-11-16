@@ -772,3 +772,62 @@ host inline loads first)`，并断言 inline 扩展在包之前。
 - 热重载；用户扩展（`~/.pi` 包）的开关；
 - `preferRegistryTools` 的完整实现（只保证内置工具优先，冲突仍如实报告）；
 - 技能内容（A2 提供第一个 `SKILL.md`）。
+
+## 19. Artifacts 守卫（A4，2026-11-16）
+
+**根因**：会话是持久资产（`~/.pi/agent/sessions/`），产出物不是——模型把报告/图表/mockup
+写到 `/tmp`，被系统清理后无处可寻。A4 只做两件小事：一条 prompt 规则告诉模型产出物写哪里，
+一个 `write` 工具守卫拦截在系统临时目录新建文件。不做索引、不做恢复、不做面板
+（完整 Artifacts 属于 C 档后置 issue）。
+
+### 19.1 目录约定
+
+- 产出物目录：`<cwd>/.zu/artifacts/`（`artifactsDir(cwd)`；常量
+  `ARTIFACTS_DIRNAME = ".zu"`、`ARTIFACTS_SUBDIR = "artifacts"`）。
+- 自忽略：首次允许写入时由 `ensureArtifactsDir(cwd)` 创建目录，并写
+  `.zu/.gitignore` 与 `.zu/artifacts/.gitignore`（内容均为 `*\n`，双保险），
+  整棵树不进 git，不碰项目自己的 `.gitignore`；已存在的 `.gitignore` 永不覆盖。
+- 不在 session 启动时创建：只读仓库/用户项目零副作用；目录只在第一次允许写入时出现。
+- 它是工作区侧的目录，写者只有 harness 守卫；UI 只读（见 `docs/architecture.md` §3.6）。
+
+### 19.2 规则 section 与临时路径判定
+
+- `promptSectionExtension("zu-artifacts", ARTIFACTS_RULE)`（复用 §17 机制，一行接入）：
+  产出物写 `.zu/artifacts/`、不要在 /tmp 新建文件、移出目录是用户的事。
+- `pi-harness/src/extensions/artifacts.ts` 的纯函数
+  `temporaryWriteTarget(input, { cwd, env, home }) → string | null`：
+  1. 取 `input` 第一个字符串字段（pi 1.5.0 的 write schema 是 `path`；`file_path` 容忍为别名）；
+  2. `~`/`~/` 展开为 home，相对路径 resolve 到 cwd；
+  3. 已存在 → null（编辑已有临时文件不拦）；目标在 `artifactsDir(cwd)` 下 → null
+     （工作区优先，即使 cwd 本身在临时目录里）；
+  4. 候选根：`os.tmpdir()`、`/tmp`、`/var/tmp`、`env.TMPDIR/TEMP/TMP`（resolve 后去重），
+     目标等于根或以 `根 + sep` 开头即命中；
+  5. 符号链接规避：父目录存在时 `realpathSync(parent)` 后再判一次，命中返回真实路径；
+     父目录不存在按字面路径判。
+
+### 19.3 守卫与装配
+
+- `artifactsExtension(log)` 注册一个 `tool_call` handler（只认 `write`；`edit` 只改
+  已存在文件，不需要拦）：命中时返回 `{ block: true, reason }`，reason 给出
+  `<cwd>/.zu/artifacts/` 替代路径并 log 一行；不修改参数、不重试、不搬文件，模型自己改路径。
+- 允许放行的写入若落在 `.zu/artifacts/` 下，先 `ensureArtifactsDir(cwd)`（幂等，唯一副作用）。
+- 装配在 `hostExtensionFactories`：权限门 → `zu-dispatch` section → `zu-artifacts` section →
+  artifacts 守卫 → dispatch。守卫与权限门是两个独立的 `tool_call` handler，都会跑；
+  read-only 模式下 `write` 先被门拦住，守卫不再触发。
+- bash 重定向（`> /tmp/x`、`tee /tmp/x`）不在拦截范围：nsh 的能力面不约束 agent 的 bash，
+  这类路径靠 prompt 规则覆盖，守卫不假装能拦。
+
+### 19.4 测试与门禁
+
+- `artifacts.test.ts`：纯函数覆盖字面 `/tmp`、`os.tmpdir()`、`env.TMPDIR`、已存在文件、
+  工作区路径、`.zu/artifacts/` 优先、`~` 展开、相对路径、符号链接父目录、别名/空输入；
+  假 ExtensionAPI 覆盖 block reason、放行、惰性建目录、非 write 工具；
+  `ensureArtifactsDir` 幂等且不覆盖已有 `.gitignore`。
+- `app.test.ts` 断言装配列表长度为 5：两个 section、守卫各注册所述 handler。
+- 门禁：`(cd pi-harness && bun test)`、`bun run build`、`bun run smoke`。
+
+### 19.5 非目标
+
+- Artifacts 索引、kept copies、reconcile、restore/discard、面板（C 档后置）；
+- 拦 bash 的临时目录写入；拦已有临时文件的修改；
+- 自动搬迁 `/tmp` 里的旧产出物；`.zu/` 在文件树里的隐藏/折叠。

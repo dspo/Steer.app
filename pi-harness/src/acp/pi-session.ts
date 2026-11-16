@@ -58,6 +58,7 @@ import {
 import { replayUpdates, type ReplayEntry } from "./replay";
 import { composeExtensions, ZU_EXTENSIONS } from "../extensions/registry";
 import { DISPATCH_RULE, promptSectionExtension } from "../extensions/prompt-section";
+import { ARTIFACTS_RULE, artifactsExtension } from "../extensions/artifacts";
 import { readZuSettings, zuStateDir } from "../settings";
 import { createPiServices } from "../pi/services";
 import type { AcpMcpServer } from "../pi/mcp";
@@ -173,11 +174,10 @@ interface ToolCallLike {
  * The captain's extension factories, in binding order:
  * 1. permission gate — must observe every tool call, so it binds first;
  * 2. prompt sections — byte-stable captain rules (see ../extensions/prompt-section.ts);
- *    stateless, so its position only needs to stay between the two stateful ones;
- * 3. dispatch — registers the `dispatch` tool, whose usage the rules above shape.
- *
- * Later consumers (artifacts, todos) add their own `promptSectionExtension(...)`
- * entry here without touching the mechanism.
+ *    stateless, so their position only needs to stay between the two stateful ones;
+ * 3. artifacts guard — blocks `write` of new files under system temp roots
+ *    (see ../extensions/artifacts.ts); a second `tool_call` handler beside the gate;
+ * 4. dispatch — registers the `dispatch` tool, whose usage the rules above shape.
  */
 export function hostExtensionFactories(
   gate: Pick<PermissionGate, "extension">,
@@ -188,6 +188,8 @@ export function hostExtensionFactories(
   return [
     gate.extension(),
     promptSectionExtension("zu-dispatch", DISPATCH_RULE, log),
+    promptSectionExtension("zu-artifacts", ARTIFACTS_RULE, log),
+    artifactsExtension(log),
     dispatchExtension(subagentManager, captainId),
   ];
 }
