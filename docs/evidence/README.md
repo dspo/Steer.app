@@ -14,7 +14,7 @@
 | `feasibility.md` | nsh 能力面的可行性核对（PTY/Ghostty/LSP 汇聚到 native 的结论） |
 | `terminal-emulator.md` | Q29 的换核调研（trait 上限锁死收益） |
 
-截图（`*.png`）是各 sheet 的视觉记录；`app/*.ui.test.tsx` 的 `app.screenshot(...)` 可重拍。
+截图（`*.png`）是各 sheet 的视觉记录；`app/tests/*.ui.test.tsx` 的 `app.screenshot(...)` 可重拍。
 
 ## 再生方式
 

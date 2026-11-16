@@ -262,7 +262,7 @@ App.tsx                         # + registerModule(svgModule)
    任一违例失败。`bun script/check-layers.mjs`（S0 起常绿，零白名单）。
 2. **native 收口**：`zu/native` / `manox/native` 的 import 只允许在 `app/domains/`（grep 级）。
 3. **未知 kind**：布局注入一个不存在的 kind，壳画占位、不抛错（`canvas/sheets.tsx`）。
-4. **模块契约测试**：`app/sheet-modules.test.tsx` 覆盖注册、重复 kind、未知 kind、`restore` 剪枝、
+4. **模块契约测试**：`app/tests/sheet-modules.test.tsx` 覆盖注册、重复 kind、未知 kind、`restore` 剪枝、
    titlebar/搜索贡献与 intent 分发。
 
 ## 12. 迁移
@@ -296,6 +296,6 @@ App.tsx                         # + registerModule(svgModule)
    契约给的是同一套挂载点，不是同一组功能。壳里出现「如果不是 pi 就……」就是设计错了。
 2. **native 是稀缺资源**：默认模板是纯 TS 模块；只有进程、宿主策略、Rust 依赖才开域。
 3. **一次性大搬迁会打断全部门禁**：按 S0–S3 每步搬一类。测试留在 `app/` 根（`nsh test` 的发现面），
-   模块契约由 `app/sheet-modules.test.tsx` 守住；UI 测试通过 fixtures 装配全部模块。
+   模块契约由 `app/tests/sheet-modules.test.tsx` 守住；UI 测试通过 fixtures 装配全部模块。
 4. **状态归属**：模块 store 必须是单例，组件卸载不丢；否则拖 tab/切容器就是数据丢失。
 5. **文档**：模块的实现文档放 `docs/modules/<id>.md`（按需），架构只保留共同规则。

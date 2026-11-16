@@ -88,7 +88,7 @@ Zu.app（nsh TSX / AppKit）
   provider 注册（`register_providers_yaml`），app 侧把 pi ref 组合成 registration-qualified
   `{provider}-{wire}/{model}`；两条 harness 用同一份模型列表，不再各养一套。
 - **折叠对账门禁**：同一 chat 的「快照腿」与「journal 重放腿」喂同一份 reducer，最终状态必须相等；
-  TS 与 Rust reducers 的漂移用同一组 fixtures 在两侧测试（`app/manox.test.ts` + manox 仓的 reducer 测试）。
+  TS 与 Rust reducers 的漂移用同一组 fixtures 在两侧测试（`app/tests/manox.test.ts` + manox 仓的 reducer 测试）。
 - **范围**：「能对话」最小回路（发送 → 流式 → 工具卡 → 最小审批/elicitation → settle/取消）；
   之外的 Steer 产品面不做。
 
