@@ -51,6 +51,39 @@ export interface ElicitationRequest {
   requestedSchema?: unknown;
 }
 
+/** One model-initiated structured question (B2 types the shape, A1 ships the
+ * `_zu/ask/create` lane that sends it). */
+export interface AskRequest {
+  sessionId: string;
+  /** The parked tool call this ask belongs to; answers are keyed by it. */
+  toolCallId: string;
+  questions: Array<{
+    question: string;
+    /** Short category header rendered above the question. */
+    header: string;
+    multiSelect: boolean;
+    options: Array<{
+      label: string;
+      description: string;
+      /** Why the model thinks this option fits, shown as a hint. */
+      recommendedReason?: string;
+    }>;
+  }>;
+}
+
+export type AskResponse =
+  | {
+      action: "accept";
+      /** One entry per question: picked labels, free text, or discuss notes. */
+      answers: Array<
+        { kind: "option"; labels: string[] } | { kind: "custom"; text: string } | { kind: "discuss"; notes: string }
+      >;
+    }
+  /** The user dismissed the card without answering. */
+  | { action: "cancel" }
+  /** The user typed their own message; the wait was superseded (B2). */
+  | { action: "supersede" };
+
 export type PermissionResponse = { outcome: { outcome: string; optionId?: string } };
 export type ElicitationResponse = { action: string; content?: Record<string, unknown> };
 
@@ -59,6 +92,10 @@ export interface SessionHandlers {
   onUpdate(update: AcpUpdate): void;
   requestPermission(request: PermissionRequest): Promise<PermissionResponse>;
   requestElicitation(request: ElicitationRequest): Promise<ElicitationResponse>;
+  /** The `_zu/ask/create` lane; A1 starts sending it, so the type is already
+   * reserved here. B2 does not dispatch it yet (`handleClientRequest` has no
+   * branch for it) — wiring the card is A1's. */
+  requestAsk?(request: AskRequest): Promise<AskResponse>;
   onExit(reason: string): void;
 }
 

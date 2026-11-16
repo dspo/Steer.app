@@ -174,6 +174,48 @@ export interface PendingElicitation {
 export const pendingPermissions = signal<Record<string, PendingPermission>>({});
 export const pendingElicitations = signal<Record<string, PendingElicitation>>({});
 
+/** One parked interactive-tool ask (B2). `resolve` exists only while the
+ * asking turn is still waiting live; entries seeded after a restart carry no
+ * resolve and are answered over the wire (`_zu/ask/answer`). */
+export interface PendingAsk {
+  sessionId: string;
+  toolCallId: string;
+  args: unknown;
+  resolve?: (response: unknown) => void;
+}
+
+export const pendingAsks = signal<Record<string, PendingAsk>>({});
+
+/**
+ * Delivers the user's answer to a parked interactive-tool ask (B2): a live
+ * wait resolves in-process (the tool formats its own toolResult); anything
+ * else goes to the harness, which injects the answer into the conversation
+ * and triggers a turn.
+ */
+export async function answerAsk(sessionId: string, toolCallId: string, response: unknown): Promise<void> {
+  const recordKey = `${sessionId}:${toolCallId}`;
+  const entry = pendingAsks()[recordKey];
+  if (entry) {
+    const next = { ...pendingAsks() };
+    delete next[recordKey];
+    pendingAsks.set(next);
+    entry.resolve?.(response);
+  }
+  if (entry?.resolve) {
+    resumeAfterAnswer(sessionId);
+    return;
+  }
+  const session = liveSession(sessionId);
+  if (session && !session.dead) {
+    try {
+      await session.requestCustom("_zu/ask/answer", { sessionId, toolCallId, response });
+    } catch (failure) {
+      patchView(sessionId, { error: String(failure instanceof Error ? failure.message : failure) });
+    }
+  }
+  resumeAfterAnswer(sessionId);
+}
+
 /** Answers the first pending approval of a session (the approval card). */
 export function answerPermission(sessionId: string, optionId: string): void {
   const entries = Object.entries(pendingPermissions()).filter(
@@ -188,11 +230,12 @@ export function answerPermission(sessionId: string, optionId: string): void {
   resumeAfterAnswer(sessionId);
 }
 
-/** A session is only "waiting for you" while a request is still pending. */
+/** A session is only "waiting for you" while a request or ask is pending. */
 function resumeAfterAnswer(key: string): void {
   const stillWaiting =
     Object.values(pendingPermissions()).some((entry) => entry.sessionId === key) ||
-    Object.values(pendingElicitations()).some((entry) => entry.sessionId === key);
+    Object.values(pendingElicitations()).some((entry) => entry.sessionId === key) ||
+    Object.values(pendingAsks()).some((entry) => entry.sessionId === key);
   if (stillWaiting) return;
   const view = views()[key];
   patchView(key, { sessionState: view?.streaming ? "streaming" : "ready" });
@@ -215,9 +258,17 @@ function cancelPending(key: string): void {
     entry.resolve({ action: "cancel" });
     changed = true;
   }
+  const asks = { ...pendingAsks() };
+  for (const [id, entry] of Object.entries(asks)) {
+    if (entry.sessionId !== key) continue;
+    delete asks[id];
+    entry.resolve?.({ action: "cancel" });
+    changed = true;
+  }
   if (changed) {
     pendingPermissions.set(permissions);
     pendingElicitations.set(elicitations);
+    pendingAsks.set(asks);
   }
 }
 
@@ -263,7 +314,8 @@ function syncProtocolState(key: string): void {
     : undefined;
   const waiting =
     Object.values(pendingPermissions()).some((entry) => entry.sessionId === key) ||
-    Object.values(pendingElicitations()).some((entry) => entry.sessionId === key);
+    Object.values(pendingElicitations()).some((entry) => entry.sessionId === key) ||
+    Object.values(pendingAsks()).some((entry) => entry.sessionId === key);
   patchView(key, {
     configOptions: session.configOptions,
     commands: session.commands,
@@ -326,6 +378,44 @@ function attachSession(key: string, session: AcpSession): void {
   syncProtocolState(key);
 }
 
+/** Drops a session's question cards before the user's own message prompts;
+ * the harness supersedes its live waits when the prompt lands (B2). */
+function supersedePendingAsks(key: string): void {
+  const entries = Object.entries(pendingAsks());
+  const keep = entries.filter(([, entry]) => entry.sessionId !== key);
+  if (keep.length === entries.length) return;
+  pendingAsks.set(Object.fromEntries(keep));
+}
+
+/** Pulls `_zu/ask/pending` after an open so questions that outlived a restart
+ * come back as answerable cards (B2). Best-effort: an older harness answers
+ * method_not_found, and no card is the honest result then. */
+async function seedPendingAsks(key: string, session: AcpSession): Promise<void> {
+  try {
+    const reply = await session.requestCustom<{ asks?: Array<{ toolCallId?: unknown; args?: unknown }> }>(
+      "_zu/ask/pending",
+      { sessionId: session.id },
+    );
+    const asks = Array.isArray(reply?.asks) ? reply.asks : [];
+    const next = { ...pendingAsks() };
+    let changed = false;
+    for (const ask of asks) {
+      const toolCallId = String(ask?.toolCallId ?? "");
+      if (!toolCallId) continue;
+      const recordKey = `${key}:${toolCallId}`;
+      if (next[recordKey]) continue; // a live waiter keeps its resolve
+      next[recordKey] = { sessionId: key, toolCallId, args: ask.args };
+      changed = true;
+    }
+    if (changed) {
+      pendingAsks.set(next);
+      syncProtocolState(key);
+    }
+  } catch {
+    // The harness predates the mailbox, or the process just died — skip.
+  }
+}
+
 /** True when pi sessions ride the ACP harness (always, since the cutover). */
 export function acpEnabled(): boolean {
   return true;
@@ -369,6 +459,9 @@ export async function ensureAcpSession(key: string): Promise<AcpSession | null> 
   try {
     const { session } = await openExistingSession(view.id, view.cwd || "/", { load: false });
     attachSession(key, session);
+    // The previous process may have died mid-ask; the load-side repair has
+    // already acked the tail, so the asks are listable again (B2).
+    void seedPendingAsks(key, session);
     return session;
   } catch (failure) {
     patchView(key, {
@@ -381,6 +474,9 @@ export async function ensureAcpSession(key: string): Promise<AcpSession | null> 
 }
 
 async function runAcpTurn(key: string, text: string): Promise<void> {
+  // The user's own words supersede any waiting ask (B2): drop the cards here,
+  // the harness resolves its live waits when the prompt reaches it.
+  supersedePendingAsks(key);
   const session = await ensureAcpSession(key);
   if (!session) return;
   acpTurns.set(key, { cancel: () => session.cancel() });
@@ -972,6 +1068,8 @@ export function openSession(path: string): Promise<SessionView | undefined> {
         });
         patchView(id, view);
         attachSession(id, session);
+        // Restart-surviving asks become answerable cards again (B2).
+        void seedPendingAsks(id, session);
         activeId.set(id);
         error.set(null);
         return view;

@@ -64,6 +64,12 @@ import { createPiServices } from "../pi/services";
 import type { AcpMcpServer } from "../pi/mcp";
 import type { TrustElicit } from "../pi/trust";
 import { SubagentManager, dispatchExtension, type SubagentHost, type SubagentRun } from "./subagents";
+import {
+  AnswerRegistry,
+  INTERACTIVE_TOOLS,
+  TOOL_RESPONSE_TYPE,
+  repairDanglingInteractiveCalls,
+} from "../interactions";
 import type { HarnessClientBridge, HarnessPorts, HarnessSession, HarnessSessionContext, HarnessLog } from "./app";
 
 type PiAgentSession = AgentSession;
@@ -224,6 +230,8 @@ class PiHarnessSession implements HarnessSession {
   private readonly settingsManager: SettingsManager;
   /** The subagent manager bound to this captain. */
   private readonly subagentManager: SubagentManager;
+  /** The interactive-tool mailbox (B2): late answers and supersede. */
+  private readonly answerRegistry: AnswerRegistry;
   /** Compaction ids are per session and stable across start/end events. */
   private compactionSeq = 0;
   private currentCompactionId = "";
@@ -236,6 +244,7 @@ class PiHarnessSession implements HarnessSession {
     gate: PermissionGate,
     settingsManager: SettingsManager,
     subagentManager: SubagentManager,
+    answerRegistry: AnswerRegistry,
   ) {
     this.manager = manager;
     this.session = session;
@@ -244,6 +253,7 @@ class PiHarnessSession implements HarnessSession {
     this.gate = gate;
     this.settingsManager = settingsManager;
     this.subagentManager = subagentManager;
+    this.answerRegistry = answerRegistry;
     this.id = manager.getSessionId();
     this.gate.sessionId = this.id;
     this.subscribe();
@@ -251,12 +261,13 @@ class PiHarnessSession implements HarnessSession {
 
   static async create(cwd: string, log: HarnessLog, options: PiSessionOptions = {}): Promise<PiHarnessSession> {
     const manager = SessionManager.create(cwd);
-    return PiHarnessSession.build(manager, cwd, log, options);
+    // A new session has no history; nothing to repair (B2).
+    return PiHarnessSession.build(manager, cwd, log, options, false);
   }
 
   static async open(path: string, cwd: string, log: HarnessLog, options: PiSessionOptions = {}): Promise<PiHarnessSession> {
     const manager = SessionManager.open(path);
-    return PiHarnessSession.build(manager, cwd, log, options);
+    return PiHarnessSession.build(manager, cwd, log, options, true);
   }
 
   private static async build(
@@ -264,8 +275,16 @@ class PiHarnessSession implements HarnessSession {
     cwd: string,
     log: HarnessLog,
     options: PiSessionOptions,
+    repairTail: boolean,
   ): Promise<PiHarnessSession> {
     const agentDir = options.agentDir ?? getAgentDir();
+    // B2: fix a tail left dangling by a crash mid-interactive-tool BEFORE the
+    // session is created from it, so the restored transcript is valid (empty
+    // registry until A1 → no-op today).
+    if (repairTail) {
+      const repaired = repairDanglingInteractiveCalls(manager, INTERACTIVE_TOOLS);
+      if (repaired > 0) log(`repaired ${repaired} dangling interactive call(s) in session ${manager.getSessionId()}`);
+    }
     // Built-in extensions: the user's `disabledExtensions` decides which ones
     // compose, and an enabled extension's skills ride along. Read once per
     // build; a settings change lands on the next session/new|load (no hot
@@ -305,6 +324,22 @@ class PiHarnessSession implements HarnessSession {
       gate,
       built.services.settingsManager,
       subagentManager,
+      new AnswerRegistry(manager, INTERACTIVE_TOOLS, {
+        log,
+        inject: async (text, meta) => {
+          // A late answer enters the conversation as its own display message
+          // and wakes the model so it reacts to the answer (B2).
+          await created.session.sendCustomMessage(
+            {
+              customType: TOOL_RESPONSE_TYPE,
+              content: [{ type: "text", text }],
+              display: true,
+              details: meta,
+            },
+            { triggerTurn: true },
+          );
+        },
+      }),
     );
     try {
       await created.session.bindExtensions({
@@ -325,6 +360,9 @@ class PiHarnessSession implements HarnessSession {
 
   async prompt(text: string): Promise<StopReason> {
     this.lastStop = undefined;
+    // A user-typed message supersedes every waiting interactive tool (B2);
+    // they resolve with the supersede sentinel and answer with the ack.
+    this.answerRegistry.supersedeAll();
     // `/compact` is the one built-in the distro executes itself; extension
     // commands, templates and skills are handled by `session.prompt`.
     const trimmed = text.trim();
@@ -360,6 +398,11 @@ class PiHarnessSession implements HarnessSession {
       dispatch: (agent: string, task: string) => this.subagentManager.spawn(this.id, agent, task),
       abort: (runId: string) => this.subagentManager.abort(runId),
     };
+  }
+
+  /** The interactive-tool mailbox for `_zu/ask/*` (B2). */
+  get answers() {
+    return this.answerRegistry;
   }
 
   configOptions(): SessionConfigOption[] {

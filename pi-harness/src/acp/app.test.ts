@@ -47,6 +47,7 @@ class FakeSession implements HarnessSession {
       /** Asks the client for structured input before answering. */
       elicit?: boolean;
       subagents?: HarnessSession["subagents"];
+      answers?: HarnessSession["answers"];
     },
   ) {
     this.id = spec.id;
@@ -156,6 +157,10 @@ class FakeSession implements HarnessSession {
 
   get subagents(): HarnessSession["subagents"] {
     return this.spec.subagents;
+  }
+
+  get answers(): HarnessSession["answers"] {
+    return this.spec.answers;
   }
 }
 
@@ -771,6 +776,57 @@ describe("method surface", () => {
     const abort = await client.request("_zu/subagents/abort", { sessionId: "pi-13", runId: "run-2" });
     expect(abort.error).toBeUndefined();
     await client.close();
+  });
+
+  test("the _zu/ask methods delegate to the mailbox surface", async () => {
+    const answers: HarnessSession["answers"] = {
+      pending: () => [{ toolCallId: "tc-9", args: { question: "which?" } }],
+      answer: async (toolCallId, response) => {
+        return toolCallId === "tc-9" ? { delivered: "late" } : { delivered: "live" };
+      },
+    };
+    const session = new FakeSession({ id: "pi-14", answers });
+    const { ports } = fakePorts([session]);
+    const client = startClient(ports);
+    await initialize(client);
+    await client.request("session/new", { cwd: "/tmp/proj" });
+    const pending = await client.request("_zu/ask/pending", { sessionId: "pi-14" });
+    expect((pending.result as Record<string, unknown>).asks).toEqual([
+      { toolCallId: "tc-9", args: { question: "which?" } },
+    ]);
+    const late = await client.request("_zu/ask/answer", { sessionId: "pi-14", toolCallId: "tc-9", response: "sqlite" });
+    expect((late.result as Record<string, unknown>).delivered).toBe("late");
+    await client.close();
+  });
+
+  test("_zu/ask/answer without a mailbox answers an empty result; an unknown ask is a coded error", async () => {
+    const session = new FakeSession({ id: "pi-15" });
+    const { ports } = fakePorts([session]);
+    const client = startClient(ports);
+    await initialize(client);
+    await client.request("session/new", { cwd: "/tmp/proj" });
+    const empty = await client.request("_zu/ask/answer", { sessionId: "pi-15", toolCallId: "tc-x", response: "y" });
+    expect(empty.error).toBeUndefined();
+    expect(empty.result).toEqual({});
+    const asks: HarnessSession["answers"] = {
+      pending: () => [],
+      answer: async () => ({ delivered: "none" }),
+    };
+    const knowing = new FakeSession({ id: "pi-16", answers: asks });
+    const ports2 = fakePorts([knowing]).ports;
+    const client2 = startClient(ports2);
+    await initialize(client2);
+    await client2.request("session/new", { cwd: "/tmp/proj" });
+    const missing = await client2.request("_zu/ask/answer", {
+      sessionId: "pi-16",
+      toolCallId: "tc-gone",
+      response: "y",
+    });
+    expect((missing.error as Record<string, unknown>).message).toContain("tc-gone");
+    const data = (missing.error as Record<string, unknown>).data as Record<string, unknown>;
+    expect(data.code).toBe("unknown_ask");
+    await client.close();
+    await client2.close();
   });
 });
 
