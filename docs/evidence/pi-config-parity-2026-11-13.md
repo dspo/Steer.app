@@ -21,7 +21,7 @@ Environment: real `~/.pi` (67 models, default `bailian/qwen3.8-flash`), repo cwd
 | settled after restart | new process resumed captain and read the same run + 7 rows |
 | process teardown | `session/close` + stdin EOF leaves no `pi-acp` |
 
-Gates: `nsh check app` ✓, `check-layers` ✓, `nsh test app` 221/213 (8 skip),
+Gates: `nsh check app` ✓, `check-layers` ✓, `nsh test app` 221/207 (14 skip),
 `pi-harness bun test` 56, `bun run smoke` ✓, `script/bundle-mac.sh` ✓.
 
 Additional gates:

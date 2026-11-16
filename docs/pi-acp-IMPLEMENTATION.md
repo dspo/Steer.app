@@ -3,7 +3,7 @@
 > 状态：**已落地（2026-11-13，A0–F0）**。本文从设计稿转为实现记录；仍以 §9 的 UI/UX 与 §11
 > 的验收清单为准，未跑的真机/live 项在 §11 明确标注。
 > 门禁（2026-11-13）：`nsh check app` ✓、`node script/check-layers.mjs` ✓、
-> `ZU_SKIP_LIVE=1 nsh test app` 221 用例 213 通过 / 8 skip、`pi-harness bun test` 56 ✓、
+> `ZU_SKIP_LIVE=1 nsh test app` 221 用例 207 通过 / 14 skip、`pi-harness bun test` 56 ✓、
 > distro `bun run build` ✓、`bun run smoke`（ACP offline）✓、`bun run acceptance:live`（真机，两轮）✓、
 > `LIVE_CRASH_ONLY=1 bun run acceptance:live` ✓、`script/bundle-mac.sh` ✓。
 > 关系：本文是 Pi 模块的**目标实现**。当前系统形态见 [architecture.md](architecture.md)；

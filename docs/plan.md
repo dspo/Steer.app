@@ -21,7 +21,7 @@
 | Pi 官方配置 parity | `createAgentSessionServices` 统一装配；CLI builtin（codemode/tool-search/mcp）以 `builtin:true` 复刻；项目信任用 ACP elicitation；`mcp.json` + ACP `mcpServers` 双通道；子代理共享 services/model/trust；漂移测试守 builtin 名单 |
 | Pi × ACP 会话运行时 | A0–F0 落地：一会话一持久 `pi-acp`、config/mode/resume/close、usage/commands/info/compaction、permission/elicitation、扩展 UI、子代理 `_zu/subagents/*`、sheet/容器/退出生命周期；协议/宿主测试补齐 |
 
-门禁：`nsh check app` ✓、`check-layers` ✓、`nsh test app` 221 用例 213 通过 / 8 skip、
+门禁：`nsh check app` ✓、`check-layers` ✓、`nsh test app` 221 用例 207 通过 / 14 skip、
 `pi-harness bun test` 56 ✓、`bun run smoke` ✓、`script/bundle-mac.sh` ✓。
 
 真机 live 验收已完成（2026-11-13，`pi-harness/scripts/acp-live-acceptance.ts`，记录见
