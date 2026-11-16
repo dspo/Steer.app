@@ -15,6 +15,7 @@ import { setAcpCommandOverride } from "./modules/pi/acp/acp";
 import { loadProjects, createProject, projects, membership, setProjectTransport } from "./core/projects";
 import { loadSettings, setSidebarWidth, sidebarWidth, setSettingsTransport } from "./shell/settings";
 import { refreshSessions, sessions } from "./modules/pi/sessions";
+import { stubCommand } from "./fixtures/stub-command";
 
 // The v2 writer inversion (B2): the registry, the projects, the settings,
 // the layouts and the session list are the UI's folds over `zu/state` files
@@ -33,8 +34,7 @@ await Fs.mkdir("/tmp", agentDir.slice("/tmp/".length));
 // (session/new), and CI never builds `dist/pi-acp` for it to resolve. The
 // assertions here are registry- and file-side, so the stub's canned answers
 // carry everything they need.
-const STUB = new URL("./fixtures/acp-stub-agent.sh", import.meta.url).pathname;
-setAcpCommandOverride({ command: "/bin/sh", args: [STUB] });
+setAcpCommandOverride(stubCommand());
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 

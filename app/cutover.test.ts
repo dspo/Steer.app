@@ -5,6 +5,7 @@ import { containers, activeContainerId } from "./core/containers";
 import { createContainer } from "./modules/pi/container";
 import { createSession, refreshSessions, send, stop, sessions, openSession, messages, activeId, turnActive, viewFor } from "./modules/pi/sessions";
 import { setAcpCommandOverride } from "./modules/pi/acp/acp";
+import { stubCommand } from "./fixtures/stub-command";
 import { resetStateCache } from "./domains/state";
 
 // The cutover's acceptance (v2 §12 P4 line, B3): the default boot starts no
@@ -15,7 +16,6 @@ import { resetStateCache } from "./domains/state";
 
 const stateDir = `/tmp/zu-cutover-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const agentDir = `/tmp/zu-cutover-agent-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-const STUB = new URL("./fixtures/acp-stub-agent.sh", import.meta.url).pathname;
 
 State.setStateDir(stateDir);
 State.setAgentDir(agentDir);
@@ -44,7 +44,7 @@ test("booting the shell starts no engine and listens on no port", async () => {
 test("a container and a session are minted without any process", async () => {
   // The mint rides the stub, like the conversation legs below it: CI never
   // builds `dist/pi-acp` for the mint's spawn to resolve.
-  setAcpCommandOverride({ command: "/bin/sh", args: [STUB] });
+  setAcpCommandOverride(stubCommand());
   try {
     // The conversation's folder exists (the harness spawn checks it).
     await Fs.mkdir("/tmp", "zu-cutover-a");
@@ -61,7 +61,7 @@ test("a container and a session are minted without any process", async () => {
 });
 
 test("a conversation runs over a stdio harness subprocess and settles", async () => {
-  setAcpCommandOverride({ command: "/bin/sh", args: [STUB], env: { STUB_PROMPT_UPDATES: "1" } });
+  setAcpCommandOverride(stubCommand({ STUB_PROMPT_UPDATES: "1" }));
   try {
     const key = String(await createSession("/tmp/zu-cutover-a"));
     await send("hello over stdio", key);
@@ -77,7 +77,7 @@ test("a conversation runs over a stdio harness subprocess and settles", async ()
 });
 
 test("stopping a held turn settles it cancelled", async () => {
-  setAcpCommandOverride({ command: "/bin/sh", args: [STUB], env: { STUB_HOLD_PROMPT: "1" } });
+  setAcpCommandOverride(stubCommand({ STUB_HOLD_PROMPT: "1" }));
   try {
     const key = String(activeId());
     await send("count slowly", key);
@@ -94,7 +94,7 @@ test("stopping a held turn settles it cancelled", async () => {
 });
 
 test("a closed session reopens from its file through the harness", async () => {
-  setAcpCommandOverride({ command: "/bin/sh", args: [STUB], env: { STUB_LOAD_REPLAY: "1" } });
+  setAcpCommandOverride(stubCommand({ STUB_LOAD_REPLAY: "1" }));
   try {
     // A session file pi could have written, under the scan's root.
     await Fs.mkdir("/tmp", agentDir.slice("/tmp/".length));

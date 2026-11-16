@@ -12,11 +12,11 @@ import {
 } from "./modules/pi/acp/host";
 import { transcriptFromReplay, updateToStoreEvents } from "./modules/pi/acp/fold";
 import { acpEnabled } from "./modules/pi/sessions";
+import { stubCommand } from "./fixtures/stub-command";
 
 // The ACP runtime without pi: the native `Acp` pump drives a stub agent
-// (fixtures/acp-stub-agent.sh) that speaks the distro's ndjson surface.
+// (fixtures/acp-stub-agent.ts) that speaks the distro's ndjson surface.
 
-const STUB = new URL("./fixtures/acp-stub-agent.sh", import.meta.url).pathname;
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 async function until(what: string, condition: () => boolean, timeoutMs = 10000): Promise<void> {
@@ -29,7 +29,7 @@ async function until(what: string, condition: () => boolean, timeoutMs = 10000):
 
 function withStub(mode: Record<string, string>, run: (open: () => Promise<AcpSession>) => Promise<void>) {
   return async () => {
-    setAcpCommandOverride({ command: "/bin/sh", args: [STUB], env: mode });
+    setAcpCommandOverride(stubCommand(mode));
     try {
       await run(() => openNewSession("/tmp"));
     } finally {
