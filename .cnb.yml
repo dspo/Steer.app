@@ -100,7 +100,9 @@
         else
           NSH_INSTALL_DIR="$nsh_home" sh /tmp/nsh-install.sh
         fi
-        # /root/.local/bin 不是卷，每次构建都是新容器：链接得自己补（缓存命中时脚本没跑）。
+        # /root/.local/bin 不是卷，每次构建都是新容器：目录与链接都得自己补
+        # （缓存命中时安装脚本没跑，镜像里这个目录也不存在，ln -sf 不建父目录）。
+        mkdir -p "$HOME/.local/bin"
         ln -sf "$nsh_home/bin/nsh" "$HOME/.local/bin/nsh"
         curl -fsSL https://bun.sh/install -o /tmp/bun-install.sh
         bash /tmp/bun-install.sh        # → ~/.bun/bin/bun

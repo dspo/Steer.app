@@ -166,6 +166,16 @@ Hero 的两排动作使用各 CLI 的品牌图标（24pt 光学尺寸）：
 Pi 会话的完整交互状态（审批卡、elicitation、命令候选、恢复/休眠）以
 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §9 为准；视觉 token 仍取本文。
 
+**项目信任对话框**（`app/ui/trust.tsx`，挂在 App 根部，不属于任何 sheet）：
+
+| 项 | 值 |
+|---|---|
+| 触发 | `session/new` 期间 distro 通过 ACP `elicitation/create` 提问；此时还没有会话 sheet |
+| 标题 | 13.5/600 alert 图标 + “信任这个项目？” |
+| 正文 | distro 的消息（路径 + 将加载的 settings/extensions/skills/packages/MCP）；12/18 `muted-foreground` |
+| 操作 | 主操作“信任并加载”（`primary`）；次操作“暂不信任”（outline） |
+| 行为 | 接受写 Pi trust store；拒绝只影响本次；关闭/Esc 等于拒绝；按 cwd 去重 |
+
 ### 3.7 拖拽页签
 
 - 拖起：源页签立即变占位（`opacity 0.35`，无背景与指示器）；

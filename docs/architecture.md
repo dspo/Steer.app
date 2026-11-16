@@ -41,7 +41,7 @@ manox 是进程内 AHP 宿主（`native/manox`）。两者都只是容器里的�
 Zu.app（nsh TSX / AppKit）
 ├─ core/ + shell/ + canvas/   关系模型与外壳（零 harness 语义）
 ├─ modules/pi           pi 模块：ACP client（JSON-RPC over ndjson stdio）
-│    └─ 每条 turn spawn 一个 pi-acp ──▶ pi 1.5.0（Bun 单文件）
+│    └─ 每个会话一个持久 pi-acp ──▶ pi 1.5.0（Bun 单文件）
 │         durable: ~/.pi/agent/sessions/*.jsonl
 ├─ modules/manox        manox 模块：AHP client（vendored reducers 折叠）
 │    └─ zu/native 的 Manox 单例 ──▶ in-proc 宿主半边（manox v0.9.1）
@@ -51,10 +51,12 @@ Zu.app（nsh TSX / AppKit）
 
 ### 3.2 pi 线（ACP，默认）
 
-- **传输是轮级的**：每条 turn spawn 一个 `pi-acp` 子进程（`native/src/acp.rs` 负责进程与字节，TS 侧
-  `app/modules/pi/acp/{jsonrpc,acp}.ts` 负责 JSON-RPC id、超时与事件分派）。握手 `initialize` →
-  `session/new` 或 `session/load` → `session/prompt` → `session/update` 流 → settle 后关闭 stdin 退出。
-- **恢复 = 再 spawn**：ACP 没有「重连」；进程意外退出按远端错误上抛，UI 标中断，下一次输入重新加载会话文件。
+- **传输是一会话一进程**：`native/src/acp.rs` 负责进程与字节，TS 侧
+  `app/modules/pi/acp/{jsonrpc,acp}.ts` 负责 JSON-RPC id、超时与事件分派；`host.ts` 持有进程注册表。
+  握手 `initialize` → `session/new|load|resume` → 多次 `session/prompt` → `session/update` 流；
+  会话 sheet/容器归档/退出 app 才关闭进程。
+- **崩溃 = 中断**：ACP 没有「重连」；进程意外退出让 pending turn 失败，UI 标中断，下一次用户动作
+  `session/resume`，不自动重放。
 - **看门狗**：60 s 内未 ready 的 harness 视为启动失败，带 stderr 报错。
 - **读面**：`zu/state` 的 `scan_sessions(watermark)` 扫 `~/.pi` 会话目录（只读 header/名字/首条用户文本/消息数），
   UI 侧 fold 成会话视图；没有活引擎也能浏览。
@@ -62,6 +64,9 @@ Zu.app（nsh TSX / AppKit）
   已在 P4 删除；`ZU_PI_TRANSPORT` 不再存在。
 - **进程**：一会话一持久 `pi-acp`，跨 turn 保留；关 sheet/归档容器/退出 app 才结束。崩溃 → 会话
   中断，下一次用户动作 `session/resume`；无 cap/TTL/RSS 回收（D1）。
+- **官方配置 parity**：`createAgentSessionServices` 装配；CLI 的 builtin（codemode/tool-search/mcp）
+  以 `builtin:true` 复刻，`mcp.json`/packages/skills/prompts 走同一 loader；项目信任用 ACP elicitation
+  在 `session/new` 期间询问；ACP `mcpServers` 也注册进 MCP 扩展。漂移测试守住 builtin 名单。
 - **模型/档位/命令/用量/审批**：协议状态。`session/new|resume|load` 回 `configOptions`/`modes`，
   `session/set_config_option`、`session/set_mode` 切换；`available_commands_update`、
   `usage_update`、`session_info_update`、`compaction_update`、`notice` 投影进 `SessionView`。
@@ -136,7 +141,7 @@ UI 不持 fs / process：文件读写只经 `zu/fs`，进程只经 native 域。
 
 | 域 | 职责 | 形态 |
 |---|---|---|
-| `Acp` | 每条 turn 的 `pi-acp` 子进程：argv、cwd、进程组、有界帧（32 MiB） | class（一轮一个） |
+| `Acp` | 每个会话的 `pi-acp` 子进程：argv、cwd、进程组、有界帧（32 MiB） | class（一会话一个） |
 | `State` | `read`/`write`（原子、版本拒绝）、`scan_sessions`（mtime 水位） | module |
 | `Fs` | 显式根、越界/符号链接拒绝、2 MiB 读、原子写、`ERR_FS_STALE` | module |
 | `Git` | shell out、根必须为仓库顶层、porcelain v2、无网络/无全局配置 | module |
@@ -290,7 +295,7 @@ terminal 模块的一个 intent。
 |---|---|---|
 | UI | nsh（TSX root，AppKit 后端） | 原生输入/滚动/无障碍；DockArea/TextView/Editor/DiffView 现成 |
 | pi | 精确 pin `1.5.0`，Bun `--compile` 单入口 `pi-acp` | 官方支持 bun 二进制分发 |
-| pi 传输 | ACP over stdio，轮级子进程 | 进程隔离、公共协议、恢复 = 再 spawn |
+| pi 传输 | ACP over stdio，一会话一持久进程 | 进程隔离、公共协议、崩溃后 resume |
 | manox | git pin `v0.9.1`，in-proc AHP | 内核即宿主，零进程；接受崩溃域不对称 |
 | 重型集成 | Rust native module，按域拆注册面 | Q28/Q31 |
 | 终端核 | nsh 内置 `VtEmulator`；Ghostty 为条件性里程碑 | trait 上限锁死换核收益 |

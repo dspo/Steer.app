@@ -1,4 +1,5 @@
 import { HarnessConnection, type AcpUpdate } from "./acp";
+import { askProjectTrust } from "../../../ui/trust";
 
 /**
  * The persistent ACP session runtime (docs/pi-acp-IMPLEMENTATION.md A0):
@@ -205,10 +206,31 @@ function adopt(session: AcpSession): AcpSession {
   return session;
 }
 
+/**
+ * While `session/new` is in flight the distro may ask whether this project's
+ * resources may load. There is no AcpSession yet, so the question goes to the
+ * app-root trust dialog; every other server request is still refused.
+ */
+function installTrustBridge(connection: HarnessConnection, cwd: string): void {
+  connection.onRequest((message) => {
+    if (message.id === null || message.id === undefined) return;
+    const id = message.id;
+    if (message.method === "elicitation/create") {
+      const prompt = String((message.params as { message?: unknown })?.message ?? cwd);
+      void askProjectTrust(cwd, prompt)
+        .then((trusted) => connection.respond(id, { action: trusted ? "accept" : "decline", content: { trusted } }))
+        .catch(() => connection.respond(id, { action: "decline" }));
+      return;
+    }
+    connection.respondError(id, -32601, `the session is still starting; ${message.method} is refused`);
+  });
+}
+
 /** Opens a fresh session (spawn + initialize + session/new). */
 export async function openNewSession(cwd: string): Promise<AcpSession> {
   const connection = await HarnessConnection.start({ cwd });
   try {
+    installTrustBridge(connection, cwd);
     const early: AcpUpdate[] = [];
     connection.onUpdate((_sessionId, update) => early.push(update));
     const result = await connection.newSession(cwd);
@@ -240,6 +262,7 @@ export async function openExistingSession(
   if (existing && !existing.dead) return { session: existing, replay: [] };
   const connection = await HarnessConnection.start({ cwd });
   try {
+    installTrustBridge(connection, cwd);
     let result: any;
     let replay: AcpUpdate[] = [];
     const early: AcpUpdate[] = [];

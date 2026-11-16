@@ -158,19 +158,21 @@ interface PortsSpy {
   created: string[];
   loaded: Array<{ sessionId: string; cwd: string }>;
   resumed: Array<{ sessionId: string; cwd: string }>;
+  createdContexts: Array<{ elicit?: unknown; mcpServers?: unknown[] }>;
 }
 
 function fakePorts(sessions: FakeSession[], onSession?: (session: FakeSession, spy: PortsSpy) => void): {
   ports: HarnessPorts;
   spy: PortsSpy;
 } {
-  const spy: PortsSpy = { created: [], loaded: [], resumed: [] };
+  const spy: PortsSpy = { created: [], loaded: [], resumed: [], createdContexts: [] };
   let index = 0;
   return {
     spy,
     ports: {
-      createSession: async (cwd) => {
+      createSession: async (cwd, context) => {
         spy.created.push(cwd);
+        spy.createdContexts.push(context ?? {});
         const session = sessions[index++] ?? new FakeSession({ id: `extra-${index}` });
         onSession?.(session, spy);
         return session;
@@ -396,7 +398,7 @@ describe("method surface", () => {
     await client.close();
   });
 
-  test("session/new answers pi's sessionId and ignores mcpServers", async () => {
+  test("session/new answers pi's sessionId and carries mcpServers into the ports", async () => {
     const { ports, spy } = fakePorts([new FakeSession({ id: "pi-1" })]);
     const client = startClient(ports);
     await initialize(client);
@@ -407,6 +409,10 @@ describe("method surface", () => {
     expect(response.error).toBeUndefined();
     expect((response.result as Record<string, unknown>).sessionId).toBe("pi-1");
     expect(spy.created).toEqual(["/tmp/proj"]);
+    expect(spy.createdContexts[0]?.mcpServers).toEqual([
+      { type: "stdio", name: "noise", command: "/bin/echo", args: [], env: [] },
+    ]);
+    expect(typeof spy.createdContexts[0]?.elicit).toBe("function");
     await client.close();
   });
 
