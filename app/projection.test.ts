@@ -109,10 +109,10 @@ test("the sheets of a canvas put aside keep their place", () => {
   const frames = sheetFrames(active, parked, 900, 600);
   // A parked sheet is not shown, and is where its canvas left it: no travel
   // to place when that canvas comes back.
-  expect(frames.map((frame) => [frame.id, frame.place, frame.offset, frame.shown, frame.onScreen])).toEqual([
-    ["a", 0, 0, true, true],
-    ["c", -1, -900, false, false],
-    ["d", 0, 0, false, false],
+  expect(frames.map((frame) => [frame.id, frame.place, frame.offset, frame.shown])).toEqual([
+    ["a", 0, 0, true],
+    ["c", -1, -900, false],
+    ["d", 0, 0, false],
   ]);
   // It keeps its group's content area, not the whole canvas.
   expect([frames[1].x, frames[1].y, frames[1].width, frames[1].height]).toEqual([0, BAR, 900, 600 - BAR]);

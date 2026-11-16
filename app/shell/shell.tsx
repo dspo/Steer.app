@@ -763,10 +763,10 @@ function Canvas() {
             </If>
           </View>
         )}
-        // A slot holds nothing: the sheets are the content carousel's slides
-        // (`canvas/group-carousel.tsx`), so both of two can be drawn while
-        // they move. `DockArea` still mounts the slot, keeps its place and
-        // hides it.
+        // A slot holds nothing: the sheets live in `canvas/sheet-host.tsx`,
+        // one flat list keyed by sheet id, so no layout edit ever remakes a
+        // body. `DockArea` still mounts the slot, keeps its place and hides
+        // it.
         renderPanel={() => <View style={{ flex: 1 }} />}
         renderEmpty={() => (
           // A canvas with no sheet: the Hero is one click away, and it is a

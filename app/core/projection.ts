@@ -57,8 +57,6 @@ export type SheetFrame = {
   offset: number;
   /** It is its group's displayed sheet on the canvas on screen. */
   shown: boolean;
-  /** It is in the canvas on screen (in one of its groups). */
-  onScreen: boolean;
   /** It is at most one place from the displayed sheet: the sheets a turn of
    * the tab strip draws while it slides. */
   near: boolean;
@@ -199,7 +197,6 @@ export function sheetFrames(
         height: group.height,
         offset: (index - group.active) * group.width,
         shown,
-        onScreen: true,
         near: Math.abs(index - group.active) <= 1,
       });
     });
@@ -219,7 +216,6 @@ export function sheetFrames(
         height: group.height,
         offset: (index - group.active) * group.width,
         shown: false,
-        onScreen: false,
         near: false,
       });
     });
