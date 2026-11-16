@@ -250,8 +250,7 @@ async fn build_session_info(path: &Path) -> Result<SessionInfo, anyhow::Error> {
 }
 
 /// Read and validate the first (header) line of a session file, growing the
-/// read until the newline arrives. A header on an unsupported format version
-/// is rejected with `JournalError::UnsupportedFormat`.
+/// read until the newline arrives.
 async fn read_header(path: &Path) -> Result<JsonlSessionMetadata, anyhow::Error> {
     let mut file = File::open(path).await?;
     let mut buffer = Vec::with_capacity(4096);
@@ -276,7 +275,7 @@ async fn read_header(path: &Path) -> Result<JsonlSessionMetadata, anyhow::Error>
         .iter()
         .position(|&b| b == b'\n')
         .unwrap_or(buffer.len());
-    crate::session::jsonl::parse_header_line(path, &buffer[..line_end])
+    crate::session::jsonl::parse_header_line(&buffer[..line_end])
 }
 
 /// The member patterns the scan tests, as const byte slices — the hot path
@@ -597,6 +596,9 @@ mod tests {
     /// around the colon: a message line written by an older writer (or a
     /// hand edit)
     /// with `type` NOT first, and with spaced members, still surfaces.
+    /// The `version` field in the header below is an old writer's residue,
+    /// not the current format's self-identification (the wire header no
+    /// longer carries one; readers tolerate it as an unknown field).
     #[tokio::test]
     async fn scan_finds_messages_regardless_of_key_order_and_spacing() {
         let dir = tempfile::tempdir().unwrap();
