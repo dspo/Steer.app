@@ -32,6 +32,11 @@ const HARNESS_BIN = join(HARNESS, "dist", "pi-acp");
  * default one, and replacing it waits a minute before failing. */
 const PORT = process.env.PORT ?? "8810";
 
+/** `bun dev`'s state directory, beside the installed app's. The single-instance
+ * claim is a file under the state dir, so a dev instance that shared it would
+ * render "Zu is already running" and never boot the engine while Zu.app runs. */
+const DEV_STATE = join(homedir(), ".pi", "zu-dev");
+
 function fail(message: string): never {
   console.error(message);
   process.exit(1);
@@ -73,8 +78,12 @@ function checkNsh(nsh: string): void {
 }
 
 /** Runs a command in `cwd`, inheriting the terminal, and fails with its code. */
-function run(command: string[], cwd: string): void {
-  const result = Bun.spawnSync(command, { cwd, stdio: ["inherit", "inherit", "inherit"] });
+function run(command: string[], cwd: string, env?: Record<string, string>): void {
+  const result = Bun.spawnSync(command, {
+    cwd,
+    stdio: ["inherit", "inherit", "inherit"],
+    env: env && { ...process.env, ...env },
+  });
   if (result.exitCode !== 0) process.exit(result.exitCode ?? 1);
 }
 
@@ -98,8 +107,12 @@ switch (task) {
   case "dev": {
     checkNsh(nsh);
     ensureHarness();
+    // The installed Zu owns `~/.pi/zu`'s lock; give dev its own state dir so
+    // both run at once. `ZU_STATE_DIR` still wins when set explicitly.
+    const stateDir = process.env.ZU_STATE_DIR ?? DEV_STATE;
+    console.log(`dev state: ${stateDir}`);
     // `nsh run` blocks while the app runs: the terminal is its own.
-    run([nsh, "run", "--port", PORT], APP);
+    run([nsh, "run", "--port", PORT], APP, { ZU_STATE_DIR: stateDir });
     break;
   }
   case "check":
