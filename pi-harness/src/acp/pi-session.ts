@@ -56,7 +56,9 @@ import {
   toolCallStartUpdate,
 } from "./mapping";
 import { replayUpdates, type ReplayEntry } from "./replay";
+import { composeExtensions, ZU_EXTENSIONS } from "../extensions/registry";
 import { DISPATCH_RULE, promptSectionExtension } from "../extensions/prompt-section";
+import { readZuSettings, zuStateDir } from "../settings";
 import { createPiServices } from "../pi/services";
 import type { AcpMcpServer } from "../pi/mcp";
 import type { TrustElicit } from "../pi/trust";
@@ -262,6 +264,12 @@ class PiHarnessSession implements HarnessSession {
     options: PiSessionOptions,
   ): Promise<PiHarnessSession> {
     const agentDir = options.agentDir ?? getAgentDir();
+    // Built-in extensions: the user's `disabledExtensions` decides which ones
+    // compose, and an enabled extension's skills ride along. Read once per
+    // build; a settings change lands on the next session/new|load (no hot
+    // reload — see docs/pi-acp-IMPLEMENTATION.md §18).
+    const zuSettings = await readZuSettings(agentDir);
+    const composed = composeExtensions(ZU_EXTENSIONS, zuSettings);
     const gate = new PermissionGate(log);
     const captainId = manager.getSessionId();
     const sessionRef: { session: PiAgentSession | null } = { session: null };
@@ -275,7 +283,8 @@ class PiHarnessSession implements HarnessSession {
       ...(options.trusted === undefined ? {} : { trusted: options.trusted }),
       ...(options.elicit ? { elicit: options.elicit } : {}),
       ...(options.mcpServers ? { mcpServers: options.mcpServers } : {}),
-      extensionFactories: hostExtensionFactories(gate, subagentManager, captainId, log),
+      extensionFactories: [...hostExtensionFactories(gate, subagentManager, captainId, log), ...composed.factories],
+      additionalSkillPaths: composed.skillDirs,
       additionalExtensionPaths: extraExtensionPaths(),
       noExtensions: extensionsDisabled(),
       log,
@@ -717,7 +726,7 @@ function subagentHost(
   agentDir: string,
   trusted: () => boolean,
 ): SubagentHost {
-  const root = join(agentDir, "..", "zu", "subagents");
+  const root = join(zuStateDir(agentDir), "subagents");
   const index = join(root, "index.json");
   const readIndex = (): SubagentRun[] => {
     try {

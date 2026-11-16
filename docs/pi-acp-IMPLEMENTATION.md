@@ -679,3 +679,96 @@ prompt 其余部分（含 provider prefix cache）不动。
 - 按会话开关 section（开关属于 B3 的 registry）；
 - 把规则藏进 tool description（那是另一层，职责不同）；
 - 升级 pi 版本。
+
+## 18. 内置扩展 registry（B3，2026-11-16）
+
+**根因**：内置扩展原来是 `PiHarnessSession.build` 里两个匿名工厂（权限门 + dispatch）：
+没有名字、没有开关、没有技能归属。A1–A4 要加 4–5 个内置工具包，每个都需要一个身份，
+否则「关掉 todos 扩展」无法同时关掉它的规则、工具与技能。
+
+### 18.1 描述符与合成
+
+- `pi-harness/src/extensions/registry.ts`：
+  - `ZuExtension { name, factory(settings), skillDirs?, defaultEnabled? }`；
+    `name` 就是 `disabledExtensions` 的键，也是 `skills/<name>` 的目录名，永久稳定。
+  - `composeExtensions(registry, settings) → { factories, skillDirs }`：
+    逐个判启用、每个 factory 每次合成只构建一次（reload 时重新合成，所以设置变化
+    在下一次 `session/new|load` 生效）、同名 `name` 直接抛错（编译期常量里的重复是 bug），
+    `skillDirs` 只取启用项、按 registry 顺序去重。
+  - factory 以具名 inline 形式交给 pi：`{ name: "zu:<name>", factory }`，
+    在扩展列表与冲突诊断里显示为 `<inline:zu:<name>>`。
+  - `ZU_EXTENSIONS` 本 issue **为空**：机制用 fixture 测，A2 加第一项
+    （`todos` + `skills/todos/SKILL.md`）。
+- 启用判定：`disabledExtensions` 命中即跳过；`defaultEnabled: false` 当前也是跳过
+  （v1 只实现 disable，opt-in 列表是后续 issue，不是一个漏掉的分支）。
+- 永远在线的权限门、prompt section、dispatch 不进 registry：它们是会话机制，
+  不是用户可关的能力；仍在 `hostExtensionFactories` 里。
+
+### 18.2 设置读取
+
+- `pi-harness/src/settings.ts`：`readZuSettings(agentDir)` 只读
+  `join(agentDir, "..", "zu", "settings.json")`，与子代理存储共用
+  `zuStateDir(agentDir)`（`subagents.ts` 也改为同一个推导）。
+- app 是唯一写者；harness 只认 `disabledExtensions` 的字符串数组。
+  文件缺失 / 坏 JSON / 顶层非对象 / 字段非数组 → 视为「没有禁用任何扩展」，绝不抛错；
+  其余键留在 `raw` 里，给后续扩展读自己的设置。
+- 不做热重载：设置变化在下一次 session build 生效（与 ACP `session/new|load` 同拍）。
+
+### 18.3 同名工具优先级（现场验证的结论）
+
+pi 1.5.0 的真实语义，用探针（现固化为 `extensions/precedence.test.ts`）核过：
+
+1. **首注册胜**：`ExtensionRunner.getAllRegisteredTools` 按扩展顺序遇到同名工具时保留第一个；
+   两个 inline 工厂 A、B 注册同一 `probeTool`，`[A,B]` 得到 A，`[B,A]` 得到 B。
+2. **file 扩展先于 inline**：resource loader 永远把 inline factory 追加在
+   `~/.pi` / 项目里的扩展文件之后。所以不干预时，用户装一个同名 `dispatch` 的包会顶掉宿主的。
+
+结论：光调 `extensionFactories` 数组顺序不够（它们本来就在最后），
+`createPiServices` 用 `DefaultResourceLoaderOptions.extensionsOverride` 把
+inline（宿主）扩展整体前移，保持相对顺序（`hostExtensionsFirst`）。
+测试用真包 + 真 session 锁住：`builtins win over user extensions (first registration wins,
+host inline loads first)`，并断言 inline 扩展在包之前。
+
+`extensionsOverride` 只改顺序；冲突仍由 pi 记为 diagnostic（`Tool "x" conflicts with ...`），
+不会被吞掉。registry 用具名 `zu:<name>`，所以诊断里能看出是谁顶了谁。
+
+### 18.4 技能布局
+
+- 源码：`pi-harness/skills/<extension>/SKILL.md`；本 issue 只提交
+  `skills/README.md`（布局说明，pi 不把它当技能），第一个真实技能归 A2。
+- `skillsBase()`：编译产物看 `dirname(process.execPath)/skills`
+  （`Contents/Helpers/pi-acp` → `Contents/Helpers/skills`），源码运行回落到
+  `pi-harness/src/extensions/../../skills`（即 `pi-harness/skills`）。
+  扩展的 `skillDirs` 在模块加载时用 `bundledSkillDir(name)` 算出绝对路径，
+  不在 factory 里算（避免 cwd 影响）。
+- `bun run bundle`（`script/tasks.ts` 的 `bundle()`，打包入口自 #21 从 sh 脚本收进 bun）
+  复制 `pi-harness/skills` 到 `Contents/Helpers/skills`，并对照源树逐个断言每个
+  `SKILL.md` 都在包里——列表从源码派生，A2 加技能不需要改脚本。
+- 技能名在 pi 里是全局共享的（用户 `~/.pi`、`~/.agents/skills` 先加载），
+  同名会被记为 collision diagnostic；本 issue 不抢占用户技能名。
+
+### 18.5 装配
+
+- `pi-session.ts` 的 `build`：`readZuSettings` → `composeExtensions` →
+  `extensionFactories: [...hostExtensionFactories(...), ...composed.factories]`，
+  `additionalSkillPaths: composed.skillDirs`。
+- `pi/services.ts`：新增 `additionalSkillPaths` 透传与 `hostExtensionsFirst`
+  （见 §18.3）。子代理仍走 `noExtensions: true`，不加载 registry 扩展；
+  内置工具包属于 captain 的宿主 UI。
+
+### 18.6 测试与门禁
+
+- `registry.test.ts`：空 registry、启用/禁用、`defaultEnabled: false`、重复名抛错、
+  技能归属/去重/顺序、`skillsBase` 源码布局；最后一块用真 loader 断言
+  禁用后技能不进 `resourceLoader.getSkills()`（断言包含关系——pi 还会发现开发机的
+  `~/.agents/skills`）。
+- `settings.test.ts`：缺失、坏 JSON、顶层非对象、字段非数组、正常数组、raw 透传。
+- `precedence.test.ts`：§18.3 的两个结论，真 loader + 真 session。
+- 门禁：`(cd pi-harness && bun test)`、`bun run build`、`bun run bundle`（macOS）。
+
+### 18.7 非目标
+
+- Settings UI 的开关控件（只认文件里的 `disabledExtensions`）；
+- 热重载；用户扩展（`~/.pi` 包）的开关；
+- `preferRegistryTools` 的完整实现（只保证内置工具优先，冲突仍如实报告）；
+- 技能内容（A2 提供第一个 `SKILL.md`）。

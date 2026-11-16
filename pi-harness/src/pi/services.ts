@@ -7,8 +7,13 @@
  * `ModelRuntime` (so every session and subagent shares auth/model state) and
  * the official built-in factories.
  *
- * `zu` extensions (permission gate, dispatch) are inline factories appended
- * after the built-ins, exactly where the CLI puts caller-supplied factories.
+ * `zu` extensions (permission gate, dispatch, registry entries) are inline
+ * factories. They are appended after the built-ins, exactly where the CLI
+ * puts caller-supplied factories — and then moved ahead of file extensions:
+ * pi resolves a tool name by load order (first registration wins), while the
+ * loader always appends inline factories after the packages it found in
+ * `~/.pi`. Without the reorder, a user package could shadow `dispatch` or any
+ * built-in extension's tool (see `hostExtensionsFirst`).
  */
 
 import { join } from "node:path";
@@ -18,7 +23,9 @@ import {
   ModelRuntime,
   SettingsManager,
   type AgentSessionServices,
+  type Extension,
   type InlineExtension,
+  type LoadExtensionsResult,
 } from "@earendil-works/pi-coding-agent";
 import { acpMcpExtension, type AcpMcpServer } from "./mcp";
 import { OFFICIAL_BUILTIN_EXTENSIONS } from "./official";
@@ -37,6 +44,8 @@ export interface PiServicesOptions {
   elicit?: TrustElicit;
   noExtensions?: boolean;
   additionalExtensionPaths?: string[];
+  /** Skill roots beside pi's own discovery (built-in extensions own these). */
+  additionalSkillPaths?: string[];
   appendSystemPrompt?: string[];
   log?: (line: string) => void;
 }
@@ -48,6 +57,32 @@ export interface PiServicesResult {
 }
 
 const runtimes = new Map<string, Promise<ModelRuntime | undefined>>();
+
+/** An inline factory, host- or caller-supplied: `<inline:name>` or `<inline:N>`. */
+const HOST_INLINE_PATH = "<inline:";
+
+/**
+ * Host extensions win name conflicts.
+ *
+ * pi 1.5.0 keeps the first tool registered under a name
+ * (`ExtensionRunner.getAllRegisteredTools`), and file extensions are loaded
+ * before inline factories, so a `~/.pi` package registering `dispatch` would
+ * win over the host's. The UI binds some tool names to surfaces, so the host's
+ * inline extensions move to the front, preserving their relative order.
+ *
+ * This is lessons-learned code, not a guess: `precedence.test.ts` builds a
+ * real package plus an inline factory that register one name and asserts the
+ * inline one is what the session sees.
+ */
+function hostExtensionsFirst(result: LoadExtensionsResult): LoadExtensionsResult {
+  const host: Extension[] = [];
+  const rest: Extension[] = [];
+  for (const extension of result.extensions) {
+    (extension.path.startsWith(HOST_INLINE_PATH) ? host : rest).push(extension);
+  }
+  if (host.length === 0) return result;
+  return { ...result, extensions: [...host, ...rest] };
+}
 
 /**
  * One ModelRuntime per agent dir for the process. Failure is logged and the
@@ -92,7 +127,11 @@ export async function createPiServices(options: PiServicesOptions): Promise<PiSe
     ...(modelRuntime ? { modelRuntime } : {}),
     resourceLoaderOptions: {
       extensionFactories,
+      extensionsOverride: hostExtensionsFirst,
       ...(options.noExtensions ? { noExtensions: true } : {}),
+      ...(options.additionalSkillPaths && options.additionalSkillPaths.length > 0
+        ? { additionalSkillPaths: options.additionalSkillPaths }
+        : {}),
       ...(options.additionalExtensionPaths && options.additionalExtensionPaths.length > 0
         ? { additionalExtensionPaths: options.additionalExtensionPaths }
         : {}),
