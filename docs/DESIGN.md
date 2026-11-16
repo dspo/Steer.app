@@ -128,6 +128,10 @@ nsh 里组件体只跑一次，行按 key 保留（`coding-guides.md` 的表）�
   常驻的内存与后台活动因此有界，代价是被淘汰的那个容器回来时从 store 重新加载。切页签、切容器、
   拖页签、分屏、zoom 都只改这些 sheet 的矩形与 offset，行的 key 不变，body 不重生：
   **浏览器页面不重载，终端不丢屏，对话不丢滚动位置**。
+  **正在显示的画布不入 parked 集**（`activateCanvas` 的 `unpark`）：它的 sheet 由 `layout()` 拥有，
+  留一份旧拷贝会让一个刚被关掉的页签继续挂载（一个没有页签能到达的 frame、WebView/PTY 继续跑），
+  并占掉 LRU 名额。parked 的 sheet 按它自己那份布局给出 `place/offset`（冻结），所以回访时
+  `place` 不变、不会可见地滑一下。
 - 每个 sheet 是一个裁到组内容框的 frame，body 在 frame 内按 offset 平移。**显示页与左右邻居
   （`near`）是 `visible`**（滑动要画它们），其余是 `visibility: hidden`——引擎对它的处理覆盖绘制、
   命中、键盘焦点与读屏（`view.rs` 的 `can_target`、access 的隐藏），停放的 sheet 因此不必再手工围栏。

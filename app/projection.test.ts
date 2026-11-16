@@ -3,6 +3,7 @@ import type { DockAreaLayout, DockNode } from "./core/dock";
 import {
   groupFrames,
   openSheetIds,
+  parkedGroups,
   sheetFrames,
   tabBarBoxes,
 } from "./core/projection";
@@ -97,14 +98,32 @@ test("a split gives each group its own content area", () => {
   expect(frames.every((frame) => frame.offset === 0 && frame.shown)).toBe(true);
 });
 
-test("the sheets of a canvas put aside keep a frame, unshown", () => {
-  const groups = groupFrames(tabBarBoxes({ center: tabs("a") }, 900, 600), BAR);
-  const frames = sheetFrames(groups, ["a", "z"], 900, 600);
-  expect(frames.map((frame) => [frame.id, frame.shown, frame.onScreen])).toEqual([
-    ["a", true, true],
-    ["z", false, false],
+test("the sheets of a canvas put aside keep their place", () => {
+  const active = groupFrames(tabBarBoxes({ center: tabs("a") }, 900, 600), BAR);
+  const parked = parkedGroups(
+    { other: { center: { type: "tabs", panels: ["c", "d"], activeIndex: 1 } } as DockAreaLayout },
+    900,
+    600,
+    BAR,
+  );
+  const frames = sheetFrames(active, parked, 900, 600);
+  // A parked sheet is not shown, and is where its canvas left it: no travel
+  // to place when that canvas comes back.
+  expect(frames.map((frame) => [frame.id, frame.place, frame.offset, frame.shown, frame.onScreen])).toEqual([
+    ["a", 0, 0, true, true],
+    ["c", -1, -900, false, false],
+    ["d", 0, 0, false, false],
   ]);
-  expect(frames[1]).toMatchObject({ x: 0, y: 0, width: 900, height: 600 });
+  // It keeps its group's content area, not the whole canvas.
+  expect([frames[1].x, frames[1].y, frames[1].width, frames[1].height]).toEqual([0, BAR, 900, 600 - BAR]);
+});
+
+test("a sheet the canvas shows wins over a stale copy put aside", () => {
+  const active = groupFrames(tabBarBoxes({ center: tabs("a") }, 900, 600), BAR);
+  const parked = parkedGroups({ other: { center: tabs("a", "b") } as DockAreaLayout }, 900, 600, BAR);
+  const frames = sheetFrames(active, parked, 900, 600);
+  expect(frames.filter((frame) => frame.id === "a")).toHaveLength(1);
+  expect(frames.find((frame) => frame.id === "a")?.shown).toBe(true);
 });
 
 test("the open sheets are the canvases' own, each once", () => {

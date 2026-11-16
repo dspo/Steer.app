@@ -160,13 +160,8 @@ function stashScratch(): void {
 function showScratch(): void {
   activeContainerId.set(null);
   savedFor = null;
-  const held = heldLayouts();
-  if (held[SCRATCH_CANVAS]) {
-    const { [SCRATCH_CANVAS]: _active, ...rest } = held;
-    heldLayouts.set(rest);
-  }
-  heldOrder = heldOrder.filter((id) => id !== SCRATCH_CANVAS);
   layout.set(scratchLayout());
+  unpark(SCRATCH_CANVAS);
   zoomedPanel.set(null);
   syncVisible();
 }
@@ -245,6 +240,12 @@ function activateCanvas(container: ContainerRecord, next: DockAreaLayout, zoom: 
   activeContainerId.set(container.id);
   savedFor = container.id;
   layout.set(next);
+  // The canvas being shown owns its sheets through `layout` now. A parked
+  // copy of it would keep a sheet closed while it is shown alive — a frame
+  // no tab reaches, still mounting its web page or PTY — so it goes, after
+  // the layout is in place: dropped before it, the union would lack the
+  // canvas's sheets for a frame and their bodies would be made again.
+  unpark(container.id);
   seedSheetOrder(container.id, next);
   zoomedPanel.set(zoom);
   syncVisible();
@@ -283,6 +284,16 @@ function pruneHeld(): void {
     if (layout) kept[id] = layout;
   }
   if (Object.keys(kept).length !== Object.keys(held).length) heldLayouts.set(kept);
+}
+
+/** Drops `id`'s parked canvas: it is the one being shown. */
+function unpark(id: string): void {
+  const held = heldLayouts();
+  if (held[id]) {
+    const { [id]: _shown, ...rest } = held;
+    heldLayouts.set(rest);
+  }
+  heldOrder = heldOrder.filter((row) => row !== id);
 }
 
 /**

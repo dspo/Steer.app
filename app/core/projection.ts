@@ -152,13 +152,32 @@ export function groupFrames(boxes: TabBarBox[], barHeight: number): GroupFrame[]
 }
 
 /**
+ * The groups of the canvases put aside, at the canvas's own size: a parked
+ * sheet keeps the place it had, so coming back to its canvas finds it where
+ * it was (no travel to place) and the frame stays inside its group.
+ */
+export function parkedGroups(
+  held: Record<string, DockAreaLayout>,
+  width: number,
+  height: number,
+  barHeight: number,
+): GroupFrame[] {
+  const groups: GroupFrame[] = [];
+  for (const canvas of Object.values(held)) {
+    for (const group of groupFrames(tabBarBoxes(canvas, width, height, null), barHeight)) groups.push(group);
+  }
+  return groups;
+}
+
+/**
  * Where every sheet sits: the canvas's own groups first, then — parked, so
- * they stay mounted — the sheets of the canvases put aside. A parked sheet
- * has no place to be: it keeps the canvas's area and is not shown.
+ * they stay mounted — the sheets of the canvases put aside, each in the place
+ * it had. A parked sheet is not shown, and only ever slides if its canvas
+ * comes back with another tab displayed.
  */
 export function sheetFrames(
   onScreen: GroupFrame[],
-  parked: string[],
+  parked: GroupFrame[],
   width: number,
   height: number,
 ): SheetFrame[] {
@@ -185,22 +204,24 @@ export function sheetFrames(
       });
     });
   }
-  for (const id of parked) {
-    if (seen.has(id)) continue;
-    seen.add(id);
-    frames.push({
-      id,
-      group: id,
-      index: 0,
-      place: 0,
-      x: 0,
-      y: 0,
-      width,
-      height,
-      offset: 0,
-      shown: false,
-      onScreen: false,
-      near: false,
+  for (const group of parked) {
+    group.panels.forEach((id, index) => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      frames.push({
+        id,
+        group: group.key,
+        index,
+        place: index - group.active,
+        x: group.x,
+        y: group.y,
+        width: group.width,
+        height: group.height,
+        offset: (index - group.active) * group.width,
+        shown: false,
+        onScreen: false,
+        near: false,
+      });
     });
   }
   return frames;

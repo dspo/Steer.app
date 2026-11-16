@@ -3,6 +3,7 @@ import type { DockAreaLayout } from "../core/dock";
 import {
   groupFrames,
   openSheetIds,
+  parkedGroups,
   sheetFrames,
   tabBarBoxes,
   type SheetFrame,
@@ -40,9 +41,10 @@ export function SheetHost(props: {
   const groups = () =>
     groupFrames(tabBarBoxes(props.layout, props.width, props.height, props.zoomed), BAR);
   const ids = () => openSheetIds(props.layout, props.held);
+  const parked = () => parkedGroups(props.held, props.width, props.height, BAR);
   const frames = computed(() => {
     const byId = new Map<string, SheetFrame>();
-    for (const frame of sheetFrames(groups(), ids(), props.width, props.height)) byId.set(frame.id, frame);
+    for (const frame of sheetFrames(groups(), parked(), props.width, props.height)) byId.set(frame.id, frame);
     return byId;
   });
   // The displayed sheets paint last, over the ones sliding beside them: the
