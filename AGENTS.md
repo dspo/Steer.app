@@ -30,7 +30,7 @@ Zu（祖冲之）是 coding agent 的 macOS 桌面工作台：nsh（TSX/AppKit�
 - 分层门禁：`node script/check-layers.mjs`
 - Rust 门禁（两个 workspace **各跑一遍**）：在 `native/` 与 `native/manox/` 里分别
   `cargo fmt --all --check && cargo clippy --all-targets -- -D warnings`
-- manox 门禁：`ZU_MANOX_GATE=1 nsh test app/manox.test.ts app/manox.ui.test.tsx` —
+- manox 门禁：`ZU_MANOX_GATE=1 nsh test app/tests/manox.test.ts app/tests/manox.ui.test.tsx` —
   **不带该变量断言静默跳过**，裸跑绿 ≠ 跑过
 - pi-harness 自检：`cd pi-harness && bun run check-version && bun test`
 - `ZU_SKIP_LIVE=1` = CI 口径：跳过 live 模型/LSP 与 acp-load-probe

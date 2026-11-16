@@ -15,9 +15,11 @@ import { stubCommandAt } from "../fixtures/stub-command";
 //
 // The stub's path rides `host.params` — an app VM's `import.meta.url` is no
 // file path, so an entry cannot locate repo files itself; the test (whose
-// module URLs are real) hands it over. This entry lives at the app root, not
-// `fixtures/`: the bundler ships an entry's imported files from the entry's
-// own directory, and the app graph reaches `assets/` — outside `fixtures/`.
+// module URLs are real) hands it over. A subdirectory entry needs nothing
+// special: the bundler locates the app by walking up from the entry's own
+// directory to `nsh.json`, so the theme and the `assets/` it ships resolve
+// the same from `tests/` as from the root — the entry's position is
+// irrelevant.
 const stubPath = (host.params as { acpStub?: string } | null)?.acpStub;
 if (stubPath) {
   setAcpCommandOverride(stubCommandAt(stubPath, { STUB_FILE_REPLAY: "1" }));

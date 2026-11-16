@@ -210,7 +210,7 @@ t("the archived bit is the folded IsArchived flag", () => {
  * MANOX_HOME for this run) and waits for the turn to settle complete.
  * Skipped by default — every other gate here is credential-free.
  *
- *   MANOX_RUN_LIVE=1 nsh test app/manox.test.ts
+ *   MANOX_RUN_LIVE=1 nsh test app/tests/manox.test.ts
  */
 ((live && gated) ? t : test.skip)("a live model turn streams a response and settles", async () => {
   dispatchAction(chatUri, {
