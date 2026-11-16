@@ -91,8 +91,8 @@ function manox(): void {
   // assertions silently skip, and a bare `nsh test app` looks green while
   // the fold reconciliation, panic recovery and sheet gate never ran. The
   // paths are repo-root-relative, like the stage always ran them.
-  run([nsh, "test", "app/manox.test.ts"], ROOT, { ZU_MANOX_GATE: "1" });
-  run([nsh, "test", "app/manox.ui.test.tsx"], ROOT, { ZU_MANOX_GATE: "1" });
+  run([nsh, "test", "app/tests/manox.test.ts"], ROOT, { ZU_MANOX_GATE: "1" });
+  run([nsh, "test", "app/tests/manox.ui.test.tsx"], ROOT, { ZU_MANOX_GATE: "1" });
 }
 
 function harness(): void {

@@ -13,7 +13,8 @@ Zu（祖冲之）是 coding agent 的 macOS 桌面工作台：nsh（TSX/AppKit�
 - `native/` — Rust `zu/native`（acp/fs/git/lsp/pty/state/picker/instance/pimodels 各域）
 - `native/manox/` — **独立 cargo workspace**：manox AHP 宿主半边
 - `pi-harness/` — app 内置的 pi 引擎（pin pi 1.5.0，`bun build --compile` 出 `dist/pi-acp`）
-- `script/` — `tasks.ts`（唯一入口）、`check-layers.mjs`（分层门禁）、`bundle-mac.sh`
+- `script/` — `tasks.ts`（dev/check/test/evidence/bundle 入口）、`ci.ts`（CI 六个 stage 的门禁体）、
+  `check-layers.mjs`（分层门禁）、`lib/toolchain.ts`（共享 nsh 发现/校验/spawn 纪律）
 - `.agents/skills/` — vendored 技能（nsh、nsh-design-guides），来源锁定在 `skills-lock.json`（勿手改）；
   `agent/` 是本地构建产物目录，已 gitignore，不是它
 - `docs/` — `architecture.md`（入口）、`decisions.md`（Q1–Q107 决策台账）、`DESIGN.md`（视觉规格）、
@@ -27,10 +28,11 @@ Zu（祖冲之）是 coding agent 的 macOS 桌面工作台：nsh（TSX/AppKit�
 - `bun run dev` — 开发实例；默认端口 8810，状态目录 `~/.pi/zu-dev`（与已安装的 Zu.app 可同时运行）
 - `bun run check` — `nsh check app`：TSX **唯一类型检查口** + 逐 crate cargo check
 - `bun run test` — `nsh test .`（app/ 下 headless 测试）
-- 分层门禁：`node script/check-layers.mjs`
+- 分层门禁：`bun script/check-layers.mjs`
 - Rust 门禁（两个 workspace **各跑一遍**）：在 `native/` 与 `native/manox/` 里分别
   `cargo fmt --all --check && cargo clippy --all-targets -- -D warnings`
-- manox 门禁：`ZU_MANOX_GATE=1 nsh test app/manox.test.ts app/manox.ui.test.tsx` —
+- manox 门禁（`nsh test` 只收单个路径，两条分开跑）：`ZU_MANOX_GATE=1 nsh test app/tests/manox.test.ts`
+  （折叠对账/panic 恢复）、`ZU_MANOX_GATE=1 nsh test app/tests/manox.ui.test.tsx`（sheet 门禁）—
   **不带该变量断言静默跳过**，裸跑绿 ≠ 跑过
 - pi-harness 自检：`cd pi-harness && bun run check-version && bun test`
 - `ZU_SKIP_LIVE=1` = CI 口径：跳过 live 模型/LSP 与 acp-load-probe

@@ -88,9 +88,9 @@ cd native && cargo clippy --all-targets -- -D warnings
 cd native/manox && cargo clippy --all-targets -- -D warnings
 nsh test app                                    # 全量（ZU_SKIP_LIVE=1 跳过 live 模型/LSP 与真 harness 探针
                                                 # acp-load-probe；其余 harness 触点走 stub 替身）
-ZU_MANOX_GATE=1 nsh test app/manox.test.ts      # manox 折叠对账/panic 恢复（hermetic）
-MANOX_RUN_LIVE=1 ZU_MANOX_GATE=1 nsh test app/manox.test.ts   # 真内核 live turn（可选）
-ZU_MANOX_GATE=1 nsh test app/manox.ui.test.tsx  # manox sheet 门禁
+ZU_MANOX_GATE=1 nsh test app/tests/manox.test.ts      # manox 折叠对账/panic 恢复（hermetic）
+MANOX_RUN_LIVE=1 ZU_MANOX_GATE=1 nsh test app/tests/manox.test.ts   # 真内核 live turn（可选）
+ZU_MANOX_GATE=1 nsh test app/tests/manox.ui.test.tsx  # manox sheet 门禁
 bun script/check-layers.mjs                     # 依赖门禁（模块/域/主干）
 bun script/tasks.ts bundle                      # 打包冒烟（Helpers/pi-acp 断言）
 ```

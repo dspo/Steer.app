@@ -228,7 +228,7 @@ switch (task) {
     const nsh = nshBinary();
     checkNsh(nsh);
     mkdirSync(join(APP, "docs", "evidence"), { recursive: true });
-    run([nsh, "test", "containers.ui.test.tsx", "--target", "macos", "--filter", "containers switch"], APP);
+    run([nsh, "test", "tests/containers.ui.test.tsx", "--target", "macos", "--filter", "containers switch"], APP);
     break;
   }
   case "bundle": {

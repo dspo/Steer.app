@@ -470,8 +470,8 @@ app/modules/pi/
 
 代码级（hermetic）已覆盖：
 
-- [x] 同一会话连续多轮不换进程（`app/acp.test.ts`）。
-- [x] `set_config_option`/`set_mode` 到达 distro 并回传新状态（`pi-harness` + `app/acp.test.ts`）。
+- [x] 同一会话连续多轮不换进程（`app/tests/acp.test.ts`）。
+- [x] `set_config_option`/`set_mode` 到达 distro 并回传新状态（`pi-harness` + `app/tests/acp.test.ts`）。
 - [x] 服务端→客户端 `session/request_permission`、`elicitation/create` 往返。
 - [x] `session/resume` 不重放历史；`session/close` 释放会话。
 - [x] `available_commands_update` 在 new/load/resume 的响应前到达，客户端取到命令表。
@@ -492,7 +492,7 @@ app/modules/pi/
 - [x] 审批放行/拒绝：真实 `bash` 调用；允许的文件存在，拒绝的文件不存在，两轮都 `end_turn`。
 - [x] 扩展 UI：confirm（接受/拒绝）、select、input 的真实答案都回到扩展。
 - [x] 子代理：真实模型 `scout` settle（7 行转录）；`worker` abort 被接受；重启后 captain resume 仍能读同一 run 与转录。
-- [x] 项目信任：resolver 的单测 + `app/trust.ui.test.tsx` 验证会话存在前的对话框与接受/拒绝回答。
+- [x] 项目信任：resolver 的单测 + `app/tests/trust.ui.test.tsx` 验证会话存在前的对话框与接受/拒绝回答。
 - [x] kill 进程：`LIVE_CRASH_ONLY=1` 下 SIGKILL 中途 turn 拒绝，同 session resume 后回答。
 - [x] 进程收尾：`session/close` + stdin EOF 后无 `pi-acp` 残留；容器归档/退出 app 调用同一组
   `closeContainerSessions`/`closeAllSessions`（GUI 菜单未手动驱动）。
@@ -621,7 +621,7 @@ model runtime。`pi-harness` 是 SDK 嵌入，原来只注册了权限门和 dis
 
 - live：`bun run acceptance:live` 新增 codemode 调用（返回 42）与 ACP MCP `echo` 工具；
   既有模型/档位/resume/审批/compact/扩展 UI/子代理/崩溃恢复全绿。
-- UI：`app/trust.ui.test.tsx` 验证信任对话框在会话存在前出现，接受/拒绝都返回真实答案。
+- UI：`app/tests/trust.ui.test.tsx` 验证信任对话框在会话存在前出现，接受/拒绝都返回真实答案。
 - 漂移/loader/trust/MCP 单测：`bun test src/pi` 全绿。
 
 ### 16.6 非目标
