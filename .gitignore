@@ -9,5 +9,5 @@ pi-harness/dist/
 agent/
 skills-lock.json
 
-# Packaged artifacts from script/bundle-mac.sh
+# Packaged artifacts from bun script/tasks.ts bundle
 build/

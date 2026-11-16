@@ -6,6 +6,7 @@
     "dev": "bun script/tasks.ts dev",
     "check": "bun script/tasks.ts check",
     "test": "bun script/tasks.ts test",
-    "evidence": "bun script/tasks.ts evidence"
+    "evidence": "bun script/tasks.ts evidence",
+    "bundle": "bun script/tasks.ts bundle"
   }
 }
