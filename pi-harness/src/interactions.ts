@@ -207,8 +207,10 @@ export type AnswerDelivery = "live" | "late" | "none";
 /**
  * Session-level answer registry. Live waits resolve in-process; answers that
  * arrive after a restart (or for a turn that already ended) are injected back
- * into the conversation via `inject` and marked with a receipt entry so a
- * repeated delivery is a no-op.
+ * into the conversation via `inject`. Every delivered answer — live,
+ * superseded or late — leaves a `zu.ask.answer` receipt entry: the receipt is
+ * what retires an ask on restart (`pendingAsksOf` trusts nothing else) and
+ * what makes a repeated delivery a no-op.
  */
 export class AnswerRegistry {
   private readonly waiting = new Map<string, (response: unknown) => void>();
@@ -237,6 +239,11 @@ export class AnswerRegistry {
     const resolve = this.waiting.get(toolCallId);
     if (resolve) {
       this.waiting.delete(toolCallId);
+      // The receipt — not the ack toolResult — is what retires the ask on
+      // restart, so a live answer writes one too: without it the next open
+      // would re-seed an answered question as a card, and answering the card
+      // would late-inject the answer a second time.
+      this.manager.appendCustomEntry(ASK_ANSWER_TYPE, { toolCallId, response });
       resolve(response);
       return { delivered: "live" };
     }
@@ -257,14 +264,19 @@ export class AnswerRegistry {
 
   /**
    * The user typed their own next message: every live wait resolves with the
-   * supersede sentinel, and the tool answers with the pending ack. The
-   * announce entries stay — the parked call is now ack'd, so it drops out of
-   * `pending()` on its own.
+   * supersede sentinel, and the tool answers with the pending ack. Each
+   * superseded ask also gets a receipt — the ack alone does not retire it
+   * (`pendingAsksOf` trusts receipts only), and without one the next open
+   * would re-seed a question the user already skipped. The announce entries
+   * stay: history is not rewritten.
    */
   supersedeAll(): void {
-    const waiting = [...this.waiting.values()];
+    const waiting = [...this.waiting.entries()];
     this.waiting.clear();
-    for (const resolve of waiting) resolve(SUPERSEDE_RESPONSE);
+    for (const [toolCallId, resolve] of waiting) {
+      this.manager.appendCustomEntry(ASK_ANSWER_TYPE, { toolCallId, response: SUPERSEDE_RESPONSE });
+      resolve(SUPERSEDE_RESPONSE);
+    }
   }
 
   private hasReceipt(toolCallId: string): boolean {

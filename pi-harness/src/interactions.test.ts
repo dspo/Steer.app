@@ -181,7 +181,7 @@ describe("pendingAsksOf", () => {
 });
 
 describe("AnswerRegistry", () => {
-  test("answer resolves the live waiter", async () => {
+  test("answer resolves the live waiter and its receipt retires the ask", async () => {
     const manager = makeManager();
     appendUser(manager, "go");
     appendAssistantCalls(manager, [{ id: "tc12", name: "ask_user_question" }]);
@@ -193,9 +193,24 @@ describe("AnswerRegistry", () => {
     });
     const delivered: unknown[] = [];
     registry.announce("tc12", { question: "which?" }, (response) => delivered.push(response));
+    // The parked shape: the turn ended with the ack toolResult, so the ask
+    // is pending — and would re-seed as a card after a restart.
+    repairDanglingInteractiveCalls(manager, FIXTURE_TOOLS);
+    expect(registry.pending().map((ask) => ask.toolCallId)).toEqual(["tc12"]);
     const reply = await registry.answer("tc12", { kind: "option", labels: ["postgres"] });
     expect(reply).toEqual({ delivered: "live" });
     expect(delivered).toEqual([{ kind: "option", labels: ["postgres"] }]);
+    // The receipt — not the ack — is what retires the ask; without it the
+    // next open would re-seed an answered question and answering the card
+    // would late-inject the answer a second time.
+    const receipts = manager
+      .getBranch()
+      .filter((entry) => entry.type === "custom" && entry.customType === ASK_ANSWER_TYPE);
+    expect(receipts.length).toBe(1);
+    expect(receipts[0]!.data).toEqual({ toolCallId: "tc12", response: { kind: "option", labels: ["postgres"] } });
+    expect(registry.pending()).toEqual([]);
+    const reopened = SessionManager.open(manager.getSessionFile(), join(manager.getSessionFile(), ".."));
+    expect(pendingAsksOf(reopened, FIXTURE_TOOLS)).toEqual([]);
   });
 
   test("a late answer injects once and writes one receipt", async () => {
@@ -238,17 +253,36 @@ describe("AnswerRegistry", () => {
     expect(await registry.answer("tc-absent", {})).toEqual({ delivered: "none" });
   });
 
-  test("supersedeAll resolves every waiter with the sentinel", async () => {
+  test("supersedeAll resolves every waiter with the sentinel and retires the asks", async () => {
     const manager = makeManager();
+    appendUser(manager, "go");
+    appendAssistantCalls(manager, [
+      { id: "tc14", name: "ask_user_question" },
+      { id: "tc15", name: "ask_user_question" },
+    ]);
     const registry = new AnswerRegistry(manager, FIXTURE_TOOLS, { inject: async () => {}, log: () => {} });
     const resolved: unknown[] = [];
-    registry.announce("tc14", {}, (response) => resolved.push(response));
-    registry.announce("tc15", {}, (response) => resolved.push(response));
+    registry.announce("tc14", { question: "a?" }, (response) => resolved.push(response));
+    registry.announce("tc15", { question: "b?" }, (response) => resolved.push(response));
+    // Parked: both asks would re-seed as cards after a restart.
+    repairDanglingInteractiveCalls(manager, FIXTURE_TOOLS);
+    expect(registry.pending().length).toBe(2);
     registry.supersedeAll();
     expect(resolved).toEqual([SUPERSEDE_RESPONSE, SUPERSEDE_RESPONSE]);
+    // Each skipped ask leaves a receipt: the ack alone does not retire it,
+    // and without receipts the next open would re-seed questions the user
+    // already answered themselves.
+    const receipts = manager
+      .getBranch()
+      .filter((entry) => entry.type === "custom" && entry.customType === ASK_ANSWER_TYPE);
+    expect(receipts.length).toBe(2);
+    expect(registry.pending()).toEqual([]);
+    const reopened = SessionManager.open(manager.getSessionFile(), join(manager.getSessionFile(), ".."));
+    expect(pendingAsksOf(reopened, FIXTURE_TOOLS)).toEqual([]);
     // Superseding again is a no-op; a fresh wait still works.
-    registry.announce("tc16", {}, (response) => resolved.push(response));
+    const fresh: unknown[] = [];
+    registry.announce("tc16", {}, (response) => fresh.push(response));
     registry.supersedeAll();
-    expect(resolved.length).toBe(3);
+    expect(fresh).toEqual([SUPERSEDE_RESPONSE]);
   });
 });

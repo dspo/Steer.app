@@ -881,21 +881,25 @@ UI 重启后问题卡片消失；用户等得不耐烦自己打字时，卡住�
 
 - `AnswerRegistry`：`announce(session, toolCallId, args)` 记 pending；
   `answer(toolCallId, answer)` 分三路——
-  - **live**：有 waiter，进程内 resolve，工具调用当回合返回，写 `zu.ask.answer` receipt；
+  - **live**：有 waiter，进程内 resolve，工具调用当回合返回，同样写 `zu.ask.answer` receipt；
   - **late**：无 waiter（进程/回合已死），经 `hooks.inject` → `session.sendCustomMessage({
     customType: "zu.tool-response", content: [答案文本 block], display: true,
     details: { toolCallId, response } }, { triggerTurn: true })`——注入用户可见消息并唤醒
     模型响应答案，同样补 receipt；
   - **none**：既无 waiter 也非 pending（未知 toolCallId），上层报错。
+  **回执是 ask 退出 pending 的唯一机制**：`pendingAsksOf` 只认 `zu.ask.answer` receipt
+  （ack toolResult 单独不退休 ask），live/supersede/late 三条路都写，重启后已答/已
+  跳过的问题不会被重新种卡，重复投递靠 receipt 幂等。
 - `pending(toolCallId)` / `supersedeAll()`：pending 集合供 `_zu/ask/pending` 拉取；
   用户直接输入时 `supersedeAll()` 以 `{ action: "supersede" }` 哨兵 resolve 所有 live
-  waiter，工具侧见哨兵即答 pending ack（announce entry 保留：ack 之后 ask 自动退出
-  pending，历史不失真）。`prompt()` 开头固定跑 `supersedeAll()`——用户的话优先于悬着的问题。
+  waiter，工具侧见哨兵即答 pending ack，同时给每个被跳过的 ask 写 receipt（否则下次
+  open 会把用户已跳过的问题重新种成卡片）。announce entry 保留：历史不改写。
+  `prompt()` 开头固定跑 `supersedeAll()`——用户的话优先于悬着的问题。
 
 ### 20.4 ACP 面（`app.ts` / `host.ts` / `sessions.ts`）
 
 - harness method：`_zu/ask/pending`（按 sessionId 列 pending，`{ asks: [{ toolCallId,
-  args }] }`；无 mailbox 返回 `{}`）；`_zu/ask/answer`（投递答案；`delivered` 三态
+  args }] }`；无 mailbox 返回 `{asks: []}`）；`_zu/ask/answer`（投递答案；`delivered` 三态
   live/late/none，`none` 时 codedError(invalidParams, "unknown_ask")）。
   两个 method 都在 app.ts 的头部 doc 注释登记。
 - app 侧 `AskRequest`/`AskResponse`（`modules/pi/acp/host.ts`）：`SessionHandlers` 加
