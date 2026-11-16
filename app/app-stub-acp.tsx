@@ -1,5 +1,6 @@
 import { host } from "nsh";
 import { setAcpCommandOverride } from "./modules/pi/acp/acp";
+import { stubCommandAt } from "./fixtures/stub-command";
 
 // The app under test with a scripted harness. `nsh test app` must pass on a
 // machine with no built pi harness — CI never builds one (the compile target
@@ -19,11 +20,7 @@ import { setAcpCommandOverride } from "./modules/pi/acp/acp";
 // own directory, and the app graph reaches `assets/` — outside `fixtures/`.
 const stubPath = (host.params as { acpStub?: string } | null)?.acpStub;
 if (stubPath) {
-  setAcpCommandOverride({
-    command: "/bin/sh",
-    args: [stubPath],
-    env: { STUB_FILE_REPLAY: "1" },
-  });
+  setAcpCommandOverride(stubCommandAt(stubPath, { STUB_FILE_REPLAY: "1" }));
 }
 
 // The real entry, imported only after the override is in place: a static

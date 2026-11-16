@@ -1,10 +1,10 @@
 import { expect, open, test } from "nsh/test";
+import { stubPath } from "./fixtures/stub-command";
 
 // The three cases that mint through the Hero's submit hand the fixture the
 // stub's path over `host.params` (an app VM cannot locate repo files): CI
 // never builds `dist/pi-acp` for the mint's spawn to resolve.
-const STUB = new URL("./fixtures/acp-stub-agent.sh", import.meta.url).pathname;
-const acpStubHost = { host: { params: { acpStub: STUB } } };
+const acpStubHost = { host: { params: { acpStub: stubPath() } } };
 
 /** Writes the picture when the run draws the app (`nsh test --target macos`). */
 async function shot(app: { screenshot: (path?: string | null) => Promise<Uint8Array> }, name: string): Promise<void> {

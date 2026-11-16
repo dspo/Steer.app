@@ -2,6 +2,7 @@ import { expect, open, test } from "nsh/test";
 import { containers, loadContainers } from "./core/containers";
 import { createContainer } from "./modules/pi/container";
 import { setAcpCommandOverride } from "./modules/pi/acp/acp";
+import { stubCommand, stubPath } from "./fixtures/stub-command";
 import { resetStateCache } from "./domains/state";
 import { Fs, State } from "zu/native";
 
@@ -17,8 +18,8 @@ resetStateCache();
 // resolve, and the assertions are registry-side, not transcript-side. The
 // id comes back unique per spawn: the file mints a and b, and a fixed
 // session id would collapse both into one `pi:<sessionId>` registry row.
-const STUB = new URL("./fixtures/acp-stub-agent.sh", import.meta.url).pathname;
-setAcpCommandOverride({ command: "/bin/sh", args: [STUB], env: { STUB_UNIQUE_SESSION: "1" } });
+const STUB = stubPath();
+setAcpCommandOverride(stubCommand({ STUB_UNIQUE_SESSION: "1" }));
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 

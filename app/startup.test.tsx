@@ -6,6 +6,7 @@ import { openPath, sessionIdsOfContainer } from "./modules/pi/container";
 import { setAcpCommandOverride } from "./modules/pi/acp/acp";
 import { createProject, projects } from "./core/projects";
 import { messages, refreshSessions } from "./modules/pi/sessions";
+import { stubCommand, stubPath } from "./fixtures/stub-command";
 import { resetStateCache } from "./domains/state";
 
 // §2.1-2's acceptance, in the post-cutover world: the app opens on the
@@ -22,8 +23,8 @@ let stateDir = `/tmp/zu-s21-2-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 // build CI never makes, and `STUB_FILE_REPLAY` streams the fixture file's
 // own rows — what the real distro does — so the "startup marker alpha"
 // assertions read the file, not canned text.
-const STUB = new URL("./fixtures/acp-stub-agent.sh", import.meta.url).pathname;
-setAcpCommandOverride({ command: "/bin/sh", args: [STUB], env: { STUB_FILE_REPLAY: "1" } });
+const STUB = stubPath();
+setAcpCommandOverride(stubCommand({ STUB_FILE_REPLAY: "1" }));
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 

@@ -7,6 +7,7 @@ import { error as sessionStoreError, messages, refreshSessions, viewFor } from "
 import { resetStateCache } from "./domains/state";
 import { copy, shellCopyLocale } from "./ui/copy";
 import { K, t } from "./ui/i18n";
+import { stubCommand, stubPath } from "./fixtures/stub-command";
 
 // S2's acceptance, post-cutover: a container whose session has a
 // conversation shows the transcript when its row is pressed; an empty one
@@ -27,8 +28,8 @@ resetStateCache();
 // build CI never makes, and `STUB_FILE_REPLAY` streams the fixture file's own
 // rows — what the real distro does — so the "hello A"/"answer A" assertions
 // read the file, not canned text.
-const STUB = new URL("./fixtures/acp-stub-agent.sh", import.meta.url).pathname;
-setAcpCommandOverride({ command: "/bin/sh", args: [STUB], env: { STUB_FILE_REPLAY: "1" } });
+const STUB = stubPath();
+setAcpCommandOverride(stubCommand({ STUB_FILE_REPLAY: "1" }));
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 

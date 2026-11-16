@@ -11,6 +11,7 @@ import {
 import { resetStateCache } from "./domains/state";
 import { setAcpCommandOverride } from "./modules/pi/acp/acp";
 import { createContainer } from "./modules/pi/container";
+import { stubCommand } from "./fixtures/stub-command";
 
 const stateDir = `/tmp/zu-m4-state-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 State.setStateDir(stateDir);
@@ -22,8 +23,7 @@ const ROOT_B = "/Users/chenzhongrun/projects/dspo/nsh-pi";
 // `dist/pi-acp` — a developer build CI never makes — like the transport
 // tests do. The id comes back unique per spawn: this file mints several
 // containers, and a fixed session id would collapse their registry rows.
-const STUB = new URL("./fixtures/acp-stub-agent.sh", import.meta.url).pathname;
-setAcpCommandOverride({ command: "/bin/sh", args: [STUB], env: { STUB_UNIQUE_SESSION: "1" } });
+setAcpCommandOverride(stubCommand({ STUB_UNIQUE_SESSION: "1" }));
 
 test("a user project has multiple roots and exactly one primary", async () => {
   const created = await createProject("", [{ path: ROOT_A, primary: true }, { path: ROOT_B }]);

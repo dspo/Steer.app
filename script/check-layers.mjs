@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * The sheet-module dependency gate (docs/sheet-module-ARCHITECTURE.md §11).
  *
@@ -14,7 +14,7 @@
  * allow-list entry that no longer exists is a failure too (it must be deleted
  * with the code it excused).
  *
- * Usage: node script/check-layers.mjs [--list]
+ * Usage: bun script/check-layers.mjs [--list]
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";

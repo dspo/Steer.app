@@ -22,7 +22,7 @@
 | Pi × ACP 会话运行时 | A0–F0 落地：一会话一持久 `pi-acp`、config/mode/resume/close、usage/commands/info/compaction、permission/elicitation、扩展 UI、子代理 `_zu/subagents/*`、sheet/容器/退出生命周期；协议/宿主测试补齐 |
 
 门禁：`nsh check app` ✓、`check-layers` ✓、`nsh test app` 221 用例 207 通过 / 14 skip、
-`pi-harness bun test` 56 ✓、`bun run smoke` ✓、`script/bundle-mac.sh` ✓。
+`pi-harness bun test` 56 ✓、`bun run smoke` ✓、`bun script/tasks.ts bundle` ✓。
 
 真机 live 验收已完成（2026-11-13，`pi-harness/scripts/acp-live-acceptance.ts`，记录见
 [evidence/pi-acp-live-2026-11-13.md](evidence/pi-acp-live-2026-11-13.md)）。剩余只有发布前的打包真机启动。
@@ -37,8 +37,8 @@
 
 | 阶段 | 产出 | 证据 |
 |---|---|---|
-| S0 | `contracts/module.ts`、`app/core/registry.ts`、`registerModule/startModules`；home/browser 先注册 | `sheet-modules.test.tsx`；`check-layers.mjs` |
-| S1 | `app/domains/`（fs/git/lsp/pty/state/pimodels/acp/manox/picker/instance）；`zu/native` 只在此出现 | `check-layers.mjs` 零违例 |
+| S0 | `contracts/module.ts`、`app/core/registry.ts`、`registerModule/startModules`；home/browser 先注册 | `sheet-modules.test.tsx`；`bun script/check-layers.mjs` |
+| S1 | `app/domains/`（fs/git/lsp/pty/state/pimodels/acp/manox/picker/instance）；`zu/native` 只在此出现 | `bun script/check-layers.mjs` 零违例 |
 | S2 | files/git/terminal/problems 模块化；`canvas/sheets.tsx` 只剩 registry 查找 + 未知占位 | `nsh test app` 全绿 |
 | S3 | pi/manox 模块化；容器去 `kind`/`sessions`；通知按 sheet id；旧 wire 与 `pi-engine` 删除 | 同上；pi-harness 36 单测、manox 门禁绿 |
 
@@ -91,8 +91,8 @@ nsh test app                                    # 全量（ZU_SKIP_LIVE=1 跳过
 ZU_MANOX_GATE=1 nsh test app/manox.test.ts      # manox 折叠对账/panic 恢复（hermetic）
 MANOX_RUN_LIVE=1 ZU_MANOX_GATE=1 nsh test app/manox.test.ts   # 真内核 live turn（可选）
 ZU_MANOX_GATE=1 nsh test app/manox.ui.test.tsx  # manox sheet 门禁
-node script/check-layers.mjs                    # 依赖门禁（模块/域/主干）
-script/bundle-mac.sh                            # 打包冒烟（Helpers/pi-acp 断言）
+bun script/check-layers.mjs                     # 依赖门禁（模块/域/主干）
+bun script/tasks.ts bundle                      # 打包冒烟（Helpers/pi-acp 断言）
 ```
 
 依赖门禁（S0 起成为 `nsh check` 的前置）：

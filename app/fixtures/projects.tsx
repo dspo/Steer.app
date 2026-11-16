@@ -6,6 +6,7 @@ import { panelIds } from "../core/dock";
 import { containerProject, membership, projects, setProjectTransport } from "../core/projects";
 import { seedSession } from "../modules/pi/sessions";
 import { setAcpCommandOverride } from "../modules/pi/acp/acp";
+import { stubCommandAt } from "./stub-command";
 import { defaultLayoutForSheets } from "../core/dock";
 import { setFolderPicker } from "../domains/picker";
 import { registerAllModules } from "../modules/register-all";
@@ -170,7 +171,7 @@ setProjectTransport(projectTransport);
 // run with no override at all.
 const stubPath = (host.params as { acpStub?: string } | null)?.acpStub;
 if (stubPath) {
-  setAcpCommandOverride({ command: "/bin/sh", args: [stubPath] });
+  setAcpCommandOverride(stubCommandAt(stubPath));
 }
 mount(() => (
   <View class="flex-1" style={{ flexDirection: "column", minHeight: 0 }}>

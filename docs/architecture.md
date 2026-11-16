@@ -107,7 +107,8 @@ Zu.app（nsh TSX / AppKit）
 
 当前声明：`webview.hosts: ["*"]`（浏览器）、`notifications: true`、`statusBar: true`、
 `openUrl.schemes: ["vscode"]`、`process.env` 白名单（`ZU_PORT`、`ZU_STATE_DIR`、`MANOX_RUN_LIVE`、
-`ZU_SKIP_LIVE`、`ZU_MANOX_GATE`）。旧引擎的回环网络能力已随 wire 删除。
+`ZU_SKIP_LIVE`、`ZU_MANOX_GATE`、`BUN`：fixtures 起 JS 运行时的入口只认这一个环境变量，未授予则
+`js-runtime.ts` 永远走默认值）。旧引擎的回环网络能力已随 wire 删除。
 
 **威胁模型**：能力面保护的是 **UI/TSX 代码**被攻破时的爆炸半径；**agent 的动作不受它约束**——
 harness 的 bash/工具仍以用户权限运行，由各自引擎的权限模型负责。不要把「最小能力面」读成「agent 沙箱」。
@@ -157,7 +158,7 @@ UI 不持 fs / process：文件读写只经 `zu/fs`，进程只经 native 域。
 ### 3.8 分发与构建
 
 - **构建**：`pi-harness/package.json` 的 `build` 产出 `dist/pi-acp` 与两个 WASM 资产（photon/QuickJS）。
-- **打包**：`script/bundle-mac.sh` 把 `.app`、`Contents/Helpers/pi-acp`（含两个 WASM）与 ad-hoc 签名串起来，
+- **打包**：`bun script/tasks.ts bundle` 把 `.app`、`Contents/Helpers/pi-acp`（含两个 WASM）与 ad-hoc 签名串起来，
   并断言三个文件都在。
 - **签名**：nsh 只做 ad-hoc；正式发布需 Developer ID + 嵌套签名 + JIT entitlement + 公证（未做，M13）。
 - **更新**：`nsh/updater` 未配置（无 release/公钥）；`updates.ts` 诚实区分 development/未配置/可检查，
@@ -178,7 +179,7 @@ App.tsx（装配点：startModules() + 跟随系统语言 + lifecycle）
 ```
 
 依赖自上而下：`modules → core/domains/ui`，`shell → core/ui`，`core`/`shell` 不 import 模块；
-装配点 `App.tsx` 是唯一 import 模块的地方。规则由 `script/check-layers.mjs` 守卫。
+装配点 `App.tsx` 是唯一 import 模块的地方。规则由 `bun script/check-layers.mjs` 守卫。
 
 ### 4.2 panel 与 sheet
 
