@@ -107,7 +107,8 @@ Zu.app（nsh TSX / AppKit）
 
 当前声明：`webview.hosts: ["*"]`（浏览器）、`notifications: true`、`statusBar: true`、
 `openUrl.schemes: ["vscode"]`、`process.env` 白名单（`ZU_PORT`、`ZU_STATE_DIR`、`MANOX_RUN_LIVE`、
-`ZU_SKIP_LIVE`、`ZU_MANOX_GATE`）。旧引擎的回环网络能力已随 wire 删除。
+`ZU_SKIP_LIVE`、`ZU_MANOX_GATE`、`BUN`：fixtures 起 JS 运行时的入口只认这一个环境变量，未授予则
+`js-runtime.ts` 永远走默认值）。旧引擎的回环网络能力已随 wire 删除。
 
 **威胁模型**：能力面保护的是 **UI/TSX 代码**被攻破时的爆炸半径；**agent 的动作不受它约束**——
 harness 的 bash/工具仍以用户权限运行，由各自引擎的权限模型负责。不要把「最小能力面」读成「agent 沙箱」。
