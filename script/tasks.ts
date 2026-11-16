@@ -98,6 +98,12 @@ function bundle(outDir: string, installResult: boolean, openResult: boolean): vo
     }
   }
 
+  // Built-in extension skills are external assets like the WASM: bun compiles
+  // them into nothing. `skillsBase()` looks beside the executable first, so the
+  // tree must land next to pi-acp, not at the app root.
+  rmSync(join(helpers, "skills"), { recursive: true, force: true });
+  cpSync(join(HARNESS, "skills"), join(helpers, "skills"));
+
   // The harness and its WASM are part of the app, not an optional add-on: a
   // self-update replaces the whole .app, so an update archive that leaves
   // Contents/Helpers out ships an app whose conversations cannot start. Fail
@@ -108,6 +114,17 @@ function bundle(outDir: string, installResult: boolean, openResult: boolean): vo
     }
   }
   console.log("✓ Contents/Helpers carries the pi harness and its WASM");
+
+  // Every skill the source tree ships must be in the bundle; a partial copy
+  // would disable one built-in extension's skill silently. The list is derived
+  // from the source, so adding `skills/todos/SKILL.md` needs no edit here.
+  const missingSkills = skillFiles(join(HARNESS, "skills")).filter(
+    (skill) => !existsSync(join(helpers, "skills", skill)),
+  );
+  if (missingSkills.length > 0) {
+    fail(`error: Contents/Helpers/skills is missing bundled skills:\n${missingSkills.join("\n")}`);
+  }
+  console.log("✓ Contents/Helpers/skills carries every built-in extension skill");
 
   console.log("→ ad-hoc signatures (nested: the sidecar, then the app)");
   run(["codesign", "--force", "--sign", "-", join(helpers, "pi-acp")], ROOT);
@@ -180,6 +197,18 @@ function dirSize(path: string): number {
   let total = 0;
   for (const entry of readdirSync(path)) total += dirSize(join(path, entry));
   return total;
+}
+
+/** Every `SKILL.md` under a skills tree, as slash paths relative to its root. */
+function skillFiles(root: string, prefix = ""): string[] {
+  if (!existsSync(root)) return [];
+  const found: string[] = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) found.push(...skillFiles(join(root, entry.name), relative));
+    else if (entry.isFile() && entry.name === "SKILL.md") found.push(relative);
+  }
+  return found;
 }
 
 function humanSize(bytes: number): string {

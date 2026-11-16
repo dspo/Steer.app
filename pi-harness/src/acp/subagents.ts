@@ -16,6 +16,7 @@ import { Type } from "typebox";
 import { createAgentSessionFromServices, parseFrontmatter, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createPiServices } from "../pi/services";
+import { zuStateDir } from "../settings";
 /** The subagent surface's own vocabulary (the app has no shared wire type
  * for these; they travel over the `_zu/subagents/*` extension methods). */
 export interface PlainMessage {
@@ -294,7 +295,7 @@ export class SubagentManager {
   ): Promise<void> {
     const entry = this.live.get(run.runId);
     if (!entry) return;
-    const dir = join(this.host.agentDir, "..", "zu", "subagents", captain.id);
+    const dir = join(zuStateDir(this.host.agentDir), "subagents", captain.id);
     mkdirSync(dir, { recursive: true });
     const parent = captain.manager.getSessionFile() ?? captain.path;
     const manager = resume && run.sessionPath
