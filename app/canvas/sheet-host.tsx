@@ -68,18 +68,19 @@ export function SheetHost(props: {
 function SheetSlot(props: { frame: () => SheetFrame }) {
   const frame = () => props.frame();
   const x = createAnimatedValue(frame().offset);
-  let width = frame().width;
+  let place = frame().place;
   effect(() => {
     const next = frame();
-    // A frame that only changed size (a window, a split) is placed, not
-    // slid: the tab the sheet is on did not change.
-    if (next.width !== width) {
-      width = next.width;
-      x.set(next.offset);
+    // A tab moved: the sheet slides (its neighbours move with it). A frame
+    // that only changed size — a window, a split, a group given another
+    // width — is placed, not slid: the tab the sheet is on did not change.
+    if (next.place !== place) {
+      place = next.place;
+      if (reduceMotion()) x.set(next.offset);
+      else void x.spring(next.offset, MOVE);
       return;
     }
-    if (reduceMotion()) x.set(next.offset);
-    else void x.spring(next.offset, MOVE);
+    x.set(next.offset);
   });
   return (
     <View
@@ -91,10 +92,12 @@ function SheetSlot(props: { frame: () => SheetFrame }) {
         width: frame().width,
         height: frame().height,
         overflow: "hidden",
-        // The displayed sheet, and the one beside it (which a turn of the tab
-        // strip draws as it leaves or arrives), are drawn; the rest keep
-        // their state unseen.
-        opacity: frame().shown || frame().near ? 1 : 0,
+        // The displayed sheet and its two neighbours are visible: a turn of
+        // the tab strip draws them as it leaves and arrives. Everything else
+        // is `visibility: hidden` — the engine skips it for paint, hits,
+        // keyboard focus and assistive technologies alike, so a parked sheet
+        // needs none of those fenced off by hand.
+        visibility: frame().shown || frame().near ? "visible" : "hidden",
         pointerEvents: frame().shown ? "auto" : "none",
       }}
     >

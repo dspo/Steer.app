@@ -44,6 +44,9 @@ export const layout = signal<DockAreaLayout>(defaultLayoutForSheets([]));
  * (`canvas/sheet-host.tsx`): a browser keeps its page, a terminal its screen.
  */
 export const heldLayouts = signal<Record<string, DockAreaLayout>>({});
+/** The scratch canvas's key in the put-aside map (`heldLayouts`). */
+export const SCRATCH_CANVAS = "scratch";
+
 /** The scratch canvas's layout: in memory only, like the canvas itself. */
 const scratchLayout = signal<DockAreaLayout>(defaultScratchLayout());
 /** The zoomed panel's id, or null (DockArea keeps zoom outside the layout). */
@@ -157,6 +160,12 @@ function stashScratch(): void {
 function showScratch(): void {
   activeContainerId.set(null);
   savedFor = null;
+  const held = heldLayouts();
+  if (held[SCRATCH_CANVAS]) {
+    const { [SCRATCH_CANVAS]: _active, ...rest } = held;
+    heldLayouts.set(rest);
+  }
+  heldOrder = heldOrder.filter((id) => id !== SCRATCH_CANVAS);
   layout.set(scratchLayout());
   zoomedPanel.set(null);
   syncVisible();
@@ -243,25 +252,49 @@ function activateCanvas(container: ContainerRecord, next: DockAreaLayout, zoom: 
   notifyContainerShown(container.id);
 }
 
-/** Drops the put-aside canvases of containers that are gone: a parked web
- * page must not keep running for a container nobody can open. */
+/**
+ * How many put-aside canvases stay mounted. Each holds live bodies — a web
+ * page keeps running, a terminal keeps reading its PTY — and the engine will
+ * not cull a web view for us (`nsh-core`'s cull refuses to). Past this many,
+ * the least recently shown container is dropped: its sheets unmount, and
+ * coming back reloads them from their stores (bounded, at the price of the
+ * oldest one's live state).
+ */
+const PARKED_CANVASES = 4;
+
+/** The parked canvases in the order they were last shown, oldest first. */
+let heldOrder: string[] = [];
+
+/** Drops the put-aside canvases of containers that are gone (and the oldest
+ * past `PARKED_CANVASES`): a parked web page must not keep running for a
+ * container nobody can open. */
 function pruneHeld(): void {
   const live = new Set(liveContainers().map((row) => row.id));
+  heldOrder = heldOrder.filter((id) => id === SCRATCH_CANVAS || live.has(id));
+  while (heldOrder.filter((id) => id !== SCRATCH_CANVAS).length > PARKED_CANVASES) {
+    const oldest = heldOrder.find((id) => id !== SCRATCH_CANVAS);
+    if (!oldest) break;
+    heldOrder = heldOrder.filter((id) => id !== oldest);
+  }
   const held = heldLayouts();
   const kept: Record<string, DockAreaLayout> = {};
-  let changed = false;
-  for (const [id, layout] of Object.entries(held)) {
-    if (live.has(id)) kept[id] = layout;
-    else changed = true;
+  for (const id of heldOrder) {
+    const layout = held[id];
+    if (layout) kept[id] = layout;
   }
-  if (changed) heldLayouts.set(kept);
+  if (Object.keys(kept).length !== Object.keys(held).length) heldLayouts.set(kept);
 }
 
-/** Puts the canvas being replaced aside, so its sheets stay mounted. */
+/**
+ * Puts the canvas being replaced aside, so its sheets stay mounted — the
+ * scratch canvas too, or a browser sheet on it would unmount on the way to a
+ * container and reload on the way back.
+ */
 function stashHeld(): void {
-  const current = activeContainerId();
-  if (!current) return; // the scratch canvas keeps its own (`scratchLayout`)
+  const current = activeContainerId() ?? SCRATCH_CANVAS;
   heldLayouts.set({ ...heldLayouts(), [current]: layout() });
+  heldOrder = [...heldOrder.filter((id) => id !== current), current];
+  pruneHeld();
 }
 
 /** Loads the registry and shows its active container (startup). */

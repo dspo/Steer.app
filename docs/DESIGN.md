@@ -120,21 +120,30 @@ nsh 里组件体只跑一次，行按 key 保留（`coding-guides.md` 的表）�
 现在：
 
 - `core/projection.ts`：纯数据。`tabBarBoxes` 给出每组的矩形，`groupFrames` 去掉 38pt 页签条，
-  `sheetFrames` 给出每个 sheet 的 `{ 矩形, offset, shown }`——`offset = (位置 − 显示中位置) × 组宽`。
+  `sheetFrames` 给出每个 sheet 的 `{ 矩形, offset, place, shown, near }`——
+  `offset = place × 组宽`，`place = 位置 − 显示中位置`。
 - `canvas/sheet-host.tsx`：**一个扁平列表**，`Each of={openSheetIds} key={id}`，覆盖活动画布与
-  被搁置画布的并集（`heldLayouts` 在切走时存下）。切页签、切容器、拖页签、分屏、zoom 都只改这些
-  sheet 的矩形与 offset，行的 key 不变，body 不重生：**浏览器页面不重载，终端不丢屏，对话不丢滚动位置**。
-- 每个 sheet 是一个裁到组内容框的 frame，body 在 frame 内按 offset 平移；不是 `shown` 的那页
-  `opacity: 0` + `pointerEvents: none`（frame 与内层都设，命中不吃）+
-  `accessibilityElementsHidden` + `focusable: false`。
+  被搁置画布的并集（`heldLayouts` 在切走时存下，**scratch 画布同样入库**——否则 scratch 上的浏览器页
+  切容器再回来照样重载）。并集最多留 `PARKED_CANVASES`（4）个画布，按最近显示淘汰最旧的：
+  常驻的内存与后台活动因此有界，代价是被淘汰的那个容器回来时从 store 重新加载。切页签、切容器、
+  拖页签、分屏、zoom 都只改这些 sheet 的矩形与 offset，行的 key 不变，body 不重生：
+  **浏览器页面不重载，终端不丢屏，对话不丢滚动位置**。
+- 每个 sheet 是一个裁到组内容框的 frame，body 在 frame 内按 offset 平移。**显示页与左右邻居
+  （`near`）是 `visible`**（滑动要画它们），其余是 `visibility: hidden`——引擎对它的处理覆盖绘制、
+  命中、键盘焦点与读屏（`view.rs` 的 `can_target`、access 的隐藏），停放的 sheet 因此不必再手工围栏。
+  邻居仍保留 `pointerEvents: none`：它们被 frame 裁掉，但布局仍在原位，命中测试按布局走。
 - 位移与药丸共用 `motion.move`（504 / 38）：一组页跟着药丸一起滑，旧页滑出、新页滑入。
-  窗口/分屏改变宽度时直接落位（`set`），不播动画——换的是尺寸，不是页签。
+  **按 `place` 判定**：`place` 变了才滑；只变尺寸（窗口、分屏、同宽度的布局变化）直接落位
+  （`set`）——换的是尺寸，不是页签。
 - 显示中的 sheet 最后绘制，滑动途中按它仍然是命中的那一页。
 
 层序：`SheetHost` 在 `DockArea` **之后**（拿到命中）、`+` 之前；`DockArea` 的内容框是一个洞
 （`pointerEvents: none`，不铺底色），空画布的空态自己 `pointerEvents: auto`。页签条与轨道在
 `DockArea` 里，仍在 sheet 之下、`+` 之上。`DockArea` 自己的分组拖放色块因此被 sheet 盖住——
-拖页签到内容区时看不到那块预览，是已知代价。
+拖页签到内容区时看不到那块预览。**这不是一行能修的**：`renderDropIndicator` 拿到的只有
+`{ group, side, index }`（没有矩形），而它的元素画在 `DockArea` 的树里、注定在 sheet 之下；
+把整个 `SheetHost` 挪到 `DockArea` 之前可以让它压在上面，实测却让内容区的按压落到错误的节点上
+（`id:hero-browser` 被报 covered）。正解是上游让 `DockArea` 把指示器放进浮层，或给出该区域的矩形。
 
 **不要**把 body 放回 `renderPanel`：`DockArea` 只画显示中的面板，切容器时它的整棵子树会被换掉，
 body 就会重生（这正是本设计要消除的那种依赖）。

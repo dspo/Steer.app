@@ -48,6 +48,8 @@ export type SheetFrame = {
   group: string;
   /** Its place among the group's sheets. */
   index: number;
+  /** How far it is from the displayed one, in places: the tab that moved. */
+  place: number;
   x: number;
   y: number;
   width: number;
@@ -171,6 +173,7 @@ export function sheetFrames(
         id,
         group: group.key,
         index,
+        place: index - group.active,
         x: group.x,
         y: group.y,
         width: group.width,
@@ -189,6 +192,7 @@ export function sheetFrames(
       id,
       group: id,
       index: 0,
+      place: 0,
       x: 0,
       y: 0,
       width,
