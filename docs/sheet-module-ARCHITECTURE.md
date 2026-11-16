@@ -1,7 +1,7 @@
 # Sheet 模块架构
 
 > 状态：**已落地（2026-11-13，S0–S3）**。门禁：`nsh check app` ✓、`nsh test app` 215 用例 207 通过 / 8 skip、
-> `node script/check-layers.mjs` ✓（ALLOW 为空）、manox 两档门禁 ✓、`pi-harness` 36 单测 ✓。
+> `bun script/check-layers.mjs` ✓（ALLOW 为空）、manox 两档门禁 ✓、`pi-harness` 36 单测 ✓。
 > 门禁规则内保留本文 §5 明确列出的基础设施例外（`core/shell` 经 `domains/state` 持久化、shell 用
 > `domains/instance`/`picker` 两个宿主服务），不是白名单条目。
 > 本文取代已删除的 `nsh-pi-dual-harness-DESIGN.md` 的 §3.1/§4.1（pack 分层与对话面分家；该文档的
@@ -170,7 +170,7 @@ return spec.body({ id, containerId, visible: isVisible(id) });
 
 - **规则**：`zu/native` 只允许出现在 `app/domains/`。sheet 与模块只 import 域型面。
 - **基础设施例外（唯一）**：`core/containers.ts`、`core/projects.ts` 与 `shell/settings.ts` 经 `domains/state` 持久化
-  （registry、projects、layout、settings）。`state` 是基础设施而不是面向模块的能力；`check-layers.mjs`
+  （registry、projects、layout、settings）。`state` 是基础设施而不是面向模块的能力；`bun script/check-layers.mjs`
   显式允许 `core/shell → domains/state`（以及 shell 的 `instance`/`picker` 宿主服务），其余零例外。
 - **域是能力的唯一实现点**：`fs` 服务 Files/Editor/Diff/Problems/SVG（若将来要监视文件）；
   `git` 服务 Changes/History；`pty` 服务 Terminal 与 TUI 动作；`acp` + `state` + `pimodels` 服务 pi；
@@ -259,7 +259,7 @@ App.tsx                         # + registerModule(svgModule)
 ## 11. 门禁
 
 1. **依赖图**：`modules → core/domains/ui`、`modules ⇸ modules`、`core/shell ⇸ modules`；
-   任一违例失败。`node script/check-layers.mjs`（S0 起常绿，零白名单）。
+   任一违例失败。`bun script/check-layers.mjs`（S0 起常绿，零白名单）。
 2. **native 收口**：`zu/native` / `manox/native` 的 import 只允许在 `app/domains/`（grep 级）。
 3. **未知 kind**：布局注入一个不存在的 kind，壳画占位、不抛错（`canvas/sheets.tsx`）。
 4. **模块契约测试**：`app/sheet-modules.test.tsx` 覆盖注册、重复 kind、未知 kind、`restore` 剪枝、

@@ -157,7 +157,7 @@ UI 不持 fs / process：文件读写只经 `zu/fs`，进程只经 native 域。
 ### 3.8 分发与构建
 
 - **构建**：`pi-harness/package.json` 的 `build` 产出 `dist/pi-acp` 与两个 WASM 资产（photon/QuickJS）。
-- **打包**：`script/bundle-mac.sh` 把 `.app`、`Contents/Helpers/pi-acp`（含两个 WASM）与 ad-hoc 签名串起来，
+- **打包**：`bun script/tasks.ts bundle` 把 `.app`、`Contents/Helpers/pi-acp`（含两个 WASM）与 ad-hoc 签名串起来，
   并断言三个文件都在。
 - **签名**：nsh 只做 ad-hoc；正式发布需 Developer ID + 嵌套签名 + JIT entitlement + 公证（未做，M13）。
 - **更新**：`nsh/updater` 未配置（无 release/公钥）；`updates.ts` 诚实区分 development/未配置/可检查，
@@ -178,7 +178,7 @@ App.tsx（装配点：startModules() + 跟随系统语言 + lifecycle）
 ```
 
 依赖自上而下：`modules → core/domains/ui`，`shell → core/ui`，`core`/`shell` 不 import 模块；
-装配点 `App.tsx` 是唯一 import 模块的地方。规则由 `script/check-layers.mjs` 守卫。
+装配点 `App.tsx` 是唯一 import 模块的地方。规则由 `bun script/check-layers.mjs` 守卫。
 
 ### 4.2 panel 与 sheet
 
