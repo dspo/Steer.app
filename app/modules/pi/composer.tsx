@@ -1,92 +1,41 @@
-import { effect, Scroll, signal, Text, token, View } from "nsh";
-import { Input, Menu, MenuItem, Submenu } from "nsh/base";
+import { effect, signal, Text, token, View } from "nsh";
+import { Input } from "nsh/base";
 import { K, t } from "../../ui/i18n";
-import type { SessionModelsReason } from "./protocol";
-import { openModelMenuRequest, runSlash, slashCandidates } from "./slash";
+import { runSlash, slashCandidates } from "./slash";
+import { followUp, loadSessionModels, send, sessionModels, stop, viewFor } from "./sessions";
+import { Glyph, motionStyle, shadowRaised } from "../../ui/ui";
 import {
-  chooseSessionModel,
-  followUp,
-  loadSessionModels,
-  send,
-  sessionModels,
-  setSessionMode,
-  stop,
-  viewFor,
-} from "./sessions";
-import { Glyph, motionStyle, shadowRaised, type GlyphName } from "../../ui/ui";
+  ComposerAction,
+  ComposerPlus,
+  ContextRing,
+  ModeSwitch,
+  ModelPicker,
+  ThinkingPicker,
+  modelsReasonText,
+} from "./composer-controls";
 
 /**
- * The composer: a bare input over one footer row, all right-aligned (DESIGN
- * §3.6). The hairline above it belongs to the composer and is exactly its
- * width (`hairline`); the message area and the composer share the page
- * background — no card, bubble or shadow around it, as in Steer.
- *
- * The footer names the session's model, thinking level and context, then the
- * action: idle is one accent send; while a turn runs the same spot is the
- * stop (absolute — never gated by the draft). The model menu ends with the
- * approval policy; the `⋯` menu carries a running turn's lanes.
+ * The composer (DESIGN §3.6, Q110): ZCode's rounded input card — the input on
+ * top, one footer row under it (left: the disabled `+` and the permission
+ * mode; right: the context ring, the model, the effort, the action), and the
+ * state lines (no models, waiting, queued) above the card, not inside it.
+ * No hairline: the card's own border is the boundary. This file owns the
+ * shell, the input and the submit; the footer's controls live in
+ * `composer-controls.tsx`.
  */
 
-/** `12.3k`, `1M`, `840`: a token count at a glance. */
-function formatTokens(tokens: number): string {
-  if (!Number.isFinite(tokens) || tokens < 0) return "—";
-  if (tokens >= 1_000_000) {
-    const value = tokens / 1_000_000;
-    return `${value >= 10 ? Math.round(value) : Math.round(value * 10) / 10}M`;
-  }
-  if (tokens >= 1_000) {
-    const value = tokens / 1_000;
-    return `${value >= 100 ? Math.round(value) : Math.round(value * 10) / 10}k`;
-  }
-  return String(Math.round(tokens));
-}
-
-/** The context gauge's one line: `12.3k / 1M · 1%`. */
-function contextLine(usage: {
-  tokens: number | null;
-  contextWindow: number;
-  percent: number | null;
-} | null | undefined): string {
-  if (!usage || usage.tokens === null || usage.tokens === undefined) return "";
-  const percent =
-    typeof usage.percent === "number"
-      ? usage.percent
-      : usage.contextWindow > 0
-        ? (usage.tokens / usage.contextWindow) * 100
-        : 0;
-  return `${formatTokens(usage.tokens)} / ${formatTokens(usage.contextWindow)} · ${Math.round(percent)}%`;
-}
-
 /**
- * One footer action. `primary` is the idle send; `danger` is stop and
- * interrupt. Chips are the footer's scale: h-6, text 11, tight radius.
+ * One labeled action above the card (the no-model retry). Chips are the
+ * status line's scale: h-6, text 11, tight radius — a step under the footer's
+ * triggers, which are the card's controls.
  */
 function ComposerChip(props: {
   testID: string;
   label: string;
-  glyph?: GlyphName;
-  primary?: boolean;
-  danger?: boolean;
   disabled?: boolean;
   onPress: () => void;
 }) {
   const disabled = () => props.disabled ?? false;
-  const look = () =>
-    disabled()
-      ? "bg-muted opacity-40"
-      : props.primary
-        ? "bg-primary hover:bg-primary/90 active:opacity-80"
-        : props.danger
-          ? "border border-line hover:bg-destructive/10 active:opacity-70"
-          : "border border-line hover:bg-hover active:opacity-70";
-  const ink = () =>
-    disabled()
-      ? token("faint")
-      : props.primary
-        ? token("primary-foreground")
-        : props.danger
-          ? token("destructive")
-          : token("foreground");
   return (
     <View
       role="button"
@@ -94,271 +43,22 @@ function ComposerChip(props: {
       accessibilityLabel={props.label}
       tooltip={props.label}
       disabled={disabled()}
-      class={`h-6 flex-row items-center justify-center gap-1 rounded-md px-2 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1 ${look()}`}
+      class="h-6 flex-row items-center justify-center gap-1 rounded-md border border-line px-2 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
       style={{ ...motionStyle("fast") }}
       onPress={() => {
         if (!disabled()) props.onPress();
       }}
     >
-      {props.glyph ? <Glyph name={props.glyph} size={11} tint={ink()} /> : null}
-      <Text class="text-[11px] font-medium" style={{ color: ink() }}>
-        {props.label}
-      </Text>
+      <Text class="text-[11px] font-medium text-foreground">{props.label}</Text>
     </View>
   );
 }
 
-/**
- * The model picker: the composer's `provider · id · thinking` trigger opens a
- * two-level menu (providers, then their models). The current model carries
- * the checkmark; choosing one switches the session and folds the reply's
- * `session.info` back in. The menu stays open on an error so the reason is
- * readable, and closes itself on success.
- */
-
-/** Why an empty list is empty: the engine's code, in the user's words. */
-function modelsReasonText(reason: SessionModelsReason | undefined, error?: string): string {
-  if (error) return t(K.session.modelsError, { error });
-  switch (reason?.code) {
-    case "no_credentials":
-      return t(K.session.modelsNoCredentials);
-    case "no_catalog":
-      return t(K.session.modelsNoCatalog);
-    case "no_models":
-      return t(K.session.modelsNoChat);
-    case "unavailable":
-      return t(K.session.modelsError, { error: reason.message ?? "" });
-    default:
-      return t(K.session.modelsEmpty);
-  }
-}
-
-export function ModelPicker(props: { sessionId: string }) {
-  const open = signal(false);
-  // The `/model` command lands here: open once, then clear the request.
-  effect(() => {
-    if (openModelMenuRequest() !== props.sessionId) return;
-    openModelMenuRequest.set(null);
-    open.set(true);
-  });
-
-  const view = () => viewFor(props.sessionId);
-  const state = () => sessionModels()[props.sessionId];
-  const providers = () => state()?.data?.providers ?? [];
-  const current = () => view()?.model ?? state()?.data?.current;
-  const thinking = () => view()?.thinkingLevel ?? state()?.data?.thinkingLevel;
-  const currentKey = () => (current() ? `${current()!.provider}/${current()!.id}` : "");
-  const modes = () => view()?.modes ?? [];
-  const mode = () => view()?.mode ?? "ask";
-  const label = () => {
-    const model = current();
-    if (!model) return t(K.session.model);
-    const level = thinking();
-    return [model.provider, model.id || model.name, level && level !== "off" ? level : null]
-      .filter(Boolean)
-      .join(" · ");
-  };
-  const choose = async (provider: string, id: string) => {
-    if (await chooseSessionModel(props.sessionId, provider, id)) open.set(false);
-  };
-  return (
-    <Menu
-      open={open()}
-      onOpenChange={({ open: next }) => {
-        open.set(next);
-        if (next) void loadSessionModels(props.sessionId);
-      }}
-      align="start"
-      offset={6}
-      popupClass="rounded-xl border border-border bg-popover p-1"
-      popupStyle={{ width: 310, maxHeight: 420, boxShadow: shadowRaised() }}
-      trigger={
-        <View
-          role="button"
-          testID="model-picker"
-          accessibilityLabel={label()}
-          accessibilityState={{ expanded: open(), hasPopup: true }}
-          class="h-6 min-w-0 flex-row items-center gap-1 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-          style={{ ...motionStyle("fast") }}
-        >
-          <If
-            when={!!current()}
-            else={
-              <Text class="min-w-0 text-[11px] text-muted-foreground" style={{ numberOfLines: 1 }}>
-                {t(K.session.model)}
-              </Text>
-            }
-          >
-            <Text class="text-[11px] text-muted-foreground" style={{ numberOfLines: 1 }}>
-              {current()!.provider}
-            </Text>
-            <Text class="text-[11px] text-faint">·</Text>
-            <Text class="min-w-0 text-[11px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
-              {current()!.id || current()!.name}
-            </Text>
-            <If when={!!thinking() && thinking() !== "off"}>
-              <Text class="text-[11px] text-faint">·</Text>
-              <Text class="text-[11px] text-muted-foreground">{thinking()}</Text>
-            </If>
-          </If>
-          <Glyph name="caret-down" size={8} tint={token("faint")} />
-        </View>
-      }
-    >
-      <Scroll style={{ maxHeight: 380 }} contentStyle={{ gap: 1 }}>
-        <If when={state()?.status === "loading"}>
-          <Text class="px-2 py-2 text-[11.5px] text-faint">{t(K.session.modelsLoading)}</Text>
-        </If>
-        <If when={state()?.status === "error"}>
-          <Text class="px-2 py-1.5 text-[11px] text-destructive" style={{ numberOfLines: 2 }}>
-            {t(K.session.modelsError, { error: state()?.error ?? "" })}
-          </Text>
-          <MenuItem
-            testID="model-retry"
-            class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-            onSelect={() => void loadSessionModels(props.sessionId, true)}
-          >
-            <Text class="text-[12px] text-foreground">{t(K.engine.retry)}</Text>
-          </MenuItem>
-        </If>
-        <If when={state()?.status === "ready" && providers().length === 0}>
-          <Text testID="model-reason" class="px-2 py-2 text-[11.5px] leading-[16px] text-faint">
-            {modelsReasonText(state()?.data?.reason)}
-          </Text>
-          <MenuItem
-            testID="model-retry"
-            class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-            onSelect={() => void loadSessionModels(props.sessionId, true)}
-          >
-            <Text class="text-[12px] text-foreground">{t(K.engine.retry)}</Text>
-          </MenuItem>
-        </If>
-        <Each of={providers()} key={(provider) => provider.id}>
-          {(provider) => (
-            <Submenu
-              trigger={
-                <View
-                  role="button"
-                  testID={`model-provider-${provider().id}`}
-                  accessibilityLabel={provider().name}
-                  class="flex-row items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-                  style={{ ...motionStyle("fast") }}
-                >
-                  <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-                    <Text class="text-[12px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
-                      {provider().name}
-                    </Text>
-                    <Text class="text-[10px] text-faint" style={{ numberOfLines: 1 }}>
-                      {provider().id}
-                    </Text>
-                  </View>
-                  <Glyph name="chevron-right" size={10} tint={token("faint")} />
-                </View>
-              }
-            >
-              <Each of={provider().models} key={(model) => `${model.provider}/${model.id}`}>
-                {(model) => (
-                  <MenuItem
-                    testID={`model-${model().provider}-${model().id}`}
-                    checked={currentKey() === `${model().provider}/${model().id}`}
-                    role="menuitemradio"
-                    closeOnSelect={false}
-                    indicator={<Glyph name="check" size={11} tint={token("brand")} />}
-                    indicatorClass="opacity-0 checked:opacity-100"
-                    class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-                    onSelect={() => void choose(model().provider, model().id)}
-                  >
-                    <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-                      <Text class="text-[12px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
-                        {model().name}
-                      </Text>
-                      <Text class="text-[10px] text-faint" style={{ numberOfLines: 1 }}>
-                        {model().id}
-                        {model().contextWindow ? ` · ${formatTokens(model().contextWindow!)}` : ""}
-                      </Text>
-                    </View>
-                  </MenuItem>
-                )}
-              </Each>
-            </Submenu>
-          )}
-        </Each>
-        <If when={modes().length > 0}>
-          <View class="my-1 h-px bg-line" />
-          <Text class="px-2.5 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-faint">
-            {t(K.session.permissions)}
-          </Text>
-          <Each of={modes()} key={(entry) => entry.id}>
-            {(entry) => (
-              <MenuItem
-                testID={`session-mode-${entry().id}`}
-                checked={mode() === entry().id}
-                role="menuitemradio"
-                closeOnSelect={false}
-                indicator={<Glyph name="check" size={11} tint={token("brand")} />}
-                indicatorClass="opacity-0 checked:opacity-100"
-                class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-                onSelect={() => void setSessionMode(props.sessionId, entry().id)}
-              >
-                <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-                  <Text class="text-[12px] text-foreground" style={{ numberOfLines: 1 }}>
-                    {entry().name}
-                  </Text>
-                  <If when={!!entry().description}>
-                    <Text class="text-[10px] text-faint" style={{ numberOfLines: 2 }}>
-                      {entry().description ?? ""}
-                    </Text>
-                  </If>
-                </View>
-              </MenuItem>
-            )}
-          </Each>
-        </If>
-      </Scroll>
-    </Menu>
-  );
-}
-
-/** The `⋯` menu: the lanes of a running turn. */
-function ComposerMore() {
-  const open = signal(false);
-  const item = "rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent";
-  return (
-    <Menu
-      open={open()}
-      onOpenChange={({ open: next }) => open.set(next)}
-      align="end"
-      offset={6}
-      popupClass="rounded-xl border border-border bg-popover p-1"
-      popupStyle={{ minWidth: 172, boxShadow: shadowRaised() }}
-      trigger={
-        <View
-          role="button"
-          testID="session-more"
-          accessibilityLabel={t(K.session.more)}
-          class="h-6 w-6 items-center justify-center rounded-md hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-          style={{ ...motionStyle("fast") }}
-        >
-          <Glyph name="more" size={12} tint={token("muted-foreground")} />
-        </View>
-      }
-    >
-      <MenuItem testID="session-queue" class={item} onSelect={() => open.set(false)}>
-        <Text class="text-[12px] text-foreground">{t(K.session.queue)}</Text>
-      </MenuItem>
-      <MenuItem testID="session-steer" class={item} onSelect={() => open.set(false)}>
-        <Text class="text-[12px] text-foreground">{t(K.session.steer)}</Text>
-      </MenuItem>
-      <MenuItem testID="session-interrupt" class={item} onSelect={() => open.set(false)}>
-        <Text class="text-[12px] text-foreground">{t(K.session.interrupt)}</Text>
-      </MenuItem>
-    </Menu>
-  );
-}
-
-/** The session composer: input and one right-aligned footer row. */
-export function ChatComposer(props: { sessionId: string; autofocus?: boolean; hairline?: boolean }) {
+/** The session composer: the state lines, then the input card. */
+export function ChatComposer(props: { sessionId: string; autofocus?: boolean }) {
   const draft = signal("");
+  /** The input's grown height; the clamp lives where the content reports it. */
+  const inputHeight = signal(44);
   const view = () => viewFor(props.sessionId);
   const streaming = () => view()?.streaming ?? false;
   const models = () => sessionModels()[props.sessionId];
@@ -366,6 +66,7 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean; ha
   const modelsUnavailable = () => !!models()?.data?.reason;
   const waiting = () => view()?.sessionState === "waiting_user";
   const queued = () => view()?.queued ?? 0;
+  const hasMessages = () => (view()?.messages.length ?? 0) > 0;
   const canSubmit = () => draft().trim().length > 0 && !!view() && !modelsUnavailable() && !waiting();
   // One ask per composer, so the empty state knows its cause without the
   // user opening the menu. A retry (here or in the menu) is the way back.
@@ -378,9 +79,9 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean; ha
   const take = () => {
     const text = draft();
     draft.set("");
+    inputHeight.set(44);
     return text;
   };
-  const context = () => contextLine(view()?.contextUsage);
   // The slash popup: open while the draft is a slash draft, filtered by it.
   const slashDraft = () => {
     const text = draft().trimStart();
@@ -402,18 +103,20 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean; ha
     if (streaming()) void followUp(text, props.sessionId);
     else void send(text, props.sessionId);
   };
+  const placeholder = () =>
+    streaming()
+      ? t(K.session.placeholderStreaming)
+      : hasMessages()
+        ? t(K.session.placeholderFollowUp)
+        : t(K.session.placeholder);
   return (
     <View
       style={{
         width: "100%",
         maxWidth: 820,
         alignSelf: "center",
-        gap: 6,
+        gap: 8,
         position: "relative",
-        // The divider is the composer's own, exactly as wide as it is.
-        borderTopWidth: props.hairline ? 1 : 0,
-        borderTopColor: token("line"),
-        paddingTop: props.hairline ? 8 : 0,
       }}
     >
       {/* No models is not a dead composer: the input stays, the send waits,
@@ -469,70 +172,59 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean; ha
           ))}
         </View>
       </If>
-      <Input
-        testID="session-input"
-        value={draft()}
-        onChange={({ value }) => draft.set(value)}
-        multiline
-        submitBehavior="submit"
-        autoFocus={props.autofocus ?? false}
-        placeholder={streaming() ? t(K.session.placeholderStreaming) : t(K.session.placeholder)}
-        onSubmit={submit}
-        style={{
-          minHeight: 48,
-          paddingHorizontal: 2,
-          paddingVertical: 4,
-          fontSize: 14,
-          lineHeight: 21,
-          color: token("foreground"),
-          placeholderColor: token("faint"),
-          caretColor: token("primary"),
-          selectionColor: token("brand"),
-          backgroundColor: "transparent",
-          borderWidth: 0,
-        }}
-      />
-      {/* One row, everything to the right (DESIGN §3.6): the model and the
-          context gauge, then the `⋯` lanes while a turn runs, then the
-          action — idle's ↑ send and streaming's ■ stop in the same spot. */}
-      <View class="flex-row items-center justify-end gap-2">
-        <ModelPicker sessionId={props.sessionId} />
-        <If when={!!context()}>
-          <>
-            <If when={!!view()?.model}>
-              <Text class="text-[11px] text-faint">·</Text>
-            </If>
-            <Text class="text-[11px] text-faint" accessibilityLabel={t(K.session.contextUsage)}>
-              {context()}
-            </Text>
-          </>
-        </If>
-        <If when={streaming()}>
-          <ComposerMore />
-        </If>
-        <If
-          when={streaming()}
-          else={
-            <ComposerChip
-              testID="session-send"
-              label={t(K.session.send)}
-              glyph="send"
-              primary
+      {/* The card: a flat surface, one border, no shadow. The border answers
+          hover and focus-within — the input inside stays bare. */}
+      <View
+        class="rounded-xl border border-border bg-card hover:border-input focus-within:border-ring"
+        style={{ padding: 12, gap: 12, ...motionStyle("fast") }}
+      >
+        <Input
+          testID="session-input"
+          value={draft()}
+          onChange={({ value }) => draft.set(value)}
+          multiline
+          submitBehavior="submit"
+          autoFocus={props.autofocus ?? false}
+          placeholder={placeholder()}
+          onSubmit={submit}
+          onContentSizeChange={({ size }) => {
+            inputHeight.set(Math.min(176, Math.max(44, size.height)));
+          }}
+          style={{
+            height: inputHeight(),
+            minHeight: 44,
+            padding: 0,
+            fontSize: 14,
+            lineHeight: 21,
+            color: token("foreground"),
+            placeholderColor: token("faint"),
+            caretColor: token("primary"),
+            selectionColor: token("brand"),
+            backgroundColor: "transparent",
+            borderWidth: 0,
+          }}
+        />
+        {/* One footer row, two clusters (DESIGN §3.6): left the `+` and the
+            permission mode, right the gauge, model, effort and the action —
+            idle's ↑ send and streaming's ■ stop in the same spot. */}
+        <View class="flex-row items-center justify-between" style={{ gap: 8 }}>
+          <View class="flex-row items-center" style={{ gap: 4 }}>
+            <ComposerPlus />
+            <ModeSwitch sessionId={props.sessionId} />
+          </View>
+          <View class="flex-row items-center" style={{ gap: 4 }}>
+            <ContextRing usage={view()?.contextUsage} />
+            <ModelPicker sessionId={props.sessionId} />
+            <ThinkingPicker sessionId={props.sessionId} />
+            {/* Stop is absolute: never gated by the draft. */}
+            <ComposerAction
+              streaming={streaming()}
               disabled={!canSubmit()}
-              onPress={submit}
+              onSubmit={submit}
+              onStop={() => void stop(props.sessionId)}
             />
-          }
-        >
-          {/* Stop is absolute: never gated by the draft. */}
-          <ComposerChip
-            testID="session-stop"
-            label={t(K.session.stop)}
-            glyph="stop"
-            danger
-            disabled={false}
-            onPress={() => void stop(props.sessionId)}
-          />
-        </If>
+          </View>
+        </View>
       </View>
     </View>
   );

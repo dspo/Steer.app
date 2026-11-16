@@ -11,8 +11,8 @@ import { Glyph } from "../../ui/ui";
  * The conversation column, clean-room after the NSH gallery's chat: an
  * assistant reply is selectable Markdown on the 15/22 body scale, a user
  * message is a quiet bubble on the right, a tool step is a compact line and
- * a dispatch note stays faint. The composer's footer carries the only
- * boundary to the transcript: one hairline.
+ * a dispatch note stays faint. The composer is ZCode's rounded input card
+ * (DESIGN §3.6); its border is the only boundary the transcript gets.
  *
  * An empty session is Steer's hero: the heading and the same inline
  * composer, vertically centered, with no card and no project/access/voice
@@ -221,10 +221,10 @@ export function Conversation(props: { id: string }) {
           />
         )}
       </List>
-      {/* The composer draws its own hairline, exactly its width. */}
+      {/* The composer card's own border is the boundary. */}
       <View class="bg-background" style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 10, gap: 8 }}>
         <ApprovalCard sessionId={props.id} />
-        <ChatComposer sessionId={props.id} autofocus hairline />
+        <ChatComposer sessionId={props.id} autofocus />
       </View>
     </View>
   );

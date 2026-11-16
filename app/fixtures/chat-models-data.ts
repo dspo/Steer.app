@@ -1,4 +1,5 @@
 import { setModelTransport } from "../modules/pi/sessions";
+import { SESSION_MODES, THOUGHT_LEVEL } from "./chat-controls-data";
 
 /** The model picker's fake engine: two providers, one switchable session. */
 export function installModelTransport(): void {
@@ -80,4 +81,7 @@ export const MODEL_SEED = {
     reasoning: true,
   },
   thinkingLevel: "high" as const,
+  modes: SESSION_MODES,
+  mode: "auto",
+  configOptions: [THOUGHT_LEVEL],
 };

@@ -70,7 +70,7 @@ motionStyle()   // 用户在系统里减少动态效果时返回 {}
 | 侧栏 | 232pt（可拖拽 200–360），**无右边框**；与卡片之间约 10pt 间距 |
 | 内容卡片 | `card` 白底，radius 14，四周 8–10pt；卡片是唯一的"内容容器" |
 | 卡片内页签条 | 34pt，`card` 底 + 底部 hairline（与内容分隔） |
-| Composer | 卡片内，左右 24、底部 16，**无独立底色** |
+| Composer | 卡片内，左右 24、底部 16；ZCode 同款圆角输入卡（§3.6） |
 | 红绿灯 | 直径 12、间距 8、左边距 16、与顶栏垂直居中 |
 
 对齐脊线：卡片内左边 24、右边 24；侧栏内容左边 14 / 行文字 17；顶栏左 16、右 12。
@@ -191,15 +191,21 @@ Hero 的两排动作使用各 CLI 的品牌图标（24pt 光学尺寸）：
 
 ### 3.6 Composer
 
+ZCode 同款（Q110）：一张圆角输入卡，占位文字在卡片内顶部，footer 一行——左：禁用 `+` 占位
+与权限模式开关，右：上下文环、模型显示名、推理强度、动作钮。没有 hairline、没有阴影：平面
+表面靠边框与底色分界，与 ZCode 的 composer 卡片同构。
+
 | 项 | 值 |
 |---|---|
-| 分割线 | 只与 composer 同宽（卡片内 24pt 边距之间），**不铺满 panel** |
-| 布局 | 输入框一行；下一行右侧：`模型 · thinking`、`context%`、主按钮 |
-| 主按钮 | idle：↑ 发送（`primary` 圆钮 32pt）；streaming：■ 停止（同位置、`destructive`） |
-| 权限 | 模型菜单底部的「权限」小节：Ask / Auto / Read-only，当前值带勾；切换走 `session/set_mode` |
-| 排队/引导/打断 | 运行中：输入框右上 `⋯` 菜单；排队走本地队列（`排队 N 条` 行），审批/询问时发送暂缓 |
-| 斜杆命令 | 输入 `/` 在输入框上方弹出候选（name + 一句说明），样式与 Menu 同套；本地命令本地执行，distro 的命令表按原文提交 |
-| 移除 | 项目目录、访问模式、语音（保持移除） |
+| 外层 | `width: 100%`、`maxWidth: 820`、居中、gap 8；**无 `borderTop`**；状态行（无模型原因 + 重试、等待审批、排队计数）在卡片**上方**，文字与 testID 不变 |
+| 卡片 | `rounded-xl border border-border bg-card`，内边距 12、gap 12，`motionStyle("fast")`；`hover:border-input`、`focus-within:border-ring`（边框色过渡）；**无阴影**（ZCode 不抬它） |
+| 输入 | 填满卡片宽：透明底、无边框、14/21、`padding: 0`、`minHeight: 44`；随内容长高（`onContentSizeChange` 钳在 [44, 176]，提交后回到 44；**无高度动画**）；caret `primary`、选区 `brand`、占位 `faint`；Enter/Shift+Enter、斜杆草稿、autofocus、无模型/等待审批禁用不变 |
+| 占位 | 空：`给 pi 发消息，输入 / 选择命令`；有消息未流式：`提出后续修改要求`；流式：`继续输入以排队后续修改` |
+| footer 左 | 禁用 `+` 占位（28×28、`rounded-lg`、plus 14pt、`opacity-40`、tooltip「添加附件 + 暂不支持」；附件能力由 [dspo-group/Steer.app#5](https://cnb.cool/dspo-group/Steer.app/issues/5) 跟踪）→ 权限模式开关（`view().modes` 非空才出现）：h-7 `rounded-lg`，shield 图标 15pt + 本地化标签 12pt/500 + caret 8pt；`ask` `muted-foreground`、`auto`（完全访问）`warn`、`read-only` `info`；open `bg-accent`、hover `bg-hover`；菜单置顶弹出（模型菜单同套表面，宽 ~268），行 = 勾选 + 名称 12pt + 说明 10.5pt faint，`menuitemradio`，选中即 `session/set_mode` |
+| footer 右 | 上下文环（有 token 值才出现）：28×28 触达区，环 Canvas 14×14、1.5pt 描边——整圈 25% alpha + 进度弧 70% alpha，-90° 起、圆头、`muted-foreground`；tooltip/accessibilityLabel = `contextLine`（`12.3k / 1M · 1%`）→ 模型触发（**显示名** `name || id`，12.5pt/500，无 provider 前缀；tooltip = `provider · id · effort`；两级 provider→model 菜单与 testID 不变，菜单里**不再有「权限」小节**）→ 推理强度（`thought_level` 存在才出现）：本地化标签 12pt `muted-foreground` + caret，菜单置顶、宽 ~168，选中 `session/set_config_option` 的 `thought_level` → 动作钮（一个位置）：idle ↑ 发送（28×28 `rounded-lg` `bg-primary`，arrow-up 14pt `primary-foreground`，hover `bg-primary/90`、active `opacity-80`；禁用 `bg-muted opacity-40` + faint glyph）；streaming ■ 停止（`bg-secondary`，填充圆角方 12pt `foreground`，hover `bg-muted`、active `opacity-70`；**中性色，非 destructive**；绝不被草稿禁用） |
+| 排队 | 运行中 Enter 仍是排队车道；排队计数行在卡片上方（`排队 N 条`）。`⋯` 菜单**移除**——lane 只剩排队一条，不再需要菜单 |
+| 斜杆命令 | 输入 `/` 在整个外层上方弹出候选（name + 一句说明），样式与 Menu 同套；本地命令本地执行，distro 的命令表按原文提交 |
+| 移除 | hairline、带标签的 footer chips（`provider · id · thinking` 分段与 `context%` 文本）、`⋯` 菜单；项目目录、访问模式、语音（保持移除） |
 
 斜杆命令的映射（pi 1.5.0 为准；表即 `slash.ts` 的实现，候选弹层逐条列"命令 + 一句说明"）：
 
@@ -266,9 +272,10 @@ Terminal/Claude/Codex/Copilot/Pi 的定义来源）：
   键盘路径上。
 - **页签**：`bg-inset` 条上，活动页签是白 pill（半径 8 + 软阴影 + primary 2pt 下划线）；
   非活动 hover `bg-hover`；pressed 整体 0.8 透明度。
-- **Composer**：外层 `border-t + line`，卡片 `bg-card`、`border-border`、半径 12、
-  `shadowCard()`；输入区无边框，焦点用 caret 表达；footer 左侧 10.5pt 提示，右侧 30pt
-  圆形发送（primary / destructive / muted 三态）。
+- **Composer**：ZCode 同款输入卡 `bg-card`、`border-border`、半径 12、无阴影；hover
+  `border-input`、`focus-within` `border-ring`（`fast` 边框色过渡）；输入区无边框，焦点用
+  caret 表达；footer 右侧 28pt 圆角发送（primary / muted 两态），streaming 是中性的
+  `bg-secondary` 停止（`destructive` 只留给真正危险的动作）。
 - **Hero / 项目对话框**：同一张白卡：半径 12、`border-border`、20pt 内边距、15pt 标题、
   12pt 标签、10pt 输入半径、8pt 按钮；Hero 用 `shadowRaised()`，对话框用
   `shadowDialog()`；backdrop 用 `bg-scrim`。
@@ -285,12 +292,12 @@ Terminal/Claude/Codex/Copilot/Pi 的定义来源）：
 
 | 状态 | 行 | 页签 | 按钮（顶栏/表单） | Composer 发送 |
 |---|---|---|---|---|
-| Rest | 透明 | 透明 | ghost / outline / primary | muted 圆 |
-| Hover | `bg-hover` | `bg-hover` | `bg-hover` / `bg-primary/90` | `opacity-90`（可用时） |
-| Pressed | `bg-accent/60` | `opacity-80` | `opacity-70` | `opacity-70` |
+| Rest | 透明 | 透明 | ghost / outline / primary | 28pt `bg-primary` 圆角方；streaming `bg-secondary` |
+| Hover | `bg-hover` | `bg-hover` | `bg-hover` / `bg-primary/90` | `bg-primary/90`（可用时）/ `bg-muted` |
+| Pressed | `bg-accent/60` | `opacity-80` | `opacity-70` | `opacity-80` / `opacity-70` |
 | Focus-visible | 2pt `outline-ring` | 2pt `outline-ring` | 2pt `outline-ring` | 2pt `outline-ring` |
 | Selected | 白卡 + 软阴影 + 600 | 白 pill + primary 下划线 | — | — |
-| Disabled | — | — | 无 hover/pressed | 无 hover/pressed |
+| Disabled | — | — | 无 hover/pressed | `bg-muted opacity-40`，无 hover/pressed |
 | Loading | — | — | 引擎阶段文字 | streaming 时变 Stop |
 
 每个可点元素都有 hover 与 pressed；行用颜色，不用缩放；图标按钮用 0.6–0.8 透明度。
@@ -313,7 +320,14 @@ focus 用 outline 而不是 ring，因为选中行的 `boxShadow` 是内联 styl
 | 页签 hover | `bg-hover`，`medium` 180ms | 立即 | 实现 |
 | 页签选中切换 | 白 pill 背景 + 阴影，`medium`；无滑动选择条 | 立即 | 真实截图（选中态） |
 | 页签 pressed | 整体 `opacity-80` | 立即 | 实现 |
-| Composer send ↔ stop | glyph 立即切换；按钮底色 `fast` | 立即 | 实现；需要流式回合才能截到 |
+| Composer 卡片 hover / focus-within | 边框色 `border-input` / `border-ring`，`fast` 120ms | 立即 | 真实截图（rest/focus） |
+| Composer 输入长高 | `onContentSizeChange` 即时钳高，无高度动画 | — | 行为测试（提交回到 44） |
+| Composer `+` 占位 | disabled：`opacity-40`、无 hover/pressed | — | 真实截图（idle 左侧） |
+| 权限开关 hover / open | `bg-hover` / `bg-accent`，`fast` | 立即 | 真实截图（rest）；open 态未截帧 |
+| 权限开关标签随模式切换 | 文字与 icon tint 即时替换，无过渡 | — | 行为测试（选只读后标签变） |
+| 模型/强度触发 hover / open | `bg-hover` / `bg-accent`，`fast` | 立即 | 真实截图（rest）；open 态未截帧 |
+| 上下文环 | 无动画：数值变化即时重画弧 | — | 真实截图 |
+| Composer send ↔ stop | glyph 立即切换；按钮底色 `fast` | 立即 | 真实截图（idle/streaming 两态） |
 | Composer 输入焦点 | caret primary，无过渡 | — | 实现 |
 | 发送可用/不可用 | 背景 + glyph tint，`fast` | 立即 | 真实截图（禁用态） |
 | 菜单打开/关闭 | `Menu` 自带 popup 进出；应用不另加 | 运行时 | 未截 |

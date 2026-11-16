@@ -86,6 +86,8 @@ export type SessionThinkingLevel = "off" | "minimal" | "low" | "medium" | "high"
 export interface SessionInfoData {
   name?: string;
   thinkingLevel?: SessionThinkingLevel;
+  /** The session's approval mode, when the reply carries it. */
+  mode?: string;
   path?: string;
   model?: SessionModelInfo;
   contextUsage?: SessionContextUsage;

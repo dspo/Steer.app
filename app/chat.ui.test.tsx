@@ -41,31 +41,26 @@ test("an assistant reply is selectable Markdown with a streaming caret", async (
   expect(app.count("id:streaming-caret")).toBe(1);
 });
 
-test("the streaming composer names the model and context, and queues on Enter", async () => {
+test("the streaming composer shows the card's controls, and queues on Enter", async () => {
   const app = await open("./fixtures/chat-stream.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:session-stop");
   await shot(app, "ui-s22-11-streaming");
   const texts = app.texts();
-  expect(texts).toContain("bailian");
-  expect(texts).toContain("qwen3.8-flash");
-  expect(texts).toContain("high");
-  expect(texts).toContain("12.3k / 1M · 1%");
-  // Running: stop is always live, the send is gone, and the other lanes
-  // fold into the ⋯ menu (visual-only, §2.2-11).
+  // The trigger names the model; the effort picker localizes the level.
+  expect(texts).toContain("Qwen3.8 Flash");
+  expect(texts).toContain("高");
+  expect(app.shows("id:session-context")).toBe(true);
+  expect(app.shows("id:session-mode")).toBe(true);
+  // Running: stop is always live, the send is gone, and the old ⋯ menu is
+  // gone with it (visual-only, §2.2-11).
   expect(app.enabled("id:session-stop")).toBe(true);
   expect(app.shows("id:session-send")).toBe(false);
-  expect(app.shows("id:session-more")).toBe(true);
-  await app.press("id:session-more");
-  await app.waitFor("id:session-queue");
-  await shot(app, "ui-s22-11-menu");
-  await app.waitFor("id:session-steer");
-  await app.waitFor("id:session-interrupt");
-  const before = app.count("id:user-message");
-  await app.press("id:session-interrupt");
-  await app.waitUntil(() => !app.shows("id:session-interrupt"), { timeout: 5000 });
-  // Clicked without acting: the transcript is untouched.
-  expect(app.count("id:user-message")).toBe(before);
-  await app.press("id:session-more");
+  expect(app.shows("id:session-more")).toBe(false);
+  // The mode menu opens above the footer; picking nothing leaves it as it is.
+  await app.press("id:session-mode");
+  await app.waitFor("id:session-mode-read-only");
+  await shot(app, "ui-s22-11-mode");
+  await app.press("id:session-mode");
   // Enter while streaming is still the queue lane.
   await app.type("id:session-input", "queue this");
   await app.submit("id:session-input");
@@ -81,9 +76,41 @@ test("the idle composer is one accent send with no stop and no lanes", async () 
   expect(idle.enabled("id:session-send")).toBe(false);
   expect(idle.shows("id:session-stop")).toBe(false);
   expect(idle.shows("id:session-more")).toBe(false);
+  // The `+` is a disabled placeholder: attachments are not in the harness
+  // yet (dspo-group/Steer.app#5).
+  expect(idle.shows("id:session-attach")).toBe(true);
+  expect(idle.enabled("id:session-attach")).toBe(false);
+  // The same card in dark: tokens flip, the geometry stays (§3.6).
+  await idle.setColorScheme("dark");
+  await shot(idle, "ui-s22-11-idle-dark");
+  await idle.setColorScheme("light");
   await idle.type("id:session-input", "send this");
   await idle.submit("id:session-input");
   await idle.waitUntil(() => idle.texts().includes("send this"), { timeout: 5000 });
+});
+
+test("the mode switch names the mode and switches through session/set_mode", async () => {
+  const app = await open("./fixtures/chat-modes.tsx", { width: 1200, height: 800 });
+  await app.waitFor("id:session-mode");
+  // The trigger names the current mode in the shell's words.
+  expect(app.texts()).toContain("完全访问");
+  await app.press("id:session-mode");
+  await app.waitFor("id:session-mode-read-only");
+  await app.press("id:session-mode-read-only");
+  // Choosing closes the menu, and the reply's mode lands in the trigger.
+  await app.waitUntil(() => !app.shows("id:session-mode-read-only"), { timeout: 5000 });
+  expect(app.texts()).toContain("只读");
+});
+
+test("the effort picker localizes the levels and sets the thought level", async () => {
+  const app = await open("./fixtures/chat-modes.tsx", { width: 1200, height: 800 });
+  await app.waitFor("id:session-thinking");
+  expect(app.texts()).toContain("高");
+  await app.press("id:session-thinking");
+  await app.waitFor("id:session-thinking-max");
+  await app.press("id:session-thinking-max");
+  await app.waitUntil(() => !app.shows("id:session-thinking-max"), { timeout: 5000 });
+  expect(app.texts()).toContain("最高");
 });
 
 test("an interrupted or failed turn is a quiet line, not a banner", async () => {

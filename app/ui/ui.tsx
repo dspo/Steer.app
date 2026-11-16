@@ -35,7 +35,12 @@ export type GlyphName =
   | "more"
   | "search"
   | "sort"
-  | "code";
+  | "code"
+  | "arrow-up"
+  | "shield"
+  | "shield-alert"
+  | "shield-check"
+  | "square";
 
 type Draw = (c: CanvasRenderingContext2D) => void;
 
@@ -53,6 +58,18 @@ const rect = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: n
 const arc = (c: CanvasRenderingContext2D, x: number, y: number, r: number, from = 0, to = Math.PI * 2) => {
   c.beginPath();
   c.arc(x, y, r, from, to);
+  c.stroke();
+};
+/** The permission modes' shield body; the variants add their mark inside. */
+const shield = (c: CanvasRenderingContext2D) => {
+  c.beginPath();
+  c.moveTo(10, 3.5);
+  c.lineTo(15.5, 5.5);
+  c.lineTo(15.5, 10);
+  c.bezierCurveTo(15.5, 13, 13.2, 15.2, 10, 16.5);
+  c.bezierCurveTo(6.8, 15.2, 4.5, 13, 4.5, 10);
+  c.lineTo(4.5, 5.5);
+  c.closePath();
   c.stroke();
 };
 
@@ -399,6 +416,30 @@ const glyphs: Record<GlyphName, Draw> = {
     line(c, [10, 8.5, 10, 12]);
     c.beginPath();
     c.arc(10, 14.4, 0.5, 0, Math.PI * 2);
+    c.fill();
+  },
+  // ↑: the send's shaft and head (the `send` chevron stays the transcript's).
+  "arrow-up": (c) => {
+    line(c, [10, 15.5, 10, 4.5]);
+    line(c, [5.5, 9, 10, 4.5, 14.5, 9]);
+  },
+  shield,
+  "shield-alert": (c) => {
+    shield(c);
+    line(c, [10, 7.2, 10, 10.4]);
+    c.beginPath();
+    c.arc(10, 12.9, 0.55, 0, Math.PI * 2);
+    c.fill();
+  },
+  "shield-check": (c) => {
+    shield(c);
+    line(c, [7.4, 10.2, 9.3, 12.1, 12.8, 8.5]);
+  },
+  // ■: a filled rounded square for the composer's stop (the transcript's
+  // `stop` is the plain rect and stays as it is).
+  square: (c) => {
+    c.beginPath();
+    c.roundRect(5.5, 5.5, 9, 9, 2);
     c.fill();
   },
 };

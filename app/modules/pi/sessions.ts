@@ -465,6 +465,7 @@ function applySessionInfo(id: string, data: SessionInfoData | null | undefined):
   if (typeof data.name === "string" && data.name) patch.name = data.name;
   if (data.model && typeof data.model === "object") patch.model = data.model;
   if (typeof data.thinkingLevel === "string") patch.thinkingLevel = data.thinkingLevel;
+  if (typeof data.mode === "string") patch.mode = data.mode;
   if (data.contextUsage && typeof data.contextUsage === "object") patch.contextUsage = data.contextUsage;
   if (Object.keys(patch).length > 0) patchView(id, patch);
   if (typeof data.path === "string" && data.path) sessionPathObserver?.(id, data.path);
@@ -662,6 +663,18 @@ export function viewFor(id: string | null | undefined): SessionView | undefined 
 
 /** Selects the session's approval policy (`session/set_mode`). */
 export async function setSessionMode(id: string, modeId: string): Promise<boolean> {
+  if (!useAcpBranch()) {
+    // The fixtures' seam: `session.setMode` answers with the same `session.info`
+    // shape `setThinkingLevel` rides, so tests fold the new mode in directly.
+    try {
+      const data = (await sessionRequest("session.setMode", { sessionId: id, mode: modeId }, 30000)) as SessionInfoData;
+      applySessionInfo(id, data);
+      return true;
+    } catch (failure) {
+      patchView(id, { error: String(failure) });
+      return false;
+    }
+  }
   const session = liveSession(id);
   if (!session || session.dead) return false;
   try {

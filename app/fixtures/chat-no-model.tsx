@@ -2,6 +2,7 @@ import { mount } from "nsh";
 import { seedSession, setModelTransport } from "../modules/pi/sessions";
 import { SessionBody } from "../modules/pi/view";
 import { visiblePanels } from "../core/dock";
+import { SESSION_MODES } from "./chat-controls-data";
 
 // A session on a machine with no usable model: `session.info` carries no
 // model and `session.models` answers with a reason. The first reads are the
@@ -50,7 +51,14 @@ setModelTransport(async (type, payload: any = {}) => {
   }
 });
 
-seedSession("no-model", [], { path: "/tmp/zu-no-model.jsonl", cwd: "/tmp/zu" });
+seedSession("no-model", [], {
+  path: "/tmp/zu-no-model.jsonl",
+  cwd: "/tmp/zu",
+  // The modes are known even on a machine with no model: the distro offers
+  // them before any model is signed in.
+  modes: SESSION_MODES,
+  mode: "auto",
+});
 visiblePanels.set(["session:no-model"]);
 
 mount(() => <SessionBody id="no-model" sheetId="session:no-model" />);

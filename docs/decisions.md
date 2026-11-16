@@ -180,6 +180,12 @@
 | Q109 | Pi 官方配置 parity | **distro 吃官方配置/特性**：`createAgentSessionServices` 统一装配；CLI builtin（codemode/tool-search/mcp）用公开 factory 以 `builtin:true` 复刻，`official.test.ts` 对已安装 CLI 做漂移断言；`settings.packages`/skills/prompts 走同一 loader；项目信任按 CLI 优先级解析（含 pre-trust 扩展的 `project_trust` handler），ask 在 `session/new` 期间用 ACP `elicitation/create` 询问，接受写官方 trust store；`mcp.json` 与 ACP `session/new.mcpServers` 都进 MCP 扩展（ACP 服务器 `exposure:"direct"`）；子代理复用同一 services/model/trust。已知例外 `llama.cpp`（factory 未导出） | `pi-harness/src/pi/{official,services,trust,mcp}.ts`、`app/ui/trust.tsx`、`app/modules/pi/acp/host.ts`、`pi-harness/src/acp/{app,pi-session,subagents}.ts`；G0–G4 |
 | Q107 | 旧 wire 与 legacy distro 的删除 | **P4 完成**：删 `contracts/protocol.{ts,md}`、`stores/engine.ts`、`native` 的 `Engine` 模块、`pi-harness/src/{server,store,subagents}.ts` 与 `dist/pi-engine`；打包只带 `Helpers/pi-acp`。代价：ACP distro 尚无 dispatch，子代理名册在 UI 上明确显示不可用（已由 Q108 的 E0 恢复） | `script/bundle-mac.sh`、`native/src/lib.rs`、`pi-harness/package.json`、`app/modules/pi/subagents.ts` |
 
+## Composer 对齐 ZCode（2026-11-16）
+
+| # | 问题 | 裁决 | 落点 |
+|---|---|---|---|
+| Q110 | pi composer 对齐 ZCode 的形态 | **ZCode 同款圆角输入卡**：`rounded-xl border border-border bg-card`（12pt 表面半径、padding 12、**无阴影**；hover `border-input`、`focus-within` `border-ring`），占位在卡片顶，footer 一行——左：禁用 `+` 占位（附件未支持，issue [dspo-group/Steer.app#5](https://cnb.cool/dspo-group/Steer.app/issues/5) 跟踪）+ 权限模式开关（icon + 本地化标签 + caret；`auto`「完全访问」用 `warn` 色）；右：上下文环（Canvas 14pt，整圈 25% / 进度弧 70% alpha）+ 模型**显示名**（无 provider 前缀）+ 推理强度标签 + 28pt 发送（↑ `bg-primary`）/停止（■ `bg-secondary`，中性）。**移除**：hairline（`hairline` 参数删除）、footer chips（`provider · id · thinking` 分段与 `context%` 文本）、`⋯` 菜单及 `K.session.{more,queue,steer,interrupt}` 键；「权限」小节从模型菜单迁到左侧开关。输入随内容长高（钳 [44, 176]，无高度动画） | `app/modules/pi/composer.tsx`、`app/modules/pi/composer-controls.tsx`、`app/modules/pi/chat-view.tsx`、`app/ui/ui.tsx`、`app/ui/i18n.ts`；DESIGN §3.6 |
+
 ## 已落地设计（Q108–Q109）
 
 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) 的 D1–D7 已作为 **Q108** 登记并落地：
