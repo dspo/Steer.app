@@ -422,11 +422,6 @@ export function Glyph(props: { name: GlyphName; size?: number; tint?: string }) 
   );
 }
 
-/**
- * The app mark: `<-→` (Steer's bidirectional arrow) with Zu Chongzhi's
- * milü — 355 above the shaft, 113 below — in the 32-unit box the glyphs
- * use. The stroke and the digits take `ink`.
- */
 /** A filled status dot. */
 export function Dot(props: { tint: string; size?: number }) {
   const size = props.size ?? 7;

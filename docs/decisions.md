@@ -52,7 +52,7 @@
 
 | # | 问题 | 裁决 | 落点 |
 |---|---|---|---|
-| Q8 | 产品名 / logo | **Zu**（祖冲之）；`<->` + 密率 355/113 | arch §6；`ui.tsx` 的 `Logo` |
+| Q8 | 产品名 / logo | **Zu**（祖冲之） | `nsh.json` 的 `icon` |
 | Q25 | macOS 签名与公证 | sidecar 放 `Contents/Helpers`、直接执行不释放；嵌套签名 + hardened runtime + JIT entitlement + 公证 | arch §3.7 |
 | Q26 | 仓库公开性 | **公开** | arch §3.7 |
 | Q29 | 终端仿真核 | **M2 先用 nsh 内置**冒烟 + 修 alt 缺陷；「Ghostty + 扩 trait/组件」作为条件性里程碑 **M-tty**，一次换到位 | arch §6；[evidence/terminal-emulator.md](evidence/terminal-emulator.md) |

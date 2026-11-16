@@ -23,7 +23,8 @@ import { motionStyle, shadowRaised } from "../ui/ui";
  * lifetime.
  */
 
-/** A template-color icon is drawn in the menu bar's text color; the Z is plain. */
+/** An SVG tray icon is a template on macOS, drawn in the menu bar's text
+ * color. */
 export function LifecycleHost() {
   const win = currentWindow();
   // Belt and braces with `nsh.json`: the window reports the close press and
