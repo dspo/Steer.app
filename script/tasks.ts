@@ -194,11 +194,14 @@ function humanSize(bytes: number): string {
   return `${rounded}${units[unit]}`;
 }
 
-const nsh = nshBinary();
 const task = process.argv[2] ?? "dev";
 
+// nsh is resolved per task, never on load: `bundle` parses its own arguments
+// first, and `-h` has to answer without an nsh install the way the sh entry
+// always did (it only needed $NSH, and defaulted it without looking).
 switch (task) {
   case "dev": {
+    const nsh = nshBinary();
     checkNsh(nsh);
     ensureHarness();
     // The installed Zu owns `~/.pi/zu`'s lock; give dev its own state dir so
@@ -209,19 +212,25 @@ switch (task) {
     run([nsh, "run", "--port", PORT], APP, { ZU_STATE_DIR: stateDir });
     break;
   }
-  case "check":
+  case "check": {
+    const nsh = nshBinary();
     checkNsh(nsh);
     run([nsh, "check", "app"], ROOT);
     break;
-  case "test":
+  }
+  case "test": {
+    const nsh = nshBinary();
     checkNsh(nsh);
     run([nsh, "test", "."], APP);
     break;
-  case "evidence":
+  }
+  case "evidence": {
+    const nsh = nshBinary();
     checkNsh(nsh);
     mkdirSync(join(APP, "docs", "evidence"), { recursive: true });
     run([nsh, "test", "containers.ui.test.tsx", "--target", "macos", "--filter", "containers switch"], APP);
     break;
+  }
   case "bundle": {
     // `bun run bundle -- -i -o` passes the flags after a literal `--`; argv
     // carries it, and no out-dir is ever named `--`.
