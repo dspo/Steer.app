@@ -196,6 +196,13 @@
 | Q123 | 托管迁到 GitHub 后 CI 怎么摆 | **合并门禁仍在本地（Q119 不变），GitHub 跑两条互补的自动复核腿**：`.github/workflows/ci.yml` 单文件（PR / main push / workflow_dispatch 触发，PR 过时 push 取消），跑的是 `script/ci.ts` 同一套 stage。`verify (linux amd64)`（ubuntu-24.04）复刻云侧手动门禁的全部内容——layer-gate、lint-rust、build、test、manox、harness；Linux 独有价值不变：manox 的 libssl/libffi 链接、glibc/rustc 差异、GTK 版 nsh runtime。`verify (macOS arm64)`（macos-15）补上此前只有本地 gate 能覆盖的两条腿——AppKit 终端门禁（`ZU_TERMINAL_GATE=1`）与 pi-harness darwin 编译（公共仓库 macOS runner 免费）。两腿不重复任何 stage；conformance（report-only）与 bundle（依赖本机 AppKit 宿主 + codesign）不进 CI。`checks_pass` always() fan-in 与独立的 `no-coauthor`（拒绝 Co-Authored-By 尾注，事件集不同
 不能并入）是分支保护的 required check，加腿/改名不动仓库设置。版本 pin 现场取自仓库单一来源：Rust=rust-toolchain.toml，nsh=从 `.cnb.yml` 的 `NSH_VERSION` 提取（`toolchain.ts` 校验同源，workflow 不会漂移），bun 1.3.14。托管双轨：GitHub（remote `origin`）为主托管，承接自动复核与 PR 协作（分支保护禁止直推）；另一处云侧托管（remote `cnb`）保留其既有流水线，操作细节全部收敛在 `.cnb.yml` / `.cnb/` 自身 | `.github/workflows/ci.yml`、`script/ci.ts`、`.cnb.yml`、AGENTS.md |
 ## 已落地设计（Q108–Q110）
+## Composer 对齐 ZCode（2026-11-16）
+
+| # | 问题 | 裁决 | 落点 |
+|---|---|---|---|
+| Q116 | ZCode 卡片 composer 属于哪个 sheet | **卡片属于 manox**：manox sheet 的 composer 换成 ZCode 同款圆角输入卡（`rounded-xl border border-border bg-card`，12pt 表面半径、padding 12、**无阴影**；hover `border-input`、`focus-within:border-ring`），输入在卡片顶、自动长高（钳 [44,176]，无高度动画），lane/传输错误行在卡片上方；**pi 面回到 hairline composer，等它自己的设计**（曾落地的 pi 卡片已归档在 tag `pi-composer-zcode-archive`，不再复活）。数据全部来自 AHP，不改 harness/native：权限模式 = `session/configChanged` 的 `accessMode`（`sandbox`/`full-access`，schema 缺省 `sandbox`；`sandbox` `info`、`full-access` `warn`）；模型 = `config.values.model`（manox kernel ref `{provider}-{wire}/{id}`），菜单来自与 pi 共用的 `usableModels()`（Q104 的单一模型目录），触发器显示**显示名**、tooltip 全 ref；推理强度 = `reasoningEffort`（可写枚举 `high`/`max`，当前值在枚举外时保留在触发器并加禁用「当前」行）；上下文环**只读**且诚实命名「上下文（上一轮）」：最近回合 `inputTokens+cacheReadTokens` / 根模型 `maxPromptTokens`（fallback `maxContextWindow`）——**不是** pi 的 live `session.info` gauge。footer 左侧 `+` 是禁用占位：manox AHP 已建模附件，但 app 没有 picker/上传/预览路径，由 issue [dspo-group/Steer.app#5](https://cnb.cool/dspo-group/Steer.app/issues/5) 跟踪（同时覆盖 pi ACP）。测试缝：`setManoxFrameSink`（frames 捕获）与 `setPiModelsTransport`（模型目录替身），宿主/hermetic 门禁不变 | `app/modules/manox/composer.tsx`、`app/modules/manox/composer-controls.tsx`、`app/modules/manox/stores.ts`、`app/modules/manox/ahp.ts`、`app/domains/pimodels.ts`、`app/ui/ui.tsx`、`app/ui/i18n.ts`；DESIGN §3.6a |
+
+## 已落地设计（Q108–Q109）
 
 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) 的 D1–D7 已作为 **Q108** 登记并落地：
 
