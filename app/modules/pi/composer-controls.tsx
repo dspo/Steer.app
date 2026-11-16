@@ -1,4 +1,4 @@
-import { Canvas, effect, Scroll, signal, Text, token, View } from "nsh";
+import { Canvas, createAnimatedValue, effect, Scroll, signal, Text, token, View } from "nsh";
 import { Menu, MenuItem, Submenu } from "nsh/base";
 import { K, t } from "../../ui/i18n";
 import type { SessionContextUsage, SessionModelsReason, SessionThinkingLevel } from "./protocol";
@@ -9,7 +9,6 @@ import {
   sessionModels,
   setSessionMode,
   setThinkingLevel,
-  stop,
   viewFor,
 } from "./sessions";
 import { Glyph, motionStyle, shadowRaised, type GlyphName } from "../../ui/ui";
@@ -85,7 +84,7 @@ export function ComposerPlus() {
 
 /** Mode id → its glyph and tint: `auto` is the loud one, the quiet modes are not. */
 const MODE_LOOK: Record<string, { glyph: GlyphName; tint: "muted-foreground" | "warn" | "info" | "foreground" }> = {
-  ask: { glyph: "shield", tint: "muted-foreground" },
+  ask: { glyph: "shield", tint: "foreground" },
   auto: { glyph: "shield-alert", tint: "warn" },
   "read-only": { glyph: "shield-check", tint: "info" },
 };
@@ -138,7 +137,10 @@ export function ModeSwitch(props: { sessionId: string }) {
             style={{ ...motionStyle("fast") }}
           >
             <Glyph name={look().glyph} size={15} tint={token(look().tint)} />
-            <Text class="text-[12px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
+            <Text
+              class="text-[12px] font-medium"
+              style={{ color: token(look().tint), numberOfLines: 1 }}
+            >
               {modeName(current())}
             </Text>
             <Glyph name="caret-down" size={8} tint={token("faint")} />
@@ -151,19 +153,22 @@ export function ModeSwitch(props: { sessionId: string }) {
               testID={`session-mode-${mode().id}`}
               checked={current() === mode().id}
               role="menuitemradio"
-              indicator={<Glyph name="check" size={11} tint={token("brand")} />}
-              indicatorClass="opacity-0 checked:opacity-100"
               class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
               onSelect={() => void setSessionMode(props.sessionId, mode().id)}
             >
-              <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-                <Text class="text-[12px] text-foreground" style={{ numberOfLines: 1 }}>
-                  {modeName(mode().id)}
-                </Text>
-                <If when={!!modeHint(mode().id)}>
-                  <Text class="text-[10.5px] leading-[14px] text-faint" style={{ numberOfLines: 2 }}>
-                    {modeHint(mode().id)}
+              <View class="flex-row items-center" style={{ flex: 1, minWidth: 0, gap: 8 }}>
+                <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+                  <Text class="text-[12px] text-foreground" style={{ numberOfLines: 1 }}>
+                    {modeName(mode().id)}
                   </Text>
+                  <If when={!!modeHint(mode().id)}>
+                    <Text class="text-[10.5px] leading-[14px] text-faint" style={{ numberOfLines: 2 }}>
+                      {modeHint(mode().id)}
+                    </Text>
+                  </If>
+                </View>
+                <If when={current() === mode().id}>
+                  <Glyph name="check" size={11} tint={token("brand")} />
                 </If>
               </View>
             </MenuItem>
@@ -231,20 +236,23 @@ export function ThinkingPicker(props: { sessionId: string }) {
           </View>
         }
       >
-        <Each of={option()!.options} key={(row) => row.value}>
+        <Each of={option()?.options ?? []} key={(row) => row.value}>
           {(row) => (
             <MenuItem
               testID={`session-thinking-${row().value}`}
               checked={value() === row().value}
               role="menuitemradio"
-              indicator={<Glyph name="check" size={11} tint={token("brand")} />}
-              indicatorClass="opacity-0 checked:opacity-100"
               class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
               onSelect={() => void setThinkingLevel(props.sessionId, row().value as SessionThinkingLevel)}
             >
-              <Text class="text-[12px] text-foreground" style={{ numberOfLines: 1 }}>
-                {thinkingLabel(row().value)}
-              </Text>
+              <View class="flex-row items-center" style={{ flex: 1, minWidth: 0, gap: 8 }}>
+                <Text class="flex-1 text-[12px] text-foreground" style={{ numberOfLines: 1 }}>
+                  {thinkingLabel(row().value)}
+                </Text>
+                <If when={value() === row().value}>
+                  <Glyph name="check" size={11} tint={token("brand")} />
+                </If>
+              </View>
             </MenuItem>
           )}
         </Each>
@@ -259,13 +267,22 @@ export function ThinkingPicker(props: { sessionId: string }) {
  * heads, from twelve o'clock. The tooltip carries the full fact so the dial
  * alone never has to be read precisely.
  */
-export function ContextRing(props: { usage: SessionContextUsage | undefined }) {
-  const line = () => contextLine(props.usage);
+export function ContextRing(props: { usage: () => SessionContextUsage | undefined }) {
+  const line = () => contextLine(props.usage());
+  // The arc is a native canvas; it redraws only for an animated value it
+  // reads, so the sweep rides one instead of the usage snapshot.
+  const sweepEnd = createAnimatedValue(-Math.PI / 2);
+  effect(() => {
+    const usage = props.usage();
+    sweepEnd.set(-Math.PI / 2 + Math.PI * 2 * (usage ? contextPercent(usage) : 0));
+  });
   return (
     <If when={!!line()}>
       <View
         testID="session-context"
+        role="progressbar"
         accessibilityLabel={line()}
+        accessibilityValue={{ text: line() }}
         tooltip={line()}
         class="h-7 w-7 items-center justify-center rounded-lg"
       >
@@ -281,13 +298,10 @@ export function ContextRing(props: { usage: SessionContextUsage | undefined }) {
             c.globalAlpha = 0.25;
             c.arc(7, 7, 6.25, 0, Math.PI * 2);
             c.stroke();
-            const sweep = Math.PI * 2 * contextPercent(props.usage!);
-            if (sweep > 0) {
-              c.beginPath();
-              c.globalAlpha = 0.7;
-              c.arc(7, 7, 6.25, -Math.PI / 2, -Math.PI / 2 + sweep);
-              c.stroke();
-            }
+            c.beginPath();
+            c.globalAlpha = 0.7;
+            c.arc(7, 7, 6.25, -Math.PI / 2, sweepEnd);
+            c.stroke();
           }}
         />
       </View>
@@ -423,8 +437,12 @@ export function ModelPicker(props: { sessionId: string }) {
           style={{ ...motionStyle("fast") }}
         >
           <Text
-            class={current() ? "text-[12.5px] font-medium text-foreground" : "text-[12.5px] text-muted-foreground"}
-            style={{ numberOfLines: 1 }}
+            class={
+              current()
+                ? "min-w-0 text-[12.5px] font-medium text-foreground"
+                : "min-w-0 text-[12.5px] text-muted-foreground"
+            }
+            style={{ numberOfLines: 1, flexShrink: 1 }}
           >
             {display()}
           </Text>
@@ -490,19 +508,22 @@ export function ModelPicker(props: { sessionId: string }) {
                     checked={currentKey() === `${model().provider}/${model().id}`}
                     role="menuitemradio"
                     closeOnSelect={false}
-                    indicator={<Glyph name="check" size={11} tint={token("brand")} />}
-                    indicatorClass="opacity-0 checked:opacity-100"
                     class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
                     onSelect={() => void choose(model().provider, model().id)}
                   >
-                    <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-                      <Text class="text-[12px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
-                        {model().name}
-                      </Text>
-                      <Text class="text-[10px] text-faint" style={{ numberOfLines: 1 }}>
-                        {model().id}
-                        {model().contextWindow ? ` · ${formatTokens(model().contextWindow!)}` : ""}
-                      </Text>
+                    <View class="flex-row items-center" style={{ flex: 1, minWidth: 0, gap: 8 }}>
+                      <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+                        <Text class="text-[12px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
+                          {model().name}
+                        </Text>
+                        <Text class="text-[10px] text-faint" style={{ numberOfLines: 1 }}>
+                          {model().id}
+                          {model().contextWindow ? ` · ${formatTokens(model().contextWindow!)}` : ""}
+                        </Text>
+                      </View>
+                      <If when={currentKey() === `${model().provider}/${model().id}`}>
+                        <Glyph name="check" size={11} tint={token("brand")} />
+                      </If>
                     </View>
                   </MenuItem>
                 )}

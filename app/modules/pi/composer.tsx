@@ -93,6 +93,7 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean }) 
     if (!text) return false;
     void runSlash(props.sessionId, text);
     draft.set("");
+    inputHeight.set(44);
     return true;
   };
   const submit = () => {
@@ -208,12 +209,12 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean }) 
             permission mode, right the gauge, model, effort and the action —
             idle's ↑ send and streaming's ■ stop in the same spot. */}
         <View class="flex-row items-center justify-between" style={{ gap: 8 }}>
-          <View class="flex-row items-center" style={{ gap: 4 }}>
+          <View class="flex-row items-center" style={{ gap: 4, flexShrink: 0 }}>
             <ComposerPlus />
             <ModeSwitch sessionId={props.sessionId} />
           </View>
-          <View class="flex-row items-center" style={{ gap: 4 }}>
-            <ContextRing usage={view()?.contextUsage} />
+          <View class="flex-row items-center" style={{ gap: 4, flexShrink: 1, minWidth: 0 }}>
+            <ContextRing usage={() => view()?.contextUsage} />
             <ModelPicker sessionId={props.sessionId} />
             <ThinkingPicker sessionId={props.sessionId} />
             {/* Stop is absolute: never gated by the draft. */}

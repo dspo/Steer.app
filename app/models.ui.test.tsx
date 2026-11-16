@@ -1,5 +1,14 @@
 import { expect, open, test } from "nsh/test";
 
+/** Writes the picture when the run draws the app (`nsh test --target macos`). */
+async function shot(app: { screenshot: (path?: string | null) => Promise<Uint8Array> }, name: string): Promise<void> {
+  try {
+    await app.screenshot(`docs/evidence/${name}.png`);
+  } catch {
+    // Headless: nothing is drawn, and nothing is broken.
+  }
+}
+
 // The composer's model picker: `session.models` supplies the two levels and
 // `session.setModel` replies with `session.info`. The fixture answers both
 // without an engine; the real commands are covered by `models.test.ts`.
@@ -20,6 +29,7 @@ test("the hero composer's model menu lists providers and switches a model", asyn
   // A provider opens its own level; the model rows carry their ids.
   await app.press("id:model-provider-anthropic");
   await app.waitFor("id:model-anthropic-claude-sonnet-4");
+  await shot(app, "ui-s22-11-model");
   await app.press("id:model-anthropic-claude-sonnet-4");
 
   // The reply's display name lands in the trigger, and the menu closed on success.

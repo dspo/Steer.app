@@ -108,6 +108,7 @@ test("the effort picker localizes the levels and sets the thought level", async 
   expect(app.texts()).toContain("高");
   await app.press("id:session-thinking");
   await app.waitFor("id:session-thinking-max");
+  await shot(app, "ui-s22-11-thinking");
   await app.press("id:session-thinking-max");
   await app.waitUntil(() => !app.shows("id:session-thinking-max"), { timeout: 5000 });
   expect(app.texts()).toContain("最高");
