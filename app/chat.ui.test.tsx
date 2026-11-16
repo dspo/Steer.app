@@ -56,6 +56,9 @@ test("the streaming composer shows the card's controls, and queues on Enter", as
   expect(app.enabled("id:session-stop")).toBe(true);
   expect(app.shows("id:session-send")).toBe(false);
   expect(app.shows("id:session-more")).toBe(false);
+  // Every footer control has a name, not just a glyph.
+  expect(app.count("label:停止")).toBe(1);
+  expect(app.count("label:上下文占用 · 12.3k / 1M · 1%")).toBe(1);
   // The mode menu opens above the footer; picking nothing leaves it as it is.
   await app.press("id:session-mode");
   await app.waitFor("id:session-mode-read-only");
@@ -80,6 +83,8 @@ test("the idle composer is one accent send with no stop and no lanes", async () 
   // yet (dspo-group/Steer.app#5).
   expect(idle.shows("id:session-attach")).toBe(true);
   expect(idle.enabled("id:session-attach")).toBe(false);
+  expect(idle.count("label:发送")).toBe(1);
+  expect(idle.count("label:添加附件 · pi 引擎暂不支持附件。")).toBe(1);
   // The same card in dark: tokens flip, the geometry stays (§3.6).
   await idle.setColorScheme("dark");
   await shot(idle, "ui-s22-11-idle-dark");
@@ -94,6 +99,7 @@ test("the mode switch names the mode and switches through session/set_mode", asy
   await app.waitFor("id:session-mode");
   // The trigger names the current mode in the shell's words.
   expect(app.texts()).toContain("完全访问");
+  expect(app.count("label:权限模式：完全访问")).toBe(1);
   await app.press("id:session-mode");
   await app.waitFor("id:session-mode-read-only");
   await app.press("id:session-mode-read-only");
@@ -106,6 +112,7 @@ test("the effort picker localizes the levels and sets the thought level", async 
   const app = await open("./fixtures/chat-modes.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:session-thinking");
   expect(app.texts()).toContain("高");
+  expect(app.count("label:推理强度：高")).toBe(1);
   await app.press("id:session-thinking");
   await app.waitFor("id:session-thinking-max");
   await shot(app, "ui-s22-11-thinking");
