@@ -399,7 +399,7 @@ export function ManoxChatBody(props: { id: string }) {
           </If>
         </Scroll>
       </If>
-      <View style={{ paddingHorizontal: 16, paddingBottom: 10 }}>
+      <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
         <ManoxComposer threadId={parsed.threadId} chatId={parsed.chatId} />
       </View>
     </View>

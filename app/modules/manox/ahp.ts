@@ -110,9 +110,20 @@ function newId(): string {
   }
 }
 
+/** Test seam: when set, `emit` hands frames here instead of the native pump
+ * (the deterministic composer fixture captures dispatches this way). */
+let frameSink: ((frame: string) => void) | null = null;
+
+/** Routes outgoing frames to `next` instead of the pump (tests only). */
+export function setManoxFrameSink(next: ((frame: string) => void) | null): void {
+  frameSink = next;
+}
+
 /** Serializes one JSON-RPC message to the pump's frame string. */
 function emit(message: AnyMessage): void {
-  Manox.send(JSON.stringify(message));
+  const text = JSON.stringify(message);
+  if (frameSink) frameSink(text);
+  else Manox.send(text);
 }
 
 export function request<T>(method: string, params: Record<string, unknown>): Promise<T> {

@@ -4,9 +4,10 @@ import { ActionType, catalog, channels, createSessionOn, dispatchAction, effecti
 import type { ChannelCell } from "./ahp";
 import type { SessionSummary } from "../../../contracts/ahp/channels-session/state";
 import type { SessionState } from "../../../contracts/ahp/channels-session/state";
+import type { RootState, SessionModelInfo } from "../../../contracts/ahp/channels-root/state";
 import type { ChatState } from "../../../contracts/ahp/channels-chat/state";
 import type { SessionConfigChangedAction } from "../../../contracts/ahp/channels-session/actions";
-import type { URI } from "../../../contracts/ahp/common/state";
+import type { URI, UsageInfo } from "../../../contracts/ahp/common/state";
 
 /**
  * The manox threads and chats stores (DESIGN §3.3/§4.2): a thread is an AHP
@@ -108,6 +109,62 @@ export function threadOf(threadId: string): ManoxThread | null {
 /** The folded chat state of a chat id, optimistic layer included. */
 export function chatOf(chatId: string): ChatState | null {
   return effectiveState<ChatState>(chatResource(chatId));
+}
+
+/** The folded session state of a thread (null before its snapshot). */
+export function sessionOf(threadId: string): SessionState | null {
+  return effectiveState<SessionState>(sessionResource(threadId));
+}
+
+/**
+ * One session config value: the fold's explicit value when it has one, else
+ * the schema's default (the schema is what the host advertises the property
+ * with; an absent value means the default is in force).
+ */
+export function sessionConfigValue(threadId: string, key: string): unknown {
+  const config = sessionOf(threadId)?.config;
+  if (!config) return undefined;
+  return key in config.values ? config.values[key] : config.schema.properties[key]?.default;
+}
+
+/** The session's current config values (as the fold carries them). */
+export function sessionConfigValues(threadId: string): Record<string, unknown> {
+  return sessionOf(threadId)?.config?.values ?? {};
+}
+
+/** The thread's raw config model ref (the kernel's `{provider}-{wire}/{model}`). */
+export function manoxModelRefOf(threadId: string): string {
+  const value = sessionConfigValue(threadId, "model");
+  return typeof value === "string" ? value : "";
+}
+
+/** The root catalogue's model info matching a config ref exactly
+ * (`{provider}/{model}`), so the composer can read the context window off it. */
+export function rootModelOf(ref: string): SessionModelInfo | null {
+  if (!ref) return null;
+  const root = effectiveState<RootState>("ahp-root://");
+  for (const agent of root?.agents ?? []) {
+    for (const model of agent.models) {
+      if (`${model.provider}/${model.id}` === ref) return model;
+    }
+  }
+  return null;
+}
+
+/**
+ * The usage the context ring shows: the active turn's when one runs, else the
+ * last completed turn's. It is last-turn context — a settled accounting, not
+ * pi's live `session.info` gauge.
+ */
+export function latestChatUsage(chatId: string): UsageInfo | null {
+  const chat = chatOf(chatId);
+  if (!chat) return null;
+  if (chat.activeTurn?.usage) return chat.activeTurn.usage;
+  for (let index = chat.turns.length - 1; index >= 0; index--) {
+    const usage = chat.turns[index]?.usage;
+    if (usage) return usage;
+  }
+  return null;
 }
 
 /** Mints a client-side uuid (the protocol hands channel minting to clients). */
