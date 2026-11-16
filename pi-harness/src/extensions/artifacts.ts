@@ -79,7 +79,13 @@ function under(root: string, target: string): boolean {
 }
 
 /** The temp-root candidate set: os.tmpdir(), the literal roots, and the env
- * trio — resolved and deduped, order irrelevant (any hit blocks). */
+ * trio. Roots get both spellings: `resolve()` is lexical (it does not follow
+ * symlinks), and the canonical spelling differs on macOS — `/tmp` and
+ * `/var/tmp` are symlinks (`/tmp → /private/tmp`), so a write of the
+ * canonical form (`/private/tmp/new.md`, what bash output and `realpath`
+ * print) must hit too. Every root that exists on disk therefore also
+ * contributes its `realpathSync()`; a missing root keeps only the lexical
+ * form. Order irrelevant (any hit blocks). */
 function tempRoots(context: WriteTargetContext): string[] {
   const candidates = [
     tmpdir(),
@@ -89,7 +95,17 @@ function tempRoots(context: WriteTargetContext): string[] {
     context.env.TEMP,
     context.env.TMP,
   ].filter((value): value is string => typeof value === "string" && value.length > 0);
-  return [...new Set(candidates.map((value) => resolve(value)))];
+  const roots = new Set<string>();
+  for (const value of candidates) {
+    const resolved = resolve(value);
+    roots.add(resolved);
+    try {
+      roots.add(realpathSync(resolved));
+    } catch {
+      // Not on disk (or unreadable): the lexical form stays as the only one.
+    }
+  }
+  return [...roots];
 }
 
 /**

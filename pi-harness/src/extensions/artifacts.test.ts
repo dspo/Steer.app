@@ -118,6 +118,33 @@ describe("artifacts guard", () => {
       expect(temporaryWriteTarget({ path: literal }, context())).toBe(join(tempRoot, "new.md"));
     });
 
+    test("a symlinked temp root blocks both spellings (canonical and lexical)", () => {
+      // The root itself is reached through a symlink (macOS: /tmp is a
+      // symlink to /private/tmp, and tools print the canonical spelling).
+      // Whichever spelling the model writes must hit: the lexical form via
+      // the env root, the canonical form via the root's realpath.
+      const real = join(base, "real");
+      const link = join(base, "link");
+      mkdirSync(real, { recursive: true });
+      symlinkSync(real, link);
+      const ctx = { cwd: workspace, env: { TMPDIR: link, TEMP: "", TMP: "" }, home: join(base, "home") };
+      expect(temporaryWriteTarget({ path: join(link, "new.md") }, ctx)).toBe(join(link, "new.md"));
+      expect(temporaryWriteTarget({ path: join(real, "new.md") }, ctx)).toBe(join(real, "new.md"));
+    });
+
+    test("a parent symlink chain into a symlinked temp root hits via the canonical root", () => {
+      // parent symlink -> symlinked root: the parent's realpath lands on the
+      // root's realpath, which the roots set must carry (reviewer case ②:
+      // realpathSync(parent) = canonical root, lexical roots alone miss it).
+      const real = join(base, "real");
+      const link = join(base, "link");
+      mkdirSync(real, { recursive: true });
+      symlinkSync(real, link);
+      symlinkSync(link, join(workspace, "chain"));
+      const ctx = { cwd: workspace, env: { TMPDIR: link, TEMP: "", TMP: "" }, home: join(base, "home") };
+      expect(temporaryWriteTarget({ path: join(workspace, "chain", "new.md") }, ctx)).toBe(join(real, "new.md"));
+    });
+
     test("a symlinked parent outside temp stays allowed", () => {
       const other = join(base, "other");
       mkdirSync(other, { recursive: true });

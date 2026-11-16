@@ -801,6 +801,8 @@ host inline loads first)`，并断言 inline 扩展在包之前。
   3. 已存在 → null（编辑已有临时文件不拦）；目标在 `artifactsDir(cwd)` 下 → null
      （工作区优先，即使 cwd 本身在临时目录里）；
   4. 候选根：`os.tmpdir()`、`/tmp`、`/var/tmp`、`env.TMPDIR/TEMP/TMP`（resolve 后去重），
+     且每个存在于磁盘的根同时收它的 `realpathSync()`（macOS 上 `/tmp → /private/tmp`，
+     规范拼写与词法拼写都必须命中；不存在的根只留词法形式），
      目标等于根或以 `根 + sep` 开头即命中；
   5. 符号链接规避：父目录存在时 `realpathSync(parent)` 后再判一次，命中返回真实路径；
      父目录不存在按字面路径判。
