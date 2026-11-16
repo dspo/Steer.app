@@ -117,6 +117,44 @@ describe("tool call updates", () => {
     expect(done.status).toBe("completed");
     expect(done.content).toBeUndefined();
   });
+
+  test("end carries plain object details under _meta.zu", () => {
+    const details = { options: [{ id: "a", label: "A" }] };
+    const update = toolCallEndUpdate("tc1", { content: [{ type: "text", text: "ok" }], details }, false) as Record<
+      string,
+      unknown
+    >;
+    expect((update._meta as { zu: { details: unknown } }).zu.details).toEqual(details);
+  });
+
+  test("end without details carries no _meta", () => {
+    for (const result of [{}, { content: [] }, { details: undefined }, { details: null }]) {
+      const update = toolCallEndUpdate("tc1", result, false) as Record<string, unknown>;
+      expect(update._meta).toBeUndefined();
+    }
+  });
+
+  test("scalar details drop — no guessing at a shape", () => {
+    for (const details of ["flat text", 7, true]) {
+      const update = toolCallEndUpdate("tc1", { details }, false) as Record<string, unknown>;
+      expect(update._meta).toBeUndefined();
+    }
+  });
+
+  test("details past the 64 KiB cap drop whole instead of truncating", () => {
+    const update = toolCallEndUpdate("tc1", { details: { blob: "x".repeat(80 * 1024) } }, false) as Record<
+      string,
+      unknown
+    >;
+    expect(update._meta).toBeUndefined();
+  });
+
+  test("circular details drop instead of throwing", () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const update = toolCallEndUpdate("tc1", { details: circular }, false) as Record<string, unknown>;
+    expect(update._meta).toBeUndefined();
+  });
 });
 
 describe("assistantDeltaUpdate", () => {

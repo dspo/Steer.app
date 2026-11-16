@@ -5,6 +5,7 @@ import { K, t } from "../../ui/i18n";
 import { viewFor } from "./sessions";
 import { ChatComposer } from "./composer";
 import { ApprovalCard, ElicitationDialog } from "./approvals";
+import { toolCardFor, type ToolCardProps } from "./tool-cards";
 import { Glyph } from "../../ui/ui";
 
 /**
@@ -47,8 +48,35 @@ function Caret() {
 type ChatMessage = {
   role: string;
   text: string;
-  tool?: { name: string; state: string };
+  tool?: { name: string; state: string; details?: unknown };
 };
+
+/** The tool row's compact line, unchanged: name, state glyph, faint label. */
+function CompactToolRow(props: { message: () => ChatMessage }) {
+  const message = () => props.message();
+  const tool = () => message().tool;
+  const state = () => tool()?.state ?? "done";
+  const stateLabel = () =>
+    state() === "running" ? t(K.tool.running) : state() === "failed" ? t(K.tool.failed) : t(K.tool.done);
+  return (
+    <View
+      testID="tool-call"
+      class="flex-row items-center gap-2 self-start rounded-md border border-line bg-inset px-2 py-1"
+    >
+      {state() === "running" ? (
+        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: token("info") }} />
+      ) : (
+        <Glyph
+          name={state() === "failed" ? "alert" : "check"}
+          size={10}
+          tint={state() === "failed" ? token("destructive") : token("up")}
+        />
+      )}
+      <Text class="text-[11px] font-medium text-foreground">{tool()?.name ?? message().text}</Text>
+      <Text class="text-[10px] text-faint">{stateLabel()}</Text>
+    </View>
+  );
+}
 
 /** One transcript row (also used by the subagent transcript). */
 export function MessageRow(props: { message: () => ChatMessage; streaming: () => boolean }) {
@@ -56,26 +84,22 @@ export function MessageRow(props: { message: () => ChatMessage; streaming: () =>
   const role = () => message().role;
   if (role() === "tool") {
     const tool = () => message().tool;
-    const state = () => tool()?.state ?? "done";
-    const stateLabel = () =>
-      state() === "running" ? t(K.tool.running) : state() === "failed" ? t(K.tool.failed) : t(K.tool.done);
+    const state = () => (tool()?.state ?? "done") as ToolCardProps["state"];
+    // A card renders when a renderer is registered for the tool and the
+    // result carried details; a replay (no details) or an unregistered tool
+    // keeps the compact line, byte for byte today's.
+    const card = () => (tool()?.details !== undefined ? toolCardFor(tool()?.name ?? "") : undefined);
     return (
-      <View
-        testID="tool-call"
-        class="flex-row items-center gap-2 self-start rounded-md border border-line bg-inset px-2 py-1"
-      >
-        {state() === "running" ? (
-          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: token("info") }} />
-        ) : (
-          <Glyph
-            name={state() === "failed" ? "alert" : "check"}
-            size={10}
-            tint={state() === "failed" ? token("destructive") : token("up")}
-          />
-        )}
-        <Text class="text-[11px] font-medium text-foreground">{tool()?.name ?? message().text}</Text>
-        <Text class="text-[10px] text-faint">{stateLabel()}</Text>
-      </View>
+      <If when={card()} else={<CompactToolRow message={message} />}>
+        {(renderer) => {
+          const Card = renderer();
+          return (
+            <View testID="tool-card">
+              <Card name={tool()?.name ?? message().text} details={tool()?.details} state={state()} />
+            </View>
+          );
+        }}
+      </If>
     );
   }
   if (role() === "note") {
