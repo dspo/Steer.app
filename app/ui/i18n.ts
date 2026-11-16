@@ -395,7 +395,6 @@ export const K = {
     invalidAddress: "app.browser.invalidAddress",
     unsupportedAddress: "app.browser.unsupportedAddress",
     unavailable: "app.browser.unavailable",
-    hidden: "app.browser.hidden",
     open: "app.browser.open",
     view: "app.browser.view",
   },

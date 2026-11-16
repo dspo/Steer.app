@@ -79,9 +79,9 @@ test("the tab follows the page title, and a hidden sheet keeps its address", asy
   expect(app.enabled("id:browser-forward")).toBe(false);
   expect(pageDebug(app)).toContain("Example Domain");
 
-  // Another browser sheet hides this one. The web view unmounts (no pause
-  // prop exists) while the store keeps the address; showing it again puts
-  // the address back in the bar.
+  // Another browser sheet hides this one. The web view stays mounted (a
+  // remount would load the page again), so the sheet comes back as it was:
+  // its bar keeps what the user typed, its page keeps the page.
   await app.press("id:titlebar-tools");
   await app.press("id:open-browser");
   await app.waitUntil(() => pageDebug(app).includes("webview:pi:browser-fixture:2"));
@@ -89,8 +89,12 @@ test("the tab follows the page title, and a hidden sheet keeps its address", asy
   // The hidden sheet kept its state: closing the blank tab reveals the first
   // again, with its address back in the bar.
   await app.press("id:tab-close-webview:pi:browser-fixture:2");
-  await app.waitUntil(() => app.value("id:browser-address") === "https://example.com/");
-  expect(app.value("id:browser-address")).toBe("https://example.com/");
+  // The bar shows the address the user gave (the seeded navigation is the
+  // fixture's, not the web view's, so no load event moved the draft).
+  await app.waitUntil(() => app.value("id:browser-address") === "https://example.com");
+  expect(app.value("id:browser-address")).toBe("https://example.com");
+  // The page it kept is the one it had, not a fresh load.
+  expect(pageDebug(app)).toContain("webview:pi:browser-fixture:1|https://example.com/|Example Domain");
 
   // A refusal is shown with its code; the platform-unavailable case uses the
   // same panel (the browser store's `failure`).
@@ -126,14 +130,15 @@ test("a container switch keeps the browser address and title", async () => {
   await app.press("id:seed-nav");
   await app.waitUntil(() => app.texts().includes("Example Domain"));
 
-  // The other container has no browser sheet; switching back restores the
-  // first container's layout and the UI store's page state.
+  // The other container has no browser sheet; switching back finds the same
+  // sheet body (a container switch shows another canvas, it does not rebuild
+  // one): its bar keeps what was typed, and its page was never loaded again.
   await app.press("Open container zu-browser-2");
   await app.waitUntil(() => !app.shows("id:browser-address"));
   // The first container is titled by its earliest sheet — the page (S2).
   await app.press("Open container Example Domain");
   await app.waitFor("id:browser-address");
-  expect(app.value("id:browser-address")).toBe("https://example.com/");
+  expect(app.value("id:browser-address")).toBe("https://example.com");
   expect(app.texts()).toContain("Example Domain");
   expect(pageDebug(app)).toContain("webview:pi:browser-fixture:1");
 });

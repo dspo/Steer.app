@@ -12,7 +12,7 @@ import {
   projectError,
   projects,
 } from "../../core/projects";
-import { activeContainerId, containers, containersLoaded } from "../../core/containers";
+import { activeContainerId, containerError, containers, containersLoaded } from "../../core/containers";
 import type { TerminalAction } from "../../domains/pty";
 import { homeSheetContainer } from "../../core/dock";
 import type { ProjectRecord } from "../../core/types";
@@ -121,18 +121,30 @@ export function HeroSheet(props: { id: string }) {
     const record = projects().find((project) => project.id === id);
     return record?.roots.find((root) => root.primary)?.path ?? record?.roots[0]?.path ?? null;
   };
+  // A start that fails says why, in the shell's error line: a rejection with
+  // nobody to catch it leaves the user with a cleared draft and no answer
+  // (a harness that is not installed, a container that cannot be made).
+  const failed = (failure: unknown) =>
+    containerError.set(failure instanceof Error ? failure.message : String(failure));
   const submit = () => {
     if (!canStart()) return;
     const text = draft();
     const id = containerId();
     draft.set("");
+    containerError.set(null);
     busy.set("send");
     const done = () => busy.set(null);
+    // The draft the user wrote comes back with the message: a failed start
+    // must not also eat what they typed.
+    const fail = (failure: unknown) => {
+      failed(failure);
+      draft.set(text);
+    };
     const harness = submitter();
     if (harness) {
       void harness
         .submit(text, { cwd: projectCwd(), model: chosenModel(), effort: heroEffort(), sheetId: props.id })
-        .catch(() => {})
+        .catch(fail)
         .finally(done);
       return;
     }
@@ -145,7 +157,9 @@ export function HeroSheet(props: { id: string }) {
         { text, model: chosenModel(), effort: heroEffort(), ...target },
         { containerId: id },
       ),
-    ).finally(done);
+    )
+      .catch(fail)
+      .finally(done);
   };
   // Cmd+Enter is the explicit send lane; Return (and Shift+Return for a line
   // break) already belongs to the Input. The binding follows the focused

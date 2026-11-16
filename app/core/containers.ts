@@ -39,6 +39,14 @@ export const containers = signal<ContainerRecord[]>([]);
 export const activeContainerId = signal<string | null>(null);
 /** The active canvas's DockArea layout. */
 export const layout = signal<DockAreaLayout>(defaultLayoutForSheets([]));
+/**
+ * The canvases put aside, by container id. Their sheets stay mounted
+ * (`canvas/sheet-host.tsx`): a browser keeps its page, a terminal its screen.
+ */
+export const heldLayouts = signal<Record<string, DockAreaLayout>>({});
+/** The scratch canvas's key in the put-aside map (`heldLayouts`). */
+export const SCRATCH_CANVAS = "scratch";
+
 /** The scratch canvas's layout: in memory only, like the canvas itself. */
 const scratchLayout = signal<DockAreaLayout>(defaultScratchLayout());
 /** The zoomed panel's id, or null (DockArea keeps zoom outside the layout). */
@@ -153,6 +161,7 @@ function showScratch(): void {
   activeContainerId.set(null);
   savedFor = null;
   layout.set(scratchLayout());
+  unpark(SCRATCH_CANVAS);
   zoomedPanel.set(null);
   syncVisible();
 }
@@ -175,6 +184,16 @@ export function containerOfSheet(id: string): string | null {
   }
   const active = activeContainerId();
   return active && panelIds(layout()).includes(id) ? active : null;
+}
+
+/**
+ * Displays a sheet the canvas already holds — the tab strip's own activation
+ * (`DockAreaRef.selectPanel`), which reports the new layout back. The content
+ * carousel calls it when its index moves, so a swipe and a tab press land in
+ * the same place.
+ */
+export function showSheet(id: string): void {
+  dock?.selectPanel(id);
 }
 
 /** Gives the store the DockArea it restores zoom through. */
@@ -216,15 +235,77 @@ function upsertContainer(container: ContainerRecord): void {
 
 /** Puts `container` on the canvas with `next` as its layout. */
 function activateCanvas(container: ContainerRecord, next: DockAreaLayout, zoom: string | null): void {
+  stashHeld();
   upsertContainer(container);
   activeContainerId.set(container.id);
   savedFor = container.id;
   layout.set(next);
+  // The canvas being shown owns its sheets through `layout` now. A parked
+  // copy of it would keep a sheet closed while it is shown alive — a frame
+  // no tab reaches, still mounting its web page or PTY — so it goes, after
+  // the layout is in place: dropped before it, the union would lack the
+  // canvas's sheets for a frame and their bodies would be made again.
+  unpark(container.id);
   seedSheetOrder(container.id, next);
   zoomedPanel.set(zoom);
   syncVisible();
   void saveRegistry();
   notifyContainerShown(container.id);
+}
+
+/**
+ * How many put-aside canvases stay mounted. Each holds live bodies — a web
+ * page keeps running, a terminal keeps reading its PTY — and the engine will
+ * not cull a web view for us (`nsh-core`'s cull refuses to). Past this many,
+ * the least recently shown container is dropped: its sheets unmount, and
+ * coming back reloads them from their stores (bounded, at the price of the
+ * oldest one's live state).
+ */
+const PARKED_CANVASES = 4;
+
+/** The parked canvases in the order they were last shown, oldest first. */
+let heldOrder: string[] = [];
+
+/** Drops the put-aside canvases of containers that are gone (and the oldest
+ * past `PARKED_CANVASES`): a parked web page must not keep running for a
+ * container nobody can open. */
+function pruneHeld(): void {
+  const live = new Set(liveContainers().map((row) => row.id));
+  heldOrder = heldOrder.filter((id) => id === SCRATCH_CANVAS || live.has(id));
+  while (heldOrder.filter((id) => id !== SCRATCH_CANVAS).length > PARKED_CANVASES) {
+    const oldest = heldOrder.find((id) => id !== SCRATCH_CANVAS);
+    if (!oldest) break;
+    heldOrder = heldOrder.filter((id) => id !== oldest);
+  }
+  const held = heldLayouts();
+  const kept: Record<string, DockAreaLayout> = {};
+  for (const id of heldOrder) {
+    const layout = held[id];
+    if (layout) kept[id] = layout;
+  }
+  if (Object.keys(kept).length !== Object.keys(held).length) heldLayouts.set(kept);
+}
+
+/** Drops `id`'s parked canvas: it is the one being shown. */
+function unpark(id: string): void {
+  const held = heldLayouts();
+  if (held[id]) {
+    const { [id]: _shown, ...rest } = held;
+    heldLayouts.set(rest);
+  }
+  heldOrder = heldOrder.filter((row) => row !== id);
+}
+
+/**
+ * Puts the canvas being replaced aside, so its sheets stay mounted — the
+ * scratch canvas too, or a browser sheet on it would unmount on the way to a
+ * container and reload on the way back.
+ */
+function stashHeld(): void {
+  const current = activeContainerId() ?? SCRATCH_CANVAS;
+  heldLayouts.set({ ...heldLayouts(), [current]: layout() });
+  heldOrder = [...heldOrder.filter((id) => id !== current), current];
+  pruneHeld();
 }
 
 /** Loads the registry and shows its active container (startup). */
@@ -396,6 +477,7 @@ export async function archiveContainer(id: string): Promise<void> {
       const data = (await transport("container.archive", { containerId: id }, 30000)) as ContainerListData;
       LayoutAnimation.configureNext(LayoutAnimation.create(180));
       containers.set(data.containers ?? []);
+      pruneHeld();
       notifyContainerArchived(id);
       if (activeContainerId() === id) {
         savedFor = null;
@@ -418,6 +500,7 @@ export async function archiveContainer(id: string): Promise<void> {
       containers().map((row) => (row.id === id ? { ...row, archived: true, updatedAt: Date.now() } : row)),
     );
     void saveRegistry();
+    pruneHeld();
     notifyContainerArchived(id);
     if (activeContainerId() === id) {
       savedFor = null;

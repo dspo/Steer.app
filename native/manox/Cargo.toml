@@ -18,11 +18,11 @@ async-trait = "0.1"
 # The real manox AHP host (M1: the T0 stub is gone). One tag for the whole
 # crate family — the kernel's crates share one version — pinned like
 # manox-app pins it (`tag = "vX.Y.Z"`, the Cargo.lock records the rev).
-manox-ahp = { git = "https://github.com/dspo/manox.git", tag = "v0.9.1" }
-manox-ahp-runtime = { git = "https://github.com/dspo/manox.git", tag = "v0.9.1" }
-manox-session-core = { git = "https://github.com/dspo/manox.git", tag = "v0.9.1" }
-manox-agent = { git = "https://github.com/dspo/manox.git", tag = "v0.9.1" }
-manox-harness = { git = "https://github.com/dspo/manox.git", tag = "v0.9.1" }
+manox-ahp = { git = "https://github.com/dspo/manox.git", tag = "v0.11.1" }
+manox-ahp-runtime = { git = "https://github.com/dspo/manox.git", tag = "v0.11.1" }
+manox-session-core = { git = "https://github.com/dspo/manox.git", tag = "v0.11.1" }
+manox-agent = { git = "https://github.com/dspo/manox.git", tag = "v0.11.1" }
+manox-harness = { git = "https://github.com/dspo/manox.git", tag = "v0.11.1" }
 tracing = "0.1"
 # The wire message type our Sink/Source impls name. `=1.0.0` is the same pin
 # the manox workspace carries, so both resolve to one copy.

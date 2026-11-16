@@ -95,52 +95,122 @@ export function shadowInset(): string {
   return `inset 0 1px 1px ${token("shadow-inset")}`;
 }
 
-/** A section switcher's track height (the sheet tab bar's own, DESIGN §3.2). */
-export const SWITCHER_HEIGHT = 34;
-/** A switcher tab's pill height: the track minus its border and 3pt inset. */
-export const SWITCHER_PILL = 26;
+/**
+ * The section switcher's geometry (DESIGN §3.2), in points. One table so the
+ * painted overlay (`canvas/tab-switcher.tsx`) and the tab bar's layout
+ * (`shell/shell.tsx`) cannot drift: the pill is exactly where a tab's content
+ * starts.
+ */
+export const switcher = {
+  /** The capsule track's height. */
+  height: 34,
+  /** The pill inside it: the track minus its border and 3pt inset, twice. */
+  pill: 26,
+  /** The track's inner gap, from its border to a tab. */
+  inset: 3,
+  /** The track's border, on every side. */
+  border: 1,
+  /** Between two tabs. */
+  gap: 2,
+  /** The strip the `+` overlay keeps at the track's right end. */
+  plus: 34,
+  /** The card's gap above and below the track. */
+  lift: 2,
+  /** The card's gap at the track's left. */
+  margin: 3,
+  /** The narrowest a tab squeezes to before its title truncates. */
+  minTab: 72,
+} as const;
+
+/** A tab's content starts this far inside the track (its border and inset). */
+export const SWITCHER_CONTENT_INSET = switcher.border + switcher.inset;
 
 /**
- * The section switcher's look, clean-room after the gallery's `tabsLook`:
- * a capsule track sunk into the card (`shadowInset`), the tabs sharing it,
- * and the selected tab a pill standing off the track (`shadowCard`). The
- * gallery's pill is one native indicator the core springs to the next tab;
- * `DockArea` places each tab itself and reports no bounds, so here the pill
- * travels by cross-fading between two tabs instead (180 ms, `medium`) —
- * the same look, one interaction short of the gallery's spring.
+ * The pill's place on a track of `trackWidth`: the share one tab gets and
+ * where the selected one starts. The tabs are equal (the gallery's `flex: 1`),
+ * so one width serves them all; the `+`'s strip is not theirs. Pure, so the
+ * overlay and `tab-switcher.test.ts` cannot drift.
+ */
+export function switcherPillAt(
+  trackWidth: number,
+  count: number,
+  active: number,
+): { left: number; width: number } {
+  if (count <= 0) return { left: SWITCHER_CONTENT_INSET, width: 0 };
+  const available =
+    trackWidth - 2 * SWITCHER_CONTENT_INSET - switcher.plus - switcher.gap * (count - 1);
+  const width = Math.max(switcher.minTab, available / count);
+  return { left: SWITCHER_CONTENT_INSET + active * (width + switcher.gap), width };
+}
+
+/**
+ * The switcher's track, clean-room after the gallery's `tabsLook`: a capsule
+ * sunk into the card (`shadowInset`) with a hairline edge. Painted by the
+ * overlay, not by the bar: `DockArea` draws the tabs above its own bar, so a
+ * pill that travels between them can only live in a layer underneath —
+ * `canvas/tab-switcher.tsx` draws both this and the pill.
  */
 export function switcherTrack(): ViewStyle {
   return {
-    height: SWITCHER_HEIGHT,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-    paddingHorizontal: 3,
-    borderRadius: SWITCHER_HEIGHT / 2,
-    borderWidth: 1,
+    height: switcher.height,
+    borderRadius: switcher.height / 2,
+    borderWidth: switcher.border,
     borderColor: token("border"),
     backgroundColor: token("inset"),
     boxShadow: shadowInset(),
   };
 }
 
-/** One switcher tab: the pill while selected, nothing but its label otherwise. */
-export function switcherPill(active: boolean): ViewStyle {
+/**
+ * The tab bar's own style: layout only (no paint), so the overlay's track and
+ * pill show through. The paddings are the track's border and inset on the
+ * left and, on the right, those plus the `+`'s strip.
+ */
+export function switcherBar(): ViewStyle {
   return {
-    height: SWITCHER_PILL,
-    borderRadius: SWITCHER_PILL / 2,
-    // A clear edge the selected pill takes over, so it keeps its size.
-    borderWidth: 1,
-    borderColor: active ? token("border") : "transparent",
-    backgroundColor: active ? token("card") : undefined,
-    boxShadow: active ? shadowCard() : "none",
+    height: switcher.height,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: switcher.gap,
+    paddingLeft: SWITCHER_CONTENT_INSET,
+    paddingRight: SWITCHER_CONTENT_INSET + switcher.plus,
+    marginLeft: switcher.margin,
+    marginTop: switcher.lift,
+    marginBottom: switcher.lift,
+  };
+}
+
+/**
+ * One tab's own box: the pill's size and radius, so its label sits exactly
+ * where the traveling pill is, with no paint of its own (the overlay's pill
+ * shows through; a hover wash on an unselected tab is the tab's only fill).
+ */
+export function switcherTab(): ViewStyle {
+  return {
+    height: switcher.pill,
+    borderRadius: switcher.pill / 2,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 5,
     paddingHorizontal: 9,
-    flexGrow: 1,
-    ...motionStyle("medium"),
+  };
+}
+
+/** One switcher tab's pill, for the drag ghost (the tab itself is bare). */
+export function switcherPill(): ViewStyle {
+  return {
+    height: switcher.pill,
+    borderRadius: switcher.pill / 2,
+    borderWidth: 1,
+    borderColor: token("border"),
+    backgroundColor: token("card"),
+    boxShadow: shadowCard(),
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingHorizontal: 9,
   };
 }
 
@@ -150,7 +220,7 @@ export function switcherPill(active: boolean): ViewStyle {
  * share of the bar, never past `minWidth` (a title truncates there).
  */
 export function switcherTabFrame(): ViewStyle {
-  return { flexGrow: 1, flexBasis: 0, minWidth: 72 };
+  return { flexGrow: 1, flexBasis: 0, minWidth: switcher.minTab };
 }
 
 /**

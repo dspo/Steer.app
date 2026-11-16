@@ -1,4 +1,4 @@
-import { keymap, List, PanResponder, Scroll, signal, Text, token, View } from "nsh";
+import { createAnimatedValue, effect, keymap, List, PanResponder, reduceMotion, Scroll, signal, Text, token, View } from "nsh";
 import { DockArea, Input, Menu, MenuItem, MenuSeparator, type DockAreaLayout } from "nsh/base";
 import { Window } from "nsh/desktop";
 import { containerTitle } from "../canvas/titles";
@@ -10,6 +10,7 @@ import {
   bindDock,
   containerError,
   containers,
+  heldLayouts,
   layout,
   liveContainers,
   loadContainers,
@@ -31,14 +32,16 @@ import {
 } from "../core/projects";
 import { ProjectDialog, openProjectDialog } from "./project-dialog";
 import { panelIds } from "../core/dock";
-import { SheetBody, sheetGlyph, sheetTitle } from "../canvas/sheets";
+import { sheetGlyph, sheetTitle } from "../canvas/sheets";
 import { dispatchIntent, moduleSearch, titlebarActions, type SearchHit } from "../core/registry";
 import { setShellActions } from "../core/shell-actions";
 import { K, t } from "../ui/i18n";
 import { openActiveInVSCode } from "./vscode";
 import { containerMatches } from "./search";
-import { Chip, Dot, Glyph, type GlyphName, motionStyle, shadowCard, shadowRaised, switcherPill, switcherTabFrame, switcherTrack } from "../ui/ui";
+import { Chip, Dot, Glyph, type GlyphName, motionStyle, shadowCard, shadowRaised, switcherBar, switcherPill, switcherTab, switcherTabFrame } from "../ui/ui";
 import { TabBarPlus } from "../canvas/tab-plus";
+import { TabSwitcher } from "../canvas/tab-switcher";
+import { SheetHost } from "../canvas/sheet-host";
 
 /**
  * Zu's shell: the titlebar, the project/container sidebar, the canvas and the
@@ -613,20 +616,38 @@ function canvasPanels(): Array<{ id: string; closable: boolean }> {
 }
 
 /**
- * A switcher tab's glyph, two tints crossing over (the gallery's
- * `TabTitle`): the quiet one fades out as the selected one fades in, both
- * drawn in the same box so nothing shifts.
+ * A switcher tab's title: its glyph's two tints crossing over and its label
+ * easing from quiet to full, both driven by one spring on the selection (the
+ * gallery's `TabTitle` and `motion.move`) so they arrive with the pill.
  */
-function SwitcherGlyph(props: { panel: string; active: boolean }) {
+function SwitcherTitle(props: { panel: string; active: boolean }) {
+  const on = createAnimatedValue(props.active ? 1 : 0);
+  effect(() => {
+    const target = props.active ? 1 : 0;
+    if (reduceMotion()) on.set(target);
+    else void on.spring(target, { stiffness: 504, damping: 38 });
+  });
+  const away = on.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
   return (
-    <View style={{ width: 12, height: 12, flexShrink: 0 }}>
-      <View style={{ position: "absolute", opacity: props.active ? 0 : 1, ...motionStyle("fast") }}>
-        <Glyph name={sheetGlyph(props.panel)} size={12} tint={token("faint")} />
+    <>
+      <View style={{ width: 12, height: 12, flexShrink: 0 }}>
+        <View style={{ position: "absolute", opacity: away }}>
+          <Glyph name={sheetGlyph(props.panel)} size={12} tint={token("faint")} />
+        </View>
+        <View style={{ position: "absolute", opacity: on }}>
+          <Glyph name={sheetGlyph(props.panel)} size={12} tint={token("foreground")} />
+        </View>
       </View>
-      <View style={{ position: "absolute", opacity: props.active ? 1 : 0, ...motionStyle("fast") }}>
-        <Glyph name={sheetGlyph(props.panel)} size={12} tint={token("foreground")} />
-      </View>
-    </View>
+      <Text
+        class="min-w-0 flex-1 text-[13px] font-medium"
+        style={{
+          numberOfLines: 1,
+          color: on.interpolate({ inputRange: [0, 1], outputRange: [token("muted-foreground"), token("foreground")] }),
+        }}
+      >
+        {sheetTitle(props.panel)}
+      </Text>
+    </>
   );
 }
 
@@ -663,6 +684,15 @@ function Canvas() {
         if (measured().width !== width || measured().height !== height) size.set({ width, height });
       }}
     >
+      {/* The switcher's layer: the track and the one pill that travels along
+          it. Declared before `DockArea` (so the labels paint over it) and
+          above the card (so the pill shows through the bar). */}
+      <TabSwitcher
+        layout={layout()}
+        width={measured().width}
+        height={measured().height}
+        zoomed={zoomedPanel()}
+      />
       <DockArea
         ref={(ref) => bindDock(ref)}
         class="flex-1"
@@ -671,23 +701,26 @@ function Canvas() {
         onLayoutChange={({ layout: next }) => setLayout(next)}
         onZoomChange={({ panel }) => setZoom(panel)}
         onPanelActiveChange={({ panel, active }) => onPanelActive(panel, active)}
-        groupClass="flex-1 bg-background overflow-hidden"
-        // The switcher's capsule track (DESIGN §3.2): the bar is the track,
-        // sunk into the card, and the `+` sits in its right end (the
-        // trailing padding is the overlay's strip, so no tab ends under it).
-        // 2–3pt of card around the capsule: it is a control on the surface,
-        // not the surface's edge (the card's own corners clip at 14).
+        groupClass="flex-1 overflow-hidden"
+        // The bar lays the tabs out and paints nothing: the track and the
+        // pill are the switcher layer's (`canvas/tab-switcher.tsx`), which is
+        // how one pill can sit between tabs instead of inside one.
         tabBarClass="flex-row"
-        tabBarStyle={{ ...switcherTrack(), marginLeft: 3, marginTop: 2, marginBottom: 2, paddingRight: 3 + 34 }}
+        tabBarStyle={switcherBar()}
         tabStyle={switcherTabFrame()}
         tabClass="group focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-0 active:opacity-80"
-        contentClass="flex-1 bg-background overflow-hidden"
+        // The slots in it are empty and must not catch what the carousel below
+        // draws: `none` takes no touches for the frame and its subtree.
+        // The frame a group's content would fill is a hole: the sheets are
+        // the host's, above, and this takes no touches for its subtree.
+        contentClass="flex-1 overflow-hidden"
+        contentStyle={{ pointerEvents: "none" }}
         handleClass="basis-px bg-line"
         dropIndicatorClass="rounded-lg border-2 border-brand bg-brand-tint"
         renderDragPreview={(tab) => (
           // The ghost: a tab's shape that follows the pointer (DESIGN §3.7) —
           // card, shadow, its own icon and title.
-          <View class="bg-card" style={{ width: 144, ...switcherPill(true) }}>
+          <View class="bg-card" style={{ width: 144, ...switcherPill() }}>
             <Glyph name={sheetGlyph(tab.panel)} size={12} tint={token("foreground")} />
             <Text class="text-[13px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
               {sheetTitle(tab.panel)}
@@ -704,21 +737,16 @@ function Canvas() {
           )
         }
         renderTab={(tab) => (
-          // A switcher tab (DESIGN §3.2, the gallery's `tabsLook`): the
-          // selected one a pill standing off the track, the others bare until
-          // the pointer. The tabs share the track equally (`switcherTabFrame`)
-          // and squeeze together at 72pt, where the title truncates.
+          // A switcher tab (DESIGN §3.2, the gallery's `tabsLook`): a bare
+          // label on its share of the track — the selected tab's pill is the
+          // switcher layer's, traveling between tabs, not this box's
+          // background. Hover washes an unselected tab only.
           <View
+            testID={`tab-${tab.panel}`}
             class={`relative min-w-0 ${tab.active ? "" : "hover:bg-hover"}`}
-            style={switcherPill(tab.active)}
+            style={switcherTab()}
           >
-            <SwitcherGlyph panel={tab.panel} active={tab.active} />
-            <Text
-              class="min-w-0 flex-1 text-[13px] font-medium"
-              style={{ numberOfLines: 1, color: tab.active ? token("foreground") : token("muted-foreground"), ...motionStyle("fast") }}
-            >
-              {sheetTitle(tab.panel)}
-            </Text>
+            <SwitcherTitle panel={tab.panel} active={tab.active} />
             {/* Appears under the pointer, as Steer's tabs do. Every tab is
                 closable — nsh hides a group's last ×, and closing the last
                 sheet is how a container with nothing left leaves (Q69). */}
@@ -735,11 +763,15 @@ function Canvas() {
             </If>
           </View>
         )}
-        renderPanel={(panel) => <SheetBody id={panel.id} />}
+        // A slot holds nothing: the sheets live in `canvas/sheet-host.tsx`,
+        // one flat list keyed by sheet id, so no layout edit ever remakes a
+        // body. `DockArea` still mounts the slot, keeps its place and hides
+        // it.
+        renderPanel={() => <View style={{ flex: 1 }} />}
         renderEmpty={() => (
           // A canvas with no sheet: the Hero is one click away, and it is a
           // sheet like any other (closing it leaves this state).
-          <View class="flex-1 items-center justify-center gap-2 bg-card">
+          <View class="flex-1 items-center justify-center gap-2 bg-card" style={{ pointerEvents: "auto" }}>
             <Text class="text-sm font-semibold text-foreground">{t(K.canvas.emptyTitle)}</Text>
             <Text class="text-xs text-muted-foreground">{t(K.canvas.emptyNote)}</Text>
             <View
@@ -755,6 +787,17 @@ function Canvas() {
             </View>
           </View>
         )}
+      />
+      {/* Every sheet the app holds open, placed by the projection: over the
+          content frame (which is a hole), under the tab bar's overlay. A body
+          here is never made again — that is what keeps a web page, a
+          terminal and a conversation as they were. */}
+      <SheetHost
+        layout={layout()}
+        held={heldLayouts()}
+        width={measured().width}
+        height={measured().height}
+        zoomed={zoomedPanel()}
       />
       <TabBarPlus
         layout={layout()}

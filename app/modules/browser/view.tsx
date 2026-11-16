@@ -23,29 +23,18 @@ import { Chip, Glyph, motionStyle, SheetIconButton } from "../../ui/ui";
  * The real browser sheet: an address bar over one native `WebView`, with the
  * page's title in the tab and the URL/loading/error state in `browser.ts`.
  *
- * Non-visible sheets are unmounted, not paused: nsh's `WebView` has no pause
- * prop. The address and title live in the store, so a remount reloads the
- * last page; the page's own runtime state (scroll, forms, in-page history) is
- * gone. The store is UI state only: page messages are appended to a log drawn
- * here and never reach the engine or the agent context.
+ * The web view stays mounted when its sheet is not the displayed one: a
+ * remount would load the page again, and the page's own state (scroll, forms,
+ * in-page history) is the user's. `nsh`'s `WebView` has no pause prop, so a
+ * background sheet keeps its page running — the price of a tab that comes
+ * back as it was. The canvas keeps the sheet off screen (its group's carousel
+ * or `DockArea`'s hidden slot); nothing is drawn from a hidden one. The store
+ * is UI state only: page messages are appended to a log drawn here and never
+ * reach the engine or the agent context.
  */
 
 export function BrowserBody(props: { id: string }) {
-  const shown = () => visiblePanels().includes(props.id);
-  return (
-    <If when={shown()} else={<HiddenBrowser />}>
-      <BrowserSurface id={props.id} />
-    </If>
-  );
-}
-
-function HiddenBrowser() {
-  return (
-    <View class="flex-1 items-center justify-center gap-2 bg-background">
-      <Glyph name="globe" size={20} tint={token("faint")} />
-      <Text class="text-[11px] text-faint">{t(K.browser.hidden)}</Text>
-    </View>
-  );
+  return <BrowserSurface id={props.id} />;
 }
 
 function BrowserSurface(props: { id: string }) {
@@ -108,97 +97,101 @@ function BrowserSurface(props: { id: string }) {
   // loading, and unmounting here would cancel that one too. The failure is
   // drawn instead of the page; the next navigation shows it again.
   const canShowPage = () => browserPlatform() === "available" && !!page().url;
+  /** This sheet is the displayed tab of its group: only then does its chrome exist. */
+  const shown = () => visiblePanels().includes(props.id);
 
   return (
-    <View class="flex-1 bg-background" style={{ flexDirection: "column" }} testID="browser-sheet">
-      <View
-        class="flex-row items-center gap-1 border-b border-line bg-background px-2"
-        style={{ height: 36 }}
-      >
-        <SheetIconButton
-          testID="browser-back"
-          label={t(K.browser.back)}
-          glyph="chevron-left"
-          disabled={!page().canGoBack}
-          onPress={back}
-        />
-        <SheetIconButton
-          testID="browser-forward"
-          label={t(K.browser.forward)}
-          glyph="chevron-right"
-          disabled={!page().canGoForward}
-          onPress={forward}
-        />
-        <SheetIconButton
-          testID="browser-reload"
-          label={t(K.browser.reload)}
-          glyph="reload"
-          disabled={!page().url || page().loading}
-          onPress={reload}
-        />
-        <SheetIconButton
-          testID="browser-stop"
-          label={t(K.browser.stop)}
-          glyph="stop"
-          disabled={!page().loading}
-          onPress={stop}
-        />
-        <Input
-          testID="browser-address"
-          accessibilityLabel={t(K.browser.address)}
-          value={draft()}
-          onChange={({ value }) => {
-            draft.set(value);
-            if (addressError()) addressError.set(null);
-          }}
-          onSubmit={submit}
-          onFocus={() => editing.set(true)}
-          onBlur={() => {
-            editing.set(false);
-            draft.set(page().url ?? "");
-          }}
-          placeholder={t(K.browser.addressPlaceholder)}
+    <View class="flex-1 bg-background" style={{ flexDirection: "column" }} testID={shown() ? "browser-sheet" : undefined}>
+      <If when={shown()}>
+        <View
+          class="flex-row items-center gap-1 border-b border-line bg-background px-2"
+          style={{ height: 36 }}
+        >
+          <SheetIconButton
+            testID="browser-back"
+            label={t(K.browser.back)}
+            glyph="chevron-left"
+            disabled={!page().canGoBack}
+            onPress={back}
+          />
+          <SheetIconButton
+            testID="browser-forward"
+            label={t(K.browser.forward)}
+            glyph="chevron-right"
+            disabled={!page().canGoForward}
+            onPress={forward}
+          />
+          <SheetIconButton
+            testID="browser-reload"
+            label={t(K.browser.reload)}
+            glyph="reload"
+            disabled={!page().url || page().loading}
+            onPress={reload}
+          />
+          <SheetIconButton
+            testID="browser-stop"
+            label={t(K.browser.stop)}
+            glyph="stop"
+            disabled={!page().loading}
+            onPress={stop}
+          />
+          <Input
+            testID="browser-address"
+            accessibilityLabel={t(K.browser.address)}
+            value={draft()}
+            onChange={({ value }) => {
+              draft.set(value);
+              if (addressError()) addressError.set(null);
+            }}
+            onSubmit={submit}
+            onFocus={() => editing.set(true)}
+            onBlur={() => {
+              editing.set(false);
+              draft.set(page().url ?? "");
+            }}
+            placeholder={t(K.browser.addressPlaceholder)}
+            style={{
+              flex: 1,
+              height: 26,
+              paddingHorizontal: 8,
+              fontSize: 12,
+              color: token("foreground"),
+              placeholderColor: token("faint"),
+              caretColor: token("primary"),
+              borderWidth: 1,
+              borderColor: token("border"),
+              borderRadius: 8,
+              backgroundColor: token("background"),
+            }}
+          />
+          <If when={page().loading}>
+            <Text class="text-[10.5px] text-muted-foreground" style={{ numberOfLines: 1 }}>
+              {t(K.browser.loading)}
+            </Text>
+          </If>
+          <View testID="browser-any-site" tooltip={t(K.browser.anySiteHint)}>
+            <Chip label={t(K.browser.anySite)} tint={token("faint")} />
+          </View>
+        </View>
+
+        <View
+          testID="browser-progress"
           style={{
-            flex: 1,
-            height: 26,
-            paddingHorizontal: 8,
-            fontSize: 12,
-            color: token("foreground"),
-            placeholderColor: token("faint"),
-            caretColor: token("primary"),
-            borderWidth: 1,
-            borderColor: token("border"),
-            borderRadius: 8,
-            backgroundColor: token("background"),
+            height: 2,
+            backgroundColor: page().loading ? token("primary") : token("line"),
+            ...motionStyle("fast"),
           }}
         />
-        <If when={page().loading}>
-          <Text class="text-[10.5px] text-muted-foreground" style={{ numberOfLines: 1 }}>
-            {t(K.browser.loading)}
+
+        <If when={!!addressError()}>
+          <Text class="px-3 py-1 text-[10.5px] text-destructive" style={{ numberOfLines: 1 }}>
+            {addressError() ?? ""}
           </Text>
         </If>
-        <View testID="browser-any-site" tooltip={t(K.browser.anySiteHint)}>
-          <Chip label={t(K.browser.anySite)} tint={token("faint")} />
-        </View>
-      </View>
-
-      <View
-        testID="browser-progress"
-        style={{
-          height: 2,
-          backgroundColor: page().loading ? token("primary") : token("line"),
-          ...motionStyle("fast"),
-        }}
-      />
-
-      <If when={!!addressError()}>
-        <Text class="px-3 py-1 text-[10.5px] text-destructive" style={{ numberOfLines: 1 }}>
-          {addressError() ?? ""}
-        </Text>
       </If>
 
       <View class="flex-1" style={{ minHeight: 0 }}>
-        <If when={!!failure()}>
+        <If when={shown() && !!failure()}>
           <BrowserFailure
             code={failure()?.code ?? ""}
             message={failure()?.message ?? ""}
@@ -206,7 +199,7 @@ function BrowserSurface(props: { id: string }) {
             onRetry={retry}
           />
         </If>
-        <If when={!failure() && !page().url}>
+        <If when={shown() && !failure() && !page().url}>
           <BrowserEmpty />
         </If>
         <If when={canShowPage()}>
@@ -221,7 +214,7 @@ function BrowserSurface(props: { id: string }) {
             }}
           >
             <WebView
-              testID="browser-page"
+              testID={shown() ? "browser-page" : undefined}
               ref={(node) => web.set(node)}
               src={src()}
               style={{ flex: 1 }}
@@ -250,40 +243,43 @@ function BrowserSurface(props: { id: string }) {
             />
           </View>
         </If>
-        <If when={!failure() && !!page().url && browserPlatform() === "unknown"}>
+        <If when={shown() && !failure() && !!page().url && browserPlatform() === "unknown"}>
           <View class="flex-1 items-center justify-center">
             <Text class="text-[11.5px] text-muted-foreground">{t(K.browser.loading)}</Text>
           </View>
         </If>
       </View>
 
-      <View
-        class="flex-row items-center gap-2 border-t border-line bg-background px-3"
-        style={{ height: 24 }}
-      >
+      <If when={shown()}>
         <View
-          role="button"
-          testID="browser-log-toggle"
-          accessibilityLabel={t(K.browser.messagesCount, { count: messages().length })}
-          class="flex-row items-center gap-1 rounded-md px-1 hover:bg-hover active:opacity-60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-          style={{ ...motionStyle("fast") }}
-          onPress={() => logOpen.set(!logOpen())}
+          class="flex-row items-center gap-2 border-t border-line bg-background px-3"
+          style={{ height: 24 }}
         >
-          <Glyph
-            name="chat"
-            size={11}
-            tint={messages().length > 0 ? token("info") : token("faint")}
-          />
-          <Text class="text-[10.5px] font-medium text-muted-foreground">
-            {t(K.browser.messagesCount, { count: messages().length })}
+          <View
+            role="button"
+            testID="browser-log-toggle"
+            accessibilityLabel={t(K.browser.messagesCount, { count: messages().length })}
+            class="flex-row items-center gap-1 rounded-md px-1 hover:bg-hover active:opacity-60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+            style={{ ...motionStyle("fast") }}
+            onPress={() => logOpen.set(!logOpen())}
+          >
+            <Glyph
+              name="chat"
+              size={11}
+              tint={messages().length > 0 ? token("info") : token("faint")}
+            />
+            <Text class="text-[10.5px] font-medium text-muted-foreground">
+              {t(K.browser.messagesCount, { count: messages().length })}
+            </Text>
+          </View>
+          <Text class="flex-1 text-[10px] text-faint" style={{ numberOfLines: 1 }}>
+            {t(K.browser.messagesHint)}
           </Text>
         </View>
-        <Text class="flex-1 text-[10px] text-faint" style={{ numberOfLines: 1 }}>
-          {t(K.browser.messagesHint)}
-        </Text>
-      </View>
 
-      <If when={logOpen()}>
+      </If>
+
+      <If when={shown() && logOpen()}>
         <View
           testID="browser-message-log"
           class="border-t border-line bg-inset"

@@ -82,25 +82,79 @@ motionStyle()   // 用户在系统里减少动态效果时返回 {}
 ### 3.2 页签（段落切换器）
 
 外壳的 sheet 页签条取画廊 `look/tabs.tsx` 的 `tabsLook`（"A section switcher"）：一条沉入卡片的
-胶囊轨道，选中的页签是一枚浮起的药丸。实现在 `ui/ui.tsx` 的 `switcherTrack()` / `switcherPill()`
-（`SWITCHER_HEIGHT` / `SWITCHER_PILL`），`shell/shell.tsx` 的 `DockArea` 两处消费。
+胶囊轨道，选中的页签是**一枚**浮起的药丸，在两个页签之间弹簧移动。
+
+分工：`ui/ui.tsx` 出几何与外观（`switcher` 常量表、`switcherTrack()`、`switcherBar()`、
+`switcherTab()`、`switcherTabFrame()`、`switcherPill()`）；`canvas/tab-switcher.tsx` 画轨道和那枚
+药丸；`shell/shell.tsx` 只把 `DockArea` 的 bar 交给 `switcherBar()`（排布，不画）。
 
 | 项 | 值 |
 |---|---|
 | 轨道 | 高 34、`radius 17`、`inset` 底、1pt `border`、`shadowInset()` 内阴影；内边距 3、页签间距 2 |
-| 药丸 | 高 26、`radius 13`；选中 `card` 底 + `border` 边 + `shadowCard()`，未选透明（保留 1pt 透明边，选中时尺寸不变） |
+| 药丸 | 高 26、`radius 13`；`card` 底 + `border` 边 + `shadowCard()`；位置 = 选中索引 × （页签宽 + 间距），按 `motion.move`（504 / 38）弹簧过去，reduce motion 时直接落位 |
 | 宽度 | **均分轨道**（画廊的 `fill`）：`switcherTabFrame()` 给每个页签 `flexGrow 1` + `flexBasis 0`，下限 72；页签增多时一起挤压，标题 13pt/500 截断 |
-| 图标 | 12pt，两档 tint 交叉淡入（未选 `faint`、选中 `foreground`，120ms） |
+| 图标与标题 | 12pt；两档 tint 交叉、标题 `muted-foreground` → `foreground`，与药丸同一枚弹簧（画廊的 `TabTitle`） |
 | 悬停 | 未选页签 `hover` 底；选中不动 |
+| 分层 | 轨道与药丸在 `DockArea` **之前**声明、`pointerEvents: none`：页签的标签画在它上面，卡片画在它下面。`groupClass` 因此不铺底色（内容框自己铺 `background`） |
 | 关闭控件 | 右侧 20pt 热区，`opacity 0` → hover 1，图标 `close` 10pt |
 | 新增页签 | 轨道的右端留 34pt 给常驻 `+`（在轨道内，像 macOS 分段控件的尾部动作），在该 panel 打开 `home:{containerId}`（Hero） |
 
 `+` 是 20pt 的 ghost 按钮（图标 11pt、`muted-foreground`），垂直居中于组标题栏。nsh 0.4.0 的
 tab bar 没有尾部插槽，它由 app 覆盖层画在每组右端（[architecture.md](architecture.md) §4.2）。
 
-画廊的选中药丸是一枚由内核 spring 移到下一格的 indicator；`DockArea` 自己摆放页签、不向 app
-报告各页签的 bounds，所以这里用两格之间的 180ms 交叉淡化代替位移动画——观感一致，少一个交互。
-**不要**为了位移动画自己接管 tab bar：拖拽换位、分组、`+` 的几何都在 `DockArea` 里。
+为什么药丸不在 `renderTab` 里：`DockArea` 把每个页签画在自己的 bar 之上，一个页签的
+`background` 画不出跨越兄弟的位移——跨页签的位移只能来自比页签更低、比 bar 更高的一层。
+所以轨道与药丸由覆盖层画，页签只剩标签。**不要**把轨道搬回 bar：bar 一旦自己铺底，就把
+覆盖层的药丸盖住。
+
+**不要**为了位移动画自己接管 tab bar：拖拽换位、分组、`+` 的几何都在 `DockArea` 里；
+覆盖层只读 `layout()`，不参与命中。
+
+#### 内容：sheet 归注册表，画布只是投影
+
+**不变量：一个 sheet 的 body 由注册表拥有，不由任何画布拥有。画布只决定它*放在哪*、*是否显示*，
+永不决定它*是否存在*。**
+
+nsh 里组件体只跑一次，行按 key 保留（`coding-guides.md` 的表）；所以 body 消亡只有一种原因：
+它从树里消失。过去画布由 `layout()` 派生、切容器时整棵树被换掉，浏览器 sheet 因此每次回来都重新加载。
+现在：
+
+- `core/projection.ts`：纯数据。`tabBarBoxes` 给出每组的矩形，`groupFrames` 去掉 38pt 页签条，
+  `sheetFrames` 给出每个 sheet 的 `{ 矩形, offset, place, shown, near }`——
+  `offset = place × 组宽`，`place = 位置 − 显示中位置`。
+- `canvas/sheet-host.tsx`：**一个扁平列表**，`Each of={openSheetIds} key={id}`，覆盖活动画布与
+  被搁置画布的并集（`heldLayouts` 在切走时存下，**scratch 画布同样入库**——否则 scratch 上的浏览器页
+  切容器再回来照样重载）。并集最多留 `PARKED_CANVASES`（4）个画布，按最近显示淘汰最旧的：
+  常驻的内存与后台活动因此有界，代价是被淘汰的那个容器回来时从 store 重新加载。切页签、切容器、
+  拖页签、分屏、zoom 都只改这些 sheet 的矩形与 offset，行的 key 不变，body 不重生：
+  **浏览器页面不重载，终端不丢屏，对话不丢滚动位置**。
+  **正在显示的画布不入 parked 集**（`activateCanvas` 的 `unpark`）：它的 sheet 由 `layout()` 拥有，
+  留一份旧拷贝会让一个刚被关掉的页签继续挂载（一个没有页签能到达的 frame、WebView/PTY 继续跑），
+  并占掉 LRU 名额。parked 的 sheet 按它自己那份布局给出 `place/offset`（冻结），所以回访时
+  `place` 不变、不会可见地滑一下。
+- 每个 sheet 是一个裁到组内容框的 frame，body 在 frame 内按 offset 平移。**显示页与左右邻居
+  （`near`）是 `visible`**（滑动要画它们），其余是 `visibility: hidden`——引擎对它的处理覆盖绘制、
+  命中、键盘焦点与读屏（`view.rs` 的 `can_target`、access 的隐藏），停放的 sheet 因此不必再手工围栏。
+  邻居仍保留 `pointerEvents: none`：它们被 frame 裁掉，但布局仍在原位，命中测试按布局走。
+- 位移与药丸共用 `motion.move`（504 / 38）：一组页跟着药丸一起滑，旧页滑出、新页滑入。
+  **按 `place` 判定**：`place` 变了才滑；只变尺寸（窗口、分屏、同宽度的布局变化）直接落位
+  （`set`）——换的是尺寸，不是页签。
+- 显示中的 sheet 最后绘制，滑动途中按它仍然是命中的那一页。
+
+层序：`SheetHost` 在 `DockArea` **之后**（拿到命中）、`+` 之前；`DockArea` 的内容框是一个洞
+（`pointerEvents: none`，不铺底色），空画布的空态自己 `pointerEvents: auto`。页签条与轨道在
+`DockArea` 里，仍在 sheet 之下、`+` 之上。`DockArea` 自己的分组拖放色块因此被 sheet 盖住——
+拖页签到内容区时看不到那块预览。**这不是一行能修的**：`renderDropIndicator` 拿到的只有
+`{ group, side, index }`（没有矩形），而它的元素画在 `DockArea` 的树里、注定在 sheet 之下；
+把整个 `SheetHost` 挪到 `DockArea` 之前可以让它压在上面，实测却让内容区的按压落到错误的节点上
+（`id:hero-browser` 被报 covered）。正解是上游让 `DockArea` 把指示器放进浮层，或给出该区域的矩形。
+
+**不要**把 body 放回 `renderPanel`：`DockArea` 只画显示中的面板，切容器时它的整棵子树会被换掉，
+body 就会重生（这正是本设计要消除的那种依赖）。
+
+验收：`--target macos` 下给浏览器 body 加一个挂载计数（临时），开一页 → 切容器 → 切回，
+计数保持 `1`；切页签同样保持 `1`。`core/projection.test.ts` 钉住矩形、offset、shown 与
+zoom/compact 的投影。
 
 ### 3.3 顶栏无 picker（2026-11-11 调整）
 
