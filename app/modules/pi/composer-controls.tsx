@@ -269,6 +269,7 @@ export function ThinkingPicker(props: { sessionId: string }) {
  */
 export function ContextRing(props: { usage: () => SessionContextUsage | undefined }) {
   const line = () => contextLine(props.usage());
+  const label = () => `${t(K.session.contextUsage)} · ${line()}`;
   // The arc is a native canvas; it redraws only for an animated value it
   // reads, so the sweep rides one instead of the usage snapshot.
   const sweepEnd = createAnimatedValue(-Math.PI / 2);
@@ -281,9 +282,9 @@ export function ContextRing(props: { usage: () => SessionContextUsage | undefine
       <View
         testID="session-context"
         role="progressbar"
-        accessibilityLabel={line()}
+        accessibilityLabel={label()}
         accessibilityValue={{ text: line() }}
-        tooltip={line()}
+        tooltip={label()}
         class="h-7 w-7 items-center justify-center rounded-lg"
       >
         <Canvas
