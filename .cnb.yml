@@ -3,7 +3,13 @@
 # 触发：main push + PR（创建 / 重开 / 源分支 push，即「MR 更新」）。
 # 单条流水线串行执行，任一 stage 失败即红，失败定位直接看 stage 名。
 #
-# 不含 bundle：script/bundle-mac.sh 依赖 macOS（AppKit 宿主、bun
+# 除 toolchain 外，每个 stage 的 script 都是一行 `bun script/ci.ts <stage>`：
+# 逻辑在 script/ci.ts（与 script/tasks.ts 共享 nsh 发现/版本校验/spawn 纪律，
+# 见 script/lib/toolchain.ts），本地 macOS 跑同一入口即可复现。toolchain 是
+# 唯一的 inline shell 例外：它负责安装 bun 本身（apt/curl/rustup component），
+# 在它跑完之前没有 bun 可以执行任何 TS。
+#
+# 不含 bundle：`bun script/tasks.ts bundle` 依赖 macOS（AppKit 宿主、bun
 # --target=bun-darwin-arm64、codesign），CNB SAAS 只有 Linux 节点；
 # 打包冒烟留在 macOS 本地（README「Run it」）。若日后接入自托管 mac
 # runner（runner.namespace + runner.tags），再把 bundle 加为独立 pipeline。
@@ -31,8 +37,8 @@
 #   component 同目录（nsh 把 component 装在 CLI 旁边），缓存仍在卷里。
 # - ZU_SKIP_LIVE=1 是 README「完整门禁」的口径：跳过 live 模型/LSP，以及唯一
 #   要真 dist/pi-acp 的探针（acp-load-probe）。其余 harness 触点在测试里走
-#   stub 替身（fixtures/acp-stub-agent.sh），CI 不构建 pi-harness（其编译
-#   目标 pin 了 bun-darwin-arm64）。
+#   stub 替身（fixtures/acp-stub-agent.ts，由 bun spawn），CI 不构建
+#   pi-harness（其编译目标 pin 了 bun-darwin-arm64）。
 # - 镜像的 Rust 是 `rustup-init --profile minimal`，按发布 channel manifest
 #   `minimal = [rustc, cargo, rust-std, rust-mingw]` —— **不含 clippy/rustfmt**。
 #   rust lint stage 依赖先 `rustup component add clippy rustfmt`（~7MB）。
@@ -81,14 +87,16 @@
     PATH: /usr/local/cargo/bin:/root/.local/bin:/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
   stages:
-    # ── toolchain：apt 系统依赖 + nsh/bun + rust lint 组件。──
+    # ── toolchain：apt 系统依赖 + nsh/bun + rust lint 组件。整个 .cnb.yml 里
+    #    唯一的 inline shell stage：它安装 bun 本身，在其跑完之前没有 bun 可以
+    #    执行 script/ci.ts（其余 stage 一律 `bun script/ci.ts <stage>`）。──
     - name: toolchain
       script: |
         set -eu
         apt-get update -qq
         apt-get install -y -qq --no-install-recommends \
           git pkg-config clang unzip curl ca-certificates \
-          nodejs vim htop \
+          vim htop \
           libgtk-4-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
           libssl-dev libffi-dev
         # 先落盘再执行（dash 无 pipefail，见文件头「环境要点」）。
@@ -108,78 +116,41 @@
         bash /tmp/bun-install.sh        # → ~/.bun/bin/bun
         # 镜像是 --profile minimal，clippy/rustfmt 要自己装（见文件头「环境要点」）。
         rustup component add clippy rustfmt
-        # 七个工具在本 stage 一次性验完：cargo 不在这里检查的话，它被卷盖住只会
+        # 六个工具在本 stage 一次性验完：cargo 不在这里检查的话，它被卷盖住只会
         # 表现为两个 stage 之后的「is Rust installed?」，名字完全指向错地方。
-        nsh --version && bun --version && node --version \
+        nsh --version && bun --version \
           && cargo --version && rustc --version \
           && cargo clippy --version && cargo fmt --version
 
     # ── lint：sheet-module 依赖门禁（core/shell 不许 import modules 等，
     #    docs/sheet-module-ARCHITECTURE.md §11；新违规立即红）。零编译，秒级。──
     - name: lint (layer gate)
-      script: node script/check-layers.mjs
+      script: bun script/ci.ts layer-gate
 
     # ── rust lint：fmt + clippy 硬门禁。两个 workspace 各跑一遍（见文件头）。
     #    基线已在 rustc 1.99.1（与镜像同版）本地清空，所以直接用 -D warnings：
     #    告警要么当场清掉，要么留在代码里无人认领。──
     - name: lint (rust gate)
-      script: |
-        set -eu
-        cd native
-        cargo fmt --all --check
-        cargo clippy --all-targets -- -D warnings
-        cd manox
-        cargo fmt --all --check
-        cargo clippy --all-targets -- -D warnings
+      script: bun script/ci.ts lint-rust
 
     # ── build：crate check + TSX typecheck（nsh check 是唯一的类型检查口）。
-    #    nsh check 除了逐 crate 的 cargo check，还会在生成的 app workspace 里真
-    #    编译一遍依赖 —— 那里是新鲜解析，几乎每次都会碰 malachite-bigint 分裂
-    #    （见文件头），首试注定带着一墙 E0277/E0308 失败。这面墙落盘不进日志：
-    #    只有失败**不是**已知分裂时才原样打印并保持红色——绿色构建的日志应当
-    #    干净，真失败一个字不少。──
+    #    malachite-bigint 分裂的自动重试在 script/ci.ts 的 build 里（见文件头）。──
     - name: build (nsh check)
-      script: |
-        set -eu
-        if nsh check app > /tmp/nsh-check-first.log 2>&1; then
-          exit 0
-        fi
-        lock=app/.nsh/rust/Cargo.lock
-        dup=$(grep -A1 'name = "malachite-bigint"' "$lock" 2>/dev/null \
-          | sed -n 's/^version = "\(.*\)"/\1/p' | grep -v '^0\.12\.0$' | head -1)
-        if [ -z "$dup" ]; then
-          echo "nsh check 失败，且不是已知 malachite 分裂——完整首试日志："
-          cat /tmp/nsh-check-first.log
-          exit 1
-        fi
-        echo "malachite-bigint 分裂成 0.12.0 + $dup（新鲜解析），降回单副本后重试"
-        cargo update --manifest-path app/.nsh/rust/Cargo.toml \
-          -p "malachite-bigint@$dup" --precise 0.12.0
-        nsh check app
+      script: bun script/ci.ts build
 
     # ── test：cargo test（native + manox）+ TSX headless 测试。──
     - name: test (nsh test)
-      script: nsh test app
+      script: bun script/ci.ts test
 
-    # ── manox hermetic 门禁：两条都是 docs/plan.md §4 单列的必须项。文件内
-    #    `gated = process.env.ZU_MANOX_GATE === "1"`，不带这个变量时断言会静默
-    #    跳过 —— 裸 `nsh test app` 看着绿，其实折叠对账/panic 恢复/sheet 门禁
-    #    一句没跑。──
+    # ── manox hermetic 门禁：两条都是 docs/plan.md §4 单列的必须项，带
+    #    ZU_MANOX_GATE=1（细节在 script/ci.ts 的 manox）。──
     - name: test (manox gate)
-      script: |
-        set -eu
-        ZU_MANOX_GATE=1 nsh test app/manox.test.ts
-        ZU_MANOX_GATE=1 nsh test app/manox.ui.test.tsx
+      script: bun script/ci.ts manox
 
     # ── pi-harness 自检：版本台账守卫（src/version.ts = package.json pin）+ bun 测试。
     #    不跑 bun run build：其编译目标 pin 了 bun-darwin-arm64，Linux 上不适用。──
     - name: pi-harness
-      script: |
-        set -eu
-        cd pi-harness
-        bun install --frozen-lockfile
-        bun run check-version
-        bun test
+      script: bun script/ci.ts harness
 
 main:
   push:
