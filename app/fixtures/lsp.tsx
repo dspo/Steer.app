@@ -18,6 +18,7 @@ import {
   setLspCommandResolver,
 } from "../domains/lsp";
 import { M11_UI_CONTAINER, M11_UI_ROOT, M11_UI_SERVER } from "./m11-paths";
+import { jsRuntime } from "./js-runtime";
 import { HoverCard } from "../ui/hover-card";
 import { registerAllModules } from "../modules/register-all";
 
@@ -34,7 +35,9 @@ registerAllModules();
 // requested reveal) so a wait does not depend on a glyph or the language.
 
 setLspCommandResolver((family) =>
-  family === "rust" ? { command: "node", args: [M11_UI_SERVER] } : null,
+  // The fake server is plain JS (fixtures/m11-fake-lsp.ts's source string);
+  // bun runs it — the repo carries no node dependency, CI installs none.
+  family === "rust" ? { command: jsRuntime(), args: [M11_UI_SERVER] } : null,
 );
 
 const records = [
