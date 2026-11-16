@@ -7,12 +7,16 @@
 
 import { describe, expect, test } from "bun:test";
 import { ndJsonStream, type SessionUpdate, type StopReason } from "@agentclientprotocol/sdk";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { DISPATCH_RULE } from "../extensions/prompt-section";
+import { hostExtensionFactories } from "./pi-session";
 import {
   createAcpApp,
   type HarnessClientBridge,
   type HarnessPorts,
   type HarnessSession,
 } from "./app";
+import { SubagentManager } from "./subagents";
 
 // ---------------------------------------------------------------- harness
 
@@ -766,5 +770,36 @@ describe("method surface", () => {
     const abort = await client.request("_zu/subagents/abort", { sessionId: "pi-13", runId: "run-2" });
     expect(abort.error).toBeUndefined();
     await client.close();
+  });
+});
+
+describe("captain extension assembly", () => {
+  test("factory list binds gate, the zu-dispatch prompt section, then dispatch", () => {
+    const noop = () => {};
+    const gate = { extension: () => () => {} }; // Pick<PermissionGate, "extension">
+    const subagentManager = new SubagentManager({ settledRuns: () => [] } as never);
+    const factories = hostExtensionFactories(gate, subagentManager, "pi-1", noop);
+    expect(factories).toHaveLength(3);
+
+    // The middle factory is the prompt-section one: it registers exactly one
+    // `before_agent_start` handler, which writes the zu-dispatch rule and
+    // returns nothing (a returned systemPrompt would bust the prefix cache).
+    const registered = new Map<string, Array<(...args: unknown[]) => unknown>>();
+    const fakePi = {
+      on(event: string, handler: (...args: unknown[]) => unknown) {
+        const list = registered.get(event) ?? [];
+        list.push(handler);
+        registered.set(event, list);
+        return () => {};
+      },
+    } as unknown as ExtensionAPI;
+    (factories[1] as (pi: ExtensionAPI) => void)(fakePi);
+    expect([...registered.keys()]).toEqual(["before_agent_start"]);
+    const sections: Record<string, string> = {};
+    const result = (registered.get("before_agent_start")![0] as (e: unknown) => unknown)({
+      systemPromptOptions: { sections },
+    });
+    expect(sections["zu-dispatch"]).toBe(DISPATCH_RULE);
+    expect(result).toBeUndefined();
   });
 });

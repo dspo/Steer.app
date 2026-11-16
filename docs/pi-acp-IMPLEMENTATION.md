@@ -630,3 +630,52 @@ model runtime。`pi-harness` 是 SDK 嵌入，原来只注册了权限门和 dis
 - 主题可视化、`/login`/auth UI、CLI extension flags；
 - `PI_SESSION_DIR`/代理/离线等 CLI 专属开关；
 - 不引入官方 CLI 作为内层进程。
+
+## 17. Prompt sections（B5，2026-11-16）
+
+**根因**：captain 没有规则通道。要给 captain 加规则（dispatch 用法、后续的 artifacts/todos），
+最直觉的写法是 `before_agent_start` 返回 `systemPrompt`——那会强制整段 prompt 重算，
+provider 的 prefix cache 每轮全失效。pi 的命名 section 机制只 diff 一段，是唯一的正确入口。
+
+### 17.1 机制
+
+- `pi-harness/src/extensions/prompt-section.ts` 导出工厂
+  `promptSectionExtension(section, text, log?)`：handler 在 `before_agent_start` 里把
+  `text` 写进 `event.systemPromptOptions.sections[section]`，然后**返回 undefined**。
+- pi 对 sections 逐个与 transcript 的 system message diff，写一段只发一段的 patch，
+prompt 其余部分（含 provider prefix cache）不动。
+- 两条铁律，都在文件头注释里：
+  1. `text` 必须是调用方的模块级常量，工厂内不做任何插值（cwd/时间/会话状态都不行）——
+     规则文本每一轮请求都随行，任何变化都会打破 provider cache；
+  2. handler 绝不返回 `systemPrompt`：返回值类型允许整段替换，但那会丢弃所有命名 section
+     （包括自己的），并强制全量 prompt 重渲染。
+- section 名全局唯一，约定 `zu-<concern>`：本 issue 消费 `zu-dispatch`；
+  `zu-artifacts`（A4）、`zu-todos`（A2）预留，各自一行即可接入，不再碰 `pi-session.ts` 的机制。
+- 同名重复注册：后写覆盖，log 一行，不抛错（resource reload 可能重跑 factory）；
+  同文本重复（纯 reload）静默。
+
+### 17.2 装配
+
+- `pi-session.ts` 把 captain 的 factory 列表抽成 `hostExtensionFactories(gate, subagentManager,
+  captainId, log)`，顺序固定并写在注释里：权限门（必须最先看到每个 tool call）→
+  prompt section（无状态）→ dispatch（注册 `dispatch` 工具）。
+- captain 会话默认带 `zu-dispatch` 一条短规则（英文，与 pi 的 system prompt 语言一致）：
+  一个 `read` 能回答的问题不是委派；真的要 dispatch 时，给子代理完整任务上下文而不是指针。
+- 测试锁语义：`prompt-section.test.ts`（假 ExtensionAPI：写段、返回 undefined、两次调用
+  字符串恒等、sections-only 事件对象上不给 `systemPrompt` 赋值、覆盖/重载/无 sections 分支），
+  `app.test.ts` 断言 `hostExtensionFactories` 长度为 3 且中位 factory 产出
+  `zu-dispatch` section——不起真会话。
+
+### 17.3 与子代理 `appendSystemPrompt` 的区别
+
+- 子代理的 `appendSystemPrompt`（`subagents.ts`，定义正文）是子代理**自己的**系统提示，
+随 spawn 一次性传入，无 cache 压力问题；captain 的规则属于 captain 的长活会话，
+每一轮请求都随行，所以才需要 byte-stable section。
+- 本 issue 不给子代理加 sections：子代理没有 captain 的规则需求；机制上也不需要。
+
+### 17.4 非目标
+
+- section 的动态内容（live list、时间、cwd 插值）——违背 byte-stability，永远不做；
+- 按会话开关 section（开关属于 B3 的 registry）；
+- 把规则藏进 tool description（那是另一层，职责不同）；
+- 升级 pi 版本。
