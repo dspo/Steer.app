@@ -3,7 +3,7 @@
 > 状态：**已落地（2026-11-13，A0–F0）**。本文从设计稿转为实现记录；仍以 §9 的 UI/UX 与 §11
 > 的验收清单为准，未跑的真机/live 项在 §11 明确标注。
 > 门禁（2026-11-13）：`nsh check app` ✓、`node script/check-layers.mjs` ✓、
-> `ZU_SKIP_LIVE=1 nsh test app` 221 用例 213 通过 / 8 skip、`pi-harness bun test` 54 ✓、
+> `ZU_SKIP_LIVE=1 nsh test app` 221 用例 213 通过 / 8 skip、`pi-harness bun test` 56 ✓、
 > distro `bun run build` ✓、`bun run smoke`（ACP offline）✓、`bun run acceptance:live`（真机，两轮）✓、
 > `LIVE_CRASH_ONLY=1 bun run acceptance:live` ✓、`script/bundle-mac.sh` ✓。
 > 关系：本文是 Pi 模块的**目标实现**。当前系统形态见 [architecture.md](architecture.md)；
@@ -588,8 +588,12 @@ model runtime。`pi-harness` 是 SDK 嵌入，原来只注册了权限门和 dis
 
 ### 16.2 项目信任
 
-- `trust.ts` 按 CLI 优先级：无 trust 资源 → store/true；store 有决定 → 用之；
+- `trust.ts` 按 CLI 优先级：无 trust 资源 → store/true；**pre-trust 扩展的 `project_trust`
+  处理器**（首个 yes/no 胜出，可 remember 进 store）；store 有决定 → 用之；
   `defaultProjectTrust` 的 always/never/ask；ask 且无 UI → untrusted。
+  `emitProjectTrustEvent` 本身未从 SDK 根导出，但 `LoadExtensionsResult` 的 handler map 与
+  `ProjectTrustHandler` 类型是公开的，语义在 distro 内复刻。handler 以 headless context 执行
+  （`hasUI:false`）；需要 UI 的 handler 返回 `undecided`，由下面的 ACP 对话框兜底。
 - ask 时由 `createAgentSessionServices` 的 `resourceLoaderReloadOptions.resolveProjectTrust` 调用
   `elicitation/create`；这发生在 `session/new` 尚未返回时，客户端在 `host.ts` 安装**会话创建期**
   request handler，把问题交给 app root 的 `TrustDialog`。
@@ -611,6 +615,7 @@ model runtime。`pi-harness` 是 SDK 嵌入，原来只注册了权限门和 dis
 - `services.test.ts` 覆盖 builtin 注册/`-builtin:mcp`、`createPiServices`、本地 package + skill、
   trust 四分支、ACP MCP 映射。
 - 已知例外：`llama.cpp` 的 factory 未从 SDK 根导出，本次不纳入；漂移测试显式列出它。
+  `project_trust` 事件不是例外：handler 从公开的 `LoadExtensionsResult` 读取并执行。
 
 ### 16.5 验证
 

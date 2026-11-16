@@ -150,6 +150,56 @@ describe("project trust", () => {
     expect(again).toMatchObject({ required: true, trusted: false, source: "no-ui" });
   });
 
+  test("an extension project_trust handler decides before the store", async () => {
+    const { cwd, agentDir } = sandbox();
+    mkdirSync(join(cwd, ".pi"), { recursive: true });
+    writeFileSync(join(cwd, ".pi", "settings.json"), "{}\n");
+    const settings = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
+    const loader = new DefaultResourceLoader({
+      cwd,
+      agentDir,
+      settingsManager: settings,
+      extensionFactories: [
+        (pi) => {
+          pi.on("project_trust", () => ({ trusted: "yes", remember: true }));
+        },
+      ],
+    });
+    await loader.reload();
+    const decision = await resolveProjectTrust({
+      cwd,
+      agentDir,
+      extensionsResult: loader.getExtensions(),
+    });
+    expect(decision).toMatchObject({ required: true, trusted: true, source: "extension" });
+    expect((await resolveProjectTrust({ cwd, agentDir })).source).toBe("store");
+  });
+
+  test("an undecided handler falls through to the ACP question", async () => {
+    const { cwd, agentDir } = sandbox();
+    mkdirSync(join(cwd, ".pi"), { recursive: true });
+    writeFileSync(join(cwd, ".pi", "settings.json"), "{}\n");
+    const settings = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
+    const loader = new DefaultResourceLoader({
+      cwd,
+      agentDir,
+      settingsManager: settings,
+      extensionFactories: [
+        (pi) => {
+          pi.on("project_trust", () => ({ trusted: "undecided" }));
+        },
+      ],
+    });
+    await loader.reload();
+    const accepted = await resolveProjectTrust({
+      cwd,
+      agentDir,
+      extensionsResult: loader.getExtensions(),
+      elicit: async () => ({ action: "accept", content: { trusted: true } }),
+    });
+    expect(accepted).toMatchObject({ required: true, trusted: true, source: "elicitation" });
+  });
+
   test("defaultProjectTrust=always wins without a question", async () => {
     const { cwd, agentDir } = sandbox();
     mkdirSync(join(cwd, ".pi"), { recursive: true });

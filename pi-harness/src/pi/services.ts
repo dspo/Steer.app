@@ -104,10 +104,11 @@ export async function createPiServices(options: PiServicesOptions): Promise<PiSe
     ...(options.trusted === undefined
       ? {
           resourceLoaderReloadOptions: {
-            resolveProjectTrust: async () =>
+            resolveProjectTrust: async ({ extensionsResult }) =>
               (await resolveProjectTrust({
                 cwd: options.cwd,
                 agentDir,
+                extensionsResult,
                 ...(options.elicit ? { elicit: options.elicit } : {}),
                 log,
               })).trusted,
