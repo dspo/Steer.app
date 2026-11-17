@@ -8,7 +8,7 @@ import { expect, open, test } from "nsh/test";
  */
 
 test("a failed model load names the reason in the menu", async () => {
-  const app = await open("./fixtures/manox-composer-edge.tsx", { width: 900, height: 600 });
+  const app = await open("../fixtures/manox-composer-edge.tsx", { width: 900, height: 600 });
   await app.waitFor("id:manox-model");
   // The trigger keeps the raw config ref when no catalogue row matches.
   expect(app.count("label:bailian-anthropic/qwen3.8-flash")).toBe(1);
@@ -23,7 +23,7 @@ test("a failed model load names the reason in the menu", async () => {
 });
 
 test("an effort outside the writable enum is named, not offered", async () => {
-  const app = await open("./fixtures/manox-composer-edge.tsx", { width: 900, height: 600 });
+  const app = await open("../fixtures/manox-composer-edge.tsx", { width: 900, height: 600 });
   await app.waitFor("id:manox-thinking");
   // The trigger names the current value (medium) even though the menu is the
   // writable subset (high / max).

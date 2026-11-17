@@ -229,7 +229,7 @@ Pi 会话的完整交互状态（审批卡、elicitation、命令候选、恢复
 
 ### 3.6a Manox composer（ZCode 卡片）
 
-manox sheet 自己的 composer（Q110）：与 ZCode 同款的圆角输入卡；pi 面保持 §3.6 的 hairline composer，
+manox sheet 自己的 composer（Q116）：与 ZCode 同款的圆角输入卡；pi 面保持 §3.6 的 hairline composer，
 等它自己的设计。数据全部来自 AHP——会话信道的 `config.schema`/`config.values` 与根信道的模型表，
 不碰 harness 与 native crate。
 

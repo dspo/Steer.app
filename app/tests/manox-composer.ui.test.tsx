@@ -23,14 +23,14 @@ function framesOfType(app: { storage(): Record<string, string> }, type: string):
 }
 
 /**
- * The manox composer's ZCode card (DESIGN §3.6a, Q110), on the deterministic
+ * The manox composer's ZCode card (DESIGN §3.6a, Q116), on the deterministic
  * fixture: channels seeded by hand, models off the transport seam, every
  * dispatch captured by the frame sink. Ungated — no host, no native pump,
  * no credentials; the real-host gate stays in `manox.ui.test.tsx`.
  */
 
 test("the idle card shows every control with its name and a disabled +", async () => {
-  const app = await open("./fixtures/manox-composer.tsx", { width: 1200, height: 800 });
+  const app = await open("../fixtures/manox-composer.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:manox-input");
   await shot(app, "ui-manox-composer-idle");
   // Every control is on the card: the disabled `+`, the access mode, the
@@ -63,7 +63,7 @@ test("the idle card shows every control with its name and a disabled +", async (
 });
 
 test("submitting dispatches chat/turnStarted and swaps the action to stop", async () => {
-  const app = await open("./fixtures/manox-composer.tsx", { width: 1200, height: 800 });
+  const app = await open("../fixtures/manox-composer.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:manox-input");
   await app.type("id:manox-input", "fix the failing test");
   expect(app.enabled("id:manox-send")).toBe(true);
@@ -78,7 +78,7 @@ test("submitting dispatches chat/turnStarted and swaps the action to stop", asyn
 });
 
 test("the access-mode switch dispatches session/configChanged", async () => {
-  const app = await open("./fixtures/manox-composer.tsx", { width: 1200, height: 800 });
+  const app = await open("../fixtures/manox-composer.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:manox-mode");
   await app.press("id:manox-mode");
   await app.waitFor("id:manox-mode-sandbox");
@@ -95,7 +95,7 @@ test("the access-mode switch dispatches session/configChanged", async () => {
 });
 
 test("the model menu lists the provider's models and dispatches the ref", async () => {
-  const app = await open("./fixtures/manox-composer.tsx", { width: 1200, height: 800 });
+  const app = await open("../fixtures/manox-composer.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:manox-model");
   await app.press("id:manox-model");
   await app.waitFor("id:manox-model-provider-bailian");
@@ -112,7 +112,7 @@ test("the model menu lists the provider's models and dispatches the ref", async 
 });
 
 test("the effort picker dispatches the writable enum value", async () => {
-  const app = await open("./fixtures/manox-composer.tsx", { width: 1200, height: 800 });
+  const app = await open("../fixtures/manox-composer.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:manox-thinking");
   await app.press("id:manox-thinking");
   await app.waitFor("id:manox-thinking-high");
@@ -127,7 +127,7 @@ test("the effort picker dispatches the writable enum value", async () => {
 });
 
 test("the card holds at the minimum window", async () => {
-  const app = await open("./fixtures/manox-composer.tsx", { width: 900, height: 600 });
+  const app = await open("../fixtures/manox-composer.tsx", { width: 900, height: 600 });
   await app.waitFor("id:manox-input");
   // The footer's two clusters share the card at 900pt: nothing folds away
   // and the model name gives way before the action does.
