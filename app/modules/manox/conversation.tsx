@@ -59,6 +59,9 @@ import type {
 
 // --- rows -------------------------------------------------------------------
 
+/** Whether the pi model catalogue was asked for (one read per app run). */
+let catalogRequested = false;
+
 /** One displayed row: a day line, a user message, a response part, or the
  * reply's action footer. */
 type Row =
@@ -540,8 +543,14 @@ export function ManoxChatBody(props: { id: string }) {
     // A missing chat (a stale sheet id against a fresh host) surfaces as
     // the sheet's error status, never an unhandled rejection.
     void ensureConnection([sessionResource(parsed.threadId), chatUri(), metricsResource(parsed.chatId)]).catch(() => {});
-    void loadPiModels();
   });
+  // The model catalogue is a one-shot read, never part of the reactive
+  // effect below: that effect re-runs on every channel envelope, and a
+  // catalogue reload per delta re-renders the whole list.
+  if (!catalogRequested) {
+    catalogRequested = true;
+    void loadPiModels();
+  }
   const chat = () => chatOf(parsed.chatId);
   const rows = () => rowsOf(chat(), parsed.chatId, parsed.threadId);
   const streaming = () => chat()?.activeTurn != null;
