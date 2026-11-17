@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "esctest2": {
+    "passed": 0,
+    "knownBugs": 0,
+    "failed": 567,
+    "total": 567,
+    "measured": "2026-11-18",
+    "against": "feat/ghostty-nsview (PR #38)"
+  },
+  "libghostty-vt": {
+    "rev": "042b16b",
+    "passed": 411,
+    "knownBugs": 42,
+    "failed": 114,
+    "total": 567,
+    "measured": "2026-11-18",
+    "note": "kernel ceiling, measured with Ghostty's own esctest runner"
+  },
+  "ucs-detect": {
+    "status": "not-run",
+    "measured": null
+  }
+}

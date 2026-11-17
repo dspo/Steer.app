@@ -1,5 +1,12 @@
 # Zu
 
+<!-- conformance-badges:start -->
+[![esctest2](https://img.shields.io/badge/esctest2-0%2F567-red?style=flat-square)](docs/evidence/conformance.json)
+[![libghostty-vt](https://img.shields.io/badge/libghostty--vt-411%2F567-orange?style=flat-square)](docs/evidence/conformance.json)
+[![ucs-detect](https://img.shields.io/badge/ucs--detect-not%20run-lightgrey?style=flat-square)](docs/evidence/conformance.json)
+[![ghostty rev](https://img.shields.io/badge/ghostty%20rev-042b16b-blue?style=flat-square)](https://github.com/ghostty-org/ghostty)
+<!-- conformance-badges:end -->
+
 **Zu**（祖冲之——纪念其对 π 的贡献）是 coding agent 的 macOS 桌面工作台。
 一块可拖拽的画布承载工作所需的一切面板：AI 会话、终端、浏览器、文件树、编辑器、
 Diff、变更/历史、问题列表。项目在侧栏，工作按容器组织，页签随手切换。
