@@ -333,6 +333,7 @@ export const zhCN: Record<string, string> = {
   "app.manox.transportError": "manox 连接中断：%{error}",
   "app.manox.reasoningStreaming": "思考中…",
   "app.manox.reasoningDone": "思考了",
+  "app.manox.reasoningDoneTimed": "思考了 %{seconds}s",
   "app.manox.tool.streaming": "参数流式传输中",
   "app.manox.tool.awaitingApproval": "等待审批",
   "app.manox.tool.running": "执行中",

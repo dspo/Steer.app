@@ -327,6 +327,7 @@ export const en: Record<string, string> = {
   "app.manox.transportError": "The manox connection dropped: %{error}",
   "app.manox.reasoningStreaming": "Thinking…",
   "app.manox.reasoningDone": "Thought",
+  "app.manox.reasoningDoneTimed": "Thought for %{seconds}s",
   "app.manox.tool.streaming": "Parameters streaming",
   "app.manox.tool.awaitingApproval": "Awaiting approval",
   "app.manox.tool.running": "Running",

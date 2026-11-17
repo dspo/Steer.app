@@ -22,7 +22,9 @@ import {
   chatResource,
   confirmManoxToolCall,
   denyManoxToolCall,
+  metricsResource,
   parseManoxChatSheet,
+  reasoningTimingOf,
   sessionResource,
 } from "./stores";
 import { ManoxComposer } from "./composer";
@@ -58,7 +60,7 @@ import type {
 type Row =
   | { kind: "day"; id: string; at: string }
   | { kind: "user"; id: string; text: string; attachments: string[] }
-  | { kind: "part"; id: string; chatId: string; turnId: string; part: ResponsePart; streaming: boolean; live: boolean }
+  | { kind: "part"; id: string; chatId: string; turnId: string; part: ResponsePart; streaming: boolean; live: boolean; durationMs?: number }
   | { kind: "actions"; id: string; turnId: string; text: string };
 
 /** A completed or active turn, as the projector reads it. */
@@ -111,6 +113,10 @@ function rowsOf(chat: ChatState | null, chatId: string): Row[] {
       const part = turn.parts[index];
       if (!part) continue;
       const partId = "id" in part && typeof part.id === "string" ? part.id : String(index);
+      // The settled run's durable clock (the metrics extension face). A part
+      // without a row predates the anchor or the kernel lacks the face — the
+      // label stays durationless rather than guessed.
+      const durationMs = part.kind === "reasoning" ? reasoningTimingOf(chatId, partId)?.durationMs : undefined;
       rows.push({
         kind: "part",
         id: `part:${turn.id}:${partId}`,
@@ -119,6 +125,7 @@ function rowsOf(chat: ChatState | null, chatId: string): Row[] {
         part,
         streaming: active && index === last,
         live: active,
+        durationMs,
       });
     }
     if (!active) {
@@ -389,6 +396,18 @@ function CardChip(props: { testID: string; label: string; primary?: boolean; onP
   );
 }
 
+/** The settled thinking label of a part row: the run's whole seconds ride
+ * the block (the number is its layout), a sub-second run — the wire's
+ * `durationMs: 0` edge included — says "<1s" in the locale's own phrasing,
+ * and a part without a timing row keeps the durationless label. */
+function settledThinkingLabel(row: { durationMs?: number }): { label: string; seconds?: number } {
+  if (row.durationMs == null) return { label: t(K.manox.reasoningDone) };
+  const seconds = Math.round(row.durationMs / 1000);
+  return seconds < 1
+    ? { label: t(K.manox.reasoningDoneTimed, { seconds: "<1" }) }
+    : { label: t(K.manox.reasoningDone), seconds };
+}
+
 /** One response part, dispatched by kind. */
 function PartRow(props: { row: Extract<Row, { kind: "part" }> }) {
   // The list may hand this row a different item while the fold changes under
@@ -405,11 +424,15 @@ function PartRow(props: { row: Extract<Row, { kind: "part" }> }) {
     case "reasoning": {
       const reasoning = part() as ReasoningResponsePart | null;
       if (!reasoning) return null;
+      // Live reads: the fold may re-hand the row under this block, so the
+      // settled label is computed per evaluation, not captured.
+      const settled = () => settledThinkingLabel(props.row as { durationMs?: number });
       return (
         <ThinkingBlock
           id={reasoning.id}
           text={reasoning.content ?? ""}
-          label={props.row.streaming ? t(K.manox.reasoningStreaming) : t(K.manox.reasoningDone)}
+          label={props.row.streaming ? t(K.manox.reasoningStreaming) : settled().label}
+          seconds={settled().seconds}
           live={props.row.live}
           streaming={props.row.streaming}
         />
@@ -466,11 +489,13 @@ export function ManoxChatBody(props: { id: string }) {
   }
   const chatUri = () => chatResource(parsed.chatId);
   // The sheet mounts: the connection subscribes (snapshot → immediate render;
-  // the journal legs reconcile behind it, §3.5).
+  // the journal legs reconcile behind it, §3.5). The metrics extension face
+  // rides along: it carries the settled runs' timing rows the thinking
+  // blocks quote.
   effect(() => {
     // A missing chat (a stale sheet id against a fresh host) surfaces as
     // the sheet's error status, never an unhandled rejection.
-    void ensureConnection([sessionResource(parsed.threadId), chatUri()]).catch(() => {});
+    void ensureConnection([sessionResource(parsed.threadId), chatUri(), metricsResource(parsed.chatId)]).catch(() => {});
   });
   const chat = () => chatOf(parsed.chatId);
   const rows = () => rowsOf(chat(), parsed.chatId);

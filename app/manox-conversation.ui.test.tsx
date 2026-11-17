@@ -27,6 +27,9 @@ test("the thinking block folds and unfolds its reasoning", async () => {
   const app = await open("./fixtures/manox-conversation.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:chat-thinking");
   expect(app.shows("id:chat-thinking-text")).toBe(false);
+  // The settled labels quote the run's timing where the metrics face has a
+  // row (`r1`, 3s) and stay durationless where it does not (`r2`).
+  expect(app.texts()).toContain("思考了 3s");
   expect(app.texts()).toContain("思考了");
   await app.press("id:chat-thinking >> nth=0");
   await app.waitFor("id:chat-thinking-text");
@@ -93,10 +96,12 @@ test("the thinking block opens while it thinks and folds when the turn settles",
   // Live: open by default, streaming label, text visible without a press.
   expect(app.shows("id:chat-thinking-text")).toBe(true);
   expect(app.texts()).toContain("思考中…");
-  // Settled: folded to its completion label; the reader can reopen it.
+  // Settled: folded to its completion label; the run's timing rode the
+  // metrics face at the close, and a sub-millisecond settle (`durationMs`
+  // 0, the wire's edge) says "<1s", never "0s".
   await app.press("id:fixture-settle");
   await app.waitUntil(() => !app.shows("id:chat-thinking-text"), { timeout: 5000 });
-  expect(app.texts()).toContain("思考了");
+  expect(app.texts()).toContain("思考了 <1s");
   expect(app.texts()).toContain("It is /tmp.");
   await app.press("id:chat-thinking");
   await app.waitFor("id:chat-thinking-text");

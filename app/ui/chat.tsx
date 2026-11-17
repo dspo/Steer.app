@@ -62,13 +62,18 @@ export function StreamCaret(props: { testID?: string }) {
 
 /**
  * The gallery's thinking block: a ring while it thinks, a label, a rotating
- * caret, and the text behind a hairline. `seconds` is optional: a protocol
- * that carries no timing shows the label alone rather than a guess.
+ * caret, and the text behind a hairline. `seconds` is optional: when given,
+ * the block renders it after the caller's label; a protocol that carries no
+ * timing shows the label alone rather than a guess.
  */
 export function ThinkingBlock(props: {
   id: string;
   text: string;
   label: string;
+  /** The settled run's whole seconds. Sub-second runs render "<1s" — "0s"
+   * would misread the wire's `durationMs: 0` (a settle within the same
+   * millisecond as the first delta). */
+  seconds?: number;
   /** The turn is running: the block stays open until it settles. */
   live: boolean;
   /** The reasoning text is still growing (the turn's tail). */
@@ -81,12 +86,16 @@ export function ThinkingBlock(props: {
     if (props.live) return;
     thoughtsOpen.set({ ...thoughtsOpen(), [props.id]: !open() });
   };
+  const label = () =>
+    props.seconds == null
+      ? props.label
+      : `${props.label} ${props.seconds < 1 ? "<1s" : `${props.seconds}s`}`;
   return (
     <View style={{ gap: 6 }}>
       <View
         role="button"
         testID="chat-thinking"
-        accessibilityLabel={props.label}
+        accessibilityLabel={label()}
         accessibilityState={{ selected: open() }}
         class="flex-row items-center gap-1.5 self-start rounded-md px-1 hover:bg-hover active:bg-accent focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
         style={{ height: 26, ...motionStyle("fast") }}
@@ -96,7 +105,7 @@ export function ThinkingBlock(props: {
           <Spinner size={12} tint={token("muted-foreground")} />
         </If>
         <Text class="text-[12.5px] text-muted-foreground" style={{ fontVariant: ["tabular-nums"] }}>
-          {props.label}
+          {label()}
         </Text>
         <View
           style={{

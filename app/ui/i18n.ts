@@ -504,6 +504,7 @@ export const K = {
     transportError: "app.manox.transportError",
     reasoningStreaming: "app.manox.reasoningStreaming",
     reasoningDone: "app.manox.reasoningDone",
+    reasoningDoneTimed: "app.manox.reasoningDoneTimed",
     toolStreaming: "app.manox.tool.streaming",
     toolAwaitingApproval: "app.manox.tool.awaitingApproval",
     toolRunning: "app.manox.tool.running",

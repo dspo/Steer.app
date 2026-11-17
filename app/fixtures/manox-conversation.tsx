@@ -1,13 +1,16 @@
 import { mount, signal, Text, View } from "nsh";
 import { setEnsureConnectionForTest } from "../modules/manox/ahp";
 import { ManoxChatBody } from "../modules/manox/conversation";
-import { chatResource, seedChatForTest } from "../modules/manox/stores";
+import { chatResource, seedChatForTest, seedMetricsForTest } from "../modules/manox/stores";
 import type { ChatState, Turn } from "../../contracts/ahp/channels-chat/state";
+import type { XManoxState } from "../modules/manox/ext";
 
 // A seeded manox conversation with no host: the handshake is a no-op, the
 // chat cell is written straight into the channel map, and the sheet renders
 // the fold exactly as a live one would. The append button grows the chat so
-// the scroll-follow behavior is testable without a stream.
+// the scroll-follow behavior is testable without a stream. The metrics cell
+// carries the settled runs' timing rows: `r1` closed in 3s (the label says
+// so), `r2` predates the anchor (the label stays durationless).
 
 setEnsureConnectionForTest(async () => {});
 
@@ -89,6 +92,13 @@ const chat = (turns: Turn[]): ChatState =>
 let appended = 0;
 const state = signal<ChatState>(chat([...filler, ...rich]));
 seedChatForTest("chat-1", state());
+
+const metrics: XManoxState = {
+  reasoningTimings: {
+    r1: { partId: "r1", turnId: "t1", startedAt: "2026-11-15T10:00:00.000Z", durationMs: 3000 },
+  },
+};
+seedMetricsForTest("chat-1", metrics);
 
 const append = () => {
   appended += 1;

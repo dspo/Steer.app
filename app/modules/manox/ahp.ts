@@ -5,6 +5,7 @@ import {
   sessionReducer,
   chatReducer,
 } from "../../../contracts/ahp/reducers";
+import { metricsReducer, type XManoxState } from "./ext";
 import {
   ActionType,
 } from "../../../contracts/ahp/common/actions";
@@ -57,8 +58,8 @@ export type ConnectionStatus = "idle" | "connecting" | "ready" | "error";
 export interface ChannelCell {
   uri: URI;
   serverSeq: number;
-  /** rootReducer / sessionReducer / chatReducer output. */
-  state: RootState | SessionState | ChatState;
+  /** rootReducer / sessionReducer / chatReducer / metricsReducer output. */
+  state: RootState | SessionState | ChatState | XManoxState;
   /** Dispatched but not yet confirmed, in dispatch order. */
   pending: Array<{ clientSeq: number; action: StateAction }>;
 }
@@ -80,7 +81,7 @@ export const catalog = signal<Record<string, SessionSummary>>({});
 /** The connection status line the conversation sheet shows. */
 export const connectionStatus = signal<ConnectionStatus>("idle");
 export const connectionError = signal<string | null>(null);
-/** Per-channel cells (root / session / chat), keyed by URI. */
+/** Per-channel cells (root / session / chat / the extension face), keyed by URI. */
 export const channels = signal<Record<string, ChannelCell>>({});
 
 /** Pending JSON-RPC requests, by wire id. */
@@ -261,13 +262,18 @@ function applyEnvelope(envelope: ActionEnvelope): void {
   channels.set(all);
 }
 
-/** The one fold: the vendored reducer for the channel kind. */
+/** The one fold: the vendored reducer for the channel kind — and the
+ * kernel's extension face (`x-manox-metrics:/`) through its own fold, whose
+ * unknown-tolerant contract keeps `x-manox/*` actions from warning as the
+ * chat reducer's `softAssertNever` would. */
 export function foldCell(cell: ChannelCell, action: StateAction): ChannelCell {
-  let folded: RootState | SessionState | ChatState;
+  let folded: RootState | SessionState | ChatState | XManoxState;
   if (cell.uri === "ahp-root://") {
     folded = rootReducer(cell.state as RootState, action as never);
   } else if (cell.uri.startsWith("ahp-session:/")) {
     folded = sessionReducer(cell.state as SessionState, action as never);
+  } else if (cell.uri.startsWith("x-manox-metrics:/")) {
+    folded = metricsReducer(cell.state as XManoxState, action);
   } else {
     folded = chatReducer(cell.state as ChatState, action as never);
   }

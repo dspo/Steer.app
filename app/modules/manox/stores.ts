@@ -2,6 +2,7 @@ import { signal } from "nsh";
 import { Manox, type ModelCatalog } from "../../domains/manox";
 import { ActionType, catalog, channels, createSessionOn, dispatchAction, effectiveState, ensureConnection } from "./ahp";
 import type { ChannelCell } from "./ahp";
+import type { ReasoningTiming, XManoxState } from "./ext";
 import type { SessionSummary } from "../../../contracts/ahp/channels-session/state";
 import type { SessionState } from "../../../contracts/ahp/channels-session/state";
 import type { ChatState } from "../../../contracts/ahp/channels-chat/state";
@@ -58,6 +59,11 @@ export function sessionResource(threadId: string): URI {
   return `ahp-session:/${threadId}`;
 }
 
+/** The metrics extension channel of a chat (the kernel's `x-manox` face). */
+export function metricsResource(chatId: string): URI {
+  return `x-manox-metrics:/${chatId}`;
+}
+
 /** The chat id a chat URI names. */
 function chatIdOf(uri: URI): string {
   return uri.startsWith("ahp-chat:/") ? uri.slice("ahp-chat:/".length) : uri;
@@ -108,6 +114,15 @@ export function threadOf(threadId: string): ManoxThread | null {
 /** The folded chat state of a chat id, optimistic layer included. */
 export function chatOf(chatId: string): ChatState | null {
   return effectiveState<ChatState>(chatResource(chatId));
+}
+
+/** One reasoning part's settled timing, from the chat's metrics channel.
+ * Null when the kernel carries no row — a part that predates the anchor, or
+ * a kernel without the face — and the label stays durationless rather than
+ * guessed. */
+export function reasoningTimingOf(chatId: string, partId: string): ReasoningTiming | null {
+  const state = effectiveState<XManoxState>(metricsResource(chatId));
+  return state?.reasoningTimings?.[partId] ?? null;
 }
 
 /** Mints a client-side uuid (the protocol hands channel minting to clients). */
@@ -302,5 +317,12 @@ export function setManoxEffort(threadId: string, effort: "high" | "max"): void {
  * renders a conversation without a host (see `setEnsureConnectionForTest`). */
 export function seedChatForTest(chatId: string, state: ChatState): void {
   const uri = chatResource(chatId);
+  channels.set({ ...channels(), [uri]: { uri, serverSeq: 1, state, pending: [] } });
+}
+
+/** Test seam: puts one chat's metrics cell in the channel map (the same
+ * no-host trick, for the extension face's timing rows). */
+export function seedMetricsForTest(chatId: string, state: XManoxState): void {
+  const uri = metricsResource(chatId);
   channels.set({ ...channels(), [uri]: { uri, serverSeq: 1, state, pending: [] } });
 }
