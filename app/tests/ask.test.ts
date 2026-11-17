@@ -125,6 +125,43 @@ test("the user's own send supersedes the waiting cards", async () => {
   }
 });
 
+test("a send to a dead session retires the seeded ask on the reopened process", async () => {
+  setAcpCommandOverride(stubCommand({ STUB_PENDING_ASKS: "1", STUB_ASK_ANSWER: "1", STUB_MIDTURN_EXIT: "1" }));
+  try {
+    // A second seeded session, so the crash starts from a fresh stub whose
+    // canned ask is still listable.
+    await Fs.mkdir(agentDir, "sessions/--tmp-ask-b--");
+    const id = "cccc2222-0000-0000-0000-000000000002";
+    const name = `2026-07-21T09-00-00-000Z_${id}.jsonl`;
+    const header = `{"type":"session","version":3,"id":"${id}","timestamp":"2026-07-21T09:00:00.000Z","cwd":"/tmp/zu-ask-a"}\n`;
+    await Fs.write(agentDir, `sessions/--tmp-ask-b--/${name}`, `${header}{}\n`, null, null);
+    await refreshSessions();
+    const view = await openSession(`${agentDir}/sessions/--tmp-ask-b--/${name}`);
+    expect(view?.loaded).toBe(true);
+    await until("the seeded ask", () => pendingAsks()[`${id}:tc-pending`] !== undefined);
+
+    // The process dies mid-turn. A crash writes no receipts, so the
+    // question is still pending on disk and a reopen's seed would
+    // re-present it — that card is what the user now sees and skips.
+    await send("boom", id);
+    // The host drops a dead session from the live map entirely.
+    await until("the process to die", () => liveSession(id) === undefined);
+    pendingAsks.set({ [`${id}:tc-pending`]: { sessionId: id, toolCallId: "tc-pending", args: ARGS } });
+
+    // Healthy stub for the reopen: the sentinel must reach the FRESH
+    // process. Retiring before the reopen (or skipping the retire because
+    // the old process is dead) would let the reopen's seed re-present the
+    // question the user just answered by typing.
+    setAcpCommandOverride(stubCommand({ STUB_PENDING_ASKS: "1", STUB_ASK_ANSWER: "1" }));
+    await send("never mind, I picked for you", id);
+    await until("the turn to settle", () => viewFor(id)?.sessionState === "ready");
+    expect(pendingAsks()[`${id}:tc-pending`]).toBeUndefined();
+  } finally {
+    setAcpCommandOverride(null);
+    pendingAsks.set({});
+  }
+});
+
 test("leaves the runner clean", () => {
   State.setStateDir("");
   State.setAgentDir("");

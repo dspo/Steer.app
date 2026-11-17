@@ -913,9 +913,14 @@ UI 重启后问题卡片消失；用户等得不耐烦自己打字时，卡住�
   ${toolCallId}`）。open 后 `seedPendingAsks` 拉 `_zu/ask/pending` 把重启幸存的问题
   重新种成可答卡片（best-effort：旧 harness method_not_found 是诚实结果，静默跳过）；
   卡片无 waiter 走 wire，有 waiter 进程内 resolve；`supersedePendingAsks(key)` 在
-  send 前清掉该会话的卡，其中无 resolve 的 seeded 卡以 wire 哨兵退休（best-effort，
-  死进程无卡可退休，下次 seed 会呈现仍真悬着的问题）；waiting_user 判定纳入
-  pendingAsks，协议状态随投影同步。
+  send 前清掉该会话的卡，其中无 resolve 的 seeded 卡记入 `seededSupersedes`，由
+  `retireSeededAsks` 在 `ensureAcpSession` **之后**用活 session 投 wire 哨兵退休。
+  顺序关键：`runAcpTurn` 先 supersede，再 ensure（`seed:false` 重开、不种卡），退休
+  落回执，重开路径再显式 seed 剩余 pending——若在 ensure 之前退休，死进程的哨兵
+  发不出去，重开的 seed 会把用户刚打字跳过的问题重新种回；若 ensure 时就 seed，
+  同样先于退休复活卡片。reopen 失败才真正无对象可退休（stash 留待下次成功
+  ensure）；哨兵投递失败则落回 seed 重现卡片。waiting_user 判定纳入 pendingAsks，
+  协议状态随投影同步。
 
 ### 20.5 测试与门禁
 

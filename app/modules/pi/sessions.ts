@@ -389,21 +389,41 @@ function supersedePendingAsks(key: string): void {
   const entries = Object.entries(pendingAsks());
   const keep = entries.filter(([, entry]) => entry.sessionId !== key);
   if (keep.length === entries.length) return;
-  const wireRetires = entries.filter(
-    ([, entry]) => entry.sessionId === key && !entry.resolve,
-  );
-  pendingAsks.set(Object.fromEntries(keep));
-  const session = liveSession(key);
-  if (!session || session.dead) return;
-  for (const [, entry] of wireRetires) {
-    void session
-      .requestCustom("_zu/ask/answer", {
-        sessionId: key,
-        toolCallId: entry.toolCallId,
-        response: SUPERSEDE_RESPONSE,
-      })
-      .catch(() => {});
+  const queued = seededSupersedes.get(key) ?? [];
+  for (const [, entry] of entries) {
+    if (entry.sessionId !== key || entry.resolve) continue;
+    if (!queued.some((record) => record.toolCallId === entry.toolCallId)) {
+      queued.push({ toolCallId: entry.toolCallId });
+    }
   }
+  seededSupersedes.set(key, queued);
+  pendingAsks.set(Object.fromEntries(keep));
+}
+
+/** Skipped seeded asks (no live waiter) waiting for a live session to retire
+ * them on the harness (B2). Keyed by session id; drained by
+ * `retireSeededAsks`. */
+const seededSupersedes = new Map<string, Array<{ toolCallId: string }>>();
+
+/** Retires skipped seeded asks on the harness via wire sentinels, once a
+ * live session exists (B2). Runs on a live session — a dead process has
+ * nothing to retire, and retiring before the reopen would let the reopen's
+ * seed re-present the questions the user just answered by typing. A failed
+ * retire (e.g. an older harness without the method) falls back to the
+ * follow-up seed re-presenting the card — honest, if noisy. */
+async function retireSeededAsks(key: string, session: AcpSession): Promise<void> {
+  const queued = seededSupersedes.get(key);
+  if (!queued || queued.length === 0 || session.dead) return;
+  seededSupersedes.set(key, []);
+  await Promise.allSettled(
+    queued.map((record) =>
+      session.requestCustom("_zu/ask/answer", {
+        sessionId: key,
+        toolCallId: record.toolCallId,
+        response: SUPERSEDE_RESPONSE,
+      }),
+    ),
+  );
 }
 
 /** Pulls `_zu/ask/pending` after an open so questions that outlived a restart
@@ -467,11 +487,20 @@ function foldAcpUpdate(key: string, update: AcpUpdate): void {
  * Runs one turn for view `key`, folding updates as they stream, marking the
  * settle, and pumping the follow-up queue.
  */
-export async function ensureAcpSession(key: string): Promise<AcpSession | null> {
+function aliveSessionFor(key: string): AcpSession | undefined {
+  const view = views()[key];
+  const existing = liveSession(view?.id ?? key) ?? liveSession(key);
+  return existing && !existing.dead ? existing : undefined;
+}
+
+export async function ensureAcpSession(
+  key: string,
+  options?: { seed?: boolean },
+): Promise<AcpSession | null> {
   const view = views()[key];
   if (!view) return null;
-  const existing = liveSession(view.id) ?? liveSession(key);
-  if (existing && !existing.dead) {
+  const existing = aliveSessionFor(key);
+  if (existing) {
     attachSession(key, existing);
     return existing;
   }
@@ -479,8 +508,9 @@ export async function ensureAcpSession(key: string): Promise<AcpSession | null> 
     const { session } = await openExistingSession(view.id, view.cwd || "/", { load: false });
     attachSession(key, session);
     // The previous process may have died mid-ask; the load-side repair has
-    // already acked the tail, so the asks are listable again (B2).
-    void seedPendingAsks(key, session);
+    // already acked the tail, so the asks are listable again (B2). Callers
+    // that supersede first turn seeding off and seed explicitly after.
+    if (options?.seed !== false) void seedPendingAsks(key, session);
     return session;
   } catch (failure) {
     patchView(key, {
@@ -496,11 +526,18 @@ async function runAcpTurn(key: string, text: string): Promise<void> {
   // The user's own words supersede any waiting ask (B2): drop the cards here,
   // the harness resolves its live waits when the prompt reaches it.
   supersedePendingAsks(key);
-  const session = await ensureAcpSession(key);
+  const wasLive = aliveSessionFor(key) !== undefined;
+  const session = await ensureAcpSession(key, { seed: false });
   if (!session) return;
   acpTurns.set(key, { cancel: () => session.cancel() });
   foldStoreEvent(key, "agent.state", { state: "running" });
   patchView(key, { sessionState: "streaming" });
+  // The skipped seeded asks retire before the turn's prompt fires, and — on
+  // a reopen — the re-seed runs after the retire: seeding earlier would
+  // re-present the questions the user just answered by typing.
+  const retire = retireSeededAsks(key, session);
+  if (!wasLive) await seedPendingAsks(key, session);
+  await retire;
   try {
     await session.prompt(text);
     patchView(key, { sessionState: "ready" });
