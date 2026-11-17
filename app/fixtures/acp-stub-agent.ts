@@ -18,6 +18,10 @@
 //   STUB_UNIQUE_SESSION=1  session/new answers a unique id (per spawn), not the fixed stub-0000-0001
 //   STUB_ASK=1           the prompt asks the client for tool approval
 //   STUB_ELICIT=1        the prompt asks the client for structured input
+//   STUB_PENDING_ASKS=1  _zu/ask/pending lists one parked ask (B2 mailbox)
+//   STUB_ASK_ANSWER=1    _zu/ask/answer answers `delivered:"late"` and retires
+//                        the canned ask — later _zu/ask/pending lists nothing,
+//                        like a real harness whose receipts retired it (B2)
 
 // This file runs under real bun (the tests spawn it through bun, via
 // stub-command.ts) — not in the app VM. But `nsh check` type-checks every
@@ -42,6 +46,7 @@ import { join } from "path";
 const permissionId = 9001;
 const elicitationId = 9002;
 let pending: string | null = null;
+let askRetired = false;
 
 const on = (name: string) => !!process.env[name];
 
@@ -166,6 +171,21 @@ function handle(line: string): void {
     write(`{"jsonrpc":"2.0","id":${id},"result":{}}`);
   } else if (line.includes(`"method":"_zu/subagents/list"`)) {
     write(`{"jsonrpc":"2.0","id":${id},"result":{"runs":[{"id":"run-stub","agent":"worker","status":"done"}]}}`);
+  } else if (line.includes(`"method":"_zu/ask/pending"`)) {
+    if (on("STUB_PENDING_ASKS") && !askRetired) {
+      write(
+        `{"jsonrpc":"2.0","id":${id},"result":{"asks":[{"toolCallId":"tc-pending","args":{"questions":[{"question":"Which database?","header":"Database","multiSelect":false,"options":[{"label":"Postgres","description":"relational"}]}]}}]}}`,
+      );
+    } else {
+      write(`{"jsonrpc":"2.0","id":${id},"result":{"asks":[]}}`);
+    }
+  } else if (line.includes(`"method":"_zu/ask/answer"`)) {
+    if (on("STUB_ASK_ANSWER")) {
+      askRetired = true;
+      write(`{"jsonrpc":"2.0","id":${id},"result":{"delivered":"late"}}`);
+    } else {
+      write(`{"jsonrpc":"2.0","id":${id},"result":{}}`);
+    }
   } else if (line.includes(`"method":"session/prompt"`)) {
     pending = id;
     if (on("STUB_MIDTURN_EXIT") && line.includes(`"text":"boom"`)) process.exit(7);

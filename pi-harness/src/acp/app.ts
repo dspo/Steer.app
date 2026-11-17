@@ -14,6 +14,9 @@
  *   session/set_mode      → approval policy
  *   session/prompt        → one turn; settle = stopReason
  *   session/cancel        → abort; pending prompt answers cancelled
+ *   _zu/subagents/*       → subagent runs (B3)
+ *   _zu/ask/pending       → restart-surviving question cards (B2)
+ *   _zu/ask/answer        → resolve a live wait or inject a late answer (B2)
  *
  * This file must not import pi. The pi glue sits behind `HarnessPorts`
  * (src/acp/pi-session.ts), which keeps `bun test` free of pi and of network.
@@ -84,6 +87,11 @@ export interface HarnessSession {
     transcript(runId: string): any;
     dispatch(agent: string, task: string): any;
     abort(runId: string): Promise<void>;
+  };
+  /** The interactive-tool mailbox (B2): late answers and restart-pending asks. */
+  answers?: {
+    answer(toolCallId: string, response: unknown): Promise<{ delivered: "live" | "late" | "none" }>;
+    pending(): Array<{ toolCallId: string; args: unknown }>;
   };
 }
 
@@ -222,6 +230,26 @@ export function createAcpApp(ports: HarnessPorts, log: HarnessLog = () => {}): A
     if (!session.subagents) throw codedError(JSONRPC_CODE.methodNotFound, "subagents_unavailable", "no subagent surface");
     await session.subagents.abort(String(cx.params.runId ?? ""));
     return {};
+  });
+
+  // The interactive-tool mailbox (B2). `pending` is what the app pulls right
+  // after session/open to re-render question cards across a restart;
+  // `answer` resolves a live wait in the harness or, after the turn already
+  // ended, injects the answer back into the conversation and triggers a turn.
+  app.onRequest("_zu/ask/pending", (raw: any) => raw as any, async (cx) => {
+    const session = requireSession(cx.params.sessionId);
+    return { asks: session.answers?.pending() ?? [] };
+  });
+
+  app.onRequest("_zu/ask/answer", (raw: any) => raw as any, async (cx) => {
+    const session = requireSession(cx.params.sessionId);
+    if (!session.answers) return {};
+    const toolCallId = String(cx.params.toolCallId ?? "");
+    const { delivered } = await session.answers.answer(toolCallId, cx.params.response);
+    if (delivered === "none") {
+      throw codedError(JSONRPC_CODE.invalidParams, "unknown_ask", `no answerable ask for ${toolCallId}`);
+    }
+    return { delivered };
   });
 
   app.onRequest("session/prompt", async (cx) => {

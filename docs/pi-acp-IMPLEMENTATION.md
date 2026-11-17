@@ -838,3 +838,106 @@ host inline loads first)`，并断言 inline 扩展在包之前。
 - Artifacts 索引、kept copies、reconcile、restore/discard、面板（C 档后置）；
 - 拦 bash 的临时目录写入；拦已有临时文件的修改；
 - 自动搬迁 `/tmp` 里的旧产出物；`.zu/` 在文件树里的隐藏/折叠。
+
+## 20. 交互工具 mailbox（B2，2026-11-16）
+
+**根因**：交互式工具（A1 的 `ask_user_question` 及后来者）会把回合停在「等用户答复」上。
+pi 的回合模型没有这个状态：进程一死，`tool_call` 没有配对的 `tool_result`，pi 拒绝续跑；
+UI 重启后问题卡片消失；用户等得不耐烦自己打字时，卡住的 waiter 无人收尸。B2 在 harness
+侧搭 mailbox（pending ack、重启修复、晚到答案、supersede），A1 只负责注册工具与发问。
+
+### 20.1 词汇与标记（`pi-harness/src/interactions.ts`）
+
+- 文件头注明 clean room：只依据 issue SPEC 与 pi 公开契约，不引用 ThinkRail 私有实现。
+- pending ack 的标记是双保险：主标记 `details.kind === "ack"`（`PENDING_ACK_DETAILS`，
+  持久进 session 文件、reopen 后投影可读，见 §20.2 探针），文本 fallback
+  `PENDING_ACK_TEXT`（精确单 text block）兜底 details 缺失的历史会话。
+  `isPendingAck(toolResultMessage)` 只认这两样，不猜别的形状。
+  A1 的工具不得在 `describeResponse` 里回显该保留文本（否则用户看到内部标记）。
+- 自定义 entry 词汇：`zu.ask`（announce：工具发问，args 即问题结构）、
+  `zu.ask.answer`（receipt：答案投递回执，重复投递靠它幂等）、
+  `zu.tool-response`（晚到答案的注入通道）。
+- `INTERACTIVE_TOOLS: Record<string, InteractiveTool>` 是注册表，**本 issue 留空**：
+  A1（#12）open，先落机制后落工具；所有行为由 fixture/stub 测试覆盖。
+  修复与扫描对空 registry 都是 no-op，主线上零行为变化。
+- `InteractiveTool`：`name` + `waiter(answer)`；A1 注册时提供 waiter，答案即回合内解决。
+
+### 20.2 悬空调用修复（重启前）
+
+- `repairDanglingInteractiveCalls(manager, interactive)`：只看 **active tail**（`branchTail()`：
+  从尾部跳过 compaction/branch-summary 之前的部分）的**最后一条 assistant 消息**：
+  有交互工具调用且无配对 `tool_result` → 补一条 ack `tool_result`（`details.kind:"ack"`），
+  让 pi 能继续这个 session，返回补写条数。
+- fail-closed：更早的悬空调用不动（不伪造历史）；已被 compaction 摘走的调用不修
+  （避免孤儿 tool_result）；registry 空则无事可做。
+- 接线在 `pi-session.ts` 的 `build()`：`createAgentSessionFromServices` **之前**跑修复
+  ——pi 的 builder 遇到悬空调用会拒绝，修复必须先于它。`create` 路径 `repairTail:false`
+  （全新 session 没有历史），`open` 路径 `repairTail:true`（reopen 才有悬空的可能）。
+- 探针结论（决定主标记选型）：pi 1.5.0 把 `tool_result` 的 `details` 持久化进 session
+  文件，reopen 后 `buildSessionProjection()` 可原样读出——所以 `details.kind:"ack"`
+  能活过重启，比文本匹配可靠。
+
+### 20.3 答案路由（AnswerRegistry）
+
+- `AnswerRegistry`：`announce(session, toolCallId, args)` 记 pending；
+  `answer(toolCallId, answer)` 分三路——
+  - **live**：有 waiter，进程内 resolve，工具调用当回合返回，同样写 `zu.ask.answer` receipt；
+  - **late**：无 waiter（进程/回合已死），经 `hooks.inject` → `session.sendCustomMessage({
+    customType: "zu.tool-response", content: [答案文本 block], display: true,
+    details: { toolCallId, response } }, { triggerTurn: true })`——注入用户可见消息并唤醒
+    模型响应答案，同样补 receipt；
+  - **none**：既无 waiter 也非 pending（未知 toolCallId），上层报错。
+  **回执是 ask 退出 pending 的唯一机制**：`pendingAsksOf` 只认 `zu.ask.answer` receipt
+  （ack toolResult 单独不退休 ask），live/supersede/late 三条路都写，重启后已答/已
+  跳过的问题不会被重新种卡，重复投递靠 receipt 幂等。
+- `pending(toolCallId)` / `supersedeAll()`：pending 集合供 `_zu/ask/pending` 拉取；
+  用户直接输入时 `supersedeAll()` 以 `{ action: "supersede" }` 哨兵 resolve 所有 live
+  waiter，工具侧见哨兵即答 pending ack，同时给每个被跳过的 ask 写 receipt（否则下次
+  open 会把用户已跳过的问题重新种成卡片）。announce entry 保留：历史不改写。
+  `prompt()` 开头固定跑 `supersedeAll()`——用户的话优先于悬着的问题。
+- **wire 哨兵退休 seeded 卡**：重启后的卡没有 live waiter，用户打字跳过时 app 侧对它
+  发 `_zu/ask/answer` 携哨兵；`answer()` 按值识别哨兵（跨 wire 是新 parse 的对象，
+  引用相等必失效；真答案的 option/custom/discuss 形状不带 `action`），只写 receipt、
+  返回 `late`，不走 `describeResponse`——哨兵不是答案，绝不注入对话。未知 id 或
+  receipt 已在（二次退休）分别得 `none` / `late`，不产生多余 receipt。
+
+### 20.4 ACP 面（`app.ts` / `host.ts` / `sessions.ts`）
+
+- harness method：`_zu/ask/pending`（按 sessionId 列 pending，`{ asks: [{ toolCallId,
+  args }] }`；无 mailbox 返回 `{asks: []}`）；`_zu/ask/answer`（投递答案；`delivered` 三态
+  live/late/none，`none` 时 codedError(invalidParams, "unknown_ask")）。
+  两个 method 都在 app.ts 的头部 doc 注释登记。
+- app 侧 `AskRequest`/`AskResponse`（`modules/pi/acp/host.ts`）：`SessionHandlers` 加
+  **类型预留** `requestAsk?`——B2 不 dispatch（没有真工具可发问），A1 接线时才有发起方。
+- UI 状态（`modules/pi/sessions.ts`）：`pendingAsks` signal（key `${sessionId}:
+  ${toolCallId}`）。open 后 `seedPendingAsks` 拉 `_zu/ask/pending` 把重启幸存的问题
+  重新种成可答卡片（best-effort：旧 harness method_not_found 是诚实结果，静默跳过）；
+  卡片无 waiter 走 wire，有 waiter 进程内 resolve；`supersedePendingAsks(key)` 在
+  send 前清掉该会话的卡，其中无 resolve 的 seeded 卡记入 `seededSupersedes`，由
+  `retireSeededAsks` 在 `ensureAcpSession` **之后**用活 session 投 wire 哨兵退休。
+  顺序关键：`runAcpTurn` 先 supersede，再 ensure（`seed:false` 重开、不种卡），退休
+  落回执，重开路径再显式 seed 剩余 pending——若在 ensure 之前退休，死进程的哨兵
+  发不出去，重开的 seed 会把用户刚打字跳过的问题重新种回；若 ensure 时就 seed，
+  同样先于退休复活卡片。reopen 失败才真正无对象可退休（stash 留待下次成功
+  ensure）；哨兵投递失败则落回 seed 重现卡片。waiting_user 判定纳入 pendingAsks，
+  协议状态随投影同步。
+
+### 20.5 测试与门禁
+
+- `interactions.test.ts`（真实 SessionManager + 临时 sessionDir）：ack 常量/isPendingAck、
+  branchTail 跳过 compaction、悬空修复（create 不修/open 修、幂等、fail-closed 不碰
+  更早调用）、pendingAsksOf 双条件（ack + announce）、AnswerRegistry live/late/none、
+  receipt 幂等、supersede 哨兵。
+- `acp/app.test.ts`：`_zu/ask` 两个 method 的 wire 行为（委托/空/unknown_ask 编码错误）。
+- `app/tests/ask.test.ts`（stub + 手造 session 文件）：重启 re-seed 卡片与 waiting_user、
+  seeded 卡走 `_zu/ask/answer`、live 卡进程内 resolve、send supersede 且不误伤其他
+  会话的卡、runner 清理。
+- 门禁：`(cd pi-harness && bun run check-version && bun test && bun run build && bun run
+  smoke)`、`bun run check`、`ZU_SKIP_LIVE=1 bun run test`。
+
+### 20.6 非目标
+
+- 发问工具本身与 UI 问题卡片的渲染交互（A1，#12；`requestAsk` 只是类型预留）；
+- 多轮 ask（一次工具调用一问）与 ask 超时/自动降级；
+- manox 侧的对等 mailbox（manox 有自己的 AHP 宿主，另行设计）；
+- 把 `zu.ask` announce 回放进 transcript 折叠规则（`fold.ts` 本期不动）。
