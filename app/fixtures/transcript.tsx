@@ -32,6 +32,14 @@ const entries: Entry[] = [
       "login 500 出现在 session 解析之后，先看 cookie 过期分支……\n先确认 /session 中间件有没有吞掉 Set-Cookie。",
     pi: { at: 1760000001000, entryId: "fx-a1", settled: true, durationMs: 4200, stopReason: "end_turn" },
   },
+  {
+    kind: "assistant",
+    id: "fx-a3",
+    text: "",
+    thoughts:
+      "The app side already carries the ask types and the handler slot, so the remaining work is only the transport branch, and this thought never wraps because pi stores the whole paragraph as one line, ending with the marker ZU-CLIP-TAIL.",
+    pi: { at: 1760000001500, entryId: "fx-a3", settled: true, durationMs: 600, stopReason: "end_turn" },
+  },
   toolEntry("fx-t2", "bash bun test login", "failed", {
     name: "bash",
     toolKind: "execute",

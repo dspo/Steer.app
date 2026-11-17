@@ -69,6 +69,21 @@ test("a recycled row follows its entry's kind and body", async () => {
   await app.waitFor("id:assistant-markdown");
   expect(app.texts()).toContain("assistant delta");
   expect(app.shows("id:user-message")).toBe(false);
+  // Reply → thinking: the folded preview belongs to this entry, and the
+  // reveal waits for the expand.
+  await app.press("id:swap");
+  await app.waitFor("id:thinking");
+  expect(app.texts().some((text) => text.includes("first line alpha"))).toBe(true);
+  expect(app.shows("id:thinking-body")).toBe(false);
+  await app.press("id:thinking-toggle-e");
+  await app.waitFor("id:thinking-body");
+  expect(app.texts().some((text) => text.includes("second line beta"))).toBe(true);
+  // Thinking → another thinking: the new preview replaces the old line, and
+  // the new entry starts folded even though the previous one was left open.
+  await app.press("id:swap");
+  await app.waitUntil(() => app.texts().some((text) => text.includes("single line gamma")), { timeout: 5000 });
+  expect(app.texts().some((text) => text.includes("first line alpha"))).toBe(false);
+  expect(app.shows("id:thinking-body")).toBe(false);
 });
 
 test("an assistant reply is selectable Markdown with a streaming caret", async () => {
@@ -206,6 +221,31 @@ test("thinking collapses to its first line and expands when clicked", async () =
   await app.press("id:thinking-toggle-fx-a1");
   await app.waitUntil(() => !app.shows("id:thinking-body"), { timeout: 5000 });
 
+});
+
+test("a single-line thinking preview folds and expands, and keeps its line", async () => {
+  const app = await open("../fixtures/transcript.tsx", { width: 1200, height: 800 });
+  await app.waitFor("id:thinking");
+  // fx-a3's thought is one paragraph on one line (pi's usual shape). The
+  // text tree keeps the whole line for reading and accessibility; the fold
+  // to one ellipsized row is the layout's job, pinned by the macos-target
+  // evidence shots below.
+  expect(
+    app.texts().some((text) => text.startsWith("The app side already carries") && text.includes("ZU-CLIP-TAIL")),
+  ).toBe(true);
+  await shot(app, "ui-transcript-thinking-folded");
+  // Expanding reveals the body region…
+  await app.press("id:thinking-toggle-fx-a3");
+  await app.waitFor("id:thinking-body");
+  await shot(app, "ui-transcript-thinking-open");
+  // …and folding back must draw the preview again (a Text whose
+  // `numberOfLines` flipped in place used to keep only the blank line box).
+  await app.press("id:thinking-toggle-fx-a3");
+  await app.waitUntil(() => !app.shows("id:thinking-body"), { timeout: 5000 });
+  expect(
+    app.texts().some((text) => text.startsWith("The app side already carries") && text.includes("ZU-CLIP-TAIL")),
+  ).toBe(true);
+  await shot(app, "ui-transcript-thinking-refolded");
 });
 
 test("an execute card shows the command, the tail, exit and duration; expands", async () => {

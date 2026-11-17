@@ -75,20 +75,41 @@ export function ThinkingBlock(props: { entry: () => AssistantEntry; streaming: (
             accessibilityState={{ expanded: open() }}
             tooltip={t(K.session.thinking)}
             class="focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
-            style={{ paddingVertical: 2, width: "100%" }}
+            style={{ flexDirection: "row", paddingVertical: 2, width: "100%" }}
             onPress={() => toggle(entry().id)}
           >
-            <Text
-              class="text-[13px] leading-[18px] italic text-muted-foreground"
-              style={{
-                fontFamily: SHEET_FONT,
-                fontWeight: 300,
-                numberOfLines: open() ? undefined : 1,
-                userSelect: "text",
-              }}
-            >
-              {firstLine() || t(K.session.thinkingCollapsed)}
-            </Text>
+            {/* Two Texts, one per fold state, in `If` branches: a Text whose
+             * `numberOfLines` flips in place (a stream settling, an expand
+             * folding) dropped its string on the macOS backend and kept only
+             * the blank line box. The folded branch is also constrained to
+             * the row like every other one-line preview (composer, session
+             * banner), so the ellipsis engages — pi's thinking is often a
+             * single long paragraph line, and an unconstrained Text ran past
+             * the row's edge to a mid-word clip with no ellipsis at all. */}
+            <If when={open()}>
+              <Text
+                class="text-[13px] leading-[18px] italic text-muted-foreground"
+                style={{ fontFamily: SHEET_FONT, fontWeight: 300, flex: 1, minWidth: 0, userSelect: "text" }}
+              >
+                {firstLine() || t(K.session.thinkingCollapsed)}
+              </Text>
+            </If>
+            <If when={!open()}>
+              <Text
+                class="text-[13px] leading-[18px] italic text-muted-foreground"
+                style={{
+                  fontFamily: SHEET_FONT,
+                  fontWeight: 300,
+                  numberOfLines: 1,
+                  textOverflow: "ellipsis",
+                  flex: 1,
+                  minWidth: 0,
+                  userSelect: "text",
+                }}
+              >
+                {firstLine() || t(K.session.thinkingCollapsed)}
+              </Text>
+            </If>
           </View>
         </Collapsible>
       </View>

@@ -4,7 +4,8 @@ import { assistantEntry, toolEntry, userEntry, type Entry } from "../modules/pi/
 
 // A List cell is recycled across entries: the same EntryRow instance must
 // follow the kind, title and body of whatever its `entry` getter now names.
-// The button steps through a tool, another tool, a user row and a reply.
+// The button steps through a tool, another tool, a user row, a reply, and
+// two replies with folded thinking (multi-line, then a single long line).
 const read = toolEntry("a", "read alpha", "completed", {
   name: "read",
   toolKind: "read",
@@ -17,7 +18,27 @@ const edit = toolEntry("b", "edit beta", "completed", {
   rawInput: { path: "beta.ts" },
   diffs: [{ path: "beta.ts", oldText: "old beta", newText: "new beta" }],
 });
-const steps: Entry[] = [read, edit, userEntry("c", "user gamma"), assistantEntry("d", "assistant delta")];
+const thinkMulti: Entry = {
+  kind: "assistant",
+  id: "e",
+  text: "",
+  thoughts: "first line alpha\nsecond line beta",
+};
+const thinkSingle: Entry = {
+  kind: "assistant",
+  id: "f",
+  text: "",
+  thoughts:
+    "one long single line gamma that keeps going so its folded preview must ellipsize at the row's width instead of running past it",
+};
+const steps: Entry[] = [
+  read,
+  edit,
+  userEntry("c", "user gamma"),
+  assistantEntry("d", "assistant delta"),
+  thinkMulti,
+  thinkSingle,
+];
 const current = signal<Entry>(read);
 let index = 0;
 
