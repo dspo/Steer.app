@@ -341,6 +341,7 @@ export const zhCN: Record<string, string> = {
   "app.manox.tool.failed": "失败",
   "app.manox.tool.cancelled": "已取消",
   "app.manox.tool.output": "输出",
+  "app.manox.tool.noOutput": "（无输出）",
   "app.manox.copy": "复制",
   "app.manox.copied": "已复制",
   "app.manox.jumpLatest": "回到最新",

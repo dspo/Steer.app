@@ -43,6 +43,9 @@ test("the tool card carries its title, status, terminal preview and exit code", 
   const app = await open("../fixtures/manox-conversation.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:chat-tool-call");
   const texts = app.texts();
+  // The gallery's identity row: the avatar tile and the model's name.
+  expect(app.count("id:chat-assistant-header")).toBeGreaterThan(0);
+  expect(texts).toContain("qwen3.8-flash");
   expect(texts).toContain("Run tests");
   expect(texts).toContain("已完成");
   expect(texts).toContain("52 pass, 0 fail");
@@ -64,7 +67,11 @@ test("a reply's copy action reports the copy", async () => {
   const app = await open("../fixtures/manox-conversation.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:chat-actions:t1-copy");
   await app.press("id:chat-actions:t1-copy");
-  await app.waitUntil(() => app.texts().some((text) => text === "已复制" || text === "Copied"), { timeout: 5000 });
+  // The action is an icon target: its name lives in the accessibility label.
+  await app.waitUntil(
+    () => app.shows("label:已复制") || app.shows("label:Copied"),
+    { timeout: 5000 },
+  );
   await shot(app, "ui-manox-chat-actions");
 });
 

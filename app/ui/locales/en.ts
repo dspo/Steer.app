@@ -335,6 +335,7 @@ export const en: Record<string, string> = {
   "app.manox.tool.failed": "Failed",
   "app.manox.tool.cancelled": "Cancelled",
   "app.manox.tool.output": "Output",
+  "app.manox.tool.noOutput": "(no output)",
   "app.manox.copy": "Copy",
   "app.manox.copied": "Copied",
   "app.manox.jumpLatest": "Jump to latest",

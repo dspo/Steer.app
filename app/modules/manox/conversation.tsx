@@ -9,13 +9,17 @@ import {
   DaySeparator,
   JumpToLatest,
   MarkdownBlock,
+  AssistantHeader,
   ThinkingBlock,
   ToolCallCard,
+  ToolFooter,
   UserMessage,
   type ChatAction,
   type ToolCardStatus,
 } from "../../ui/chat";
-import { ensureConnection } from "./ahp";
+import { effectiveState, ensureConnection } from "./ahp";
+import { loadPiModels, modelLabel, usableModels } from "../../domains/pimodels";
+import type { SessionState } from "../../../contracts/ahp/channels-session/state";
 import {
   answerManoxInput,
   chatOf,
@@ -60,6 +64,7 @@ import type {
 type Row =
   | { kind: "day"; id: string; at: string }
   | { kind: "user"; id: string; text: string; attachments: string[] }
+  | { kind: "header"; id: string; turnId: string; model: string }
   | { kind: "part"; id: string; chatId: string; turnId: string; part: ResponsePart; streaming: boolean; live: boolean; durationMs?: number }
   | { kind: "actions"; id: string; turnId: string; text: string };
 
@@ -69,6 +74,23 @@ interface DisplayTurn {
   startedAt?: string;
   message: Message;
   parts: ResponsePart[];
+}
+
+/** The reply's model name: the turn's own selection first, else the thread's
+ * configured model ref, resolved against the pi catalogue (the gallery shows
+ * the model beside the assistant's avatar). */
+function modelLabelOf(turn: DisplayTurn, threadId: string): string {
+  const explicit = turn.message.model?.id;
+  let ref = typeof explicit === "string" ? explicit : "";
+  if (!ref) {
+    const state = effectiveState<SessionState>(sessionResource(threadId));
+    const value = state?.config?.values?.["model"] ?? state?.config?.schema?.properties?.["model"]?.default;
+    if (typeof value === "string") ref = value;
+  }
+  if (!ref) return "";
+  const id = ref.includes("/") ? ref.slice(ref.lastIndexOf("/") + 1) : ref;
+  const row = usableModels().find((candidate) => candidate.model.id === id);
+  return row ? modelLabel(row) : id;
 }
 
 const dayKey = (at: number) => {
@@ -87,7 +109,7 @@ function turnText(parts: ResponsePart[]): string {
 
 /** Flattens the chat's turns and their parts into keyed rows, inserting the
  * day line wherever the timeline crosses midnight. */
-function rowsOf(chat: ChatState | null, chatId: string): Row[] {
+function rowsOf(chat: ChatState | null, chatId: string, threadId: string): Row[] {
   if (!chat) return [];
   const rows: Row[] = [];
   let lastDay: string | null = null;
@@ -108,6 +130,9 @@ function rowsOf(chat: ChatState | null, chatId: string): Row[] {
       })
       .filter((name) => name.length > 0);
     rows.push({ kind: "user", id: `user:${turn.id}`, text: turn.message.text, attachments });
+    if (turn.parts.length > 0) {
+      rows.push({ kind: "header", id: `header:${turn.id}`, turnId: turn.id, model: modelLabelOf(turn, threadId) });
+    }
     const last = turn.parts.length - 1;
     for (let index = 0; index < turn.parts.length; index += 1) {
       const part = turn.parts[index];
@@ -268,6 +293,15 @@ function ToolCallPart(props: { chatId: string; turnId: string; part: ToolCallRes
   const call = () => props.part.toolCall;
   const completed = () => (call().status === ToolCallStatus.Completed ? (call() as ToolCallCompletedState) : null);
   const contents = () => completed()?.content ?? [];
+  // A terminal result is the card's footer (the gallery's `Output … exit …`);
+  // every other block is the body.
+  const bodyBlocks = () => contents().filter((block) => block.type !== "terminal");
+  const terminal = () => contents().find((block) => block.type === "terminal");
+  const exitCode = () => (terminal()?.type === "terminal" ? terminal()!.result?.exitCode : undefined);
+  const outputText = () =>
+    terminal()?.type === "terminal"
+      ? clampLines(terminal()!.result?.preview ?? terminal()!.title, 2)
+      : "";
   const detail = () =>
     call().intention ??
     stringOrMarkdown((call() as { invocationMessage?: unknown }).invocationMessage ?? "");
@@ -296,10 +330,20 @@ function ToolCallPart(props: { chatId: string; turnId: string; part: ToolCallRes
           </View>
         </If>
       }
+      footer={
+        <If when={!!terminal()}>
+          <ToolFooter
+            label={t(K.manox.toolOutput)}
+            value={outputText() || t(K.manox.noOutput)}
+            tone={exitCode() ? "destructive" : "up"}
+            meta={exitCode() !== undefined ? `exit ${exitCode()}` : undefined}
+          />
+        </If>
+      }
     >
-      <If when={contents().length > 0}>
+      <If when={bodyBlocks().length > 0}>
         <CardBody>
-          <Each of={contents()}>
+          <Each of={bodyBlocks()}>
             {(block) => <ResultBlock block={block()} />}
           </Each>
         </CardBody>
@@ -496,9 +540,10 @@ export function ManoxChatBody(props: { id: string }) {
     // A missing chat (a stale sheet id against a fresh host) surfaces as
     // the sheet's error status, never an unhandled rejection.
     void ensureConnection([sessionResource(parsed.threadId), chatUri(), metricsResource(parsed.chatId)]).catch(() => {});
+    void loadPiModels();
   });
   const chat = () => chatOf(parsed.chatId);
-  const rows = () => rowsOf(chat(), parsed.chatId);
+  const rows = () => rowsOf(chat(), parsed.chatId, parsed.threadId);
   const streaming = () => chat()?.activeTurn != null;
   const empty = () => rows().length === 0;
   const copied = signal<string | null>(null);
@@ -555,7 +600,7 @@ export function ManoxChatBody(props: { id: string }) {
     {
       id: "copy",
       label: copied() === row.turnId ? t(K.manox.copied) : t(K.manox.copy),
-      glyph: copied() === row.turnId ? "check" : "file",
+      glyph: copied() === row.turnId ? "check" : "copy",
       active: copied() === row.turnId,
       onPress: () => copy(row.turnId, row.text),
     },
@@ -581,9 +626,9 @@ export function ManoxChatBody(props: { id: string }) {
             estimatedItemSize={90}
             style={{ flex: 1 }}
             contentStyle={{
-              paddingTop: 14,
-              paddingBottom: 14,
-              gap: 10,
+              paddingTop: 16,
+              paddingBottom: 16,
+              gap: 12,
             }}
             onScroll={(event) => {
               following.set(event.offset.y + event.size.height >= event.contentSize.height - 40);
@@ -597,6 +642,10 @@ export function ManoxChatBody(props: { id: string }) {
                 case "user": {
                   const user = current() as Extract<Row, { kind: "user" }>;
                   return <UserMessage text={user.text} attachments={user.attachments} />;
+                }
+                case "header": {
+                  const header = current() as Extract<Row, { kind: "header" }>;
+                  return <AssistantHeader model={header.model} />;
                 }
                 case "part":
                   return <PartRow row={current() as Extract<Row, { kind: "part" }>} />;

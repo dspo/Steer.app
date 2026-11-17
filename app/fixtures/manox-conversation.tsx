@@ -30,7 +30,7 @@ const turn = (id: string, startedAt: string, text: string, parts: unknown[]): Tu
   ({
     id,
     startedAt,
-    message: { text, origin: { kind: "user" } },
+    message: { text, origin: { kind: "user" }, model: { id: "qwen3.8-flash" } },
     responseParts: parts,
     usage: undefined,
     state: "complete",

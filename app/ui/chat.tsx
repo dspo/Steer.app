@@ -4,11 +4,11 @@ import { SHEET_FONT } from "./fonts";
 import { Chip, Glyph, motionStyle, shadowCard, type GlyphName } from "./ui";
 
 /**
- * The gallery's chat presentation kit, on the manox conversation's scale
- * (13.5/19 body). Components take primitives only — no protocol types — so a
- * caller passes its own fields and nothing sits between the pack's state and
- * the row. The gallery's thinking block and tool card are the shapes:
- * `Chat.tsx`'s reasoning collapse and `chat/parts.tsx`'s `ToolCard`.
+ * The gallery's chat presentation kit, on the gallery's chat scale (15/22
+ * body). Components take primitives only — no protocol types — so a caller
+ * passes its own fields and nothing sits between the pack's state and the
+ * row. The shapes are the gallery's `Chat.tsx` reasoning collapse and
+ * `chat/parts.tsx` `ToolCard`.
  */
 
 /** Open state of each thinking block, keyed by the caller's part id. UI
@@ -17,7 +17,7 @@ const thoughtsOpen = signal<Record<string, boolean>>({});
 
 /** A ring that spins natively (the built-in `spin` keyframes). */
 export function Spinner(props: { size?: number; tint?: string }) {
-  const size = props.size ?? 12;
+  const size = props.size ?? 14;
   return (
     <View
       style={{
@@ -43,8 +43,8 @@ export function StreamCaret(props: { testID?: string }) {
     <View
       testID={props.testID ?? "chat-stream-caret"}
       style={{
-        width: 6,
-        height: 14,
+        width: 8,
+        height: 16,
         marginLeft: 2,
         borderRadius: 2,
         backgroundColor: token("brand"),
@@ -91,20 +91,20 @@ export function ThinkingBlock(props: {
       ? props.label
       : `${props.label} ${props.seconds < 1 ? "<1s" : `${props.seconds}s`}`;
   return (
-    <View style={{ gap: 6 }}>
+    <View style={{ gap: 8 }}>
       <View
         role="button"
         testID="chat-thinking"
         accessibilityLabel={label()}
         accessibilityState={{ selected: open() }}
-        class="flex-row items-center gap-1.5 self-start rounded-md px-1 hover:bg-hover active:bg-accent focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-        style={{ height: 26, ...motionStyle("fast") }}
+        class="flex-row items-center gap-2 self-start rounded-md px-1.5 hover:bg-hover active:bg-accent focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+        style={{ height: 32, ...motionStyle("fast") }}
         onPress={toggle}
       >
-        <If when={props.streaming} else={<Glyph name="pulse" size={12} tint={token("muted-foreground")} />}>
-          <Spinner size={12} tint={token("muted-foreground")} />
+        <If when={props.streaming} else={<Glyph name="pulse" size={16} tint={token("muted-foreground")} />}>
+          <Spinner size={14} tint={token("muted-foreground")} />
         </If>
-        <Text class="text-[12.5px] text-muted-foreground" style={{ fontVariant: ["tabular-nums"] }}>
+        <Text class="text-[14px] text-muted-foreground" style={{ fontVariant: ["tabular-nums"] }}>
           {label()}
         </Text>
         <View
@@ -115,18 +115,18 @@ export function ThinkingBlock(props: {
             transitionTimingFunction: "ease-out",
           }}
         >
-          <Glyph name="caret-down" size={12} tint={token("faint")} />
+          <Glyph name="caret-down" size={14} tint={token("faint")} />
         </View>
       </View>
       <If when={open()}>
-        <View style={{ flexDirection: "row", gap: 10, paddingLeft: 6 }}>
+        <View style={{ flexDirection: "row", gap: 12, paddingLeft: 7 }}>
           <View style={{ width: 2, borderRadius: 1, backgroundColor: token("line") }} />
           <Text
             testID="chat-thinking-text"
             style={{
               flex: 1,
-              fontSize: 12.5,
-              lineHeight: 17,
+              fontSize: 14,
+              lineHeight: 20,
               color: token("muted-foreground"),
               fontFamily: SHEET_FONT,
               userSelect: "text",
@@ -140,7 +140,7 @@ export function ThinkingBlock(props: {
   );
 }
 
-/** The card's four visual states, as the gallery's badge tones. */
+/** The card's visual states, as the gallery's badge tones. */
 export type ToolCardStatus = "streaming" | "pending" | "running" | "done" | "failed" | "cancelled";
 
 /**
@@ -155,6 +155,8 @@ export function ToolCallCard(props: {
   status: ToolCardStatus;
   statusLabel: string;
   children?: JSX.Element;
+  /** The result row under the body (the gallery's `Output … exit …`). */
+  footer?: JSX.Element;
   actions?: JSX.Element;
 }) {
   const busy = () => props.status === "streaming" || props.status === "running";
@@ -183,12 +185,12 @@ export function ToolCallCard(props: {
         ...motionStyle("medium"),
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 10 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 12 }}>
         <View
           style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
+            width: 32,
+            height: 32,
+            borderRadius: 9,
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: token("raised"),
@@ -196,35 +198,33 @@ export function ToolCallCard(props: {
             borderColor: token("border"),
           }}
         >
-          <Glyph name={props.glyph} size={14} tint={token("foreground")} />
+          <Glyph name={props.glyph} size={16} tint={token("foreground")} />
         </View>
         <View style={{ flex: 1, gap: 1, minWidth: 0 }}>
-          <Text class="text-[12.5px] font-semibold text-foreground" style={{ numberOfLines: 1 }}>
+          <Text class="text-[14px] font-semibold text-foreground" style={{ numberOfLines: 1 }}>
             {props.title}
           </Text>
           <If when={!!props.detail}>
-            <Text class="text-[11.5px] text-muted-foreground" style={{ numberOfLines: 1 }}>
+            <Text class="text-[13px] text-muted-foreground" style={{ numberOfLines: 1 }}>
               {props.detail}
             </Text>
           </If>
         </View>
-        <If
-          when={busy()}
-          else={<Chip label={props.statusLabel} tint={token(tint())} />}
-        >
-          <View class="flex-row items-center gap-1.5">
-            <Spinner size={10} tint={token("info")} />
-            <Text class="text-[11.5px] text-muted-foreground">{props.statusLabel}</Text>
+        <If when={busy()} else={<Chip label={props.statusLabel} tint={token(tint())} />}>
+          <View class="flex-row items-center gap-2">
+            <Spinner size={12} tint={token("info")} />
+            <Text class="text-[13px] text-muted-foreground">{props.statusLabel}</Text>
           </View>
         </If>
       </View>
       {props.children}
+      {props.footer}
       {props.actions}
     </View>
   );
 }
 
-/** A card body block: inset, mono, at the card's scale. */
+/** A card body block: inset, mono, at the gallery's code scale. */
 export function CardBody(props: { children: JSX.Element }) {
   return (
     <View
@@ -232,8 +232,8 @@ export function CardBody(props: { children: JSX.Element }) {
         borderTopWidth: 1,
         borderTopColor: token("line"),
         backgroundColor: token("inset"),
-        paddingHorizontal: 10,
-        paddingVertical: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
         gap: 4,
       }}
     >
@@ -247,9 +247,10 @@ export function CardLine(props: { text: string; tone?: "muted" | "up" | "destruc
   return (
     <Text
       testID={props.testID}
-      class="text-[11.5px] leading-[16px]"
       style={{
         fontFamily: SHEET_FONT,
+        fontSize: 13,
+        lineHeight: 19,
         userSelect: "text",
         color:
           props.tone === "up"
@@ -266,7 +267,42 @@ export function CardLine(props: { text: string; tone?: "muted" | "up" | "destruc
   );
 }
 
-/** A reply's Markdown at the conversation's reading scale. */
+/** The execute card's result line, as the gallery's `Output` footer. */
+export function ToolFooter(props: { label: string; value: string; tone?: "up" | "destructive"; meta?: string }) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        paddingHorizontal: 12,
+        height: 44,
+        borderTopWidth: 1,
+        borderTopColor: token("line"),
+      }}
+    >
+      <Text class="text-[13px] text-muted-foreground">{props.label}</Text>
+      <Text
+        style={{
+          flex: 1,
+          fontFamily: SHEET_FONT,
+          fontSize: 14,
+          color: props.tone === "destructive" ? token("destructive") : token("up"),
+          userSelect: "text",
+        }}
+      >
+        {props.value}
+      </Text>
+      <If when={!!props.meta}>
+        <Text class="text-[12px] text-faint" style={{ fontVariant: ["tabular-nums"] }}>
+          {props.meta}
+        </Text>
+      </If>
+    </View>
+  );
+}
+
+/** A reply's Markdown at the gallery's reading scale. */
 export function MarkdownBlock(props: { text: string; streaming: boolean }) {
   return (
     <View testID="chat-markdown" style={{ paddingHorizontal: 4 }}>
@@ -276,12 +312,41 @@ export function MarkdownBlock(props: { text: string; streaming: boolean }) {
         selectable
         codeBlockScrollbar={false}
         styles={{
-          root: { gap: 8, fontSize: 13.5, lineHeight: 19, fontFamily: SHEET_FONT, color: token("foreground") },
-          heading2: { fontSize: 16, lineHeight: 21 },
+          root: { gap: 12, fontSize: 15, lineHeight: 22, fontFamily: SHEET_FONT, color: token("foreground") },
+          heading1: { fontSize: 20, lineHeight: 26 },
+          heading2: { fontSize: 17, lineHeight: 22 },
+          heading3: { fontSize: 15, lineHeight: 22 },
         }}
       />
       <If when={props.streaming}>
         <StreamCaret />
+      </If>
+    </View>
+  );
+}
+
+/** The assistant's identity row: the avatar tile and the model's name. */
+export function AssistantHeader(props: { model?: string }) {
+  return (
+    <View testID="chat-assistant-header" class="flex-row items-center gap-2" style={{ height: 26 }}>
+      <View
+        style={{
+          width: 26,
+          height: 26,
+          borderRadius: 8,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: token("raised"),
+          borderWidth: 1,
+          borderColor: token("border"),
+        }}
+      >
+        <Glyph name="spark" size={14} tint={token("brand")} />
+      </View>
+      <If when={!!props.model}>
+        <Text class="text-[13px] font-semibold text-muted-foreground" style={{ flex: 1, numberOfLines: 1 }}>
+          {props.model}
+        </Text>
       </If>
     </View>
   );
@@ -292,8 +357,28 @@ export function UserMessage(props: { text: string; attachments?: string[] }) {
   return (
     <View testID="chat-user-message" style={{ alignItems: "flex-end", gap: 4 }}>
       <If when={props.text.length > 0}>
-        <View class="rounded-xl bg-card px-3 py-2" style={{ maxWidth: 560 }}>
-          <Text class="text-[13.5px] leading-[19px] text-foreground" style={{ numberOfLines: 20 }}>
+        <View
+          style={{
+            maxWidth: "82%",
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            borderRadius: 20,
+            borderBottomRightRadius: 6,
+            borderCurve: "continuous",
+            backgroundColor: token("raised"),
+            borderWidth: 1,
+            borderColor: token("border"),
+          }}
+        >
+          <Text
+            style={{
+              userSelect: "text",
+              fontFamily: SHEET_FONT,
+              fontSize: 15,
+              lineHeight: 21,
+              color: token("foreground"),
+            }}
+          >
             {props.text}
           </Text>
         </View>
@@ -312,17 +397,20 @@ export function UserMessage(props: { text: string; attachments?: string[] }) {
 /** The line between days. */
 export function DaySeparator(props: { label: string }) {
   const date = new Date(props.label);
-  const text = Number.isFinite(date.getTime()) ? `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}` : props.label;
+  const text = Number.isFinite(date.getTime())
+    ? `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
+    : props.label;
   return (
-    <View testID="chat-day" class="flex-row items-center gap-2 py-1">
+    <View testID="chat-day" class="flex-row items-center gap-3 py-1">
       <View class="h-px flex-1 bg-line" />
-      <Text class="text-[10.5px] text-faint">{text}</Text>
+      <Text class="text-[12px] text-faint">{text}</Text>
       <View class="h-px flex-1 bg-line" />
     </View>
   );
 }
 
-/** One row of message actions, as the gallery's reply footer. */
+/** One row of message actions, as the gallery's reply footer: icon targets,
+ * the label living in the tooltip and the accessibility name. */
 export interface ChatAction {
   id: string;
   label: string;
@@ -333,7 +421,7 @@ export interface ChatAction {
 
 export function ActionRow(props: { testID: string; actions: ChatAction[] }) {
   return (
-    <View testID={props.testID} class="flex-row items-center gap-1" style={{ marginLeft: -4 }}>
+    <View testID={props.testID} class="flex-row items-center gap-1" style={{ marginLeft: -8, marginTop: -6 }}>
       <Each of={props.actions}>
         {(action) => (
           <View
@@ -341,12 +429,15 @@ export function ActionRow(props: { testID: string; actions: ChatAction[] }) {
             testID={`${props.testID}-${action().id}`}
             accessibilityLabel={action().label}
             tooltip={action().label}
-            class="h-6 flex-row items-center gap-1 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+            class="h-9 w-9 items-center justify-center rounded-full hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
             style={{ ...motionStyle("fast") }}
             onPress={action().onPress}
           >
-            <Glyph name={action().glyph} size={11} tint={action().active ? token("up") : token("muted-foreground")} />
-            <Text class="text-[11px] text-muted-foreground">{action().label}</Text>
+            <Glyph
+              name={action().glyph}
+              size={16}
+              tint={action().active ? token("up") : token("muted-foreground")}
+            />
           </View>
         )}
       </Each>

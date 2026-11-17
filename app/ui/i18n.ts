@@ -512,6 +512,7 @@ export const K = {
     toolFailed: "app.manox.tool.failed",
     toolCancelled: "app.manox.tool.cancelled",
     toolOutput: "app.manox.tool.output",
+    noOutput: "app.manox.tool.noOutput",
     copy: "app.manox.copy",
     copied: "app.manox.copied",
     jumpLatest: "app.manox.jumpLatest",
