@@ -38,6 +38,7 @@
         "MANOX_RUN_LIVE",
         "ZU_SKIP_LIVE",
         "ZU_MANOX_GATE",
+        "ZU_TERMINAL_GATE",
         "BUN"
       ]
     },
@@ -53,6 +54,7 @@
       "schemes": [
         "vscode"
       ]
-    }
+    },
+    "clipboard": true
   }
 }

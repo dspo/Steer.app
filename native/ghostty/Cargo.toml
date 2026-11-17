@@ -1,0 +1,15 @@
+[package]
+name = "zu-ghostty"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "libghostty-vt behind a safe wrapper: the Spike terminal's emulation core"
+links = "ghostty-vt"
+build = "build.rs"
+
+[lib]
+name = "zu_ghostty"
+path = "src/lib.rs"
+
+
+[dependencies]

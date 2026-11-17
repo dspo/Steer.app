@@ -1,18 +1,16 @@
-//! Pseudo-terminals: a real shell or command under a PTY, its output pushed
-//! to TSX through a callback.
+//! Pseudo-terminals: a real shell or command under a PTY.
 //!
-//! The UI never sees the PTY's bytes on the engine wire. A reader thread owns
-//! the master's read half and hands chunks to a task of the NSH core through
-//! a channel; that task calls the TSX `onData` callback with `Callback::post`,
-//! exactly as `nsh`'s own `process.spawn` delivers output. Writes go the other
-//! way through a writer thread, so a program that stops reading cannot freeze
-//! the engine thread.
+//! [`Process`] is the program and its PTY: a reader thread owns the
+//! master's read half, a writer thread its write half (so a program that
+//! stops reading cannot freeze a caller), a waiter thread its exit. Two
+//! owners use it: [`Pty`], whose output goes to TSX as text through a
+//! callback (as `nsh`'s own `process.spawn` delivers output), and the
+//! terminal session (`crate::session`), whose output goes straight into its
+//! emulator and never reaches TSX.
 //!
-//! A terminal belongs to one external container. Killing the container calls
-//! [`Pty::close`]; dropping the JS handle (disposal or the VM going away) also
-//! kills the child through [`Drop`]. The program is started in its own session
-//! (`portable-pty` does `setsid` on Unix), so closing the pty hangs it up and
-//! kills a foreground TUI with `SIGHUP`.
+//! The program is started in its own session (`portable-pty` does `setsid`
+//! on Unix), so closing the pty hangs it up and kills a foreground TUI with
+//! `SIGHUP`. Dropping the owner closes it.
 
 use std::{
     collections::BTreeMap,
@@ -58,9 +56,9 @@ pub struct PtyOptions {
 #[derive(Debug, Clone, Default, JsObject)]
 pub struct PtyExit {
     /// The exit status, `null` when a signal ended it.
-    code: Option<i32>,
+    pub(crate) code: Option<i32>,
     /// The signal's name (`"SIGHUP"`), `null` on a normal exit.
-    signal: Option<String>,
+    pub(crate) signal: Option<String>,
 }
 
 /// A running pseudo-terminal.
@@ -72,29 +70,25 @@ pub struct PtyExit {
 /// (or dropping the handle) hangs up and kills the program.
 #[class]
 pub struct Pty {
-    control: Arc<Control>,
-    pid: Option<u32>,
-    title: String,
-    /// The last dims, so a viewer can report them.
-    size: Mutex<(u16, u16)>,
-    exited: Arc<AtomicBool>,
-    exit_code: Arc<Mutex<Option<i32>>>,
-    exit_signal: Arc<Mutex<Option<String>>>,
+    process: Process,
 }
 
-/// Everything `close`, the cleanup of the owner and the child's threads share.
-struct Control {
+/// What a PTY's owner and its threads share: the program's input, size and
+/// end. Safe from any thread.
+pub(crate) struct Control {
     closed: AtomicBool,
     killer: Mutex<Option<Box<dyn ChildKiller + Send + Sync>>>,
     master: Mutex<Option<Box<dyn MasterPty + Send>>>,
     writer: Mutex<Option<mpsc::Sender<Vec<u8>>>>,
     queued: Arc<Mutex<usize>>,
+    size: Mutex<(u16, u16)>,
+    exited: AtomicBool,
+    exit: Mutex<PtyExit>,
 }
 
 impl Control {
-    /// Hangs up the program and closes the pty. Idempotent; safe from any
-    /// thread.
-    fn close(&self) {
+    /// Hangs up the program and closes the pty. Idempotent.
+    pub(crate) fn close(&self) {
         if self.closed.swap(true, Ordering::AcqRel) {
             return;
         }
@@ -113,7 +107,8 @@ impl Control {
         }
     }
 
-    fn write(&self, bytes: Vec<u8>) -> Result<(), String> {
+    /// Queues `bytes` for the program.
+    pub(crate) fn write(&self, bytes: Vec<u8>) -> Result<(), String> {
         if self.closed.load(Ordering::Acquire) {
             return Err("the terminal is closed".to_owned());
         }
@@ -142,81 +137,71 @@ impl Control {
         }
         Ok(())
     }
+
+    /// Tells the program its window is `cols` × `rows` cells.
+    pub(crate) fn resize(&self, cols: u16, rows: u16) -> Result<(), String> {
+        let cols = cols.clamp(1, MAX_DIMENSION);
+        let rows = rows.clamp(1, MAX_DIMENSION);
+        if self.closed.load(Ordering::Acquire) {
+            return Err("the terminal is closed".to_owned());
+        }
+        let master = self
+            .master
+            .lock()
+            .map_err(|_| "terminal lock poisoned".to_owned())?;
+        let Some(master) = master.as_ref() else {
+            return Err("the terminal is closed".to_owned());
+        };
+        master
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|error| format!("cannot resize the pty: {error}"))?;
+        if let Ok(mut size) = self.size.lock() {
+            *size = (cols, rows);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn size(&self) -> (u16, u16) {
+        self.size.lock().map(|s| *s).unwrap_or((80, 24))
+    }
+
+    pub(crate) fn alive(&self) -> bool {
+        !self.exited.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn exit(&self) -> PtyExit {
+        self.exit.lock().map(|e| e.clone()).unwrap_or_default()
+    }
 }
 
-impl Drop for Pty {
+/// A program under a PTY, with its reader, writer and waiter threads.
+/// Dropping it closes the PTY.
+pub(crate) struct Process {
+    pub(crate) control: Arc<Control>,
+    pub(crate) pid: Option<u32>,
+    pub(crate) program: String,
+}
+
+impl Drop for Process {
     fn drop(&mut self) {
         self.control.close();
     }
 }
 
-/// Events from the pty's threads to the task that posts them to TSX.
-enum Event {
-    Data(Vec<u8>),
-    Exit(Option<i32>, Option<String>),
-}
-
-/// An incremental UTF-8 decoder: a read may split a multi-byte character,
-/// and the emulator needs text, not replacement characters at the seam.
-#[derive(Default)]
-struct Decoder {
-    pending: Vec<u8>,
-}
-
-impl Decoder {
-    fn push(&mut self, bytes: &[u8]) -> String {
-        let mut all = std::mem::take(&mut self.pending);
-        all.extend_from_slice(bytes);
-        let mut out = String::new();
-        let mut rest = all.as_slice();
-        loop {
-            match std::str::from_utf8(rest) {
-                Ok(text) => {
-                    out.push_str(text);
-                    rest = &[];
-                    break;
-                }
-                Err(error) => {
-                    let valid = error.valid_up_to();
-                    // SAFETY: `valid_up_to` is the length of the valid prefix.
-                    out.push_str(unsafe { std::str::from_utf8_unchecked(&rest[..valid]) });
-                    match error.error_len() {
-                        Some(len) => {
-                            out.push('\u{FFFD}');
-                            rest = &rest[valid + len..];
-                        }
-                        None => {
-                            rest = &rest[valid..];
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        // A partial tail is at most one UTF-8 character; anything else was
-        // already consumed as replacement characters above.
-        if rest.len() <= 3 {
-            self.pending = rest.to_vec();
-        }
-        out
-    }
-}
-
-#[class]
-impl Pty {
-    /// Starts `options` under a new pseudo-terminal.
-    ///
-    /// # Rust
-    ///
-    /// Takes `cx` only to start the task that posts output to `onData`; the
-    /// call itself is synchronous. The child is killed when this value is
-    /// dropped or `close` is called.
-    pub fn open(
+impl Process {
+    /// Starts `options`. `output` gets every chunk the program writes, on
+    /// the reader thread, until EOF; `ended` gets the program's end once, on
+    /// the waiter thread, after the exit state is recorded.
+    pub(crate) fn spawn(
         options: PtyOptions,
-        #[args(data)] on_data: Callback<String>,
-        #[args(exit)] on_exit: Option<Callback<PtyExit>>,
-        cx: CallCx<'_>,
-    ) -> Result<Pty, String> {
+        output: impl FnMut(&[u8]) + Send + 'static,
+        ended: impl FnOnce(PtyExit) + Send + 'static,
+    ) -> Result<Process, String> {
         let PtyOptions {
             command,
             args,
@@ -279,6 +264,7 @@ impl Pty {
             .unwrap_or_else(|| "xterm-256color".to_owned());
         builder.env("TERM", term);
         builder.env("COLORTERM", "truecolor");
+        builder.env("TERM_PROGRAM", "Zu");
         if let Some(env) = env {
             for (name, value) in env {
                 if name.is_empty()
@@ -310,227 +296,255 @@ impl Pty {
 
         let pid = child.process_id();
         let killer = child.clone_killer();
-        let reader = pair
+        let mut reader = pair
             .master
             .try_clone_reader()
             .map_err(|error| format!("cannot read the pty: {error}"))?;
-        let writer = pair
+        let mut writer = pair
             .master
             .take_writer()
             .map_err(|error| format!("cannot write the pty: {error}"))?;
 
-        // Bounded: a flood (`yes`) back-pressures the program instead of
-        // growing the engine's heap without bound.
-        let (events, mut received) = tokio::sync::mpsc::channel::<Event>(256);
-        let exited = Arc::new(AtomicBool::new(false));
-        let exit_code = Arc::new(Mutex::new(None));
-        let exit_signal = Arc::new(Mutex::new(None));
-        let queued = Arc::new(Mutex::new(0usize));
+        let (input, outgoing) = mpsc::channel::<Vec<u8>>();
+        let control = Arc::new(Control {
+            closed: AtomicBool::new(false),
+            killer: Mutex::new(Some(killer)),
+            master: Mutex::new(Some(pair.master)),
+            writer: Mutex::new(Some(input)),
+            queued: Arc::new(Mutex::new(0)),
+            size: Mutex::new((cols, rows)),
+            exited: AtomicBool::new(false),
+            exit: Mutex::new(PtyExit::default()),
+        });
+        // From here on dropping `process` closes the PTY, so a thread that
+        // fails to start leaves no program behind.
+        let process = Process {
+            control: control.clone(),
+            pid,
+            program: program.clone(),
+        };
 
-        // The reader: bytes in, events out. It never touches JS.
-        {
-            let events = events.clone();
-            let mut reader = reader;
-            thread::Builder::new()
-                .name("zu-pty-reader".to_owned())
-                .spawn(move || {
-                    let mut buffer = [0u8; 32 * 1024];
-                    loop {
-                        match reader.read(&mut buffer) {
-                            Ok(0) => break,
-                            Ok(n) => {
-                                if events
-                                    .blocking_send(Event::Data(buffer[..n].to_vec()))
-                                    .is_err()
-                                {
-                                    break;
-                                }
-                            }
+        let mut output = output;
+        thread::Builder::new()
+            .name("zu-pty-reader".to_owned())
+            .spawn(move || {
+                let mut buffer = [0u8; 64 * 1024];
+                loop {
+                    match reader.read(&mut buffer) {
+                        Ok(0) => break,
+                        Ok(n) => output(&buffer[..n]),
+                        Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {
+                            continue;
+                        }
+                        // A hung-up pty reads as EIO on macOS/Linux.
+                        Err(_) => break,
+                    }
+                }
+            })
+            .map_err(|error| format!("cannot start the pty reader: {error}"))?;
+
+        let queued = control.queued.clone();
+        thread::Builder::new()
+            .name("zu-pty-writer".to_owned())
+            .spawn(move || {
+                while let Ok(bytes) = outgoing.recv() {
+                    if let Ok(mut n) = queued.lock() {
+                        *n = n.saturating_sub(bytes.len());
+                    }
+                    let mut rest = bytes.as_slice();
+                    while !rest.is_empty() {
+                        match writer.write(rest) {
+                            Ok(0) => return,
+                            Ok(n) => rest = &rest[n..],
                             Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {
                                 continue;
                             }
-                            // A hung-up pty reads as EIO on macOS/Linux.
-                            Err(_) => break,
+                            Err(_) => return,
                         }
                     }
-                })
-                .map_err(|error| format!("cannot start the pty reader: {error}"))?;
-        }
+                    let _ = writer.flush();
+                }
+            })
+            .map_err(|error| format!("cannot start the pty writer: {error}"))?;
 
-        // The writer: queued input out, so no write blocks the engine thread.
-        {
-            let (input, outgoing) = mpsc::channel::<Vec<u8>>();
-            let writer_queued = queued.clone();
-            let mut writer = writer;
-            thread::Builder::new()
-                .name("zu-pty-writer".to_owned())
-                .spawn(move || {
-                    while let Ok(bytes) = outgoing.recv() {
-                        if let Ok(mut n) = writer_queued.lock() {
-                            *n = n.saturating_sub(bytes.len());
+        let waiter = control.clone();
+        thread::Builder::new()
+            .name("zu-pty-waiter".to_owned())
+            .spawn(move || {
+                let mut child = child;
+                let (code, signal) = match child.wait() {
+                    // A signal's status is 1 by convention; the signal itself
+                    // is the real outcome, and `code` is null.
+                    Ok(status) => match status.signal() {
+                        Some(signal) => (None, Some(signal.to_owned())),
+                        None => (Some(status.exit_code() as i32), None),
+                    },
+                    Err(_) => (None, None),
+                };
+                let exit = PtyExit { code, signal };
+                if let Ok(mut slot) = waiter.exit.lock() {
+                    *slot = exit.clone();
+                }
+                waiter.exited.store(true, Ordering::Release);
+                ended(exit);
+            })
+            .map_err(|error| format!("cannot start the pty waiter: {error}"))?;
+
+        Ok(process)
+    }
+}
+
+/// Events from the pty's threads to the task that posts them to TSX.
+enum Event {
+    Data(Vec<u8>),
+    Exit(PtyExit),
+}
+
+/// An incremental UTF-8 decoder: a read may split a multi-byte character,
+/// and TSX needs text, not replacement characters at the seam.
+#[derive(Default)]
+struct Decoder {
+    pending: Vec<u8>,
+}
+
+impl Decoder {
+    fn push(&mut self, bytes: &[u8]) -> String {
+        let mut all = std::mem::take(&mut self.pending);
+        all.extend_from_slice(bytes);
+        let mut out = String::new();
+        let mut rest = all.as_slice();
+        loop {
+            match std::str::from_utf8(rest) {
+                Ok(text) => {
+                    out.push_str(text);
+                    rest = &[];
+                    break;
+                }
+                Err(error) => {
+                    let valid = error.valid_up_to();
+                    // SAFETY: `valid_up_to` is the length of the valid prefix.
+                    out.push_str(unsafe { std::str::from_utf8_unchecked(&rest[..valid]) });
+                    match error.error_len() {
+                        Some(len) => {
+                            out.push('\u{FFFD}');
+                            rest = &rest[valid + len..];
                         }
-                        let mut rest = bytes.as_slice();
-                        while !rest.is_empty() {
-                            match writer.write(rest) {
-                                Ok(0) => return,
-                                Ok(n) => rest = &rest[n..],
-                                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {
-                                    continue;
-                                }
-                                Err(_) => return,
-                            }
-                        }
-                        let _ = writer.flush();
-                    }
-                })
-                .map_err(|error| format!("cannot start the pty writer: {error}"))?;
-            *queued.lock().map_err(|_| "pty lock poisoned".to_owned())? = 0;
-            // The sender lives in `Control`; the channel is handed over below.
-            let control = Control {
-                closed: AtomicBool::new(false),
-                killer: Mutex::new(Some(killer)),
-                master: Mutex::new(Some(pair.master)),
-                writer: Mutex::new(Some(input)),
-                queued,
-            };
-            let pty = Pty {
-                control: Arc::new(control),
-                pid,
-                title: program.clone(),
-                size: Mutex::new((cols, rows)),
-                exited: exited.clone(),
-                exit_code: exit_code.clone(),
-                exit_signal: exit_signal.clone(),
-            };
-            let exit_events = events.clone();
-            thread::Builder::new()
-                .name("zu-pty-waiter".to_owned())
-                .spawn(move || {
-                    let mut child = child;
-                    let status = child.wait();
-                    let (code, signal) = match status {
-                        Ok(status) => match status.signal() {
-                            // A signal's status is 1 by convention; the signal
-                            // itself is the real outcome, and `code` is null.
-                            Some(signal) => (None, Some(signal.to_owned())),
-                            None => (Some(status.exit_code() as i32), None),
-                        },
-                        Err(_) => (None, None),
-                    };
-                    exited.store(true, Ordering::Release);
-                    if let Ok(mut slot) = exit_code.lock() {
-                        *slot = code;
-                    }
-                    if let Ok(mut slot) = exit_signal.lock() {
-                        *slot = signal.clone();
-                    }
-                    let _ = exit_events.blocking_send(Event::Exit(code, signal));
-                })
-                .map_err(|error| format!("cannot start the pty waiter: {error}"))?;
-            // Keep the event sender alive with the task; each thread has its
-            // own clone, so the channel closes when the last one stops.
-            drop(events);
-            cx.start(async move {
-                let mut decoder = Decoder::default();
-                while let Some(event) = received.recv().await {
-                    match event {
-                        Event::Data(bytes) => {
-                            let text = decoder.push(&bytes);
-                            if !text.is_empty() {
-                                on_data.post(text);
-                            }
-                        }
-                        Event::Exit(code, signal) => {
-                            if let Some(on_exit) = on_exit.as_ref() {
-                                on_exit.post(PtyExit { code, signal });
-                            }
+                        None => {
+                            rest = &rest[valid..];
                             break;
                         }
                     }
                 }
-            });
-            Ok(pty)
+            }
         }
+        // A partial tail is at most one UTF-8 character; anything else was
+        // already consumed as replacement characters above.
+        if rest.len() <= 3 {
+            self.pending = rest.to_vec();
+        }
+        out
+    }
+}
+
+#[class]
+impl Pty {
+    /// Starts `options` under a new pseudo-terminal.
+    ///
+    /// # Rust
+    ///
+    /// Takes `cx` only to start the task that posts output to `onData`; the
+    /// call itself is synchronous. The child is killed when this value is
+    /// dropped or `close` is called.
+    pub fn open(
+        options: PtyOptions,
+        #[args(data)] on_data: Callback<String>,
+        #[args(exit)] on_exit: Option<Callback<PtyExit>>,
+        cx: CallCx<'_>,
+    ) -> Result<Pty, String> {
+        // Bounded: a flood (`yes`) back-pressures the program instead of
+        // growing the engine's heap without bound.
+        let (events, mut received) = tokio::sync::mpsc::channel::<Event>(256);
+        let data = events.clone();
+        let process = Process::spawn(
+            options,
+            move |bytes| {
+                let _ = data.blocking_send(Event::Data(bytes.to_vec()));
+            },
+            move |exit| {
+                let _ = events.blocking_send(Event::Exit(exit));
+            },
+        )?;
+        cx.start(async move {
+            let mut decoder = Decoder::default();
+            while let Some(event) = received.recv().await {
+                match event {
+                    Event::Data(bytes) => {
+                        let text = decoder.push(&bytes);
+                        if !text.is_empty() {
+                            on_data.post(text);
+                        }
+                    }
+                    Event::Exit(exit) => {
+                        if let Some(on_exit) = on_exit.as_ref() {
+                            on_exit.post(exit);
+                        }
+                        break;
+                    }
+                }
+            }
+        });
+        Ok(Pty { process })
     }
 
     /// Writes text to the program (keys, pastes, the emulator's answers).
     pub fn write(&self, data: String) -> Result<(), String> {
-        self.control.write(data.into_bytes())
+        self.process.control.write(data.into_bytes())
     }
 
     /// Tells the program the view's new size, in cells.
     pub fn resize(&self, cols: u16, rows: u16) -> Result<(), String> {
-        let cols = cols.clamp(1, MAX_DIMENSION);
-        let rows = rows.clamp(1, MAX_DIMENSION);
-        if self.control.closed.load(Ordering::Acquire) {
-            return Err("the terminal is closed".to_owned());
-        }
-        let master = self
-            .control
-            .master
-            .lock()
-            .map_err(|_| "terminal lock poisoned".to_owned())?;
-        let Some(master) = master.as_ref() else {
-            return Err("the terminal is closed".to_owned());
-        };
-        master
-            .resize(PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|error| format!("cannot resize the pty: {error}"))?;
-        if let Ok(mut size) = self.size.lock() {
-            *size = (cols, rows);
-        }
-        Ok(())
+        self.process.control.resize(cols, rows)
     }
 
     /// Hangs up and kills the program; a second call does nothing.
     pub fn close(&self) {
-        self.control.close();
+        self.process.control.close();
     }
 
     /// Whether the program is still running.
     pub fn alive(&self) -> bool {
-        !self.exited.load(Ordering::Acquire)
+        self.process.control.alive()
     }
 
     /// The program's id, `null` when the platform has none.
     #[getter]
     pub fn pid(&self) -> Option<u32> {
-        self.pid
+        self.process.pid
     }
 
     /// The program's name (the default shell's path when it was not given).
     #[getter]
     pub fn title(&self) -> String {
-        self.title.clone()
+        self.process.program.clone()
     }
 
     /// The last cell size: columns and rows.
     #[getter]
     pub fn size(&self) -> Vec<u16> {
-        self.size
-            .lock()
-            .map(|size| vec![size.0, size.1])
-            .unwrap_or_else(|_| vec![80, 24])
+        let (cols, rows) = self.process.control.size();
+        vec![cols, rows]
     }
 
     /// The exit status, `null` while running or when a signal ended it.
     #[getter]
     pub fn exit_code(&self) -> Option<i32> {
-        self.exit_code.lock().ok().and_then(|code| *code)
+        self.process.control.exit().code
     }
 
     /// The signal that ended the program, `null` after a normal exit.
     #[getter]
     pub fn exit_signal(&self) -> Option<String> {
-        self.exit_signal
-            .lock()
-            .ok()
-            .and_then(|signal| signal.clone())
+        self.process.control.exit().signal
     }
 }
 

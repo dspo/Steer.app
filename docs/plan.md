@@ -107,6 +107,10 @@ bun script/tasks.ts bundle                      # 打包冒烟（Helpers/pi-acp 
 
 每个阶段结束：全量绿 + 必要的截图（`docs/evidence/`）+ 本文状态更新。
 
+依赖 bump（nsh rev / `NSH_VERSION`、Ghostty rev/zig、manox tag、pi-harness/bun）：
+先按 [`upstream-watch.md`](upstream-watch.md) 逐条核对 open/verify 项并写台账，
+commit/PR 描述带 `upstream-watch: <date> checked`；不核对视为 bump 未完成。
+
 ## 5. 文档纪律
 
 - **权威链**：`architecture.md`（当前形态）→ `sheet-module-ARCHITECTURE.md`（扩展机制）→
@@ -115,3 +119,4 @@ bun script/tasks.ts bundle                      # 打包冒烟（Helpers/pi-acp 
 - **状态锚点**：只有本文件 §0 与 `architecture.md` §7 写「已完成/待做」；其他文档不复制状态。
 - **证据可再生**：`docs/evidence/` 只放验证产物（截图、实测输出），不写过程叙事；历史在 git。
 - **决策先行**：改架构先改 `decisions.md` 与对应架构文档，再改代码。
+- **上游观察**：`upstream-watch.md` 是「在等上游」的唯一台账；bump 必查，满足即转跟进。

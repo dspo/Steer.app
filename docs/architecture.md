@@ -46,7 +46,8 @@ Zu.app（nsh TSX / AppKit）
 ├─ modules/manox        manox 模块：AHP client（vendored reducers 折叠）
 │    └─ zu/native 的 Manox 单例 ──▶ in-proc 宿主半边（manox v0.12.0）
 │         durable: ~/.manox/core/*（journal）
-└─ domains/ ──▶ zu/native（Rust）：acp / fs / git / lsp / pty / state / pimodels / picker / instance
+└─ domains/ ──▶ zu/native（Rust）：acp / fs / git / lsp / pty / state / pimodels / picker / instance，
+                terminal（自绘 ghostty 组件）
 ```
 
 ### 3.2 pi 线（ACP，默认）
@@ -153,6 +154,8 @@ UI 不持 fs / process：文件读写只经 `zu/fs`，进程只经 native 域。
 | `Git` | shell out、根必须为仓库顶层、porcelain v2、无网络/无全局配置 | module |
 | `Lsp` | 每容器×语言族一个进程、有界 `Content-Length` 帧、无 shell | class |
 | `Pty` | `portable-pty`、reader/writer/waiter、`Callback::post`、`Drop` 兜底 kill | class |
+| `TerminalSession` | 程序 + PTY + libghostty-vt 仿真器：PTY 读线程在会话锁下喂仿真器，屏幕/历史/模式随会话存活（不随视图）；标题、OSC 52、OSC 9/777 通知、OSC 9;4 进度、退出经一个事件回调到 TSX；文本、查找、选择可无视图读取 | class |
+| `zu.terminal` | macOS 原生组件（`native/src/term_view`）：按 id 附着会话，自有 NSView 以 CoreText 逐格绘制（方框/块/盲文/Powerline 按几何画），自身是 `NSTextInputClient`；鼠标上报、选择手势、链接、查找高亮、滚动条、闪烁、焦点上报都在视图内；剪贴板、链接（开进浏览器 sheet）、查找栏出到 TSX | native component |
 | `Instance` | 单实例锁：临时文件 + `hard_link`、pid 判活、死锁回收 | module |
 | `Picker` | Finder 目录选择 | module |
 | `PiModels` | 模型目录（`~/.pi`）+ 无模型原因 | module |
@@ -304,17 +307,18 @@ terminal 模块的一个 intent。
 | pi 传输 | ACP over stdio，一会话一持久进程 | 进程隔离、公共协议、崩溃后 resume |
 | manox | git pin `v0.12.0`，in-proc AHP | 内核即宿主，零进程；接受崩溃域不对称 |
 | 重型集成 | Rust native module，按域拆注册面 | Q28/Q31 |
-| 终端核 | nsh 内置 `VtEmulator`；Ghostty 为条件性里程碑 | trait 上限锁死换核收益 |
+| 终端核 | `TerminalSession`（libghostty-vt，Rust 侧随 PTY 存活）+ 原生组件 `zu.terminal` | 网格与输入法是元素层给不了的保证（Q114）；输出与按键不经 TSX（Q115） |
 | 浏览器 | nsh `WebView` | 无需自研 |
 | 编辑器 / Diff | nsh `Editor` / `DiffView` + 自研 LSP 客户端 | 组件齐备 |
 | Git | shell out `git` | 零依赖、行为与 pi 工具一致 |
 | 语言 | 跟随系统 `locale()`；类型化键表 | 无 UI 入口 |
 | 字体 | Geist（正文）+ Geist Mono（代码面）仅 sheet 内容（crate `assets!()`）；Lilex 已废止（Q110） | 轮廓保持系统字体 |
-| nsh | git pin `506b5392`（0.4.0）+ `Cargo.lock` | 发布版无 `nsh/base Terminal` |
+| nsh | git pin `f4d68f7`（0.5.0）+ `Cargo.lock`，CLI 同步 `.cnb.yml` | 组件/滚动/终端 API 与 pin 一致 |
 
 ## 7. 状态与已知问题（2026-11-13）
 
 **已交付**：M0–M12（地基、对话、契约、容器、项目、轮廓、终端、编辑器、Git、浏览器、LSP、常驻/通知/更新）；
+**ghostty 终端（Q113→Q114，2026-11-17）**：替换 nsh `<Terminal>`/`VtEmulator`，PTY 保留；终端是 macOS 原生组件；
 Casing II；C8 三包布局；ACP cutover（P0–P4：distro ACP 入口、`zu/acp` 泵、UI 读写反转、控制面切换、
 旧 wire 删除）；manox 真宿主（M1）；**sheet 模块化 S0–S3**（注册表、domains、工作台与 harness 模块、
 容器去 harness 身份、通知按 sheet id）；**Pi × ACP 会话运行时 A0–F0**（持久进程、协议配置/命令/用量、
@@ -356,6 +360,6 @@ Casing II；C8 三包布局；ACP cutover（P0–P4：distro ACP 入口、`zu/ac
 | [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) | **已落地（A0–F0）**：Pi × ACP 的会话运行时、协议面、UI/UX、验收 |
 | [pi-acp-PROTOCOL.md](pi-acp-PROTOCOL.md) | pi 模块：ACP 协议映射与历史裁决（P0–P4） |
 | [DESIGN.md](DESIGN.md) | 视觉规格：token、外壳几何、表面、动效、各 sheet |
-| [decisions.md](decisions.md) | 决策台账（Q1–Q107） |
+| [decisions.md](decisions.md) | 决策台账（Q1–Q115） |
 | [plan.md](plan.md) | 执行计划与门禁 |
 | [evidence/](evidence/) | 可再生的验证产物（截图、实测记录） |

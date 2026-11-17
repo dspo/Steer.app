@@ -52,7 +52,7 @@ test("closing the first sheet promotes the second's title", () => {
 test("a terminal's OSC title is the container's title, and follows it", () => {
   const sheet = terminalSheetId("c1", 1);
   seedOrder([sheet]);
-  const info = { title: "Claude Code", running: true, exitCode: null, exitSignal: null, error: null };
+  const info = { title: "Claude Code", running: true, exitCode: null, exitSignal: null, error: null, session: null, progress: null };
   terminalInfo.set({ [sheet]: info });
   expect(containerTitle(container)).toBe("Claude Code");
 

@@ -55,7 +55,7 @@
 | Q8 | 产品名 / logo | **Zu**（祖冲之） | `nsh.json` 的 `icon` |
 | Q25 | macOS 签名与公证 | sidecar 放 `Contents/Helpers`、直接执行不释放；嵌套签名 + hardened runtime + JIT entitlement + 公证 | arch §3.7 |
 | Q26 | 仓库公开性 | **公开** | arch §3.7 |
-| Q29 | 终端仿真核 | **M2 先用 nsh 内置**冒烟 + 修 alt 缺陷；「Ghostty + 扩 trait/组件」作为条件性里程碑 **M-tty**，一次换到位 | arch §6；[evidence/terminal-emulator.md](evidence/terminal-emulator.md) |
+| Q29 | 终端仿真核 | **M2 先用 nsh 内置**冒烟 + 修 alt 缺陷；「Ghostty + 扩 trait/组件」作为条件性里程碑 **M-tty**，一次换到位。**（Q113 已取代：改为自绘组件，不再扩 nsh trait）** | arch §6；[evidence/terminal-emulator.md](evidence/terminal-emulator.md) |
 | Q32 | 浏览器的域名授权 | **任意站点**（`capabilities.webview.hosts: ["*"]`），地址栏可输入任意 URL；风险在 UI 上标明 | arch §3.4；M10 |
 | Q33 | 扩展的 `ctx.mode` | **`"rpc"`**，不自创 `"gui"`——pi 已有语义，ThinkRail 同样用 `bindExtensions({ mode: "rpc", uiContext })`，逐方法实现或降级 | arch §4.5 |
 | Q34 | 归档容器的可恢复性 | **永不删除**；v1 无 UI 入口，后续在设置页「归档管理」找回 | arch §5.4；M-arch |
@@ -179,6 +179,9 @@
 | Q108 | Pi × ACP 会话运行时 | **A0–F0 落地 + 真机 live 验收**：D1–D7 全部采纳。一会话一持久 `pi-acp`（无 cap/TTL/RSS 回收）；stable v1 补齐 config/mode/resume/close/usage/commands/info/compaction/notice；`SessionView` 只投影协议；权限策略在 distro 扩展里，`request_permission`/`elicitation` 由客户端 UI 回答；子代理走 `_zu/subagents/*`；宿主是独立进程 | `app/modules/pi/acp/{acp,host}.ts`、`app/modules/pi/{sessions,composer,approvals,subagents}.tsx`、`pi-harness/src/acp/{app,pi-session,subagents}.ts`、`pi-harness/scripts/acp-live-acceptance.ts`；da7950d + 本次验收提交 |
 | Q109 | Pi 官方配置 parity | **distro 吃官方配置/特性**：`createAgentSessionServices` 统一装配；CLI builtin（codemode/tool-search/mcp）用公开 factory 以 `builtin:true` 复刻，`official.test.ts` 对已安装 CLI 做漂移断言；`settings.packages`/skills/prompts 走同一 loader；项目信任按 CLI 优先级解析（含 pre-trust 扩展的 `project_trust` handler），ask 在 `session/new` 期间用 ACP `elicitation/create` 询问，接受写官方 trust store；`mcp.json` 与 ACP `session/new.mcpServers` 都进 MCP 扩展（ACP 服务器 `exposure:"direct"`）；子代理复用同一 services/model/trust。已知例外 `llama.cpp`（factory 未导出） | `pi-harness/src/pi/{official,services,trust,mcp}.ts`、`app/ui/trust.tsx`、`app/modules/pi/acp/host.ts`、`pi-harness/src/acp/{app,pi-session,subagents}.ts`；G0–G4 |
 | Q112 | manox 内核 pin v0.12.0 | **五个 manox crate 同 tag 从 v0.11.1 升到 v0.12.0**（`native/manox/Cargo.toml`，锁到 e11e7fb）。对 Zu 的两个契约变化：①磁盘只有一种 session 格式，`FORMAT_VERSION`/`migrate-journals.py`/`ahp-v3-architecture.md` 全部删除（dspo/manox#1021），不再有「v3 需迁移」的拒绝路径；②推理耗时改由 metrics 扩展通道的 `x-manox/reasoningTiming` 承载，`ReasoningResponsePart` 仍只有文本（dspo/manox#1022）。provider 桥 / `model_ref` / runtime / `agent_server` 的 API 路径未变，Zu 侧零代码改动即通过编译；`MANOX_HOME`/`MANOX_CLAUDE_HOME`/`HOME` 隔离仍有效 | `native/manox/Cargo.toml`、`native/manox/Cargo.lock`；e11e7fb |
+| Q113 | 集成终端为什么自绘 | **（Q114 已取代：自绘改为原生组件）** libghostty-vt + 自绘 `GhosttyTerminal` 取代 nsh `<Terminal>`/`VtEmulator`**：不扩/不用 `TerminalEmulator` trait，也不改 nsh；`native/ghostty`（pinned rev `042b16b`、zig 0.17、sha256、缓存）提供 Terminal/RenderState/formatter/selection/mouse 的 FFI，`native/src/terminal.rs` 负责 grid、光标形状、选择、鼠标上报、OSC 8/52、IME 与 scrollbar；PTY 仍 `native/src/pty.rs`。已验：reflow、vim/htop、滚屏/选择/Cmd+C、CJK；上游缺口与 bump 核对见 `upstream-watch.md` | `native/ghostty/`、`native/src/terminal.rs`、`app/domains/terminal.ts`、`app/nsh.json`；arch §3.7/§6 |
+| Q114 | 终端为什么是原生组件 | **自有 NSView（`zu.terminal`）取代以 nsh 元素拼的网格**：终端的正确性要求「每个字形钉在格子上、所有行共用主字体基线」与「输入法的组合与候选框锚点就是终端光标」，nsh 元素层两者都不提供（无等宽步进、无 IME 锚点 API），隐藏 input 的做法必然出现光标漂移、行抖动、候选框失联；`native_components(macos)` 注册的视图以 CoreText 逐格绘制（回退字体只出字形不出度量）、自身实现 `NSTextInputClient`，libghostty-vt 的 FFI/键编码/选择/formatter 原样复用；TSX 只搬字节（`write` 命令、`data` 事件），剪贴板留在 app 的 `Clipboard` 能力下。代价：headless 里是空盒子，终端验收走 `--target macos`（`ZU_TERMINAL_GATE`）与 Rust 单测 | `native/src/term_view/`、`app/domains/terminal.ts`、`app/modules/terminal/view.tsx`、`app/tests/terminal-keys.ts` |
+| Q115 | 终端会话在哪 | **Rust 侧 `TerminalSession`，不在视图、不在 TSX**：仿真器由 PTY 读线程在会话锁下喂（Ghostty 自身的 IO 线程 + 渲染快照模型），视图按 id 附着并在同一把锁下取快照、写 PTY；TSX 只开关会话、听事件（标题/OSC 52/通知/进度/退出）、读文本。取代 TSX 转发字节 + 512 KB 回放缓冲（截断丢历史与模式、每字节两次过 JS）。选择归仿真器所有（跟随文本、裁剪后失效即清），查找归仿真器所有（只在锁下释放）。链接开进容器自己的浏览器 sheet，`openUrl` 仍只授 `vscode`（Q61） | `native/src/session.rs`、`native/src/pty.rs`、`native/src/term_view/`、`native/ghostty/src/{selection,mouse,search}.rs`、`app/domains/{pty,terminal}.ts`、`app/tests/terminal-session.test.ts` |
 | Q107 | 旧 wire 与 legacy distro 的删除 | **P4 完成**：删 `contracts/protocol.{ts,md}`、`stores/engine.ts`、`native` 的 `Engine` 模块、`pi-harness/src/{server,store,subagents}.ts` 与 `dist/pi-engine`；打包只带 `Helpers/pi-acp`。代价：ACP distro 尚无 dispatch，子代理名册在 UI 上明确显示不可用（已由 Q108 的 E0 恢复） | `script/bundle-mac.sh`、`native/src/lib.rs`、`pi-harness/package.json`、`app/modules/pi/subagents.ts` |
 
 | Q110 | 会话转录的 TUI 语言（T1） | **一套转录，不做 TUI/GUI 双模式**：对话改 agent 转录——banner（List header，不进 Hero：空会话无 pi 会话、banner 数据不存在）、用户整宽横幅（`❯` + `bg-inset` radius 6）、思考折叠（展开纯文本，中文斜体按截图验收或退化为颜色+左线）、工具卡按 ACP kind（execute 尾 12 行 + exit/duration + 展开；read 参数优先；edit diff）；线协议增量 `_meta.pi`（at/model/entryId/settled/durationMs/stopReason/error）、`_meta.zu`（工具结束帧的 durationMs/exitCode/truncation）、`_zu/session_banner`（new/load/resume 在 `available_commands_update` 后，`HarnessSession.banner?()` 可选）；客户端 `transcript.ts` 纯 reducer（live/replay 同路径、entryId 换键、16ms 批量），删 `fold.ts`；正文 Geist 400/500/600、代码面 Geist Mono 400/500，Lilex 废止。采纳 PR #6 的数据层（settle marker、entry_appended、diff 重放、replay 同词），**不采纳**其 gallery 渲染/日期分隔/图片链路/`_zu/session/navigate`/重新生成。已知缺口：回放无工具统计（pi 不持久化 details）、CJK 斜体待真机验收 | `pi-harness/src/acp/{mapping,replay,pi-session,app}.ts`、`app/modules/pi/{transcript,session-banner,thinking-block,tool-block,entry-row,subagent-row}.tsx|ts`、`app/modules/pi/{sessions,chat-view,composer,view}.tsx|ts`、`app/ui/fonts.ts`、`native/assets/fonts/`、`native/src/lib.rs`；[evidence/transcript-tui.md](evidence/transcript-tui.md) |
@@ -198,7 +201,7 @@
 
 ## 决策编号说明
 
-- Q1–Q110 覆盖全部已讨论的问题，**无未决项**（Q110 见上表；T1 交付记录见 plan.md 与 evidence/transcript-tui.md）。历史横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、
+- Q1–Q115 覆盖全部已讨论的问题，**无未决项**（Q110 见上表；T1 交付记录见 plan.md 与 evidence/transcript-tui.md）。历史横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、
   文件读写归属（Q56）、git 执行与根/路径边界（Q58）、协议版本与幂等（旧 §3.3）、归档可达性（Q34）、
   浏览器能力/降级（Q61/Q62）、LSP 传输/同步（Q64）、单实例与通知（Q65/Q66）、更新源（Q67）、
   模型注册表（Q81）、容器内终端资源（Q82）、scratch 与铸容器（Q83）、动作矩阵（Q84）、容器标题（Q85）、
@@ -206,6 +209,8 @@
   composer 收尾（Q91）、斜杠映射（Q92）、红绿灯/页签（Q93）、品牌图标（Q94）、拖拽抽象物（Q95）、
   三包布局（Q96）、ACP 传输（Q97）、manox 接入（Q98）、双 harness 同级（Q99）、sheet 模块（Q100）、
   native 能力域（Q101）、容器去 harness 身份（Q102）、文档治理（Q103）、模型目录共用（Q104）、
-  侧栏不设 harness 分组（Q105）、sheet 模块落地（Q106）、旧 wire 删除（Q107）。
+  侧栏不设 harness 分组（Q105）、sheet 模块落地（Q106）、旧 wire 删除（Q107）、Pi × ACP 运行时（Q108）、
+  Pi 官方配置 parity（Q109）、自绘 ghostty 终端（Q113）、终端原生组件（Q114）、终端会话下沉 Rust（Q115）。
 - 原 engine/ui/domain 三份文档里的 E/U 编号已废弃，统一并入本表。
-- 已完成与下一批工作见 [plan.md](plan.md)；条件性里程碑（M-tty / M-arch / M-web）的触发条件也记在那里。
+- 已完成与下一批工作见 [plan.md](plan.md)；条件性里程碑（M-arch / M-web）的触发条件也记在那里
+  （M-tty 已由 Q113 落地，不再作为条件项）。

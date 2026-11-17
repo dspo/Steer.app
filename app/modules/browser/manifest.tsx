@@ -23,8 +23,12 @@ export const browserModule: SheetModule = {
   ],
   intents: {
     "browser.open": (payload) => {
-      const { containerId = null, replace } = (payload ?? {}) as { containerId?: string | null; replace?: string };
-      return openBrowserSheet(containerId, replace);
+      const { containerId = null, replace, url } = (payload ?? {}) as {
+        containerId?: string | null;
+        replace?: string;
+        url?: string;
+      };
+      return openBrowserSheet(containerId, replace, url);
     },
   },
   onContainerArchive: (containerId) => dropBrowserPages(containerId),

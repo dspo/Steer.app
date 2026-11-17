@@ -24,7 +24,10 @@ mod lsp;
 mod picker;
 mod pimodels;
 mod pty;
+mod session;
 mod state;
+#[cfg(target_os = "macos")]
+mod term_view;
 
 /// Geist / Geist Mono, the sheet content's faces (DESIGN §3.4, issue #20
 /// §4.7): the crate ships four sans weights and three mono weights
@@ -39,6 +42,7 @@ pub use lsp::{Lsp, LspExit, LspOptions};
 pub use picker::Picker;
 pub use pimodels::{PiModelInfo, PiModels, PiProvider};
 pub use pty::{Pty, PtyExit, PtyOptions};
+pub use session::{TerminalFind, TerminalSession, TerminalSessionEvent};
 pub use state::{ScanSession, SessionScan, State, StateRead, StateWrite};
 
 /// Extension paths the host adds to the standard pi locations (tests and
@@ -71,7 +75,14 @@ fn native(registry: &mut Registry) {
         .module::<State>()
         .class::<Acp>()
         .class::<Lsp>()
-        .class::<Pty>();
+        .class::<Pty>()
+        .class::<TerminalSession>();
+}
+
+/// The crate's native components on macOS: the terminal sheet's view.
+#[native_components(macos)]
+fn components(components: &nsh_platform_macos::Components) {
+    term_view::register(components);
 }
 
 #[cfg(test)]

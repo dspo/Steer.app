@@ -1,17 +1,22 @@
-import { Terminal, type TerminalRef } from "nsh/base";
-import { cleanup, effect, Text, token, View } from "nsh";
+import type { NativeComponentRef } from "nsh";
+import { surfaceView, TerminalSurface, type TerminalSnapshot } from "../../domains/terminal";
+import { Clipboard, cleanup, effect, signal, Text, token, View } from "nsh";
+import { Input } from "nsh/base";
 import {
-  attachTerminal,
-  bindTerminalRef,
+  bindTerminalView,
+  endTerminalFind,
+  findInTerminal,
+  setNotificationHandler,
+  stepTerminalFind,
+  type TerminalFindState,
   closeTerminalsOfContainer,
   defaultAction,
-  detachTerminal,
+  pasteIntoTerminal,
   ensureTerminal,
   reconcileTerminalsByIds,
   registerTerminal,
   restartTerminal,
   setProgramExitHandler,
-  setTerminalTitle,
   terminalAction,
   terminalActionLabel,
   terminalInfo,
@@ -19,6 +24,7 @@ import {
   terminalSheetId,
   terminalTitle,
   type TerminalAction,
+  type TerminalViewRef,
 } from "../../domains/pty";
 import {
   activeCwd,
@@ -35,21 +41,24 @@ import {
 } from "../../core/containers";
 import { appendSheet, panelIds, replaceSheet, visiblePanels } from "../../core/dock";
 import { K, t } from "../../ui/i18n";
-import { Dot, Glyph } from "../../ui/ui";
+import { Dot, Glyph, SheetIconButton } from "../../ui/ui";
+import { notifySettled } from "../../core/notifications";
+import { dispatchIntent } from "../../core/registry";
 import { SHEET_MONO } from "../../ui/fonts";
 import type { SheetModule } from "../../../contracts/module";
 
 /**
  * The terminal sheet (`terminal:{containerId}:{n}`): one terminal resource of
- * a container, drawn by `nsh/base`'s `Terminal` (its `VtEmulator`). Bytes go
- * straight from `zu/pty` to the emulator; the sheet never sees a protocol.
+ * a container, drawn by the native `zu.terminal` view from the store's
+ * `TerminalSession`. Output and keys go between the session and the view in
+ * Rust; the sheet names the session, its face and colors, and carries what
+ * leaves the terminal: the clipboard, links (into the container's browser
+ * sheet) and the find bar.
  * A container holds several: a shell beside an agent's TUI is two sheets of
  * one container, not two sidebar rows.
  *
- * The `Terminal` stays mounted while its tab is hidden: the emulator must keep
- * the alternate screen and scrollback a TUI set. Switching containers unmounts
- * the sheet; the PTY survives in the domain, whose replay buffer rebuilds the
- * screen on mount.
+ * The session outlives the sheet: switching containers unmounts the view,
+ * and the next mount draws the screen, scrollback and modes the program left.
  */
 export function TerminalBody(props: { id: string }) {
   const containerId = () => terminalSheetContainer(props.id) ?? "";
@@ -57,11 +66,35 @@ export function TerminalBody(props: { id: string }) {
   const info = () => terminalInfo()[props.id];
   const visible = () => visiblePanels().includes(props.id);
   const action = () => terminalAction(props.id) ?? defaultAction();
-  // The handle exists before the emulator binds (it replays the buffer), and
-  // a sheet still mounted for the frame after its container was archived
-  // must not restart a PTY the archive just ended.
-  const handle = container() && !container()!.archived ? ensureTerminal(props.id, container()!) : undefined;
-  let term: TerminalRef | undefined;
+  // A sheet still mounted for the frame after its container was archived
+  // must not restart a program the archive just ended.
+  if (container() && !container()!.archived) ensureTerminal(props.id, container()!);
+  let view: TerminalViewRef | undefined;
+  let answer: ((s: TerminalSnapshot) => void) | undefined;
+  // The find bar: open while `finding`, the needle and where it stands.
+  const finding = signal(false);
+  const needle = signal("");
+  const found = signal<TerminalFindState>({ total: 0, index: null });
+  const find = (text: string) => {
+    needle.set(text);
+    found.set(findInTerminal(props.id, text));
+  };
+  const step = (by: number) => {
+    if (!finding()) finding.set(true);
+    if (needle()) found.set(stepTerminalFind(props.id, by));
+  };
+  const closeFind = () => {
+    finding.set(false);
+    endTerminalFind(props.id);
+    found.set({ total: 0, index: null });
+    view?.focus();
+  };
+
+  // Becoming the displayed tab hands the sheet the keyboard: a terminal the
+  // user is looking at is where typing should go.
+  effect(() => {
+    if (visible() && view) view.focus();
+  });
 
   // A TUI agent's process is the sheet: when it exits, its tab goes with it.
   effect(() => {
@@ -69,41 +102,21 @@ export function TerminalBody(props: { id: string }) {
     if (current && !current.running && current.exitCode !== null) closeSheet(props.id);
   });
 
-  // The sheet going away detaches the Terminal without killing the shell: the
+  // The sheet going away unbinds its view without ending the program: the
   // store decides, through archive and metadata reconciliation, when it dies.
-  cleanup(() => detachTerminal(props.id));
+  cleanup(() => bindTerminalView(props.id, undefined));
 
-  const bind = (ref: TerminalRef | undefined) => {
-    term = ref;
-    bindTerminalRef(props.id, ref);
-    if (!ref) return;
-    const replay = attachTerminal(props.id, (data) => {
-      try {
-        ref.write(data);
-      } catch {
-        // The emulator is gone while the callback still holds a stale ref.
-      }
-    });
-    if (replay.reset) ref.reset();
-    if (replay.buffer) ref.write(replay.buffer);
-    if (visible()) ref.focus();
+  const bind = (node: NativeComponentRef | undefined) => {
+    const surface = node ? surfaceView(node) : undefined;
+    view = surface?.view;
+    answer = surface?.answer;
+    bindTerminalView(props.id, view);
+    if (view && visible()) view.focus();
   };
 
   const restart = () => {
     const row = container();
-    if (!row) return;
-    restartTerminal(props.id, row);
-    if (!term) return;
-    term.reset();
-    const replay = attachTerminal(props.id, (data) => {
-      try {
-        term?.write(data);
-      } catch {
-        // Stale ref: the next mount replays the buffer.
-      }
-    });
-    if (replay.reset) term.reset();
-    if (replay.buffer) term.write(replay.buffer);
+    if (row) restartTerminal(props.id, row);
   };
 
   if (!container()) {
@@ -137,35 +150,105 @@ export function TerminalBody(props: { id: string }) {
   }
 
   const running = () => info()?.running ?? true;
+  const progress = () => info()?.progress ?? null;
   return (
     <View class="flex-1 bg-background">
-      <Terminal
-        ref={bind}
-        testID="terminal-view"
-        scrollback={5000}
-        fontFamily={SHEET_MONO}
-        fontSize={13}
-        lineHeight={18}
-        accessibilityLabel={terminalActionLabel(action())}
-        cursorClass="bg-foreground/50"
-        class="flex-1 bg-background px-2 py-1.5"
-        onData={({ data }) => {
-          try {
-            handle?.pty?.write(data);
-          } catch {
-            // A closed PTY rejects input; the status line says why.
-          }
-        }}
-        onResize={({ cols, rows }) => {
-          if (!visible() || cols < 1 || rows < 1) return;
-          try {
-            handle?.pty?.resize(cols, rows);
-          } catch {
-            // The program ended between the layout and the resize.
-          }
-        }}
-        onTitleChange={({ title }) => setTerminalTitle(props.id, title)}
-      />
+      <If when={progress()}>
+        <View testID="terminal-progress" class="h-[2px] bg-track" accessibilityLabel={t(K.terminal.progress, { percent: progress()?.percent ?? 0 })}>
+          <View
+            style={{
+              height: 2,
+              width: progress()?.state === "indeterminate" ? "100%" : `${progress()?.percent ?? 0}%`,
+              backgroundColor: progress()?.state === "error" ? token("destructive") : token("primary"),
+              opacity: progress()?.state === "pause" || progress()?.state === "indeterminate" ? 0.5 : 1,
+            }}
+          />
+        </View>
+      </If>
+      <If when={finding()}>
+        <View testID="terminal-find" class="flex-row items-center gap-1.5 border-b border-line bg-inset px-2 py-1">
+          <Glyph name="search" size={11} tint={token("muted-foreground")} />
+          <Input
+            testID="terminal-find-input"
+            accessibilityLabel={t(K.terminal.findPlaceholder)}
+            placeholder={t(K.terminal.findPlaceholder)}
+            autoFocus
+            value={needle()}
+            onChange={({ value }) => find(value)}
+            onSubmit={() => step(1)}
+            style={{
+              flex: 1,
+              height: 24,
+              paddingHorizontal: 6,
+              fontSize: 12,
+              color: token("foreground"),
+              placeholderColor: token("faint"),
+              caretColor: token("primary"),
+              borderWidth: 1,
+              borderColor: token("border"),
+              borderRadius: 8,
+              backgroundColor: token("background"),
+            }}
+          />
+          <Text testID="terminal-find-count" class="min-w-[56px] text-right text-[11px] text-muted-foreground">
+            {!needle()
+              ? ""
+              : found().total === 0
+                ? t(K.terminal.findNone)
+                : t(K.terminal.findCount, { index: (found().index ?? 0) + 1, total: found().total })}
+          </Text>
+          <SheetIconButton testID="terminal-find-prev" label={t(K.terminal.findPrev)} glyph="caret-down" disabled={found().total === 0} onPress={() => step(-1)} />
+          <SheetIconButton testID="terminal-find-next" label={t(K.terminal.findNext)} glyph="caret-right" disabled={found().total === 0} onPress={() => step(1)} />
+          <SheetIconButton testID="terminal-find-close" label={t(K.terminal.findClose)} glyph="close" onPress={closeFind} />
+        </View>
+      </If>
+      <View class="flex-1 bg-background px-2 py-1.5">
+        <TerminalSurface
+          ref={bind}
+          testID="terminal-view"
+          accessibilityLabel={terminalActionLabel(action())}
+          class="flex-1"
+          session={info()?.session ?? null}
+          fontFamily={SHEET_MONO}
+          fontSize={13}
+          lineHeight={18}
+          colors={{
+            foreground: token("foreground"),
+            background: token("background"),
+            cursor: withAlpha(token("foreground"), 0x80),
+            selection: token("brand-tint"),
+            preedit: token("accent"),
+            link: token("info"),
+            mark: withAlpha(token("warn"), 0x40),
+            markCurrent: withAlpha(token("warn"), 0x90),
+            scrollbar: token("scrollbar-thumb"),
+          }}
+          cursorStyle="block"
+          cursorBlink
+          optionAsMeta={false}
+          menu={{
+            copy: t(K.terminal.copy),
+            paste: t(K.terminal.paste),
+            selectAll: t(K.terminal.selectAll),
+            find: t(K.terminal.find),
+            clear: t(K.terminal.clear),
+          }}
+          onSnapshot={(snapshot) => answer?.(snapshot)}
+          onOpen={({ url }) => {
+            // Links open beside the terminal, in the container's own browser
+            // sheet: web pages stay inside Zu (Q61), never another app.
+            dispatchIntent("browser.open", { containerId: containerId(), url }, { containerId: containerId() });
+          }}
+          onFind={() => finding.set(true)}
+          onFindStep={({ step: by }) => step(by)}
+          onCopy={({ text }) => void Clipboard.writeText(text)}
+          onPaste={() => {
+            void Clipboard.readText().then((text) => {
+              if (text) pasteIntoTerminal(props.id, text);
+            });
+          }}
+        />
+      </View>
       <If when={!running()}>
         <View class="flex-row items-center gap-2 border-t border-line bg-inset px-3 py-1.5">
           <Dot tint={token("faint")} size={6} />
@@ -187,6 +270,10 @@ export function TerminalBody(props: { id: string }) {
   );
 }
 
+/** `#rrggbbaa` (what `token()` gives) with its alpha replaced. */
+function withAlpha(color: string, alpha: number): string {
+  return `${color.slice(0, 7)}${alpha.toString(16).padStart(2, "0")}`;
+}
 
 /** The next free terminal resource number in a container. */
 function nextTerminalIndex(containerId: string): number {
@@ -237,7 +324,10 @@ export async function createExternalContainer(
 export const terminalModule: SheetModule = {
   id: "terminal",
   capabilities: ["pty"],
-  initialize: () => setProgramExitHandler((sheetId) => closeSheet(sheetId)),
+  initialize: () => {
+    setProgramExitHandler((sheetId) => closeSheet(sheetId));
+    setNotificationHandler((sheetId, title, body) => void notifySettled({ sheetId, title, body }));
+  },
   onLayoutChanged: (ids) => reconcileTerminalsByIds(ids),
   onContainerArchive: (containerId) => closeTerminalsOfContainer(containerId),
   intents: {

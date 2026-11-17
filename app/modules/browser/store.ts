@@ -118,16 +118,22 @@ function browserSheetsOf(containerId: string, ids: string[] = panelIds(layout())
  * Opens a browser sheet on a canvas: a container's, or the scratch canvas's
  * (no container yet). The next instance number, so a canvas can hold
  * several. `replace` is the Hero sheet the action came from: the browser
- * takes that tab's place instead of sitting beside it.
+ * takes that tab's place instead of sitting beside it; `url`, the page it
+ * opens on.
  */
 export function openBrowserSheet(
   containerId: string | null = activeContainerId(),
   replace?: string,
+  url?: string,
 ): string {
   const canvas = containerId ?? SCRATCH_CANVAS;
   const ids = [...panelIds(layout()), ...Object.keys(pages())];
   const id = browserSheetId(canvas, nextBrowserInstance(canvas, ids));
   ensureBrowserPage(id);
+  // A page opened for an address (a link from another sheet) loads it at
+  // mount, as an address the user typed: only what `normalizeAddress` takes.
+  const address = url ? normalizeAddress(url) : null;
+  if (address?.ok) setBrowserNavigating(id, address.url);
   noteSheetOpened(id);
   setLayout(replace ? replaceSheet(layout(), replace, id) : appendSheet(layout(), id));
   return id;

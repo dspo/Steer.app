@@ -8,7 +8,8 @@
  *   layer-gate  the sheet-module dependency gate (zero compile, seconds)
  *   lint-rust   cargo fmt + clippy, hard gate, both workspaces
  *   build       `nsh check app` with the malachite-bigint split retry
- *   test        the app's headless suite (`ZU_SKIP_LIVE` set by the pipeline)
+ *   test        the native workspace's Rust tests, then the app's headless
+ *               suite (`ZU_SKIP_LIVE` set by the pipeline)
  *   manox       the manox hermetic gate, both files, `ZU_MANOX_GATE=1`
  *   harness     pi-harness's own version ledger + bun test
  *
@@ -81,6 +82,10 @@ function malachiteSplit(lock: string): string | null {
 function test(): void {
   const nsh = nshBinary();
   checkNsh(nsh);
+  // `nsh test` runs `cargo test` for each `"rust"` crate alone; the native
+  // workspace's member crates (`zu-ghostty`, the libghostty-vt wrapper) are
+  // only tested by a workspace run.
+  run(["cargo", "test", "--workspace"], join(ROOT, "native"));
   run([nsh, "test", "app"], ROOT);
 }
 

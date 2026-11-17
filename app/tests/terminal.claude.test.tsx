@@ -1,4 +1,5 @@
 import { open, test } from "nsh/test";
+import { terminalTest, typeKeys } from "./terminal-keys";
 
 // The real Claude Code TUI in a real PTY, through the same Terminal sheet:
 // start it, wait for its own screen, then interrupt it with Ctrl+C and prove
@@ -11,12 +12,12 @@ import { open, test } from "nsh/test";
 //
 // The `claude` binary is the machine's own tooling, nothing the repo ships —
 // a bare CI image has none, which ZU_SKIP_LIVE (the CI 口径) skips.
-const t = process.env?.["ZU_SKIP_LIVE"] === "1" ? test.skip : test;
+const t = process.env?.["ZU_SKIP_LIVE"] === "1" ? test.skip : terminalTest;
 
 t("Claude Code's TUI draws in the terminal and Ctrl+C returns to the shell", async () => {
   const app = await open("../fixtures/terminal.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:terminal-screen");
-  await app.type("id:terminal-view", "claude");
+  await typeKeys(app, "claude");
   await app.keyboard.press("enter");
   // Its banner, onboarding or trust screen: any of them is Claude Code's own
   // alternate-screen TUI, not a shell error.
@@ -36,7 +37,7 @@ t("Claude Code's TUI draws in the terminal and Ctrl+C returns to the shell", asy
   // Claude Code may want a second interrupt while it shuts its TUI down.
   await app.keyboard.press("ctrl+c");
   await app.wait(500);
-  await app.type("id:terminal-view", "printf 'M7_CLAUDE_EXITED\\n'");
+  await typeKeys(app, "printf 'M7_CLAUDE_EXITED\\n'");
   await app.keyboard.press("enter");
   await app.waitUntil(() => app.texts().some((text) => text.includes("M7_CLAUDE_EXITED")), {
     timeout: 15000,

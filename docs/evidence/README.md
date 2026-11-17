@@ -13,6 +13,7 @@
 | `m12-lifecycle.md` | 托盘、通知、更新、签名中**没有跑过**的验收项；发布前必读 |
 | `feasibility.md` | nsh 能力面的可行性核对（PTY/Ghostty/LSP 汇聚到 native 的结论） |
 | `terminal-emulator.md` | Q29 的换核调研（trait 上限锁死收益） |
+| `ghostty-spike.md` | 2026-11-16 的自绘 ghostty 终端：实现、实机回归修复与验收；截图见同名 `ghostty-spike-*.png` |
 
 截图（`*.png`）是各 sheet 的视觉记录；`app/tests/*.ui.test.tsx` 的 `app.screenshot(...)` 可重拍。
 

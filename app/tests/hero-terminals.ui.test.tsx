@@ -1,4 +1,5 @@
 import { expect, open, test } from "nsh/test";
+import { terminalTest, typeKeys } from "./terminal-keys";
 
 // §2.1.1 F2's acceptance: a Pi container's Hero opens the shell and an agent
 // TUI as terminal resources of that container — two new tabs, still one
@@ -34,7 +35,9 @@ test("a container's Hero opens its terminals inside that container", async () =>
   expect(stateOf(app).containers).toBe(1);
   expect(stateOf(app).panels.split(",").filter((panel) => panel.startsWith("terminal:c1:")).length).toBe(2);
   expect(stateOf(app).pty).toBe(2);
-  expect(app.texts().some((text) => text.startsWith("Claude Code · "))).toBe(true);
+  // The seeded `Claude Code · tmp`, or the title Claude Code sets itself as
+  // soon as it starts (the session reports it with no view attached).
+  expect(app.texts().some((text) => text.includes("Claude Code"))).toBe(true);
 
   // Archiving the container takes both PTYs with it. The row is named by its
   // earliest sheet (S2): the shell terminal that replaced the Hero.
@@ -78,3 +81,19 @@ test("the Hero's Pi opens the native TUI, and the composer owns the Zu session",
   expect(stateOf(app).panels.includes("session:s1")).toBe(true);
   expect(stateOf(app).pty).toBe(2);
 }, 120000);
+
+// A program's own exit takes its sheet, and a container with no sheet left
+// is not a place anymore (Q69): it archives itself. The shell ends because
+// the user typed `exit` into the terminal surface (`--target macos`).
+terminalTest("a terminal's own exit archives its container", async () => {
+  const app = await open("../fixtures/hero-terminals.tsx", { width: 1200, height: 800 });
+  await app.waitFor("id:hero-input", { timeout: 20000 });
+  await app.press("id:external-terminal");
+  await app.waitUntil(() => stateOf(app).panels === "terminal:c1:1", { timeout: 20000 });
+  await app.waitUntil(() => stateOf(app).pty === 1, { timeout: 20000 });
+  await app.wait(1500);
+  await typeKeys(app, "exit");
+  await app.keyboard.press("enter");
+  await app.waitUntil(() => !app.shows("id:terminal-view"), { timeout: 20000 });
+  await app.waitUntil(() => stateOf(app).containers === 0, { timeout: 20000 });
+}, 60000);
