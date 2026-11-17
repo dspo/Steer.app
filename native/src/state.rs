@@ -37,7 +37,8 @@ use crate::{AGENT_DIR, zu_dir};
 /// The most bytes of one session file the header scan reads for the name and
 /// the preview; the rest of the file only feeds the message count.
 const HEADER_SCAN_BYTES: u64 = 512 * 1024;
-/// The most session files one scan reports (the engine's old cap).
+/// The most sessions one scan reports: the quota counts valid entries and
+/// is filled newest-first, after the mtime sort (never mid-walk).
 const MAX_SESSIONS: usize = 2000;
 /// The deepest the session walk descends (pi's own layout is flat or one
 /// level of project directories).
@@ -203,8 +204,19 @@ where
 
 /// The scan body, off the UI thread.
 fn scan_sessions_in(watermark: f64) -> Result<SessionScan, JsError> {
-    let root = sessions_dir()?;
-    let current = dir_watermark(&root);
+    scan_sessions_dir(&sessions_dir()?, watermark)
+}
+
+/// The fold against an explicit root (the tests' entry point). The walk is
+/// complete — every `.jsonl` under `root` becomes a candidate carrying its
+/// mtime — and the [`MAX_SESSIONS`] quota fills newest-first, after the
+/// candidates sort. A cap that bites mid-walk (or on the raw candidate
+/// list) truncates in traversal order and can drop the newest session,
+/// which is exactly what broke real layouts past 2000 files; here the
+/// newest files always make the cut, whatever order the directory lists
+/// them in.
+fn scan_sessions_dir(root: &Path, watermark: f64) -> Result<SessionScan, JsError> {
+    let current = dir_watermark(root);
     if watermark != 0.0 && current == watermark {
         return Ok(SessionScan {
             changed: false,
@@ -212,10 +224,18 @@ fn scan_sessions_in(watermark: f64) -> Result<SessionScan, JsError> {
             sessions: Vec::new(),
         });
     }
-    let mut files = Vec::new();
-    collect_jsonl(&root, 0, &mut files);
+    let mut candidates = Vec::new();
+    collect_jsonl(root, 0, &mut candidates);
+    // Newest first, path as the deterministic tie-break; the quota fills
+    // from the top, so the newest files always make the cut.
+    candidates.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| b.0.cmp(&a.0)));
     let mut sessions = Vec::new();
-    for path in files {
+    // The quota counts valid entries, not candidates: a broken file inside
+    // the newest window (a session killed mid-write) skips out and the
+    // walk continues until [`MAX_SESSIONS`] real sessions are in — a quota
+    // paid by candidate count would shrink the index by the broken-file
+    // count (the issue #35 review note).
+    for (path, _) in candidates {
         if sessions.len() >= MAX_SESSIONS {
             break;
         }
@@ -223,13 +243,16 @@ fn scan_sessions_in(watermark: f64) -> Result<SessionScan, JsError> {
             sessions.push(session);
         }
     }
+    // The candidates arrived newest-first and scanning keeps that order;
+    // the sort stays as the one normalizer (a broken file skips out, never
+    // reorders) so the newest-first invariant holds on its own. The count
+    // is already capped by the quota loop above.
     sessions.sort_by(|a, b| {
         b.modified
             .partial_cmp(&a.modified)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| b.path.cmp(&a.path))
     });
-    sessions.truncate(MAX_SESSIONS);
     Ok(SessionScan {
         changed: true,
         watermark: current,
@@ -434,9 +457,13 @@ fn dir_watermark(dir: &Path) -> f64 {
     newest
 }
 
-/// Every `.jsonl` file under `dir`, depth-capped.
-fn collect_jsonl(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
-    if depth > MAX_SESSION_DEPTH || out.len() > MAX_SESSIONS * 2 {
+/// Every `.jsonl` file under `dir` with its mtime, depth-capped. No count
+/// cap here: a mid-walk cap truncates in traversal order and can drop the
+/// newest session (the `MAX_SESSIONS * 2` cut used to do exactly that).
+/// The candidate cap applies in [`scan_sessions_dir`], after the mtime
+/// sort; the walk itself is the same readdir-and-stat the watermark does.
+fn collect_jsonl(dir: &Path, depth: usize, out: &mut Vec<(PathBuf, f64)>) {
+    if depth > MAX_SESSION_DEPTH {
         return;
     }
     let Ok(entries) = fs::read_dir(dir) else {
@@ -450,7 +477,7 @@ fn collect_jsonl(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
         if metadata.is_dir() {
             collect_jsonl(&path, depth + 1, out);
         } else if path.extension().and_then(|ext| ext.to_str()) == Some("jsonl") {
-            out.push(path);
+            out.push((path, mtime_ms(&metadata)));
         }
     }
 }
@@ -840,6 +867,115 @@ mod tests {
         format!(
             r#"{{"type":"session","version":3,"id":"{id}","timestamp":"2026-07-20T03:38:58.868Z","cwd":"{cwd}"}}"#
         )
+    }
+
+    /// Regression (issue #35): a directory over the cap must report the
+    /// newest [`MAX_SESSIONS`] files by mtime, never a traversal-order
+    /// prefix — the newest session was written last and the old mid-walk
+    /// cap dropped it from the index entirely.
+    #[test]
+    fn the_cap_keeps_the_newest_sessions_not_the_traversal_head() {
+        let root = TempRoot::new();
+        let sessions = root.path().join("sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        let extra = 5;
+        let total = MAX_SESSIONS + extra;
+        let mut files: Vec<(PathBuf, String)> = Vec::with_capacity(total);
+        for i in 0..total {
+            let id = format!("cap{i:04}-0000-0000-0000-000000000000");
+            let path = sessions.join(format!("t_{i:04}.jsonl"));
+            fs::write(&path, header_line(&id, "/tmp/demo")).unwrap();
+            files.push((path, id));
+        }
+        let scan = scan_sessions_dir(&sessions, 0.0).unwrap();
+        assert!(scan.changed);
+        assert_eq!(scan.sessions.len(), MAX_SESSIONS);
+        // Exactly the newest MAX_SESSIONS files by mtime (path as the
+        // tie-break), whatever order the walk listed them in.
+        let mtime = |path: &Path| mtime_ms(&fs::metadata(path).unwrap());
+        let mut expected: Vec<&(PathBuf, String)> = files.iter().collect();
+        expected.sort_by(|a, b| {
+            mtime(&b.0)
+                .total_cmp(&mtime(&a.0))
+                .then_with(|| b.0.cmp(&a.0))
+        });
+        expected.truncate(MAX_SESSIONS);
+        let expected_ids: std::collections::HashSet<&str> =
+            expected.iter().map(|(_, id)| id.as_str()).collect();
+        let got_ids: std::collections::HashSet<&str> =
+            scan.sessions.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(got_ids, expected_ids);
+        // And the single newest file — the one an order-bound cap is most
+        // likely to lose — is in.
+        assert!(got_ids.contains(files[total - 1].1.as_str()));
+    }
+
+    /// A broken file among the newest candidates skips out without a
+    /// parse failure and without disturbing the newest-first order.
+    #[test]
+    fn a_broken_file_among_the_newest_does_not_disturb_the_fold() {
+        let root = TempRoot::new();
+        let sessions = root.path().join("sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        fs::write(sessions.join("t_good.jsonl"), header_line("good", "/tmp")).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        fs::write(sessions.join("t_broken.jsonl"), "not json at all\n").unwrap();
+        let scan = scan_sessions_dir(&sessions, 0.0).unwrap();
+        assert_eq!(scan.sessions.len(), 1);
+        assert_eq!(scan.sessions[0].id, "good");
+    }
+
+    /// Regression (the PR #36 review note): broken files inside the
+    /// newest window must not shrink the quota — the fold keeps parsing
+    /// down the mtime-sorted candidates until [`MAX_SESSIONS`] valid
+    /// entries are in, so the quota is paid by valid files only.
+    #[test]
+    fn broken_files_in_the_newest_window_do_not_shrink_the_quota() {
+        let root = TempRoot::new();
+        let sessions = root.path().join("sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        // More valid files than the quota; the two broken files are
+        // written last and carry the newest mtimes, so they sit inside the
+        // newest window and would eat two slots under a cut-by-candidates
+        // cap (2000 candidates → 1998 valid).
+        let valid = MAX_SESSIONS + 3;
+        let mut files: Vec<(PathBuf, String)> = Vec::with_capacity(valid);
+        for i in 0..valid {
+            let id = format!("quota{i:04}-0000-0000-0000-000000000000");
+            let path = sessions.join(format!("t_{i:04}.jsonl"));
+            fs::write(&path, header_line(&id, "/tmp/demo")).unwrap();
+            files.push((path, id));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        for n in 0..2 {
+            fs::write(
+                sessions.join(format!("t_broken_{n}.jsonl")),
+                "not json at all\n",
+            )
+            .unwrap();
+        }
+        let scan = scan_sessions_dir(&sessions, 0.0).unwrap();
+        // The quota is full despite the broken files being the newest.
+        assert_eq!(scan.sessions.len(), MAX_SESSIONS);
+        let got: std::collections::HashSet<&str> =
+            scan.sessions.iter().map(|s| s.id.as_str()).collect();
+        // Exactly the newest MAX_SESSIONS valid files, whatever order the
+        // walk listed them in (mtime desc, path desc as the tie-break).
+        let mtime = |path: &Path| mtime_ms(&fs::metadata(path).unwrap());
+        let mut expected: Vec<&(PathBuf, String)> = files.iter().collect();
+        expected.sort_by(|a, b| {
+            mtime(&b.0)
+                .total_cmp(&mtime(&a.0))
+                .then_with(|| b.0.cmp(&a.0))
+        });
+        expected.truncate(MAX_SESSIONS);
+        let expected_ids: std::collections::HashSet<&str> =
+            expected.iter().map(|(_, id)| id.as_str()).collect();
+        assert_eq!(got, expected_ids);
+        // The newest valid file is in; the oldest valid ones fall out.
+        assert!(got.contains(files[valid - 1].1.as_str()));
+        assert!(!got.contains(files[0].1.as_str()));
+        assert!(!got.contains(files[valid - MAX_SESSIONS - 1].1.as_str()));
     }
 
     #[test]
