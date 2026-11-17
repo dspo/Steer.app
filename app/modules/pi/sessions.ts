@@ -402,7 +402,7 @@ function supersedePendingAsks(key: string): void {
 
 /** Skipped seeded asks (no live waiter) waiting for a live session to retire
  * them on the harness (B2). Keyed by session id; drained by
- * `retireSeededAsks`. */
+ * `retireSeededAsks`, dropped with the session by `releaseSession`. */
 const seededSupersedes = new Map<string, Array<{ toolCallId: string }>>();
 
 /** Retires skipped seeded asks on the harness via wire sentinels, once a
@@ -424,6 +424,9 @@ async function retireSeededAsks(key: string, session: AcpSession): Promise<void>
       }),
     ),
   );
+  // A skip typed while this retire was in flight re-queued ids; keep those.
+  const left = seededSupersedes.get(key);
+  if (left && left.length === 0) seededSupersedes.delete(key);
 }
 
 /** Pulls `_zu/ask/pending` after an open so questions that outlived a restart
@@ -833,6 +836,7 @@ export async function releaseSession(id: string): Promise<void> {
   const key = viewKeyFor(id) ?? id;
   acpTurns.delete(key);
   acpQueues.delete(key);
+  seededSupersedes.delete(key);
   cancelPending(key);
   await closeHostSession(key);
 }
