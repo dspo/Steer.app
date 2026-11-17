@@ -10,7 +10,7 @@ const t = gated ? test : test.skip;
 
 /**
  * The manox conversation on the real Workbench, against the real in-proc
- * host (native/manox assembling dspo/manox v0.9.1) — headless, no engine,
+ * host (native/manox assembling dspo/manox v0.12.0) — headless, no engine,
  * no model credentials (the test's state root is an empty temp dir). The
  * fixture creates a thread, opens its sheet and dispatches one turn; the
  * harness's model gate refuses the dispatch and the optimistic row rolls

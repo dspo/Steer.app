@@ -44,7 +44,7 @@ Zu.app（nsh TSX / AppKit）
 │    └─ 每个会话一个持久 pi-acp ──▶ pi 1.5.0（Bun 单文件）
 │         durable: ~/.pi/agent/sessions/*.jsonl
 ├─ modules/manox        manox 模块：AHP client（vendored reducers 折叠）
-│    └─ zu/native 的 Manox 单例 ──▶ in-proc 宿主半边（manox v0.9.1）
+│    └─ zu/native 的 Manox 单例 ──▶ in-proc 宿主半边（manox v0.12.0）
 │         durable: ~/.manox/core/*（journal）
 └─ domains/ ──▶ zu/native（Rust）：acp / fs / git / lsp / pty / state / pimodels / picker / instance
 ```
@@ -302,7 +302,7 @@ terminal 模块的一个 intent。
 | UI | nsh（TSX root，AppKit 后端） | 原生输入/滚动/无障碍；DockArea/TextView/Editor/DiffView 现成 |
 | pi | 精确 pin `1.5.0`，Bun `--compile` 单入口 `pi-acp` | 官方支持 bun 二进制分发 |
 | pi 传输 | ACP over stdio，一会话一持久进程 | 进程隔离、公共协议、崩溃后 resume |
-| manox | git pin `v0.9.1`，in-proc AHP | 内核即宿主，零进程；接受崩溃域不对称 |
+| manox | git pin `v0.12.0`，in-proc AHP | 内核即宿主，零进程；接受崩溃域不对称 |
 | 重型集成 | Rust native module，按域拆注册面 | Q28/Q31 |
 | 终端核 | nsh 内置 `VtEmulator`；Ghostty 为条件性里程碑 | trait 上限锁死换核收益 |
 | 浏览器 | nsh `WebView` | 无需自研 |
@@ -343,7 +343,7 @@ Casing II；C8 三包布局；ACP cutover（P0–P4：distro ACP 入口、`zu/ac
 - **LSP**：每容器×语言族一个进程；诊断只保留打开文件；全文 `didChange`；命令解析保留 rustup symlink。
 - **malachite-bigint 双版本**：生成的 `.nsh/rust/Cargo.lock` 需 `cargo update -p malachite-bigint@0.14.0 --precise 0.12.0`
   （`native/manox/Cargo.toml` 有注释）。
-- **manox provider 路径**：上游 v0.9.1 直查 `$HOME/.manox`，测试隔离需 `MANOX_HOME`+`MANOX_CLAUDE_HOME`+`HOME` 三变量。
+- **manox provider 路径**：上游直查 `~/.manox`（`MANOX_HOME` 可覆盖），测试隔离需 `MANOX_HOME`+`MANOX_CLAUDE_HOME`+`HOME` 三变量。
 - **审批通知**：审批卡在会话内渲染；窗口不在前台时的系统通知（设计 §9.7）尚未接线。
 - **审批快捷键/页签圆点**：`⏎/⌘⏎/Esc` 与容器行/页签的 `waiting_user` 圆点未做。
 - **子代理名册**：live run 只在内存；重启后需先 resume 一个 captain 才能读 settled 索引。

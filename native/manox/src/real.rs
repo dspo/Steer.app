@@ -26,7 +26,7 @@
 //! exactly as it did on the T0 stub.
 //!
 //! One glue-level addition wraps the session runtime (see
-//! [`ModelGuardRuntime`]): the kernel v0.9.1's engine-boot fatal ("no model
+//! [`ModelGuardRuntime`]): the kernel's engine-boot fatal ("no model
 //! configured") never reaches the AHP channel — the live bridge mirrors
 //! journal rows, and a boot fatal writes none — so without the guard a
 //! credential-less dispatch would leave the client's accepted turn active
@@ -249,7 +249,7 @@ fn anchor_cwd() -> PathBuf {
 
 /// The session-runtime decorator: everything delegates to the gateway,
 /// except a submit with no servable model anywhere. On that path the kernel
-/// v0.9.1 would accept the dispatch, boot its engine, hit "no model
+/// would accept the dispatch, boot its engine, hit "no model
 /// configured", and die with a `Fatal` that never reaches the AHP channel
 /// (the live bridge mirrors journal rows; a boot fatal writes none) — the
 /// client's accepted turn would hang forever. The guard refuses the submit

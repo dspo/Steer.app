@@ -19,7 +19,7 @@
 //!   `zu-app`'s PTY uses — callbacks are engine-thread-only).
 //! - **Build and size**: the manox crate chain (ahp / ahp-runtime /
 //!   session-core / agent) enters the build graph as **one git tag** —
-//!   `dspo/manox` `tag = "v0.9.1"`, the rev locked in Cargo.lock — and its
+//!   `dspo/manox` `tag = "v0.12.0"`, the rev locked in Cargo.lock — and its
 //!   time/size increment is recorded in the M1 evidence.
 //!
 //! ## The real host (M1: the T0 stub is gone)

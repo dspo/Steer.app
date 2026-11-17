@@ -44,7 +44,7 @@ const setup = gated ? beforeAll : (_: unknown) => {};
 
 /**
  * The manox harness's gates, against the REAL in-proc host (native/manox
- * assembling dspo/manox v0.9.1): the §3.5 fold-convergence gate — the
+ * assembling dspo/manox v0.12.0): the §3.5 fold-convergence gate — the
  * client's vendored-reducer fold of the envelope stream (the host's journal
  * projection, every envelope stamped from it) vs the host's own snapshot
  * fold — plus the optimistic ledger's rejection rollback, the no-credential
