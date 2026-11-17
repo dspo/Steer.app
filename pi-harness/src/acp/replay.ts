@@ -9,6 +9,11 @@
  * message list with the provenance of each message's source entry, so the
  * replay shows what the model actually sees and `messageId`s stay stable.
  *
+ * Every chunk carries `_meta.pi` (`at`, `entryId`; assistant text also the
+ * model and the settle facts), so the client's transcript reducer builds the
+ * same entries from a replay as from a live turn. An assistant entry closes
+ * with the settle marker exactly as a live turn does.
+ *
  * Parts of pi session data with no ACP chunk shape are skipped here, on
  * purpose and registered (v2: "pi 会话数据里映射不了的部件跳过并在代码注释登记"):
  *
@@ -18,23 +23,38 @@
  *     until a P stage declares images end to end.
  *   - empty or redacted thinking blocks — nothing displayable.
  *   - tool calls whose result never arrived (interrupted turns) — replayed
- *     as `tool_call` left `in_progress`, which is the honest state; the
- *     next `session/load` after a resumed turn shows the settled pair.
+ *     as `tool_call` left `in_progress`, which is the honest state; the next
+ *     `session/load` after a resumed turn shows the settled pair.
  *   - state-only entries (model_change, thinking_level_change, usage, zu.*
  *     custom entries, labels) — pi's projection already drops them from the
  *     message list; they are agent-side state, not conversation.
+ *
+ * Tool statistics (`_meta.zu`: durationMs/exitCode/truncation) are
+ * deliberately absent from a replay: pi does not persist tool `details`, so
+ * there is nothing honest to send — the client renders the card without the
+ * stats (a registered known gap, issue #20 §5.4).
  *
  * Compaction and branch summaries DO replay: pi's projection resolves them
  * into the summary messages that now stand in the context.
  */
 
 import type { SessionUpdate } from "@agentclientprotocol/sdk";
-import { describeToolCall, isRecord, piToolKind } from "./mapping";
+import {
+  describeToolCall,
+  editDiffBlocks,
+  isRecord,
+  piToolKind,
+  settledUpdate,
+  stopReasonFromPi,
+  type PiMeta,
+} from "./mapping";
 
 /** The one projection entry this module consumes. */
 export interface ReplayEntry {
   /** The pi session entry's id — becomes the chunk `messageId`. */
   sourceId: string;
+  /** The pi session entry's write time (ISO); anchors the chunk `_meta.pi.at`. */
+  timestamp: string;
   /** The messages pi's projection resolved this entry into. */
   messages: ReplayMessage[];
 }
@@ -46,29 +66,46 @@ export interface ReplayMessage {
   toolCallId?: unknown;
   toolName?: unknown;
   isError?: unknown;
+  /** Wall-clock milliseconds (pi stamps its messages). */
+  timestamp?: unknown;
+  /** The assistant message's model facts (`provider`, `model`, `responseModel`). */
+  provider?: unknown;
+  model?: unknown;
+  responseModel?: unknown;
+  /** The assistant message's settle facts. */
+  stopReason?: unknown;
+  errorMessage?: unknown;
 }
 
 /** Maps a pi session projection onto the replay update list, in order. */
 export function replayUpdates(entries: ReplayEntry[]): SessionUpdate[] {
   const updates: SessionUpdate[] = [];
+  // Edit arguments met along the way: their tool result replays with the
+  // same `ToolCallContent.diff` blocks a live turn sends.
+  const argsByToolCall = new Map<string, { name: string; args: unknown }>();
   for (const entry of entries) {
     for (const message of entry.messages) {
-      pushMessage(updates, entry.sourceId, message);
+      pushMessage(updates, entry, message, argsByToolCall);
     }
   }
   return updates;
 }
 
-function pushMessage(updates: SessionUpdate[], messageId: string, message: ReplayMessage): void {
+function pushMessage(
+  updates: SessionUpdate[],
+  entry: ReplayEntry,
+  message: ReplayMessage,
+  argsByToolCall: Map<string, { name: string; args: unknown }>,
+): void {
   switch (message.role) {
     case "user":
-      pushUserContent(updates, messageId, message.content);
+      pushUserContent(updates, entry, message);
       return;
     case "assistant":
-      pushAssistantContent(updates, messageId, message.content);
+      pushAssistantContent(updates, entry, message, argsByToolCall);
       return;
     case "toolResult":
-      pushToolResult(updates, message);
+      pushToolResult(updates, message, argsByToolCall);
       return;
     default:
       // `system` and anything newer: no ACP shape (see header comment).
@@ -76,23 +113,46 @@ function pushMessage(updates: SessionUpdate[], messageId: string, message: Repla
   }
 }
 
-function pushUserContent(updates: SessionUpdate[], messageId: string, content: unknown): void {
-  for (const text of userText(content)) {
+function pushUserContent(updates: SessionUpdate[], entry: ReplayEntry, message: ReplayMessage): void {
+  const at = metaAt(entry, message);
+  for (const text of userText(message.content)) {
     if (text.length > 0) {
-      updates.push({ sessionUpdate: "user_message_chunk", content: { type: "text", text }, messageId });
+      updates.push({
+        sessionUpdate: "user_message_chunk",
+        content: { type: "text", text },
+        messageId: entry.sourceId,
+        _meta: { pi: { at, entryId: entry.sourceId } },
+      });
     }
   }
 }
 
-function pushAssistantContent(updates: SessionUpdate[], messageId: string, content: unknown): void {
-  if (!Array.isArray(content)) return;
-  for (const block of content) {
+function pushAssistantContent(
+  updates: SessionUpdate[],
+  entry: ReplayEntry,
+  message: ReplayMessage,
+  argsByToolCall: Map<string, { name: string; args: unknown }>,
+): void {
+  if (!Array.isArray(message.content)) return;
+  const anchor: PiMeta = assistantMeta(entry, message);
+  for (const block of message.content) {
     if (!isRecord(block)) continue;
     if (block.type === "text" && typeof block.text === "string" && block.text.length > 0) {
-      updates.push({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: block.text }, messageId });
+      updates.push({
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: block.text },
+        messageId: entry.sourceId,
+        _meta: { pi: { at: anchor.at, entryId: anchor.entryId, ...(anchor.model ? { model: anchor.model } : {}) } },
+      });
     } else if (block.type === "thinking" && typeof block.thinking === "string" && block.thinking.length > 0) {
-      updates.push({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: block.thinking }, messageId });
+      updates.push({
+        sessionUpdate: "agent_thought_chunk",
+        content: { type: "text", text: block.thinking },
+        messageId: entry.sourceId,
+        _meta: { pi: { at: anchor.at, entryId: anchor.entryId } },
+      });
     } else if (block.type === "toolCall" && typeof block.id === "string" && typeof block.name === "string") {
+      argsByToolCall.set(block.id, { name: block.name, args: block.arguments });
       updates.push({
         sessionUpdate: "tool_call",
         toolCallId: block.id,
@@ -105,17 +165,58 @@ function pushAssistantContent(updates: SessionUpdate[], messageId: string, conte
     }
     // image blocks: skipped (header comment).
   }
+  // The settle marker closes the entry exactly as a live turn does, so the
+  // client's reducer takes one path; an error entry with no text still lands.
+  updates.push(settledUpdate({ settled: true, entryId: entry.sourceId, ...anchor }));
 }
 
-function pushToolResult(updates: SessionUpdate[], message: ReplayMessage): void {
+/** The `_meta.pi.at`: the message's own stamp when it has one, else the entry's. */
+function metaAt(entry: ReplayEntry, message: ReplayMessage): number {
+  if (typeof message.timestamp === "number" && Number.isFinite(message.timestamp)) return message.timestamp;
+  const parsed = Date.parse(entry.timestamp);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/** A replayed assistant entry's meta: anchored and settled by construction. */
+function assistantMeta(entry: ReplayEntry, message: ReplayMessage): PiMeta {
+  const model =
+    typeof message.provider === "string" && typeof message.model === "string"
+      ? {
+          provider: message.provider,
+          id: message.model,
+          ...(typeof message.responseModel === "string" ? { name: message.responseModel } : {}),
+        }
+      : undefined;
+  return {
+    at: metaAt(entry, message),
+    entryId: entry.sourceId,
+    ...(model ? { model } : {}),
+    ...(typeof message.stopReason === "string" ? { stopReason: stopReasonFromPi(message.stopReason) } : {}),
+    ...(typeof message.errorMessage === "string" && message.errorMessage ? { error: message.errorMessage } : {}),
+  };
+}
+
+function pushToolResult(
+  updates: SessionUpdate[],
+  message: ReplayMessage,
+  argsByToolCall: Map<string, { name: string; args: unknown }>,
+): void {
   if (typeof message.toolCallId !== "string") return;
-  const content: Array<{ type: "content"; content: { type: "text"; text: string } }> = [];
+  type Content =
+    | { type: "content"; content: { type: "text"; text: string } }
+    | { type: "diff"; path: string; oldText?: string | null; newText: string };
+  const content: Content[] = [];
   if (Array.isArray(message.content)) {
     for (const block of message.content) {
       if (isRecord(block) && block.type === "text" && typeof block.text === "string" && block.text.length > 0) {
         content.push({ type: "content", content: { type: "text", text: block.text } });
       }
     }
+  }
+  const remembered = argsByToolCall.get(message.toolCallId);
+  if (remembered) {
+    argsByToolCall.delete(message.toolCallId);
+    for (const diff of editDiffBlocks(remembered.name, remembered.args)) content.push(diff);
   }
   updates.push({
     sessionUpdate: "tool_call_update",

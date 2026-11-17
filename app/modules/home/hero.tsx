@@ -503,10 +503,13 @@ function HarnessOption(props: { testID: string; label: string; active: boolean; 
       accessibilityLabel={props.label}
       class={
         props.active
-          ? "h-5.5 items-center justify-center rounded bg-background px-2 shadow-[0_0_0_1px_token(border)]"
+          ? "h-5.5 items-center justify-center rounded bg-background px-2"
           : "h-5.5 items-center justify-center rounded px-2"
       }
-      style={{ ...motionStyle("fast") }}
+      style={{
+        ...motionStyle("fast"),
+        ...(props.active ? { boxShadow: `0 0 0 1px ${token("border")}` } : {}),
+      }}
       onPress={props.onPress}
     >
       <Text class={props.active ? "text-[10.5px] font-semibold text-foreground" : "text-[10.5px] font-medium text-muted-foreground"}>

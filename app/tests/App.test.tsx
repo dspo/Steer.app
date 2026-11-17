@@ -36,7 +36,7 @@ test("a conversation renders history, tool lines and prose", async () => {
   const app = await open("../fixtures/session.tsx");
   const texts = app.texts();
   expect(texts).toContain("fold the extension channel");
-  expect(texts).toContain("read done");
+  expect(texts.some((text) => text.includes("read src/foo.ts"))).toBe(true);
   expect(texts).toContain("the projection keys rows by message id");
   // The settled composer is one accent send; the running lane is absent.
   expect(app.count("id:session-send")).toBe(1);

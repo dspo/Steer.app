@@ -36,7 +36,7 @@ import {
 import { appendSheet, panelIds, replaceSheet, visiblePanels } from "../../core/dock";
 import { K, t } from "../../ui/i18n";
 import { Dot, Glyph } from "../../ui/ui";
-import { SHEET_FONT } from "../../ui/fonts";
+import { SHEET_MONO } from "../../ui/fonts";
 import type { SheetModule } from "../../../contracts/module";
 
 /**
@@ -143,7 +143,7 @@ export function TerminalBody(props: { id: string }) {
         ref={bind}
         testID="terminal-view"
         scrollback={5000}
-        fontFamily={SHEET_FONT}
+        fontFamily={SHEET_MONO}
         fontSize={13}
         lineHeight={18}
         accessibilityLabel={terminalActionLabel(action())}

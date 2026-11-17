@@ -130,7 +130,7 @@
 | Q69 | 容器何时回收 | **无 sheet 即自动归档**（Hero 计入）：切到相邻容器 → archive → 侧栏 180ms 退场 | arch §5.4、Q80 |
 | Q70 | 容器标题 | **存活的最早创建 sheet 的标题**（`sheetOrder` 创建序，拖 tab 不改）；session/terminal/webview 各自动态 | arch §4.3 |
 | Q71 | 界面语言 | **跟随系统** `locale()`：`zh*` → zh-CN，其余 → en；删除切换按钮，设置页留后续 | arch §4.6 |
-| Q72 | 字体 | **仅 sheet 内容**用 Lilex（`Lilex-Light` 300 + `Lilex-Medium` 500，同 family，就近取字面）；轮廓保持系统字体 | arch §6、design §3.4 |
+| Q72 | 字体 | （Q110 已废止，换 Geist/Geist Mono）**仅 sheet 内容**用 Lilex（`Lilex-Light` 300 + `Lilex-Medium` 500，同 family，就近取字面）；轮廓保持系统字体 | arch §6、design §3.4 |
 | Q73 | 外壳 | **一体化**：窗口一层 `sidebar` 底，顶栏与侧栏同材质无分隔；内容区是内嵌白色圆角卡片（radius 14，四周 8–10pt） | arch §4.1、design §2 |
 | Q74 | tab 宽度 | **Chrome 式**：`maxWidth 240`、`minWidth 72`、`flexShrink 1`、`flexGrow 0`，panel 变窄/增多时均匀挤压 | design §3.2 |
 | Q75 | 顶栏 picker | **三态**：常态纯文本标题（无框无底）／hover 凹槽（`bg-inset` + inset 阴影 + radius 6）／展开下拉从凹槽下沿接出；宽 360pt。**已由 Q90 整体移除** | design §3.3 |
@@ -180,7 +180,8 @@
 | Q109 | Pi 官方配置 parity | **distro 吃官方配置/特性**：`createAgentSessionServices` 统一装配；CLI builtin（codemode/tool-search/mcp）用公开 factory 以 `builtin:true` 复刻，`official.test.ts` 对已安装 CLI 做漂移断言；`settings.packages`/skills/prompts 走同一 loader；项目信任按 CLI 优先级解析（含 pre-trust 扩展的 `project_trust` handler），ask 在 `session/new` 期间用 ACP `elicitation/create` 询问，接受写官方 trust store；`mcp.json` 与 ACP `session/new.mcpServers` 都进 MCP 扩展（ACP 服务器 `exposure:"direct"`）；子代理复用同一 services/model/trust。已知例外 `llama.cpp`（factory 未导出） | `pi-harness/src/pi/{official,services,trust,mcp}.ts`、`app/ui/trust.tsx`、`app/modules/pi/acp/host.ts`、`pi-harness/src/acp/{app,pi-session,subagents}.ts`；G0–G4 |
 | Q107 | 旧 wire 与 legacy distro 的删除 | **P4 完成**：删 `contracts/protocol.{ts,md}`、`stores/engine.ts`、`native` 的 `Engine` 模块、`pi-harness/src/{server,store,subagents}.ts` 与 `dist/pi-engine`；打包只带 `Helpers/pi-acp`。代价：ACP distro 尚无 dispatch，子代理名册在 UI 上明确显示不可用（已由 Q108 的 E0 恢复） | `script/bundle-mac.sh`、`native/src/lib.rs`、`pi-harness/package.json`、`app/modules/pi/subagents.ts` |
 
-## 已落地设计（Q108–Q109）
+| Q110 | 会话转录的 TUI 语言（T1） | **一套转录，不做 TUI/GUI 双模式**：对话改 agent 转录——banner（List header，不进 Hero：空会话无 pi 会话、banner 数据不存在）、用户整宽横幅（`❯` + `bg-inset` radius 6）、思考折叠（展开纯文本，中文斜体按截图验收或退化为颜色+左线）、工具卡按 ACP kind（execute 尾 12 行 + exit/duration + 展开；read 参数优先；edit diff）；线协议增量 `_meta.pi`（at/model/entryId/settled/durationMs/stopReason/error）、`_meta.zu`（工具结束帧的 durationMs/exitCode/truncation）、`_zu/session_banner`（new/load/resume 在 `available_commands_update` 后，`HarnessSession.banner?()` 可选）；客户端 `transcript.ts` 纯 reducer（live/replay 同路径、entryId 换键、16ms 批量），删 `fold.ts`；正文 Geist 400/500/600、代码面 Geist Mono 400/500，Lilex 废止。采纳 PR #6 的数据层（settle marker、entry_appended、diff 重放、replay 同词），**不采纳**其 gallery 渲染/日期分隔/图片链路/`_zu/session/navigate`/重新生成。已知缺口：回放无工具统计（pi 不持久化 details）、CJK 斜体待真机验收 | `pi-harness/src/acp/{mapping,replay,pi-session,app}.ts`、`app/modules/pi/{transcript,session-banner,thinking-block,tool-block,entry-row,subagent-row}.tsx|ts`、`app/modules/pi/{sessions,chat-view,composer,view}.tsx|ts`、`app/ui/fonts.ts`、`native/assets/fonts/`、`native/src/lib.rs`；[evidence/transcript-tui.md](evidence/transcript-tui.md) |
+## 已落地设计（Q108–Q110）
 
 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) 的 D1–D7 已作为 **Q108** 登记并落地：
 
@@ -196,7 +197,7 @@
 
 ## 决策编号说明
 
-- Q1–Q107 覆盖全部已讨论的问题，**无未决项**。历史横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、
+- Q1–Q110 覆盖全部已讨论的问题，**无未决项**（Q110 见上表；T1 交付记录见 plan.md 与 evidence/transcript-tui.md）。历史横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、
   文件读写归属（Q56）、git 执行与根/路径边界（Q58）、协议版本与幂等（旧 §3.3）、归档可达性（Q34）、
   浏览器能力/降级（Q61/Q62）、LSP 传输/同步（Q64）、单实例与通知（Q65/Q66）、更新源（Q67）、
   模型注册表（Q81）、容器内终端资源（Q82）、scratch 与铸容器（Q83）、动作矩阵（Q84）、容器标题（Q85）、

@@ -16,6 +16,7 @@ import {
   type HarnessClientBridge,
   type HarnessPorts,
   type HarnessSession,
+  type SessionBanner,
 } from "./app";
 import { SubagentManager } from "./subagents";
 
@@ -48,9 +49,15 @@ class FakeSession implements HarnessSession {
       elicit?: boolean;
       subagents?: HarnessSession["subagents"];
       answers?: HarnessSession["answers"];
+      /** The banner facts the announce step sends (absent = no banner). */
+      banner?: SessionBanner | null;
     },
   ) {
     this.id = spec.id;
+  }
+
+  banner(): SessionBanner | undefined {
+    return this.spec.banner ?? undefined;
   }
 
   async prompt(text: string): Promise<StopReason> {
@@ -622,6 +629,63 @@ describe("method surface", () => {
       .filter((update) => update.sessionUpdate === "available_commands_update");
     expect(commands).toHaveLength(1);
     expect((commands[0].availableCommands as Array<Record<string, unknown>>)[0].name).toBe("compact");
+    await client.close();
+  });
+
+  test("the session banner follows the command table on new, load and resume", async () => {
+    const banner: SessionBanner = {
+      version: "1.5.0",
+      model: { provider: "dashscope", id: "qwen3.7-max", name: "qwen3.7-max" },
+      thinkingLevel: "high",
+      skills: [{ name: "nsh", description: "the repo's own", source: "user" }],
+      extensions: [{ name: "my-ext", path: "/x/my-ext.ts", source: "project" }],
+      warnings: [{ severity: "warning", source: "skill", message: "no SKILL.md frontmatter" }],
+    };
+    const newClient = startClient(fakePorts([new FakeSession({ id: "pi-b1", banner })]).ports);
+    await initialize(newClient);
+    await newClient.request("session/new", { cwd: "/tmp/proj" });
+    const intro = newClient
+      .drained()
+      .filter((message) => message.method === "session/update")
+      .map((message) => (message.params as Record<string, unknown>).update as Record<string, unknown>);
+    // Order: the command table first, the banner right after it.
+    expect(intro.map((update) => update.sessionUpdate)).toEqual(["available_commands_update", "_zu/session_banner"]);
+    expect(intro[1].banner).toEqual(banner);
+    await newClient.close();
+
+    const loadClient = startClient(fakePorts([new FakeSession({ id: "pi-b2", banner })]).ports);
+    await initialize(loadClient);
+    await loadClient.request("session/load", { sessionId: "pi-b2", cwd: "/tmp/proj" });
+    const loadIntro = loadClient
+      .drained()
+      .filter((message) => message.method === "session/update")
+      .map((message) => (message.params as Record<string, unknown>).update as Record<string, unknown>);
+    expect(loadIntro.at(-1)?.sessionUpdate).toBe("_zu/session_banner");
+    await loadClient.close();
+
+    const resumeClient = startClient(fakePorts([new FakeSession({ id: "pi-b3", banner })]).ports);
+    await initialize(resumeClient);
+    await resumeClient.request("session/resume", { sessionId: "pi-b3", cwd: "/tmp/proj" });
+    const resumeIntro = resumeClient
+      .drained()
+      .filter((message) => message.method === "session/update")
+      .map((message) => (message.params as Record<string, unknown>).update as Record<string, unknown>);
+    expect(resumeIntro.map((update) => update.sessionUpdate)).toEqual(["available_commands_update", "_zu/session_banner"]);
+    await resumeClient.close();
+  });
+
+  test("a session without banner facts sends no banner notification", async () => {
+    const session = new FakeSession({ id: "pi-b4", banner: null });
+    const client = startClient(fakePorts([session]).ports);
+    await initialize(client);
+    await client.request("session/new", { cwd: "/tmp/proj" });
+    const updates = client
+      .drained()
+      .filter((message) => message.method === "session/update")
+      .map((message) => (message.params as Record<string, unknown>).update as Record<string, unknown>);
+    expect(updates.map((update) => update.sessionUpdate)).toEqual(["available_commands_update"]);
+    // The same holds when the session has no banner method at all (the
+    // plain FakeSession above); a fake stays unaffected by the announce.
     await client.close();
   });
 

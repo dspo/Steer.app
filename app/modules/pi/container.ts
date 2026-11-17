@@ -14,7 +14,7 @@ import {
 } from "../../core/containers";
 import type { ContainerRecord } from "../../core/types";
 import { appendSheet, panelIds, replaceSheet, visiblePanels } from "../../core/dock";
-import { applySessionConfig, createSession, focusSession, openSession, refreshSessions, send, sessions, viewFor } from "./sessions";
+import { applySessionConfig, createSession, focusSession, openSession, refreshSessions, send, sessions, setSessionLoading, viewFor } from "./sessions";
 import { defaultLayoutForSessions, layoutSessions, sessionIdOfSheet, sessionSheetId } from "./sheets";
 
 /**
@@ -201,14 +201,51 @@ export function openAuxSheet(kind: "subagents"): void {
   openSheet(`${kind}:${containerId}`);
 }
 
+/** A reopened session's history must not pin the loading page forever: after
+ * this long the gate self-clears and the empty-session Hero returns (the
+ * manox history-loading gate's 10 s). */
+const HISTORY_TIMEOUT = 10_000;
+const loadingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function beginLoading(id: string): void {
+  setSessionLoading(id, true);
+  const previous = loadingTimers.get(id);
+  if (previous) clearTimeout(previous);
+  loadingTimers.set(
+    id,
+    setTimeout(() => {
+      loadingTimers.delete(id);
+      setSessionLoading(id, false);
+    }, HISTORY_TIMEOUT),
+  );
+}
+
+function endLoading(id: string): void {
+  const timer = loadingTimers.get(id);
+  if (timer) clearTimeout(timer);
+  loadingTimers.delete(id);
+  setSessionLoading(id, false);
+}
+
 /** Opens (or focuses) one session's transcript. */
 export async function hydrateSession(sessionId: string): Promise<void> {
   const view = viewFor(sessionId);
   focusSession(sessionId);
-  if (view?.loaded) return;
+  if (view?.loaded) {
+    endLoading(sessionId);
+    return;
+  }
+  // The restored sheet is visible but its file may not be in the sidebar's
+  // scan yet: draw the loading page now, and let the scan's retry open it.
+  // The 10 s gate turns a session that never resolves back into the Hero.
+  beginLoading(sessionId);
   const path = view?.path || sessions().find((row) => row.id === sessionId)?.path;
   if (!path) return;
-  await openSession(path);
+  try {
+    await openSession(path);
+  } finally {
+    endLoading(sessionId);
+  }
 }
 
 /** Hydrates every visible pi sheet of the active canvas. */

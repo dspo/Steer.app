@@ -211,6 +211,37 @@ JIT entitlement 在 harness 上）；pi pin + 扩展 + 适配器同包同版本�
 | MCP | `session/new` 的 `mcpServers` 参数 **distro 显式忽略** | **已被 Q109/G0–G4 取代**：distro 现在同时消费 `mcp.json` 与 ACP `mcpServers`；本行保留为 P1 历史 |
 | 斜杆命令（宿主本地） | 无协议 | `/new` `/resume` `/clear` 是纯 UI 动作，留在宿主本地表——三分法只剩 local 表 + 协议命令表两半 |
 
+### 5.2.1 转录事实增量（issue #20，`_meta` + `_zu/session_banner`）
+
+ACP 的 chunk 形状没有给客户端转录需要的锚点，这些事实走 ACP 预留的 `_meta` 与一条私有通知，schema 与协议版本不动：
+
+**`_meta.pi`** — 挂在每条转录 chunk 上：
+
+| 字段 | 何时 |
+|---|---|
+| `at` | 每个 chunk（message 时间戳；assistant 用 `message_start` 的 `Date.now()`） |
+| `model` | assistant chunk（`{provider,id,name?}`，读自 `session.model`） |
+| `entryId` | 每个 chunk；replay 与 live 相同（pi 的 session entry id） |
+| `settled` | settle marker：**空文本 `agent_message_chunk`**，其 `_meta.pi` 另带 `durationMs`（首 delta → entry 落盘）、`stopReason`（ACP 词表）、`error`（provider 错误，不再伪装成文本 chunk） |
+
+用户消息落盘（pi `entry_appended`）发 `user_entry_chunks`（同 `messageId` + `_meta.pi.at/entryId`）——客户端乐观行按 entryId 就地换键。
+
+**`_meta.zu`** — 挂在 `tool_call_update` 的**结束帧**（partial 不带）：
+
+| 字段 | 来源 |
+|---|---|
+| `durationMs` | `tool_execution_end.durationMs`（pi 单调时钟） |
+| `exitCode` | `result.structuredContent.exit_code`（bash；非数字不传） |
+| `truncated` / `totalLines` | `result.details.truncation.truncated/totalLines` |
+| `fullOutputPath` | `result.details.fullOutputPath` |
+| `details` | `result.details`（plain JSON，≤64 KiB；超限整丢弃，不截半截） |
+
+`details` 与统计同在一个 `_meta.zu`；`content` 仍是 ACP 的 text + `ToolCallContent.diff`（edit 参数在结束帧重放为 diff 块）。
+
+**`_zu/session_banner`** — `session/new|load|resume` 在 `available_commands_update` 之后发一条通知：`{ version, model?, thinkingLevel?, skills[], extensions[], warnings[] }`。数据来自 `getSkills()/getExtensions()/getPrompts()/getThemes()` 的资源与 diagnostics、`PI_VERSION`、`session.model/thinkingLevel`。`HarnessSession.banner?()` 可选——fake 会话没有 banner 事实就不发，客户端不画空 banner。
+
+**replay 同词**：`session/load` 的每条 chunk 同样带 `_meta.pi`（`at` 取 message 自己的 `timestamp`，缺省用 entry 的），每个 assistant 条目以 settle marker 收口，edit 的工具结果重放同样的 diff 块。**回放没有 `_meta.zu`**——pi 不持久化工具 `details`，客户端按缺省不画（登记过的已知缺口）。
+
 ### 5.3 私有面：`_session/steering`（生态惯例）+ `x-zu`（收缩后）
 
 私有方法承载 ACP 核心无对应的 pi 语义，按 `_meta` + 自定义方法约定，**全部可降级**。

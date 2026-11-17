@@ -109,13 +109,17 @@ function findReplayFile(sid: string): string | null {
 function replayFileRows(sid: string): void {
   const replayFile = findReplayFile(sid);
   if (!replayFile) return;
+  // Each file row is its own entry: the chunk carries the row's identity,
+  // like the real distro's `_meta.pi` (#20).
+  let n = 0;
   for (const row of readFileSync(replayFile, "utf8").split("\n")) {
+    n += 1;
     if (!row.includes(`"type":"message"`)) continue;
     const role = /"role":"[a-z]*"/.exec(row)?.[0]?.split(`"`)[3] ?? "";
     const text = /"text":"[^"]*"/.exec(row)?.[0]?.split(`"`)[3] ?? "";
     const chunk = role === "user" ? "user_message_chunk" : "agent_message_chunk";
     write(
-      `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sid}","update":{"sessionUpdate":"${chunk}","content":{"type":"text","text":"${text}"}}}}`,
+      `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sid}","update":{"sessionUpdate":"${chunk}","content":{"type":"text","text":"${text}"},"messageId":"${sid}-row-${n}","_meta":{"pi":{"entryId":"${sid}-row-${n}"}}}}}`,
     );
   }
 }
@@ -142,11 +146,17 @@ function handle(line: string): void {
     }
   } else if (line.includes(`"method":"session/load"`)) {
     if (on("STUB_LOAD_REPLAY")) {
+      // What the real distro does since the transcript facts (#20): the
+      // replay's chunks carry `_meta.pi` (entryId, at) and the assistant
+      // entry closes with a settle marker.
       write(
-        `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sid}","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"earlier question"}}}}`,
+        `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sid}","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"earlier question"},"messageId":"e1","_meta":{"pi":{"at":1760000000000,"entryId":"e1"}}}}}`,
       );
       write(
-        `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sid}","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"earlier answer"}}}}`,
+        `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sid}","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"earlier answer"},"messageId":"e2","_meta":{"pi":{"at":1760000000500,"entryId":"e2"}}}}}`,
+      );
+      write(
+        `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sid}","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":""},"messageId":"e2","_meta":{"pi":{"settled":true,"entryId":"e2","at":1760000000500,"stopReason":"end_turn"}}}}}`,
       );
     }
     if (on("STUB_FILE_REPLAY")) replayFileRows(sid);
@@ -195,10 +205,13 @@ function handle(line: string): void {
         `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sid}","update":{"sessionUpdate":"tool_call","toolCallId":"tc1","title":"read x","name":"read","kind":"read","status":"in_progress"}}}`,
       );
       write(
-        `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sid}","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hello from the stub"}}}}`,
+        `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sid}","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hello from the stub"},"messageId":"m1"}}}`,
       );
       write(
         `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sid}","update":{"sessionUpdate":"tool_call_update","toolCallId":"tc1","status":"completed"}}}`,
+      );
+      write(
+        `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sid}","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":""},"messageId":"e1","_meta":{"pi":{"settled":true,"entryId":"e1","at":1760000001000,"durationMs":200,"stopReason":"end_turn"}}}}}`,
       );
     }
     if (on("STUB_ASK")) {

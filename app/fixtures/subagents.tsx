@@ -2,13 +2,14 @@ import { mount, View } from "nsh";
 import { Workbench } from "../shell/shell";
 import { activeContainerId, containers, layout, setContainerTransport, sheetOrder, syncVisible } from "../core/containers";
 import { openSubagents, setSubagentTransport } from "../modules/pi/subagents";
+import { assistantEntry } from "../modules/pi/transcript";
 import { seedSession } from "../modules/pi/sessions";
 import { defaultLayoutForSheets } from "../core/dock";
 import { registerAllModules } from "../modules/register-all";
 
 registerAllModules();
 
-seedSession("s1", [{ role: "assistant", text: "captain body" }], {
+seedSession("s1", [assistantEntry("fx-assistant", "captain body")], {
   path: "/tmp/captain.jsonl",
   name: "Captain",
   loaded: true,

@@ -1,4 +1,5 @@
 import { mount } from "nsh";
+import { assistantEntry, userEntry } from "../modules/pi/transcript";
 import { seedSession } from "../modules/pi/sessions";
 import { SessionBody } from "../modules/pi/view";
 import { visiblePanels } from "../core/dock";
@@ -7,8 +8,8 @@ import { visiblePanels } from "../core/dock";
 seedSession(
   "idle",
   [
-    { role: "user", text: "trace the composer" },
-    { role: "assistant", text: "The footer carries the model and the context gauge." },
+    userEntry("fx-user", "trace the composer"),
+    assistantEntry("fx-assistant", "The footer carries the model and the context gauge."),
   ],
   {
     path: "/tmp/zu-idle.jsonl",

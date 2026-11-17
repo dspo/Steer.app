@@ -47,6 +47,7 @@
       ]
     },
     "notifications": true,
+    "clipboard": true,
     "statusBar": true,
     "openUrl": {
       "schemes": [

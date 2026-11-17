@@ -12,6 +12,6 @@ test("a registered tool with details renders its card, others stay compact", asy
   expect(app.count("id:tool-card")).toBe(1);
   // The unregistered tool keeps the compact line, unchanged.
   expect(app.count("id:tool-call")).toBe(1);
-  expect(app.texts()).toContain("read");
+  expect(app.texts().some((text) => text.includes("read"))).toBe(true);
   expect(app.texts()).toContain("the registry keyed the first row, the second stays compact");
 });

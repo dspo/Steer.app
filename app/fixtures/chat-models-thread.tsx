@@ -1,4 +1,5 @@
 import { mount } from "nsh";
+import { assistantEntry, userEntry } from "../modules/pi/transcript";
 import { seedSession } from "../modules/pi/sessions";
 import { SessionBody } from "../modules/pi/view";
 import { visiblePanels } from "../core/dock";
@@ -10,8 +11,8 @@ installModelTransport();
 seedSession(
   "models-thread",
   [
-    { role: "user", text: "which model is this?" },
-    { role: "assistant", text: "The footer names it; the picker changes it." },
+    userEntry("fx-user", "which model is this?"),
+    assistantEntry("fx-assistant", "The footer names it; the picker changes it."),
   ],
   { ...MODEL_SEED, path: "/tmp/zu-models-thread.jsonl", name: "Models thread" },
 );

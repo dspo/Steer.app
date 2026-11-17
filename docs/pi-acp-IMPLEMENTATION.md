@@ -458,6 +458,19 @@ app/modules/pi/
   权限等待时长。写在状态/日志，不上报；不触发驱逐或回收。
 - **日志**：stderr 尾部随错误；扩展 no-op 降级必须有一条可见 notice。
 
+## 10.5 转录事实与已知缺口（issue #20，T1）
+
+数据补齐（[PROTOCOL §5.2.1](pi-acp-PROTOCOL.md)）已落地：`_meta.pi`（at/model/entryId/settled/durationMs/stopReason/error）、`entry_appended` 的 user_entry_chunks、settle marker、`_meta.zu`（durationMs/exitCode/truncation）、`_zu/session_banner`、replay 同词（时间戳/模型/stopReason/error + 每条 assistant 的 settle + edit diff 重放）。客户端 `app/modules/pi/transcript.ts` 是纯 reducer，live 与 replay 同路径；`SessionView.transcript` 取代 `messages`，更新按 16ms 批量 reduce；乐观用户行 `pending:<seq>` 按 entryId 就地换键。
+
+目视修正（2026-11-16）：同一消息的 thought delta 在 draft 上累加（曾只留最后一个 delta）；`TranscriptState.activeId` 让被工具卡 flush 的回复在 settle marker（pi entry id）到达时换 key 并 settle，不再新增空行；页脚 `waitingForWords` 在非 streaming 时不再画 caret；复制/打开动作改为 icon-only（`copy`/`file` 线图标 + tooltip），文字只留在无障碍名里。
+
+**已知缺口（登记，不阻塞）：**
+
+- **回放没有工具统计**：pi 不持久化工具 `details`，`_meta.zu` 只在 live 的结束帧存在；重开的转录里工具卡无 duration/exit/截断入口，UI 缺省不画。
+- **回放 settle 无 durationMs**：replay 的 settle marker 不造 duration（pi 文件里没有该事实），折叠行只写 `思考` 不带时长。
+- **`getPrompts()/getThemes()` 的 diagnostics 进 banner**（标 source），若真机噪声大再收窄到 skill/extension。
+- **头less 宿主对虚拟化 List 里的小按压目标命中不稳定**：复制闪光与展开的 press 断言只覆盖大命中区（折叠头/卡头）；小图标按钮（复制/打开）的交互需真机确认（[evidence/transcript-tui.md](evidence/transcript-tui.md)）。
+
 ## 11. 测试与验收
 
 ### 11.1 分层测试

@@ -3,6 +3,7 @@ import { seedSession } from "../modules/pi/sessions";
 import { SessionBody } from "../modules/pi/view";
 import { visiblePanels } from "../core/dock";
 import { registerToolCard } from "../modules/pi/tool-cards";
+import { assistantEntry, toolEntry, userEntry } from "../modules/pi/transcript";
 
 // One fixture card: reads the details it was handed and nothing more.
 // `plan_preview` stands in for the future ask/plan/visualize cards, which
@@ -20,14 +21,14 @@ registerToolCard("plan_preview", (props) => {
 seedSession(
   "cards",
   [
-    { role: "user", text: "plan the channel" },
-    {
-      role: "tool",
-      text: "plan_preview",
-      tool: { name: "plan_preview", state: "done", details: { title: "channel" } },
-    },
-    { role: "tool", text: "read done", tool: { name: "read", state: "done" } },
-    { role: "assistant", text: "the registry keyed the first row, the second stays compact" },
+    userEntry("u1", "plan the channel"),
+    toolEntry("t1", "plan_preview", "completed", {
+      name: "plan_preview",
+      toolKind: "other",
+      meta: { details: { title: "channel" } },
+    }),
+    toolEntry("t2", "read done", "completed", { name: "read", toolKind: "read" }),
+    assistantEntry("a1", "the registry keyed the first row, the second stays compact"),
   ],
   { path: "/tmp/zu-cards.jsonl", cwd: "/tmp/zu" },
 );

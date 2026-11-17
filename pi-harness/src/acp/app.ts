@@ -73,6 +73,8 @@ export interface HarnessSession {
   configOptions(): SessionConfigOption[];
   /** Commands the session can execute from a prompt (`/name args`). */
   availableCommands(): AvailableCommand[];
+  /** The transcript's first-line facts, when the session has any. */
+  banner?(): SessionBanner | undefined;
   /** Applies one config value; returns the fresh option list. */
   setConfigOption(configId: string, value: string): Promise<SessionConfigOption[]>;
   /** The approval-policy modes. */
@@ -109,6 +111,28 @@ export interface HarnessPorts {
   loadSession(sessionId: string, cwd: string, context?: HarnessSessionContext): Promise<HarnessSession>;
   /** Reattach without replay; defaults to `loadSession` when absent. */
   resumeSession?(sessionId: string, cwd: string, context?: HarnessSessionContext): Promise<HarnessSession>;
+}
+
+/** One resource warning in the session banner (a load diagnostic). */
+export interface SessionBannerWarning {
+  severity: "warning" | "error";
+  source: "skill" | "extension" | "prompt" | "theme";
+  message: string;
+}
+
+/**
+ * The `_zu/session_banner` payload (issue #20 §5.3): what the transcript's
+ * first line needs — the pinned pi version, the session's model and thinking
+ * level, and the loaded resources. Sent after `available_commands_update` on
+ * `session/new|load|resume`; a session without one simply sends nothing.
+ */
+export interface SessionBanner {
+  version: string;
+  model?: { provider: string; id: string; name?: string };
+  thinkingLevel?: string;
+  skills: Array<{ name: string; description?: string; source: string }>;
+  extensions: Array<{ name: string; path: string; source: string }>;
+  warnings: SessionBannerWarning[];
 }
 
 /** One stderr line; stdout is protocol-only. */
@@ -332,6 +356,13 @@ export function createAcpApp(ports: HarnessPorts, log: HarnessLog = () => {}): A
       sessionUpdate: "available_commands_update",
       availableCommands: session.availableCommands(),
     });
+    // The banner follows the command table on new/load/resume; a session
+    // without one (a fake, a bare runtime) sends nothing rather than an
+    // empty banner (issue #20 §5.3).
+    if (!session.banner) return;
+    const banner = session.banner();
+    if (!banner) return;
+    await notifyUpdate(session.id, { sessionUpdate: "_zu/session_banner", banner } as unknown as SessionUpdate);
   }
 
   async function notifyUpdate(sessionId: string, update: SessionUpdate): Promise<void> {

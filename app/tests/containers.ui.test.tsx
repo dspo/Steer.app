@@ -14,8 +14,8 @@ test("containers switch their layouts and throttle hidden sessions", async () =>
   const app = await open("../fixtures/containers.tsx", { width: 1200, height: 800 });
   await app.waitFor("text:alpha body");
   // §2.3-16: the shell's chrome stays in the system face; only the sheet
-  // content ("alpha body") reads Lilex (DESIGN §3.4).
-  await shot(app, "ui-s23-16-lilex-shell");
+  // content ("alpha body") reads Geist (DESIGN §3.4).
+  await shot(app, "ui-s23-16-geist-shell");
   // The first container holds Alpha (shown) and Gamma (hidden).
   expect(app.texts()).toContain("Alpha");
   expect(app.texts()).toContain("Gamma");

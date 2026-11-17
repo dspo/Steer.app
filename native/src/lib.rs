@@ -26,10 +26,11 @@ mod pimodels;
 mod pty;
 mod state;
 
-/// Lilex, the sheet content's face (§2.3-16, DESIGN §3.4): the crate ships
-/// both weights (`registry.assets(assets!())`), and the engine registers
-/// them before the first render under the family the files' name tables
-/// carry — TS names it as `fonts.ts`'s `SHEET_FONT`.
+/// Geist / Geist Mono, the sheet content's faces (DESIGN §3.4, issue #20
+/// §4.7): the crate ships four sans weights and three mono weights
+/// (`registry.assets(assets!())`), and the engine registers them before the
+/// first render under the families the files' name tables carry — TS names
+/// them as `fonts.ts`'s `SHEET_FONT` and `SHEET_MONO`.
 pub use acp::{Acp, AcpExit, AcpOptions};
 pub use fs::{Fs, FsEntry, FsExpected, FsFile, FsStat, FsWriteResult};
 pub use git::{Git, GitBranch, GitBranches, GitChange, GitCommit, GitDiff, GitStatus};
@@ -79,17 +80,33 @@ mod font_tests {
 
     use super::asset;
 
-    // §2.3-16 (DESIGN §3.4): both weights under ONE family, so the layout
-    // picks the nearest weight — body's 400 reads Light (300), bold's 600+
-    // reads Medium (500). Two different names would break that mapping, and
-    // `fonts.ts` names the family by this literal.
-    const LILEX_LIGHT: FontAsset = asset!("fonts/Lilex-Light.ttf");
-    const LILEX_MEDIUM: FontAsset = asset!("fonts/Lilex-Medium.ttf");
+    // §3.4 (DESIGN, issue #20 §4.7): the sans weights under ONE family and
+    // the mono weights under one more, so the layout picks the nearest
+    // weight within the right face — body copy reads Geist, the code faces
+    // (editor, terminal, Diff, tool I/O, inline code) read Geist Mono.
+    // Different names would break that mapping, and `fonts.ts` names the
+    // families by these literals.
+    const GEIST_LIGHT: FontAsset = asset!("fonts/Geist-Light.ttf");
+    const GEIST_REGULAR: FontAsset = asset!("fonts/Geist-Regular.ttf");
+    const GEIST_MEDIUM: FontAsset = asset!("fonts/Geist-Medium.ttf");
+    const GEIST_SEMIBOLD: FontAsset = asset!("fonts/Geist-SemiBold.ttf");
+    const GEIST_MONO_LIGHT: FontAsset = asset!("fonts/GeistMono-Light.ttf");
+    const GEIST_MONO_REGULAR: FontAsset = asset!("fonts/GeistMono-Regular.ttf");
+    const GEIST_MONO_MEDIUM: FontAsset = asset!("fonts/GeistMono-Medium.ttf");
 
     #[test]
-    fn lilex_ships_under_one_family() {
-        assert_eq!(LILEX_LIGHT.family, "Lilex");
-        assert_eq!(LILEX_MEDIUM.family, LILEX_LIGHT.family);
+    fn geist_ships_under_one_family() {
+        assert_eq!(GEIST_LIGHT.family, "Geist");
+        assert_eq!(GEIST_REGULAR.family, "Geist");
+        assert_eq!(GEIST_MEDIUM.family, GEIST_REGULAR.family);
+        assert_eq!(GEIST_SEMIBOLD.family, GEIST_REGULAR.family);
+    }
+
+    #[test]
+    fn geist_mono_ships_under_one_family() {
+        assert_eq!(GEIST_MONO_LIGHT.family, "Geist Mono");
+        assert_eq!(GEIST_MONO_REGULAR.family, "Geist Mono");
+        assert_eq!(GEIST_MONO_MEDIUM.family, GEIST_MONO_REGULAR.family);
     }
 }
 

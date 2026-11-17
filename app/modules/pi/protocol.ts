@@ -83,6 +83,28 @@ export interface SessionContextUsage {
 /** pi's selectable thinking levels; `off` means the model does not think. */
 export type SessionThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
+/** One resource warning in the session banner (a load diagnostic). */
+export interface SessionBannerWarning {
+  severity: "warning" | "error";
+  source: "skill" | "extension" | "prompt" | "theme";
+  message: string;
+}
+
+/**
+ * The `_zu/session_banner` payload (issue #20 §4.2): the transcript's first
+ * line — the pinned pi version, the session's model and thinking level, and
+ * the loaded resources. Absent when the distro had nothing to say; the UI
+ * draws no banner rather than a fake empty one.
+ */
+export interface SessionBanner {
+  version: string;
+  model?: { provider: string; id: string; name?: string };
+  thinkingLevel?: string;
+  skills: Array<{ name: string; description?: string; source: string }>;
+  extensions: Array<{ name: string; path: string; source: string }>;
+  warnings: SessionBannerWarning[];
+}
+
 export interface SessionInfoData {
   name?: string;
   thinkingLevel?: SessionThinkingLevel;

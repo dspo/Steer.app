@@ -6,13 +6,14 @@ import { openModelMenuRequest } from "../modules/pi/slash";
 import { membership, projects } from "../core/projects";
 import { runSlash, setSlashActions, slashCandidates } from "../modules/pi/slash";
 import { seedSession, sessions, setModelTransport, setSessionTransport, viewFor } from "../modules/pi/sessions";
+import { assistantEntry } from "../modules/pi/transcript";
 
 // §2.2-11a: one test per mapping. The table in `slash.ts` decides local /
 // prompt / unsupported; the engine legs (`session.setThinking`,
 // `session.compact`) are wired commands, checked through the transport.
 
 function seedActive(): string {
-  seedSession("s1", [{ role: "assistant", text: "body" }], {
+  seedSession("s1", [assistantEntry("fx-assistant", "body")], {
     path: "/tmp/slash.jsonl",
     name: "Slash",
     loaded: true,
@@ -73,9 +74,9 @@ test("/compact starts a manual compaction", () => {
 
 test("/clear empties the local view and keeps the session's file", () => {
   const id = seedActive();
-  expect(viewFor(id)?.messages.length).toBeGreaterThan(0);
+  expect(viewFor(id)?.transcript.entries.length).toBeGreaterThan(0);
   runSlash(id, "/clear");
-  expect(viewFor(id)?.messages.length).toBe(0);
+  expect(viewFor(id)?.transcript.entries.length).toBe(0);
   // The file path stays: the next open rehydrates the history.
   expect(viewFor(id)?.path).toBe("/tmp/slash.jsonl");
 });

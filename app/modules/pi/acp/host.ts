@@ -1,5 +1,6 @@
 import { HarnessConnection, type AcpUpdate } from "./acp";
 import { askProjectTrust } from "../../../ui/trust";
+import type { SessionBanner } from "../protocol";
 
 /**
  * The persistent ACP session runtime (docs/pi-acp-IMPLEMENTATION.md A0):
@@ -114,6 +115,8 @@ export class AcpSession {
   usage: PiUsage | null = null;
   /** The session's title as the distro reports it. */
   title: string | null = null;
+  /** The `_zu/session_banner` facts, when the distro announced any. */
+  banner: SessionBanner | null = null;
   dead = false;
 
   private handlers: SessionHandlers | null = null;
@@ -213,6 +216,8 @@ export class AcpSession {
       this.usage = { used: Number(update.used ?? 0), size: Number(update.size ?? 0) };
     } else if (update.sessionUpdate === "session_info_update" && typeof update.title === "string") {
       this.title = update.title;
+    } else if (update.sessionUpdate === "_zu/session_banner" && update.banner) {
+      this.banner = update.banner as SessionBanner;
     }
     this.handlers?.onUpdate(update);
   }

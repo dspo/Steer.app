@@ -1,4 +1,5 @@
 import { mount } from "nsh";
+import { assistantEntry, userEntry } from "../modules/pi/transcript";
 import { seedSession } from "../modules/pi/sessions";
 import { SessionBody } from "../modules/pi/view";
 import { visiblePanels } from "../core/dock";
@@ -9,11 +10,8 @@ import { visiblePanels } from "../core/dock";
 seedSession(
   "stream",
   [
-    { role: "user", text: "trace the composer" },
-    {
-      role: "assistant",
-      text: "## Composer\n\nThe footer carries `model` and context. It stays one line.",
-    },
+    userEntry("fx-user", "trace the composer"),
+    assistantEntry("fx-assistant", "## Composer\n\nThe footer carries `model` and context. It stays one line."),
   ],
   {
     path: "/tmp/zu-stream.jsonl",

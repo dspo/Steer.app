@@ -15,10 +15,19 @@ import {
   type PiConfigOption,
   type PiUsage,
 } from "./acp/host";
-import { transcriptFromReplay, updateToStoreEvents } from "./acp/fold";
+import {
+  emptyTranscript,
+  reduceTranscript,
+  reduceUpdates,
+  transcriptRows,
+  userEntry,
+  type Entry,
+  type TranscriptState,
+} from "./transcript";
 import { notifySettled } from "../../core/notifications";
 import { sessionSheetId } from "./sheets";
 import type {
+  SessionBanner,
   SessionContextUsage,
   SessionData,
   SessionInfoData,
@@ -30,12 +39,12 @@ import type {
 /**
  * The session store, keyed by pi session id. M3 can show several sessions at
  * once (a container is a group of panels), so a transcript is per session,
- * not one global conversation: every event is folded into its session's
- * view, whatever sheet is displayed.
+ * not one global conversation: every update is folded into its session's
+ * transcript, whatever sheet is displayed.
  *
  * The transcript's authority is still pi's session file. A view is a
  * projection that a reconnect or a rehydration rebuilds from the engine;
- * `messages`/`streaming`/`interrupted` remain as accessors over the active
+ * `entries`/`streaming`/`interrupted` remain as accessors over the active
  * session for callers that only care about the one in front.
  */
 
@@ -50,17 +59,6 @@ export type SessionMeta = {
   preview: string;
 };
 
-type Role = "user" | "assistant" | "tool" | "note";
-type ToolState = "running" | "done" | "failed";
-export type Msg = {
-  role: Role;
-  text: string;
-  at?: number;
-  /** `details` is the live tool result's structured payload (end only);
-   * a replayed row never has one. */
-  tool?: { id?: string; name: string; state: ToolState; details?: unknown };
-};
-
 /** One session's projected state. */
 type SessionView = {
   id: string;
@@ -68,16 +66,22 @@ type SessionView = {
   cwd: string;
   name: string;
   containerId?: string;
-  messages: Msg[];
+  /** The conversation as ACP entries (transcript.ts); the list's rows. */
+  transcript: TranscriptState;
   streaming: boolean;
   interrupted: boolean;
   loaded: boolean;
+  /** The restored sheet's history is in flight: draw the loading page, not
+   * the empty-session Hero (issue #20 follow-up). */
+  loading: boolean;
   /** The model the session runs, from `session.info`. */
   model?: SessionModelInfo;
   /** pi's thinking level; `off` means the model does not think. */
   thinkingLevel?: SessionThinkingLevel;
   /** pi's live context gauge, from `session.info`. */
   contextUsage?: SessionContextUsage;
+  /** The `_zu/session_banner` facts, when the distro announced any. */
+  banner?: SessionBanner;
   /** The pi session id the view's turns ride, when it differs from the key
    * the view was opened under (an ACP mint after an engine-created view). */
   piId?: string;
@@ -103,8 +107,8 @@ export const sessions = signal<SessionMeta[]>([]);
 /** The last store-level error. */
 export const error = signal<string | null>(null);
 
-/** The active session's transcript, for callers that do not pass an id. */
-export const messages = computed<Msg[]>(() => views()[activeId() ?? ""]?.messages ?? []);
+/** The active session's transcript rows, for callers that do not pass an id. */
+export const entries = computed<Entry[]>(() => transcriptRows(views()[activeId() ?? ""]?.transcript));
 export const streaming = computed<boolean>(() => views()[activeId() ?? ""]?.streaming ?? false);
 export const interrupted = computed<boolean>(() => views()[activeId() ?? ""]?.interrupted ?? false);
 export const activeCwd = computed<string>(() => views()[activeId() ?? ""]?.cwd ?? "");
@@ -119,10 +123,11 @@ function blankView(id: string, patch: Partial<SessionView> = {}): SessionView {
     path: "",
     cwd: "",
     name: "",
-    messages: [],
+    transcript: emptyTranscript(),
     streaming: false,
     interrupted: false,
     loaded: false,
+    loading: false,
     configOptions: [],
     commands: [],
     mode: "ask",
@@ -134,16 +139,32 @@ function blankView(id: string, patch: Partial<SessionView> = {}): SessionView {
   };
 }
 
-/** Replaces a view field by field; the record is immutable so bindings see it. */
-function project(data: any): Msg[] {
-  return ((data?.messages ?? []) as Msg[]).filter(
+/**
+ * The legacy `SessionData` shape (the test transport's session rows) → the
+ * transcript entries it stands for. Only user and assistant prose ever
+ * crossed that wire; ids are minted in file order.
+ */
+function project(data: any): TranscriptState {
+  const rows = ((data?.messages ?? []) as Array<{ role?: string; text?: string }>).filter(
     (message) => message.text && (message.role === "user" || message.role === "assistant"),
   );
+  const entries: Entry[] = rows.map((row, index) =>
+    row.role === "user" ? userEntry(`seed:${index}`, String(row.text)) : { kind: "assistant", id: `seed:${index}`, text: String(row.text) },
+  );
+  return { entries, draft: null, seq: 0 };
 }
 
 function patchView(id: string, patch: Partial<SessionView>): void {
   const current = views()[id] ?? blankView(id);
   views.set({ ...views(), [id]: { ...current, ...patch } });
+}
+
+/** The restored sheet's loading face: true while its history is in flight,
+ * false once the replay lands (or the loading gate gives up). Setting false
+ * never creates a view for an id that is already gone. */
+export function setSessionLoading(id: string, loading: boolean): void {
+  if (!views()[id] && !loading) return;
+  patchView(id, { loading });
 }
 
 // --- the ACP transport (pi-acp-IMPLEMENTATION.md) -------------------------
@@ -326,6 +347,7 @@ function syncProtocolState(key: string): void {
     ...(model ? { model } : {}),
     ...(thought ? { thinkingLevel: thought.currentValue as SessionThinkingLevel } : {}),
     ...(usage ? { contextUsage: usage } : {}),
+    ...(session.banner ? { banner: session.banner } : {}),
     ...(session.title ? { name: session.title } : {}),
     sessionState: session.dead
       ? "dead"
@@ -341,7 +363,7 @@ function syncProtocolState(key: string): void {
 function attachSession(key: string, session: AcpSession): void {
   session.setHandlers({
     onUpdate: (update) => {
-      foldAcpUpdate(key, update);
+      queueAcpUpdate(key, update);
       syncProtocolState(key);
       if (update.sessionUpdate === "config_option_update") void loadSessionModels(key, true);
     },
@@ -478,12 +500,46 @@ function viewKeyFor(id: string | null | undefined): string | null {
   return id ?? null;
 }
 
-/** Translates one ACP update into the store's fold. */
-function foldAcpUpdate(key: string, update: AcpUpdate): void {
-  for (const event of updateToStoreEvents(update)) {
-    foldStoreEvent(key, event.type, event.data);
+/**
+ * Queues one ACP update for its session's transcript. The banner is not
+ * transcript: it lands on the view directly (it arrives once per bind).
+ */
+function queueAcpUpdate(key: string, update: AcpUpdate): void {
+  if (update.sessionUpdate === "_zu/session_banner") {
+    patchView(key, { banner: update.banner as SessionBanner | undefined });
+    return;
   }
+  const pending = pendingUpdates.get(key) ?? [];
+  pending.push(update);
+  pendingUpdates.set(key, pending);
+  queueFlush();
 }
+
+// Updates collect per session and reach the signal once per 16ms frame, as
+// the gallery's chat does: a chunk-by-chunk set would re-render per token.
+const pendingUpdates = new Map<string, AcpUpdate[]>();
+let frameQueued = false;
+const flushUpdates = () => {
+  frameQueued = false;
+  if (pendingUpdates.size === 0) return;
+  const batchEntries = [...pendingUpdates];
+  pendingUpdates.clear();
+  const next = { ...views() };
+  for (const [id, updates] of batchEntries) {
+    const current = next[id] ?? blankView(id);
+    let transcript = current.transcript;
+    for (const update of updates) transcript = reduceTranscript(transcript, update);
+    next[id] = { ...current, transcript };
+  }
+  views.set(next);
+};
+const queueFlush = () => {
+  if (frameQueued) return;
+  frameQueued = true;
+  // A timer, not requestAnimationFrame: the headless test runner has no
+  // frame loop, so deltas would collect until the turn ended.
+  setTimeout(flushUpdates, 16);
+};
 
 /**
  * Ensures the view has a live ACP session, resuming its process if it died.
@@ -533,8 +589,7 @@ async function runAcpTurn(key: string, text: string): Promise<void> {
   const session = await ensureAcpSession(key, { seed: false });
   if (!session) return;
   acpTurns.set(key, { cancel: () => session.cancel() });
-  foldStoreEvent(key, "agent.state", { state: "running" });
-  patchView(key, { sessionState: "streaming" });
+  patchView(key, { sessionState: "streaming", streaming: true, interrupted: false });
   // The skipped seeded asks retire before the turn's prompt fires, and — on
   // a reopen — the re-seed runs after the retire: seeding earlier would
   // re-present the questions the user just answered by typing.
@@ -543,8 +598,8 @@ async function runAcpTurn(key: string, text: string): Promise<void> {
   await retire;
   try {
     await session.prompt(text);
-    patchView(key, { sessionState: "ready" });
-    foldStoreEvent(key, "agent.state", { state: "idle" });
+    flushUpdates();
+    patchView(key, { sessionState: "ready", streaming: false });
     void notifySettled({
       sheetId: sessionSheetId(key),
       title: sessionTitle(key),
@@ -557,7 +612,6 @@ async function runAcpTurn(key: string, text: string): Promise<void> {
       streaming: false,
       error: String(failure instanceof Error ? failure.message : failure),
     });
-    foldStoreEvent(key, "agent.state", { state: "idle" });
   } finally {
     acpTurns.delete(key);
   }
@@ -565,11 +619,11 @@ async function runAcpTurn(key: string, text: string): Promise<void> {
 
 /** The last assistant sentence, as a short notification body. */
 function settledPreview(sessionId: string): string {
-  const list = views()[sessionId]?.messages ?? [];
+  const list = transcriptRows(views()[sessionId]?.transcript);
   for (let index = list.length - 1; index >= 0; index -= 1) {
-    const message = list[index];
-    if (message.role !== "assistant" || !message.text) continue;
-    const line = message.text.replace(/\s+/g, " ").trim();
+    const entry = list[index];
+    if (entry.kind !== "assistant" || !entry.text) continue;
+    const line = entry.text.replace(/\s+/g, " ").trim();
     if (line) return line.length > 140 ? `${line.slice(0, 137)}…` : line;
   }
   return "";
@@ -863,164 +917,11 @@ export function sessionTitle(id: string): string {
 }
 
 /** Seeds a view for fixtures (no engine): the same projection a real open builds. */
-export function seedSession(id: string, list: Msg[], patch: Partial<SessionView> = {}): void {
+export function seedSession(id: string, list: Entry[], patch: Partial<SessionView> = {}): void {
   batch(() => {
-    patchView(id, { ...patch, messages: list, loaded: true });
+    patchView(id, { ...patch, transcript: { entries: list, draft: null, seq: 0 }, loaded: true });
     activeId.set(id);
   });
-}
-
-// Deltas collect per session and reach the signal once per frame, as the
-// gallery's chat does: a token-by-token set would re-render per chunk.
-const pendingDeltas = new Map<string, string>();
-let frameQueued = false;
-const flushDeltas = () => {
-  frameQueued = false;
-  if (pendingDeltas.size === 0) return;
-  const batchEntries = [...pendingDeltas];
-  pendingDeltas.clear();
-  let next = views();
-  for (const [id, delta] of batchEntries) {
-    const current = next[id] ?? blankView(id);
-    const list = current.messages;
-    const last = list[list.length - 1];
-    const messages =
-      last?.role === "assistant"
-        ? [...list.slice(0, -1), { ...last, text: last.text + delta }]
-        : [...list, { role: "assistant" as const, text: delta }];
-    next = { ...next, [id]: { ...current, messages } };
-  }
-  views.set(next);
-};
-const queueFlush = () => {
-  if (frameQueued) return;
-  frameQueued = true;
-  // A timer, not requestAnimationFrame: the headless test runner has no
-  // frame loop, so deltas would collect until the turn ended.
-  setTimeout(flushDeltas, 16);
-};
-
-/** Marks a session's last turn as cut off and stops its streaming indicator. */
-function markInterrupted(id: string): void {
-  flushDeltas();
-  const view = views()[id];
-  if (!view) return;
-  patchView(id, { streaming: false, interrupted: true });
-}
-
-/**
- * Folds one store-shaped event into its session's view. The engine events
- * and the ACP updates (translated in `harness/pi-acp/fold.ts`) arrive here
- * in the same shapes, so the store keeps one fold whatever the transport.
- * `id` is resolved through the ACP alias map first: a view whose pi session
- * id was minted (or re-minted) mid-life is keyed by the id it was opened
- * under, so dock sheets stay stable across the rename.
- *
- * Exported as the store's one fold verb: the transport above it translates
- * updates into store events (`updateToStoreEvents`), and tests drive this
- * seam directly instead of spawning a harness.
- */
-export function foldStoreEvent(rawId: string | undefined, type: string, data: unknown): void {
-  const id = viewKeyFor(rawId);
-  switch (type) {
-    case "message.delta": {
-      if (!id) return;
-      pendingDeltas.set(id, (pendingDeltas.get(id) ?? "") + String((data as any)?.delta ?? ""));
-      queueFlush();
-      break;
-    }
-    case "message.complete": {
-      if (!id) return;
-      flushDeltas();
-      const message = (data ?? {}) as any;
-      // The stream already showed the assistant's text, and the user's own
-      // message was added locally; only an assistant reply with no streamed
-      // text lands here whole.
-      if (message.role === "assistant" && message.text) {
-        const current = views()[id] ?? blankView(id);
-        const last = current.messages[current.messages.length - 1];
-        if (last?.role !== "assistant") {
-          patchView(id, {
-            messages: [...current.messages, { role: "assistant", text: String(message.text) }],
-          });
-        }
-      }
-      break;
-    }
-    case "agent.state": {
-      if (!id) return;
-      const running = (data as any)?.state === "running";
-      if (!running) flushDeltas();
-      patchView(id, { streaming: running, ...(running ? { interrupted: false } : {}) });
-      break;
-    }
-    case "tool.start":
-    case "tool.end": {
-      if (!id) return;
-      const payload = (data ?? {}) as any;
-      const callId = payload.toolCallId ? String(payload.toolCallId) : undefined;
-      const current = views()[id] ?? blankView(id);
-      const list = current.messages;
-      const index = callId
-        ? list.map((message) => message.tool?.id).lastIndexOf(callId)
-        : list.map((message) => message.role).lastIndexOf("tool");
-      // A tool_call_update carries no name: the card it settles keeps its own.
-      const label = String(payload.toolName ?? (index >= 0 ? list[index]?.tool?.name : undefined) ?? "tool");
-      if (type === "tool.start") {
-        patchView(id, {
-          messages: [...list, { role: "tool", text: label, tool: { id: callId, name: label, state: "running" } }],
-        });
-      } else {
-        const state: ToolState = payload.isError ? "failed" : "done";
-        const row = {
-          role: "tool" as const,
-          text: label,
-          tool: {
-            id: callId,
-            name: label,
-            state,
-            // The live end carries the tool's structured details; the start
-            // row above never does, and neither does a replay.
-            ...(payload.details !== undefined ? { details: payload.details as unknown } : {}),
-          },
-        };
-        const messages =
-          index >= 0
-            ? [...list.slice(0, index), row, ...list.slice(index + 1)]
-            : [...list, row];
-        patchView(id, { messages });
-      }
-      break;
-    }
-    case "session.info": {
-      if (!id) return;
-      const info = (data ?? {}) as SessionInfoData;
-      applySessionInfo(id, info);
-      if (info.name) {
-        sessions.set(
-          sessions().map((row) => (row.id === id ? { ...row, name: String(info.name) } : row)),
-        );
-      }
-      break;
-    }
-    case "subagent.note": {
-      if (!id) return;
-      const payload = (data ?? {}) as any;
-      const current = views()[id] ?? blankView(id);
-      patchView(id, {
-        messages: [...current.messages, { role: "note", text: String(payload.text ?? "") }],
-      });
-      break;
-    }
-    case "error": {
-      const message = String((data as any)?.message ?? "engine error");
-      if (id) patchView(id, { streaming: false, error: message });
-      else error.set(message);
-      break;
-    }
-    default:
-      break;
-  }
 }
 
 /**
@@ -1076,7 +977,7 @@ export function adoptSession(data: SessionData): SessionView {
     cwd: String(data?.cwd ?? ""),
     name: String(data?.name ?? ""),
     containerId: data?.containerId ? String(data.containerId) : undefined,
-    messages: project(data),
+    transcript: project(data),
     loaded: true,
   });
   patchView(id, view);
@@ -1122,7 +1023,7 @@ export function openSession(path: string): Promise<SessionView | undefined> {
           path,
           cwd: meta.cwd,
           name: meta?.name ?? "",
-          messages: transcriptFromReplay(replay),
+          transcript: reduceUpdates(replay),
           loaded: true,
           sessionState: "ready",
         });
@@ -1184,13 +1085,18 @@ export async function createSession(cwd: string): Promise<string> {
 /**
  * Adds the user's own row before the engine answers. The transcript is the
  * user's view of the turn until the reply lands; a failed request keeps the
- * row (the text is not silently lost) and shows the error quietly.
+ * row (the text is not silently lost) and shows the error quietly. The row
+ * is minted `pending:` and re-keys onto the entry id the harness's
+ * `entry_appended` chunk carries (transcript.ts).
  */
+let optimisticSeq = 0;
 function optimisticUser(id: string, text: string): void {
   const view = viewFor(id);
   if (!view) return;
+  optimisticSeq += 1;
+  const state = view.transcript ?? emptyTranscript();
   patchView(id, {
-    messages: [...view.messages, { role: "user", text }],
+    transcript: { ...state, entries: [...state.entries, userEntry(`pending:${optimisticSeq}`, text)] },
     streaming: true,
     interrupted: false,
     error: undefined,
@@ -1376,5 +1282,5 @@ export async function compactSession(id: string, instructions?: string): Promise
  * the history stays on disk and rehydrates on the next open.
  */
 export function clearSessionView(id: string): void {
-  patchView(id, { messages: [] });
+  patchView(id, { transcript: emptyTranscript() });
 }

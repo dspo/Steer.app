@@ -1,162 +1,28 @@
-import { effect, List, type ListRef, reduceMotion, signal, Text, token, View } from "nsh";
-import { TextView } from "nsh/base";
-import { SHEET_FONT } from "../../ui/fonts";
+import { effect, List, type ListRef, signal, Text, token, View } from "nsh";
+import { SHEET_FONT, SHEET_MONO } from "../../ui/fonts";
 import { K, t } from "../../ui/i18n";
 import { viewFor } from "./sessions";
+import { transcriptRows, type Entry } from "./transcript";
+import { EntryRow, Caret } from "./entry-row";
+import { MessageRow } from "./subagent-row";
 import { ChatComposer } from "./composer";
 import { ApprovalCard, ElicitationDialog } from "./approvals";
-import { toolCardFor, type ToolCardProps } from "./tool-cards";
 import { Glyph } from "../../ui/ui";
+import { SessionBanner } from "./session-banner";
+import { HistoryLoading } from "./history-loading";
 
 /**
- * The conversation column, clean-room after the NSH gallery's chat: an
- * assistant reply is selectable Markdown on the 15/22 body scale, a user
- * message is a quiet bubble on the right, a tool step is a compact line and
- * a dispatch note stays faint. The composer's footer carries the only
- * boundary to the transcript: one hairline.
+ * The conversation column, in the transcript language (issue #20): an agent
+ * transcript at TUI density — the session banner as the list's header, the
+ * user's words as an integral banner with a vivid left rule, tool calls as
+ * shaded text blocks, replies as Markdown — with the composer's footer as
+ * the only boundary.
  *
  * An empty session is Steer's hero: the heading and the same inline
  * composer, vertically centered, with no card and no project/access/voice
- * rows.
+ * rows. The Hero draws no banner (no pi session exists yet, so no banner
+ * facts either — a settled decision, issue #20 §4.2).
  */
-
-/** A streaming reply's caret, inline at the end of the last block. */
-function Caret() {
-  const still = reduceMotion();
-  return (
-    <View
-      testID="streaming-caret"
-      style={{
-        width: 7,
-        height: 16,
-        marginLeft: 2,
-        borderRadius: 2,
-        backgroundColor: token("brand"),
-        ...(still
-          ? {}
-          : {
-              animationName: "pulse",
-              animationDuration: 900,
-              animationIterationCount: "infinite",
-            }),
-      }}
-    />
-  );
-}
-
-/** The least a transcript row needs: a session `Msg` or a subagent's plain one. */
-type ChatMessage = {
-  role: string;
-  text: string;
-  tool?: { name: string; state: string; details?: unknown };
-};
-
-/** The tool row's compact line, unchanged: name, state glyph, faint label. */
-function CompactToolRow(props: { message: () => ChatMessage }) {
-  const message = () => props.message();
-  const tool = () => message().tool;
-  const state = () => tool()?.state ?? "done";
-  const stateLabel = () =>
-    state() === "running" ? t(K.tool.running) : state() === "failed" ? t(K.tool.failed) : t(K.tool.done);
-  return (
-    <View
-      testID="tool-call"
-      class="flex-row items-center gap-2 self-start rounded-md border border-line bg-inset px-2 py-1"
-    >
-      {state() === "running" ? (
-        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: token("info") }} />
-      ) : (
-        <Glyph
-          name={state() === "failed" ? "alert" : "check"}
-          size={10}
-          tint={state() === "failed" ? token("destructive") : token("up")}
-        />
-      )}
-      <Text class="text-[11px] font-medium text-foreground">{tool()?.name ?? message().text}</Text>
-      <Text class="text-[10px] text-faint">{stateLabel()}</Text>
-    </View>
-  );
-}
-
-/** One transcript row (also used by the subagent transcript). */
-export function MessageRow(props: { message: () => ChatMessage; streaming: () => boolean }) {
-  const message = () => props.message();
-  const role = () => message().role;
-  if (role() === "tool") {
-    const tool = () => message().tool;
-    const state = () => (tool()?.state ?? "done") as ToolCardProps["state"];
-    // A card renders when a renderer is registered for the tool and the
-    // result carried details; a replay (no details) or an unregistered tool
-    // keeps the compact line, byte for byte today's.
-    const card = () => (tool()?.details !== undefined ? toolCardFor(tool()?.name ?? "") : undefined);
-    return (
-      <If when={card()} else={<CompactToolRow message={message} />}>
-        {(renderer) => {
-          const Card = renderer();
-          return (
-            <View testID="tool-card">
-              <Card name={tool()?.name ?? message().text} details={tool()?.details} state={state()} />
-            </View>
-          );
-        }}
-      </If>
-    );
-  }
-  if (role() === "note") {
-    return (
-      <View testID="session-note" class="flex-row items-center gap-1.5 self-start px-0.5">
-        <Glyph name="branch" size={10} tint={token("faint")} />
-        <Text class="text-[11px] text-faint">{message().text}</Text>
-      </View>
-    );
-  }
-  if (role() === "user") {
-    return (
-      <View testID="user-message" class="items-end">
-        <View
-          style={{
-            maxWidth: "82%",
-            paddingHorizontal: 14,
-            paddingVertical: 10,
-            borderRadius: 20,
-            borderBottomRightRadius: 6,
-            borderCurve: "continuous",
-            backgroundColor: token("raised"),
-            borderWidth: 1,
-            borderColor: token("border"),
-          }}
-        >
-          <Text
-            style={{ userSelect: "text", fontFamily: SHEET_FONT, fontSize: 15, lineHeight: 21, color: token("foreground") }}
-          >
-            {message().text}
-          </Text>
-        </View>
-      </View>
-    );
-  }
-  return (
-    <View testID="assistant-markdown" style={{ paddingHorizontal: 2 }}>
-      <TextView
-        markdown={message().text}
-        options={{ streaming: props.streaming() }}
-        selectable
-        codeBlockScrollbar={false}
-        streamingCaret={props.streaming() ? <Caret /> : undefined}
-        styles={{
-          // A chat's scale: 15 / 22, tighter headings than a document's.
-          root: { gap: 12, fontSize: 15, lineHeight: 22, fontFamily: SHEET_FONT, color: token("foreground") },
-          heading1: { fontSize: 20, lineHeight: 26 },
-          heading2: { fontSize: 17, lineHeight: 22 },
-          heading3: { fontSize: 15, lineHeight: 22 },
-          code: { color: token("code") },
-          codeBlockCode: { color: token("code") },
-          link: { color: token("brand") },
-        }}
-      />
-    </View>
-  );
-}
 
 /**
  * A quiet line for a state the transcript outlives: an interrupted turn or
@@ -168,7 +34,7 @@ function QuietLine(props: { testID: string; glyph: "stop" | "alert"; text: strin
       <View style={{ paddingTop: 2 }}>
         <Glyph name={props.glyph} size={10} tint={token("faint")} />
       </View>
-      <Text class="text-[11px] leading-[16px] text-faint" style={{ flex: 1 }}>
+      <Text class="text-[11px] leading-[16px] text-faint" style={{ flex: 1, fontFamily: SHEET_FONT }}>
         {props.text}
       </Text>
     </View>
@@ -178,22 +44,33 @@ function QuietLine(props: { testID: string; glyph: "stop" | "alert"; text: strin
 /** The conversation, with the composer as its footer. */
 export function Conversation(props: { id: string }) {
   const view = () => viewFor(props.id);
-  const messages = () => view()?.messages ?? [];
+  const entries = () => transcriptRows(view()?.transcript);
   const streaming = () => view()?.streaming ?? false;
-  const last = () => messages()[messages().length - 1];
-  const waitingForWords = () =>
-    streaming() && (!last() || last()?.role !== "assistant" || !last()?.text);
+  const last = () => entries()[entries().length - 1];
+  const waitingForWords = () => {
+    const tail = last();
+    // A settled transcript writes nothing: no caret once the turn is over.
+    if (!streaming()) return false;
+    if (!tail) return true;
+    // A tool card is not a reply yet; the next words still wait.
+    if (tail.kind !== "assistant") return true;
+    return !tail.text && !tail.thoughts;
+  };
   let list: ListRef | undefined;
-  /** Whether the view is at the bottom, so new content follows it. */
+  /** Whether the view is at the bottom, so new content follows it. Scrolling
+   * up — wheel or drag — flips this immediately; scrolling back to the end
+   * resumes the follow. */
   const following = signal(true);
-  let dragging = false;
 
   // A virtualized list: only the rows near the viewport exist, so a long
   // transcript costs its visible height, not its whole history. The list
   // follows the stream while the user stays at the bottom.
   effect(() => {
-    const count = messages().length;
-    const tail = last()?.text?.length ?? 0;
+    const count = entries().length;
+    const tail = (() => {
+      const entry = last();
+      return entry?.kind === "assistant" ? entry.text.length : 0;
+    })();
     if (following() && (count > 0 || tail > 0)) {
       queueMicrotask(() => list?.scrollToEnd({ animated: true }));
     }
@@ -224,24 +101,24 @@ export function Conversation(props: { id: string }) {
       <List
         testID="session-transcript"
         ref={(node) => (list = node)}
-        each={messages()}
-        keyExtractor={(_message, index) => String(index)}
-        estimatedItemSize={120}
+        each={entries()}
+        keyExtractor={(entry: Entry) => entry.id}
+        estimatedItemSize={72}
         style={{ flex: 1 }}
-        contentStyle={{ paddingHorizontal: 24, paddingVertical: 20, gap: 16 }}
+        contentStyle={{ paddingHorizontal: 24, paddingVertical: 20, gap: 10 }}
+        header={<SessionBanner sessionId={props.id} banner={() => view()?.banner} />}
         footer={footer}
-        onScrollDragStart={() => (dragging = true)}
         onScroll={(event) => {
-          if (!dragging) return;
+          // Any scroll — wheel, trackpad or drag — updates the follow flag.
+          // The old `dragging` gate ignored the wheel, so a streaming turn
+          // kept pulling the view to the end while the user tried to read up.
           following.set(event.offset.y + event.size.height >= event.contentSize.height - 40);
         }}
-        onMomentumEnd={() => (dragging = false)}
-        onScrollEnd={() => (dragging = false)}
       >
-        {(message, index) => (
-          <MessageRow
-            message={message}
-            streaming={() => streaming() && index() === messages().length - 1 && message().role === "assistant"}
+        {(entry, index) => (
+          <EntryRow
+            entry={entry}
+            streaming={() => streaming() && index() === entries().length - 1 && entry().kind === "assistant"}
           />
         )}
       </List>
@@ -263,7 +140,7 @@ function Hero(props: { id: string }) {
       style={{ paddingHorizontal: 24, paddingBottom: 16 }}
     >
       <View style={{ width: "100%", maxWidth: 720, gap: 20 }}>
-        <Text class="text-[16px] font-black text-foreground" style={{ textAlign: "center" }}>
+        <Text class="text-[16px] font-black text-foreground" style={{ textAlign: "center", fontFamily: SHEET_FONT }}>
           {t(K.hero.title)}
         </Text>
         <ApprovalCard sessionId={props.id} />
@@ -276,13 +153,24 @@ function Hero(props: { id: string }) {
 /** One session's surface: hero while empty, transcript and footer after. */
 export function ChatView(props: { id: string }) {
   const view = () => viewFor(props.id);
-  const empty = () => (view()?.messages.length ?? 0) === 0;
+  const empty = () => transcriptRows(view()?.transcript).length === 0;
+  // A sheet whose session view does not exist yet is a restored session on
+  // its way through hydration, not a brand-new empty one (a new session
+  // patches its loaded view before its sheet opens). The "pending" sheet is
+  // the one exception: it has no session id to load.
+  const loading = () => {
+    const current = view();
+    return current ? current.loading : props.id !== "pending";
+  };
   return (
     <View class="flex-1 bg-background" style={{ minHeight: 0 }}>
-      <If when={empty()}>
+      <If when={loading()}>
+        <HistoryLoading id={props.id} />
+      </If>
+      <If when={!loading() && empty()}>
         <Hero id={props.id} />
       </If>
-      <If when={!empty()}>
+      <If when={!loading() && !empty()}>
         <Conversation id={props.id} />
       </If>
       <ElicitationDialog sessionId={props.id} />

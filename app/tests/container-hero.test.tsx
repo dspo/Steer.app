@@ -3,7 +3,8 @@ import { Fs, State } from "zu/native";
 import { containers, loadContainers } from "../core/containers";
 import { createContainer, openPath, sessionIdsOfContainer } from "../modules/pi/container";
 import { setAcpCommandOverride } from "../modules/pi/acp/acp";
-import { error as sessionStoreError, messages, refreshSessions, viewFor } from "../modules/pi/sessions";
+import { error as sessionStoreError, entries, refreshSessions, viewFor } from "../modules/pi/sessions";
+import { entryText } from "../modules/pi/transcript";
 import { resetStateCache } from "../domains/state";
 import { copy, shellCopyLocale } from "../ui/copy";
 import { K, t } from "../ui/i18n";
@@ -58,7 +59,7 @@ test("switching to a container with a conversation shows its transcript, not the
   // process loads and exits, the view holds the file's rows.
   const reopened = viewFor(SESSION_ID);
   expect(reopened?.loaded).toBe(true);
-  expect(messages().some((message) => message.text === "hello A")).toBe(true);
+  expect(entries().some((entry) => entry.kind === "user" && entryText(entry) === "hello A")).toBe(true);
   expect(sessionStoreError()).toBe(null);
   // B exists before the app mounts: the app folds the registry file once.
   const b = await createEmptyContainer("/tmp/zu-hero-b");

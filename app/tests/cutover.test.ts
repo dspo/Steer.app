@@ -3,7 +3,8 @@ import { Fs, State } from "zu/native";
 import { bootShell } from "../shell/shell";
 import { containers, activeContainerId } from "../core/containers";
 import { createContainer } from "../modules/pi/container";
-import { createSession, refreshSessions, send, stop, sessions, openSession, messages, activeId, turnActive, viewFor } from "../modules/pi/sessions";
+import { createSession, refreshSessions, send, stop, sessions, openSession, entries, activeId, turnActive, viewFor } from "../modules/pi/sessions";
+import { entryText } from "../modules/pi/transcript";
 import { setAcpCommandOverride } from "../modules/pi/acp/acp";
 import { stubCommand } from "../fixtures/stub-command";
 import { resetStateCache } from "../domains/state";
@@ -67,10 +68,10 @@ test("a conversation runs over a stdio harness subprocess and settles", async ()
     await send("hello over stdio", key);
     // The stub settles quickly; wait for its rows rather than a transient
     // busy flag.
-    await until("the assistant row", () => messages().some((row) => row.role === "assistant"));
-    const rows = messages();
-    expect(rows.some((row) => row.role === "user" && row.text === "hello over stdio")).toBe(true);
-    expect(rows.some((row) => row.role === "assistant")).toBe(true);
+    await until("the assistant row", () => entries().some((row) => row.kind === "assistant"));
+    const rows = entries();
+    expect(rows.some((row) => row.kind === "user" && entryText(row) === "hello over stdio")).toBe(true);
+    expect(rows.some((row) => row.kind === "assistant")).toBe(true);
   } finally {
     setAcpCommandOverride(null);
   }
@@ -87,7 +88,7 @@ test("stopping a held turn settles it cancelled", async () => {
     await stop(key);
     await until("the turn to settle", () => !turnActive(key));
     // The cancelled turn kept the user's row; nothing is lost.
-    expect(messages().some((row) => row.role === "user" && row.text === "count slowly")).toBe(true);
+    expect(entries().some((row) => row.kind === "user" && entryText(row) === "count slowly")).toBe(true);
   } finally {
     setAcpCommandOverride(null);
   }
@@ -112,9 +113,9 @@ test("a closed session reopens from its file through the harness", async () => {
 
     const view = await openSession(path);
     expect(view?.loaded).toBe(true);
-    const rows = messages();
-    expect(rows.some((row) => row.role === "user" && row.text === "earlier question")).toBe(true);
-    expect(rows.some((row) => row.role === "assistant" && row.text === "earlier answer")).toBe(true);
+    const rows = entries();
+    expect(rows.some((row) => row.kind === "user" && entryText(row) === "earlier question")).toBe(true);
+    expect(rows.some((row) => row.kind === "assistant" && entryText(row) === "earlier answer")).toBe(true);
     // And the boot's no-engine property still holds after all of it.
   } finally {
     setAcpCommandOverride(null);

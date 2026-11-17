@@ -2,6 +2,7 @@ import { mount } from "nsh";
 import { Workbench } from "../shell/shell";
 import { containerError, loadContainers, setContainerTransport, sheetOrder } from "../core/containers";
 import { error as sessionError } from "../modules/pi/sessions";
+import { assistantEntry } from "../modules/pi/transcript";
 import { seedSession } from "../modules/pi/sessions";
 import { registerAllModules } from "../modules/register-all";
 
@@ -14,17 +15,17 @@ registerAllModules();
  * layouts, sheet throttling and archive in the real DockArea.
  */
 
-seedSession("s1", [{ role: "assistant", text: "alpha body" }], {
+seedSession("s1", [assistantEntry("fx-assistant", "alpha body")], {
   path: "/tmp/alpha.jsonl",
   name: "Alpha",
   loaded: true,
 });
-seedSession("s2", [{ role: "assistant", text: "beta body" }], {
+seedSession("s2", [assistantEntry("fx-assistant", "beta body")], {
   path: "/tmp/beta.jsonl",
   name: "Beta",
   loaded: true,
 });
-seedSession("s3", [{ role: "assistant", text: "gamma body" }], {
+seedSession("s3", [assistantEntry("fx-assistant", "gamma body")], {
   path: "/tmp/gamma.jsonl",
   name: "Gamma",
   loaded: true,

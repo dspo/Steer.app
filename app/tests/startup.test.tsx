@@ -5,7 +5,8 @@ import { activeContainerId, containers, loadContainers } from "../core/container
 import { openPath, sessionIdsOfContainer } from "../modules/pi/container";
 import { setAcpCommandOverride } from "../modules/pi/acp/acp";
 import { createProject, projects } from "../core/projects";
-import { messages, refreshSessions } from "../modules/pi/sessions";
+import { entries, refreshSessions } from "../modules/pi/sessions";
+import { entryText } from "../modules/pi/transcript";
 import { stubCommand, stubPath } from "../fixtures/stub-command";
 import { resetStateCache } from "../domains/state";
 
@@ -85,7 +86,7 @@ test("startup shows the registry's active container and hydrates its conversatio
   // The canvas is this container's sheet, not a page and not the Hero.
   expect(app.shows("id:hero-input")).toBe(false);
   expect(activeContainerId() !== null || containers().length === 1).toBe(true);
-  expect(messages().some((message) => message.text === "startup marker alpha")).toBe(true);
+  expect(entries().some((entry) => entry.kind === "user" && entryText(entry) === "startup marker alpha")).toBe(true);
 }, 240000);
 
 // The Hero's tools spawn real CLIs (`pi`, `claude`, `codex`, `copilot`) in a

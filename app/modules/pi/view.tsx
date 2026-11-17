@@ -5,7 +5,8 @@ import { sessionIdOfSheet } from "./sheets";
 import { closeAllSessions } from "./acp/host";
 import { activeContainerId } from "../../core/containers";
 import { visiblePanels } from "../../core/dock";
-import { ChatView, MessageRow } from "./chat-view";
+import { ChatView } from "./chat-view";
+import { MessageRow } from "./subagent-row";
 import { K, t } from "../../ui/i18n";
 import { Chip, Dot, Glyph } from "../../ui/ui";
 import type { SheetModule } from "../../../contracts/module";
@@ -144,7 +145,7 @@ export function SessionBody(props: { id: string; sheetId: string }) {
         <View class="flex-1 items-center justify-center gap-2 bg-background">
           <Glyph name="chat" size={20} tint={token("faint")} />
           <Text class="text-[12px] font-medium text-muted-foreground">{sessionTitle(props.id)}</Text>
-          <Text class="text-[11px] text-faint">{t(K.session.hidden, { count: view()?.messages.length ?? 0 })}</Text>
+          <Text class="text-[11px] text-faint">{t(K.session.hidden, { count: view()?.transcript.entries.length ?? 0 })}</Text>
         </View>
       </If>
       <If when={visible()}>
@@ -176,7 +177,12 @@ function releaseClosedSessions(ids: string[]): void {
 export const piModule: SheetModule = {
   id: "pi",
   capabilities: ["acp", "state", "pimodels"],
-  initialize: () => void refreshSessions(),
+  initialize: () => {
+    // The restored layout asks for its visible sessions before the sidebar's
+    // file scan has the path/cwd they need; hydrate again once it lands, or
+    // the sheet keeps its title and draws an empty Hero.
+    void refreshSessions().then(() => hydrateVisible());
+  },
   onSheetActivated: (id) => {
     const sessionId = sessionIdOfSheet(id);
     if (sessionId) void hydrateSession(sessionId);

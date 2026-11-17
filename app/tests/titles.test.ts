@@ -4,6 +4,7 @@ import { appendSheet, removeSheet } from "../core/dock";
 import { defaultLayoutForSessions, sessionSheetId } from "../modules/pi/sheets";
 import { applyBrowserNavigation, browserSheetId, ensureBrowserPage } from "../modules/browser/store";
 import { seedSession } from "../modules/pi/sessions";
+import { assistantEntry } from "../modules/pi/transcript";
 import { terminalInfo, terminalSheetId } from "../domains/pty";
 import { editorSheetId } from "../modules/files/editors";
 import { sheetTitle } from "../canvas/sheets";
@@ -37,8 +38,8 @@ function seedOrder(ids: string[]): void {
 }
 
 test("closing the first sheet promotes the second's title", () => {
-  seedSession("s1", [{ role: "assistant", text: "alpha body" }], { path: "/tmp/alpha.jsonl", name: "Alpha", loaded: true });
-  seedSession("s2", [{ role: "assistant", text: "beta body" }], { path: "/tmp/beta.jsonl", name: "Beta", loaded: true });
+  seedSession("s1", [assistantEntry("fx-a", "alpha body")], { path: "/tmp/alpha.jsonl", name: "Alpha", loaded: true });
+  seedSession("s2", [assistantEntry("fx-b", "beta body")], { path: "/tmp/beta.jsonl", name: "Beta", loaded: true });
   seedOrder([sessionSheetId("s1"), sessionSheetId("s2")]);
   expect(containerTitle(container)).toBe("Alpha");
 

@@ -20,16 +20,19 @@
 | 页签切换器 | 外壳页签取画廊的 section switcher 语言：`switcherTrack/Pill/TabFrame`、轨道内 `+`、`shadow-inset` token；DESIGN §3.2 | `app/ui/ui.tsx`、`app/shell/shell.tsx`、`app/theme.json` |
 | Pi 官方配置 parity | `createAgentSessionServices` 统一装配；CLI builtin（codemode/tool-search/mcp）以 `builtin:true` 复刻；项目信任用 ACP elicitation；`mcp.json` + ACP `mcpServers` 双通道；子代理共享 services/model/trust；漂移测试守 builtin 名单 |
 | Pi × ACP 会话运行时 | A0–F0 落地：一会话一持久 `pi-acp`、config/mode/resume/close、usage/commands/info/compaction、permission/elicitation、扩展 UI、子代理 `_zu/subagents/*`、sheet/容器/退出生命周期；协议/宿主测试补齐 |
+| T1 会话转录（issue #20，Q110） | 线协议增量（`_meta.pi`/`_meta.zu`/`_zu/session_banner`/replay 同词）、客户端 transcript 纯 reducer（16ms 批量、entryId 换键、删 fold）、转录 TUI（banner/横幅/思考/工具卡/复制/打开）、Geist + Geist Mono（Lilex 废止）；已知缺口见 IMPLEMENTATION §10.5 |
 
-门禁：`nsh check app` ✓、`check-layers` ✓、`nsh test app` 221 用例 207 通过 / 14 skip、
-`pi-harness bun test` 56 ✓、`bun run smoke` ✓、`bun script/tasks.ts bundle` ✓。
+门禁：`nsh check app` ✓、`check-layers` ✓、`nsh test app`（T1 分支上 243 用例，见
+[evidence/transcript-tui.md](evidence/transcript-tui.md) 的逐项记录）、
+`pi-harness bun test` 76 ✓、`bun run smoke` ✓、`bun script/tasks.ts bundle` ✓。
 
 真机 live 验收已完成（2026-11-13，`pi-harness/scripts/acp-live-acceptance.ts`，记录见
 [evidence/pi-acp-live-2026-11-13.md](evidence/pi-acp-live-2026-11-13.md)）。剩余只有发布前的打包真机启动。
 
-下一批是**打包产物真机启动**，不再有结构性迁移。
+下一批是**打包产物真机启动**与 T1 的真机像素项（浅色/深色截图、中文斜体、
+复制闪光——见 [evidence/transcript-tui.md](evidence/transcript-tui.md) 的「真机待确认」）。
 
-当前交付分支：`feat/pi-official-config-parity`（独立 worktree），合并请求指向 `origin/main`。
+当前交付分支：`feat/transcript-tui`（独立 worktree），合并请求指向 `origin/main`。
 
 ## 1. sheet 模块化（已完成）
 

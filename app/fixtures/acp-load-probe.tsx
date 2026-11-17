@@ -22,7 +22,7 @@ async function run(): Promise<string> {
     }
     if (!picked) return "no session with an existing cwd";
     const view = await openSession(picked.path);
-    return `rows=${rows.length} id=${picked.id} view=${JSON.stringify(view?.messages.map((m) => m.role) ?? null)} err=${view?.error ?? "none"} storeErr=${sessionError()}`;
+    return `rows=${rows.length} id=${picked.id} view=${JSON.stringify(view?.transcript.entries.map((e) => e.kind) ?? null)} err=${view?.error ?? "none"} storeErr=${sessionError()}`;
   } catch (error) {
     return `thrown: ${String(error)} storeErr=${sessionError()}`;
   }

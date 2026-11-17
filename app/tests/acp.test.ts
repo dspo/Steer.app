@@ -10,7 +10,6 @@ import {
   openNewSession,
   type AcpSession,
 } from "../modules/pi/acp/host";
-import { transcriptFromReplay, updateToStoreEvents } from "../modules/pi/acp/fold";
 import { acpEnabled } from "../modules/pi/sessions";
 import { stubCommand } from "../fixtures/stub-command";
 
@@ -296,36 +295,6 @@ test("a request after the transport died fails instead of hanging", async () => 
   channel.failAll("the harness exited mid-turn");
   await expect(pending).rejects.toThrow("exited mid-turn");
   await expect(channel.request("initialize", {}, 5000)).rejects.toThrow("closed");
-});
-
-test("the fold translates ACP updates into store events", () => {
-  const delta = updateToStoreEvents({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "hi" } });
-  expect(delta).toEqual([{ type: "message.delta", data: { delta: "hi" } }]);
-  const start = updateToStoreEvents({
-    sessionUpdate: "tool_call",
-    toolCallId: "t1",
-    name: "read",
-    title: "read x",
-    status: "in_progress",
-  });
-  expect(start).toEqual([{ type: "tool.start", data: { toolName: "read", toolCallId: "t1" } }]);
-  const end = updateToStoreEvents({ sessionUpdate: "tool_call_update", toolCallId: "t1", status: "failed" });
-  expect(end).toEqual([{ type: "tool.end", data: { toolName: undefined, toolCallId: "t1", isError: true } }]);
-  expect(updateToStoreEvents({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "hmm" } })).toEqual([]);
-  expect(updateToStoreEvents({ sessionUpdate: "current_mode_update" })).toEqual([]);
-});
-
-test("the replay fold groups chunked messages and settles tool cards", () => {
-  const rows = transcriptFromReplay([
-    { sessionUpdate: "user_message_chunk", content: { type: "text", text: "q" } },
-    { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "a" }, messageId: "m1" },
-    { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "b" }, messageId: "m1" },
-    { sessionUpdate: "tool_call", toolCallId: "t9", name: "bash", title: "bash ls" },
-    { sessionUpdate: "tool_call_update", toolCallId: "t9", status: "completed" },
-  ]);
-  expect(rows.map((row) => row.role)).toEqual(["user", "assistant", "tool"]);
-  expect(rows[1].text).toBe("ab");
-  expect(rows[2].tool?.state).toBe("done");
 });
 
 test("the store-level ACP branch is the only transport", () => {

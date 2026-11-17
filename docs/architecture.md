@@ -309,7 +309,7 @@ terminal 模块的一个 intent。
 | 编辑器 / Diff | nsh `Editor` / `DiffView` + 自研 LSP 客户端 | 组件齐备 |
 | Git | shell out `git` | 零依赖、行为与 pi 工具一致 |
 | 语言 | 跟随系统 `locale()`；类型化键表 | 无 UI 入口 |
-| 字体 | Lilex 仅 sheet 内容（crate `assets!()`） | 轮廓保持系统字体 |
+| 字体 | Geist（正文）+ Geist Mono（代码面）仅 sheet 内容（crate `assets!()`）；Lilex 已废止（Q110） | 轮廓保持系统字体 |
 | nsh | git pin `506b5392`（0.4.0）+ `Cargo.lock` | 发布版无 `nsh/base Terminal` |
 
 ## 7. 状态与已知问题（2026-11-13）

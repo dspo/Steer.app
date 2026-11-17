@@ -35,7 +35,8 @@ export type GlyphName =
   | "more"
   | "search"
   | "sort"
-  | "code";
+  | "code"
+  | "copy";
 
 type Draw = (c: CanvasRenderingContext2D) => void;
 
@@ -327,6 +328,11 @@ const glyphs: Record<GlyphName, Draw> = {
     line(c, [12, 3, 12, 6.5, 15.5, 6.5]);
   },
   check: (c) => line(c, [5, 10.5, 8.5, 14, 15, 6.5]),
+  // Two sheets: the front one whole, the back one's free edges behind it.
+  copy: (c) => {
+    rect(c, 7.5, 7.5, 9, 9, 1.8);
+    line(c, [12.5, 4.5, 4.5, 4.5, 4.5, 12.5]);
+  },
   "caret-right": (c) => line(c, [8, 6, 12.5, 10, 8, 14]),
   "caret-down": (c) => line(c, [6, 8, 10, 12.5, 14, 8]),
   "chevron-left": (c) => line(c, [12.5, 6, 8, 10, 12.5, 14]),

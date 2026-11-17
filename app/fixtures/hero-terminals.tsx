@@ -8,6 +8,7 @@ import {
   setContainerTransport,
 } from "../core/containers";
 import { error as sessionError, seedSession } from "../modules/pi/sessions";
+import { assistantEntry } from "../modules/pi/transcript";
 import { terminalInfo } from "../domains/pty";
 import { sheetOrder } from "../core/containers";
 import { registerAllModules } from "../modules/register-all";
@@ -22,7 +23,7 @@ registerAllModules();
  * the test sees sheet ids and live PTYs, not just what a tab drew.
  */
 
-seedSession("s1", [{ role: "assistant", text: "captain body" }], {
+seedSession("s1", [assistantEntry("fx-assistant", "captain body")], {
   path: "/tmp/zu-hero-terminals.jsonl",
   name: "Captain",
   loaded: true,

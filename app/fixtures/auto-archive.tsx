@@ -9,6 +9,7 @@ import {
 } from "../core/containers";
 import { panelIds } from "../core/dock";
 import { error as sessionError, seedSession } from "../modules/pi/sessions";
+import { assistantEntry } from "../modules/pi/transcript";
 import { registerAllModules } from "../modules/register-all";
 
 registerAllModules();
@@ -19,7 +20,7 @@ registerAllModules();
  * store, so the test sees the archive call, the rows and the exit wrapper.
  */
 
-seedSession("s1", [{ role: "assistant", text: "only body" }], {
+seedSession("s1", [assistantEntry("fx-assistant", "only body")], {
   path: "/tmp/zu-auto-archive.jsonl",
   name: "Only",
   loaded: true,

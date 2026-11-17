@@ -4,6 +4,7 @@ import { activeContainerId, containers, layout, setContainerTransport, sheetOrde
 import { browserPages } from "../modules/browser/store";
 import { panelIds } from "../core/dock";
 import { containerProject, membership, projects, setProjectTransport } from "../core/projects";
+import { assistantEntry } from "../modules/pi/transcript";
 import { seedSession } from "../modules/pi/sessions";
 import { setAcpCommandOverride } from "../modules/pi/acp/acp";
 import { stubCommandAt } from "./stub-command";
@@ -19,12 +20,12 @@ const pickedFolders = ["/tmp/zu-project-one", "/tmp/zu-project-two", "/tmp/zu-pr
 let picked = 0;
 setFolderPicker(async () => pickedFolders[picked++] ?? null);
 
-seedSession("s1", [{ role: "assistant", text: "alpha body" }], {
+seedSession("s1", [assistantEntry("fx-assistant", "alpha body")], {
   path: "/tmp/p-alpha.jsonl",
   name: "Alpha",
   loaded: true,
 });
-seedSession("s2", [{ role: "assistant", text: "beta body" }], {
+seedSession("s2", [assistantEntry("fx-assistant", "beta body")], {
   path: "/tmp/p-beta.jsonl",
   name: "Beta",
   loaded: true,

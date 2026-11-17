@@ -165,13 +165,17 @@ zoom/compact 的投影。
 
 | 范围 | 字体 |
 |---|---|
-| sheet 内容（会话正文、编辑器、终端、Diff） | **Lilex**：`Lilex-Light.ttf`(300) + `Lilex-Medium.ttf`(500)，注册为同一 family；正文 400 就近取 300，加粗 600+ 就近取 500 |
+| 正文（会话、Hero、note、banner 文案） | **Geist** 300/400/500/600（`Geist-Light/Regular/Medium/SemiBold.ttf`）；转录正文用 300（Light），标签/标题用 400–600 |
+| 代码面（编辑器、终端、Diff、工具 I/O、inline code） | **Geist Mono** 300/400/500（`GeistMono-Light/Regular/Medium.ttf`）；转录工具块用 300 |
 | 轮廓（顶栏、侧栏、页签、按钮、对话框） | 系统字体（不变） |
 
-文件放 crate 的 `assets/fonts/`，经 `src/lib.rs` 的 `registry.assets(assets!())`
-壳带：引擎在首帧前按文件 name table 的 family（`Lilex`）注册，dev server 按
-登记伺服、打包时拷进包；TS 只有 `fonts.ts` 的 `SHEET_FONT` 常量，四类 sheet
-内容以它为 `fontFamily`。不走 TSX 的字体 import（fixture 的打包根在
+Lilex 已废止（issue #20 §4.7）。TTF 来自 Google Fonts CSS API 的静态实例
+（桌面 UA），crate 的 `font_tests` 守两个 family 的字面与全部 weight；TS
+侧是 `fonts.ts` 的 `SHEET_FONT`（Geist）与 `SHEET_MONO`（Geist Mono）。
+Geist 无 CJK——中文回退系统字体，验收看行高不跳变；行高只调
+`lineHeight`，不换字体。文件放 crate 的 `assets/fonts/`，经
+`src/lib.rs` 的 `registry.assets(assets!())` 壳带在首帧前按 name table
+的 typographic family 注册；不走 TSX 的字体 import（fixture 的打包根在
 `fixtures/` 下，绝对路径 URI 会在 `--target macos` 的宿主 404）。
 
 ### 3.5 工具行图标
@@ -239,6 +243,94 @@ Pi 会话的完整交互状态（审批卡、elicitation、命令候选、恢复
 ### 3.8 归档动效
 
 容器无 sheet 时：侧栏行高度 32→0、`opacity` 1→0（180ms ease-out），同组其余行用 `LayoutAnimation` 上移；随后画布切换到相邻容器（或 scratch）。
+
+## 3.9 会话转录（issue #20，T1 的表面语言）
+
+对话是 **agent 转录**，不是聊天：TUI 的信息架构与密度，保留 GUI 的材料与控件。
+
+- **骨架**：全左对齐、mono 工具行、无头像/无时间戳；正文仍是 sans + Markdown。
+  转录左右 24、块间 10、工具块内部 6；没有消息卡片/阴影/入场动画。用户行不
+  使用 Pi TUI 的 `❯` 前缀（见下）。
+- **跟随**：转录只在用户位于底部时跟随流式内容；滚轮/拖拽上滑立即解除跟随，
+  回到底部恢复（不再被流式更新强制拉到底）。
+- **加载页**：恢复的会话在 replay 飞行时，列中画 pixel meerkat（
+  `manox-app/crates/ai-elements/src/meerkat.rs` 的 12×14 Canvas 移植，6-slot
+  循环、3 slots/s）+ `正在加载对话…` + 会话标题；不画 Hero/composer。找不到
+  会话文件时 10s 自清回 Hero；`reduceMotion()` 冻结 idle 帧。精灵的棕色是
+  **数据色**，放在 `theme.json` 的 `meerkat-*`（TSX 不写 raw hex），浅色/深色
+  各一套。testID `session-loading`。
+- **session banner**：转录 `List` 的 header，随滚动离开；**不进 Hero**（空会话时
+  pi 会话还没创建，banner 数据不存在，Hero 只把字体换成 Geist）。第一行
+  `pi <version> · model · thinking <level>`（model/thinking 优先读 live
+  `session.info`），第二行 `N 个技能 · N 个扩展`，warnings 常显（`warn` +
+  alert glyph）；展开列 skills/extensions/warnings（name + faint detail）。
+  没有数据就不画 banner。
+- **用户横幅**：整宽 `bg-muted`（与工具块的 `bg-inset` 分开一档，还原
+  TUI 的两种底纹）、radius 6、无边框；左侧 **3pt `primary` 竖条**区分于其他
+  块（**有意偏离** Pi TUI 的 `❯` 前缀），正文 Geist 13/18（与终端 13/18 同号），行下常显复制**图标**
+  （hover 高亮，check 900ms 回落；文字只在 tooltip/无障碍名里）。testID 沿用
+  `user-message` + `user-copy`。
+- **思考块**：没有 header、caret 或独立控件——展开时就是思考文本本身
+  （muted、italic、**13/18 与正文同号**、Geist 300）。首行是触发条，折叠时
+  `numberOfLines:1`（放不下由平台加省略号），展开时首行完整 + `Collapsible`
+  `reveal` 展开其余行（native 高度 spring）；流式**默认展开并显示全部行**，
+  settled 默认折叠。同一消息的思考 delta 逐段累加；被工具卡 flush 过的回复仍
+  settle 回自己那一行（不新增空行、不留下假 streaming）。testID
+  `thinking`/`thinking-toggle-<entryId>`/`thinking-body`。
+- **工具块**：一块 `bg-inset`、radius 8、内边距 8/10；**整块就是折叠/展开的
+  点击目标**，**没有 title/header/kind 图标/caret**。内容统一 **Geist Mono
+  13/18、weight 300**（与正文同号，比正文略轻的 mono）。折叠时只显示**输入
+  首行 + `...`**：execute `$ command`，read `read path:from-to`，edit
+  `edit path`，write `write path`，search `grep pattern`，other
+  `name <compact JSON>`。展开时输入与输出都在同一块内：execute 是完整命令 +
+  完整输出；read 是 `read path:...` + 内容；edit/write 是 `edit|write path`
+  + `+A −D` + diff + 工具结果文本（write 的 "Successfully wrote…" 可见）；
+  search/other 是 pattern/JSON + 输出。**输入行用 `text-foreground`，输出用
+  `text-muted-foreground`**；输出渲染为**一个 Text**（保留换行），因此鼠标可
+  跨行选中。输出末尾的连续空白（`\n`/`\r`/空格）在 reducer 里统一去掉。
+  块底部是唯一的 chrome 行：状态（running **Braille 点阵 spinner** /
+  failed `alert` / done `check`）、duration、exit code（0 `up` / 非 0
+  `destructive`），然后一个上下文复制图标（diff > output > command/input）和
+  read/edit/write 的 `code` 图标 open，全部左对齐；正文与 footer 之间是一条
+  1px `line`、`opacity 0.7` 的细线。footer 的按钮是 20pt（h-5），不抢正文。pi 已截断时在 footer 上方给 `共 N 行` + `file` 图标（open
+  fullOutputPath）。展开状态放模块级 map（key = toolCallId），不进
+  `SessionView`，也不放行内 signal（列表回收）。**行会被 List 跨 entry
+  回收**，所以 kind/body 都读 `entry()` 的响应式分支，不能在组件体里取一次
+  快照。testID：`tool-call`、`tool-preview`、`tool-footer`、`tool-toggle`（整块；
+  其余 kind 用 `tool-toggle-<kind>`，headless 按压需要唯一定位）、
+  `tool-command`、`tool-params`、`tool-exit`、`tool-duration`、`tool-diff`、
+  `tool-output`、`tool-open`、`tool-fallback`（无 body 时显示 title 的那一行）。
+- **回答与 note**：回答继续 `TextView` Markdown 13/18 Geist，代码块 Geist
+  Mono，streaming caret 保留，settle 后常显复制图标；note 保持 faint 11/16
+  + branch glyph。列表 key = entry id，`estimatedItemSize` 72。
+- **选择**：转录里所有文字都可选中并 `Cmd+C`（banner/用户/回答/思考/工具/
+  note 的根 View 都设 `userSelect: "text"`；TextView 自身 `selectable`）。
+- **composer**：输入 14/21 Geist；footer、模型、队列、停止不变。
+
+**Motion inventory（T1 新增）**
+
+| 交互 | 动效 | 时值 | 验证 |
+|---|---|---|---|
+| 加载页 meerkat | 4 帧 6-slot 循环（Canvas） | 3 slots/s | 截图 `ui-transcript-loading.png`；headless 断言页面 |
+| running 状态 | Braille 点阵 spinner（10 帧） | 80ms/帧 | headless `tool-running` 断言；`reduceMotion` 冻结 |
+| 思考块展开/折叠 | `Collapsible reveal`（native height spring） | 系统 spring；reduceMotion 即时 | headless：展开/折叠断言 |
+| 工具块展开/折叠 | opacity 即时，无高度动画 | — | headless：展开后内容断言 |
+| hover（行/按钮） | `motionStyle("fast")` | 120ms | 代码路径 |
+| 复制成功 | 图标翻 check | 900ms 回落 | headless press 对小图标按钮不可靠，真机确认 |
+| `reduceMotion()` | 全部关闭 | — | 代码路径（`reduceMotion()` 分支） |
+
+**Finishing checklist（T1，按 headless 与代码核对；像素项待真机）**：
+
+- 密度：块间 10、工具卡内 6、横幅内边距 8/12；无每条消息的卡片阴影。
+- 排版：正文 13/18（Geist 300）、思考 13/18、工具内容 mono 13/18（300）、
+  meta mono 11/14、note 11/16；最小可读 11。
+- 颜色：全部 token；思考/warning 不用 `faint`（白底对比不足）；失败同时有
+  alert glyph 与 `exit N` 文案，不只靠颜色。
+- 字体：正文 Geist 300、代码面 Geist Mono、轮廓系统字体；`grep -r Lilex`
+  只剩历史文档的「已废止」记录。
+- 无障碍：每个块 `accessibilityLabel`（工具名 + 状态 + exit）；展开/复制/
+  打开都是 `role="button"`、有 tooltip。
+- 真机待办：浅色/深色截图、中文斜体验收、复制闪光。
 
 ## 4. 表面语言
 

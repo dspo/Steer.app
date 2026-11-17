@@ -50,10 +50,14 @@ import {
   describeToolCall,
   isRecord,
   piToolKind,
+  settledUpdate,
   stopReasonFromPi,
   toolCallEndUpdate,
   toolCallPartialUpdate,
   toolCallStartUpdate,
+  toolStats,
+  userEntryUpdates,
+  type PiMeta,
 } from "./mapping";
 import { replayUpdates, type ReplayEntry } from "./replay";
 import { composeExtensions, ZU_EXTENSIONS } from "../extensions/registry";
@@ -61,6 +65,7 @@ import { DISPATCH_RULE, promptSectionExtension } from "../extensions/prompt-sect
 import { ARTIFACTS_RULE, artifactsExtension } from "../extensions/artifacts";
 import { readZuSettings, zuStateDir } from "../settings";
 import { createPiServices } from "../pi/services";
+import { PI_VERSION } from "../version";
 import type { AcpMcpServer } from "../pi/mcp";
 import type { TrustElicit } from "../pi/trust";
 import { SubagentManager, dispatchExtension, type SubagentHost, type SubagentRun } from "./subagents";
@@ -70,7 +75,15 @@ import {
   TOOL_RESPONSE_TYPE,
   repairDanglingInteractiveCalls,
 } from "../interactions";
-import type { HarnessClientBridge, HarnessPorts, HarnessSession, HarnessSessionContext, HarnessLog } from "./app";
+import type {
+  HarnessClientBridge,
+  HarnessPorts,
+  HarnessSession,
+  HarnessSessionContext,
+  HarnessLog,
+  SessionBanner,
+  SessionBannerWarning,
+} from "./app";
 
 type PiAgentSession = AgentSession;
 type ThinkingLevel = Parameters<PiAgentSession["setThinkingLevel"]>[0];
@@ -222,8 +235,13 @@ class PiHarnessSession implements HarnessSession {
   /** Chunks of one pi message share an ACP messageId; bumped per message. */
   private messageSeq = 0;
   private currentMessageId = "";
+  /** The running assistant message's anchor facts, read at `message_start`. */
+  private currentMessageAt: number | undefined;
+  private currentModel: PiMeta["model"] | undefined;
   /** The last settled assistant stop reason of the running turn. */
   private lastStop: string | undefined;
+  /** The last settled assistant provider error, when the turn ended in one. */
+  private lastError: string | undefined;
   /** The approval gate the permission extension uses. */
   private readonly gate: PermissionGate;
   /** The settings the session's services loaded (model scope, defaults). */
@@ -235,6 +253,9 @@ class PiHarnessSession implements HarnessSession {
   /** Compaction ids are per session and stable across start/end events. */
   private compactionSeq = 0;
   private currentCompactionId = "";
+  /** Each call's arguments, kept so the settle can turn an edit into diff
+   * content (mapping.ts); the card's rawInput carries them until then. */
+  private readonly argsByToolCall = new Map<string, unknown>();
 
   private constructor(
     manager: SessionManager,
@@ -470,6 +491,64 @@ class PiHarnessSession implements HarnessSession {
     ];
   }
 
+  /**
+   * The session banner (issue #20 §5.3): what the transcript's first line
+   * needs — the pinned pi version, the session's model and thinking level,
+   * and the loaded resources with their load diagnostics. `undefined` means
+   * "no banner": the client draws none rather than a fake empty one.
+   */
+  banner(): SessionBanner | undefined {
+    const loader = this.session.resourceLoader;
+    const model = this.session.model as { provider?: string; id?: string; name?: string } | undefined;
+    const bannerModel =
+      model?.provider && model.id
+        ? { provider: model.provider, id: model.id, ...(model.name ? { name: model.name } : {}) }
+        : undefined;
+    const skills = loader.getSkills();
+    const extensions = loader.getExtensions();
+    const prompts = loader.getPrompts();
+    const themes = loader.getThemes();
+    const warnings: SessionBannerWarning[] = [
+      ...diagnosticsToWarnings(skills.diagnostics, "skill"),
+      ...diagnosticsToWarnings(prompts.diagnostics, "prompt"),
+      ...diagnosticsToWarnings(themes.diagnostics, "theme"),
+      ...extensions.errors.map((failure) => ({
+        severity: "error" as const,
+        source: "extension" as const,
+        message: `${failure.path}: ${failure.error}`,
+      })),
+      ...(extensions.warnings ?? []).map((warning) => ({
+        severity: "warning" as const,
+        source: "extension" as const,
+        message: `${warning.path}: ${warning.warning}`,
+      })),
+    ];
+    return {
+      version: PI_VERSION,
+      ...(bannerModel ? { model: bannerModel } : {}),
+      ...(this.session.thinkingLevel ? { thinkingLevel: this.session.thinkingLevel } : {}),
+      skills: skills.skills.map((skill) => ({
+        name: skill.name,
+        ...(skill.description ? { description: skill.description } : {}),
+        source: skill.sourceInfo.source,
+      })),
+      // The banner names what the user's configuration loads. pi's own CLI
+      // builtins are `hidden` (that is what the flag is for), and the host's
+      // anonymous inline plumbing (`<inline:N>` — the always-on gate /
+      // prompt-section / dispatch pair) is not a user-facing extension; the
+      // registry's named `zu:*` entries stay listed (the builtin-extension
+      // registry, IMPLEMENTATION §18).
+      extensions: extensions.extensions
+        .filter((extension) => !extension.hidden && !isAnonymousInline(extension.path))
+        .map((extension) => ({
+          name: extensionName(extension.path),
+          path: extension.path,
+          source: extension.sourceInfo.source,
+        })),
+      warnings,
+    };
+  }
+
   async setConfigOption(configId: string, value: string): Promise<SessionConfigOption[]> {
     if (configId === "model") {
       const [provider, ...rest] = value.split("/");
@@ -527,6 +606,7 @@ class PiHarnessSession implements HarnessSession {
     const projection = this.manager.buildSessionProjection();
     const entries: ReplayEntry[] = projection.entries.map((projected) => ({
       sourceId: projected.sourceEntry.id,
+      timestamp: projected.sourceEntry.timestamp,
       messages: projected.messages.map((message) => message as ReplayMessageShape),
     }));
     return replayUpdates(entries);
@@ -545,6 +625,43 @@ class PiHarnessSession implements HarnessSession {
     return `m${this.messageSeq}`;
   }
 
+  /** The anchor facts the streaming chunks of the current message carry. */
+  private chunkMeta(): PiMeta | undefined {
+    if (this.currentMessageAt === undefined && !this.currentModel) return undefined;
+    return {
+      ...(this.currentMessageAt !== undefined ? { at: this.currentMessageAt } : {}),
+      ...(this.currentModel ? { model: this.currentModel } : {}),
+    };
+  }
+
+  /**
+   * A message entry appended to the session file: the user's own prompt (its
+   * chunk lands with the entry's id, re-keying the client's optimistic row)
+   * or the assistant's settled message (the settle marker, `_meta.pi` only).
+   */
+  private entryAppendedUpdate(entry: unknown): SessionUpdate | undefined {
+    if (!isRecord(entry) || entry.type !== "message" || typeof entry.id !== "string") return undefined;
+    const message = isRecord(entry.message) ? entry.message : {};
+    const parsed = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
+    const at = Number.isFinite(parsed) ? parsed : Date.now();
+    if (message.role === "user") {
+      for (const update of userEntryUpdates(entry.id, message.content, at)) this.emit(update);
+      return undefined;
+    }
+    if (message.role === "assistant") {
+      const durationMs = this.currentMessageAt !== undefined ? Math.max(0, at - this.currentMessageAt) : undefined;
+      return settledUpdate({
+        entryId: entry.id,
+        at,
+        ...(durationMs !== undefined ? { durationMs } : {}),
+        ...(this.currentModel ? { model: this.currentModel } : {}),
+        ...(this.lastStop !== undefined ? { stopReason: stopReasonFromPi(this.lastStop) } : {}),
+        ...(this.lastError ? { error: this.lastError } : {}),
+      });
+    }
+    return undefined;
+  }
+
   /** pi events in, ACP update payloads out — synchronously, preserving order. */
   private subscribe(): void {
     this.session.subscribe((event: AgentSessionEvent) => {
@@ -552,11 +669,23 @@ class PiHarnessSession implements HarnessSession {
         case "message_start": {
           if ((event.message as { role?: string })?.role === "assistant") {
             this.currentMessageId = this.nextMessageId();
+            this.currentMessageAt = Date.now();
+            const model = this.session.model as
+              | { provider?: string; id?: string; name?: string }
+              | undefined;
+            this.currentModel =
+              model?.provider && model.id
+                ? {
+                    provider: model.provider,
+                    id: model.id,
+                    ...(model.name ? { name: model.name } : {}),
+                  }
+                : undefined;
           }
           return;
         }
         case "message_update": {
-          this.emit(assistantDeltaUpdate(event.assistantMessageEvent, this.currentMessageId));
+          this.emit(assistantDeltaUpdate(event.assistantMessageEvent, this.currentMessageId, this.chunkMeta()));
           return;
         }
         case "message_end": {
@@ -567,20 +696,19 @@ class PiHarnessSession implements HarnessSession {
           };
           if (message?.role !== "assistant") return;
           // Track the turn's final stop reason; the prompt reply reads it.
+          // A provider error rides the settle marker's `_meta.pi` — it is
+          // never stuffed into a text chunk (issue #20 §5.1).
           this.lastStop = message.stopReason;
-          // A provider error has no ACP stop reason; its text goes out as a
-          // chunk so the client sees why the turn ended (mapping.ts).
-          if (message.stopReason === "error" && message.errorMessage) {
-            this.emit({
-              sessionUpdate: "agent_message_chunk",
-              content: { type: "text", text: `error: ${message.errorMessage}` },
-              messageId: this.currentMessageId || this.nextMessageId(),
-            });
-          }
+          this.lastError = message.errorMessage || undefined;
+          return;
+        }
+        case "entry_appended": {
+          this.emit(this.entryAppendedUpdate((event as { entry?: unknown }).entry));
           return;
         }
         case "tool_execution_start": {
           if (event.parentToolCallId) return; // a nested call; its parent card carries the run
+          this.argsByToolCall.set(event.toolCallId, event.args);
           this.emit(toolCallStartUpdate(event.toolCallId, event.toolName, event.args));
           return;
         }
@@ -591,7 +719,18 @@ class PiHarnessSession implements HarnessSession {
         }
         case "tool_execution_end": {
           if (event.parentToolCallId) return;
-          this.emit(toolCallEndUpdate(event.toolCallId, event.result, event.isError));
+          const args = this.argsByToolCall.get(event.toolCallId);
+          this.argsByToolCall.delete(event.toolCallId);
+          this.emit(
+            toolCallEndUpdate(
+              event.toolCallId,
+              event.toolName,
+              event.result,
+              event.isError,
+              args,
+              toolStats(event.durationMs, event.result),
+            ),
+          );
           return;
         }
         case "thinking_level_changed": {
@@ -858,6 +997,35 @@ export function createPiPorts(log: HarnessLog, base: PiPortsOptions = {}): Harne
       return PiHarnessSession.open(path, cwd, log, optionsFor(context, base));
     },
   };
+}
+
+/** One resource diagnostic → a banner warning, tagged with its loader. */
+function diagnosticsToWarnings(
+  diagnostics: Array<{ type: string; message: string; path?: string }>,
+  source: SessionBannerWarning["source"],
+): SessionBannerWarning[] {
+  return diagnostics.map((diagnostic) => ({
+    severity: diagnostic.type === "error" ? "error" : "warning",
+    source,
+    message: diagnostic.path ? `${diagnostic.path}: ${diagnostic.message}` : diagnostic.message,
+  }));
+}
+
+/** The name an extension row shows: its file's stem. */
+function extensionName(path: string): string {
+  const base = path.split("/").pop() ?? path;
+  const stem = base.replace(/\.(ts|js|mjs|cjs)$/i, "");
+  return stem || base;
+}
+
+/**
+ * An inline factory the host binds itself, without a registry name: the
+ * always-on gate, prompt sections, dispatch. The banner's extension list is
+ * the user's load report, so these stay out; a registry entry (`zu:*`) is a
+ * named, disable-able extension and stays in.
+ */
+function isAnonymousInline(path: string): boolean {
+  return path.startsWith("<inline:") && !path.startsWith("<inline:zu:");
 }
 
 /**
