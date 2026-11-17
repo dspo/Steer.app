@@ -1,5 +1,5 @@
 import { expect, test } from "nsh/test";
-import { metricsReducer, type ReasoningTiming, type XManoxState } from "./modules/manox/ext";
+import { metricsReducer, type ReasoningTiming, type XManoxState } from "../modules/manox/ext";
 
 // The metrics extension face's fold, pure and host-free: the timing
 // registry upserts by part id, a replay of the identical row folds to the

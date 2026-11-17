@@ -24,7 +24,7 @@ async function drawsTheApp(app: any): Promise<boolean> {
 // line, the reply's copy action, and the list's follow behavior.
 
 test("the thinking block folds and unfolds its reasoning", async () => {
-  const app = await open("./fixtures/manox-conversation.tsx", { width: 1200, height: 800 });
+  const app = await open("../fixtures/manox-conversation.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:chat-thinking");
   expect(app.shows("id:chat-thinking-text")).toBe(false);
   // The settled labels quote the run's timing where the metrics face has a
@@ -40,7 +40,7 @@ test("the thinking block folds and unfolds its reasoning", async () => {
 });
 
 test("the tool card carries its title, status, terminal preview and exit code", async () => {
-  const app = await open("./fixtures/manox-conversation.tsx", { width: 1200, height: 800 });
+  const app = await open("../fixtures/manox-conversation.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:chat-tool-call");
   const texts = app.texts();
   expect(texts).toContain("Run tests");
@@ -53,7 +53,7 @@ test("the tool card carries its title, status, terminal preview and exit code", 
 });
 
 test("the timeline inserts a day line and the error stays a quiet line", async () => {
-  const app = await open("./fixtures/manox-conversation.tsx", { width: 1200, height: 800 });
+  const app = await open("../fixtures/manox-conversation.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:chat-day");
   // The settled turns cross midnight: the visible day line is the second day's.
   expect(app.texts()).toContain("2026/11/16");
@@ -61,7 +61,7 @@ test("the timeline inserts a day line and the error stays a quiet line", async (
 });
 
 test("a reply's copy action reports the copy", async () => {
-  const app = await open("./fixtures/manox-conversation.tsx", { width: 1200, height: 800 });
+  const app = await open("../fixtures/manox-conversation.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:chat-actions:t1-copy");
   await app.press("id:chat-actions:t1-copy");
   await app.waitUntil(() => app.texts().some((text) => text === "已复制" || text === "Copied"), { timeout: 5000 });
@@ -69,7 +69,7 @@ test("a reply's copy action reports the copy", async () => {
 });
 
 test("a reader scrolled up stays put when the chat grows", async () => {
-  const app = await open("./fixtures/manox-conversation.tsx", { width: 1200, height: 800 });
+  const app = await open("../fixtures/manox-conversation.tsx", { width: 1200, height: 800 });
   const drawn = await drawsTheApp(app);
   await app.waitFor("id:manox-transcript");
   await app.waitFor("text:filler-40");
@@ -91,7 +91,7 @@ test("a reader scrolled up stays put when the chat grows", async () => {
 });
 
 test("the thinking block opens while it thinks and folds when the turn settles", async () => {
-  const app = await open("./fixtures/manox-conversation-live.tsx", { width: 1200, height: 800 });
+  const app = await open("../fixtures/manox-conversation-live.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:chat-thinking");
   // Live: open by default, streaming label, text visible without a press.
   expect(app.shows("id:chat-thinking-text")).toBe(true);
