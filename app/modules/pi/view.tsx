@@ -26,6 +26,8 @@ import { searchSessions } from "./search";
 /** A subagent's status in the shell's language. */
 function statusLabel(status: string): string {
   switch (status) {
+    case "queued":
+      return t(K.subagents.queued);
     case "running":
       return t(K.subagents.running);
     case "settled":
@@ -69,7 +71,7 @@ export function SubagentsBody(props: { containerId: string }) {
                       onPress={() => void selectRun(value.runId)}
                     >
                       <View class="flex-row items-center gap-1.5">
-                        <Dot tint={token(value.status === "running" ? "info" : value.status === "settled" ? "up" : "destructive")} size={6} />
+                        <Dot tint={token(value.status === "running" ? "info" : value.status === "settled" ? "up" : value.status === "queued" ? "faint" : "destructive")} size={6} />
                         <Text class="text-[12px] font-medium text-foreground" style={{ flex: 1, numberOfLines: 1 }}>
                           {value.agent}
                         </Text>

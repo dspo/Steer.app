@@ -43,6 +43,7 @@ export const en: Record<string, string> = {
   "app.subagents.abort": "Stop subagent",
   "app.subagents.transcript": "Read-only transcript",
   "app.subagents.running": "running",
+  "app.subagents.queued": "queued",
   "app.subagents.settled": "settled",
   "app.subagents.failed": "failed",
   "app.subagents.aborted": "aborted",

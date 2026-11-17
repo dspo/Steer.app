@@ -21,7 +21,7 @@ export interface SessionData {
   customTypes?: string[];
 }
 
-export type SubagentStatus = "running" | "settled" | "failed" | "aborted" | "interrupted";
+export type SubagentStatus = "queued" | "running" | "settled" | "failed" | "aborted" | "interrupted";
 
 /** A subagent run: live in memory, settled in the registry file. */
 export interface SubagentRun {
@@ -36,6 +36,8 @@ export interface SubagentRun {
   verdict?: string;
   output?: string;
   sessionPath?: string;
+  /** The result was delivered to, or read by, the captain's model. */
+  collected?: boolean;
 }
 
 export interface SessionModelInfo {

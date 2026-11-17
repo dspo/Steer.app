@@ -43,6 +43,7 @@ export const zhCN: Record<string, string> = {
   "app.subagents.abort": "停止子代理",
   "app.subagents.transcript": "只读转录",
   "app.subagents.running": "运行中",
+  "app.subagents.queued": "排队中",
   "app.subagents.settled": "已交付",
   "app.subagents.failed": "失败",
   "app.subagents.aborted": "已停止",

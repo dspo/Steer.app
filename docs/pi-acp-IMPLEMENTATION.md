@@ -309,6 +309,8 @@ queue lane 的旧实现）删除或重写为投影。
 - 子会话用进程内 `createAgentSession`：独立 `SessionManager`、`parentSession`、继承 captain model，
   `noExtensions`，保持"只两级"。
 - 持久进程是前提：后台 run 不再随 turn 退出。
+- 调度与投递见 §21：每 captain FIFO 四并发（五号起 `queued`）、`max_turns` turn cap、
+  settle 后 push-once，以及按 lineage 找回转录。
 
 ### 7.2 数据面
 
@@ -954,3 +956,91 @@ UI 重启后问题卡片消失；用户等得不耐烦自己打字时，卡住�
 - 多轮 ask（一次工具调用一问）与 ask 超时/自动降级；
 - manox 侧的对等 mailbox（manox 有自己的 AHP 宿主，另行设计）；
 - 把 `zu.ask` announce 回放进 transcript 折叠规则（`fold.ts` 本期不动）。
+
+## 21. 子代理织体（B1，2026-11-17）
+
+**根因**：子代理只有"派发 + 轮询"：没有并发上限（一次响应里 N 个 `dispatch` 就是 N 个
+完整 LLM 会话）、没有 turn cap（跑飞的 child 可以无限调用工具）、后台 run settle 后
+模型看不到（custom entry 不进上下文，`host.emit` 只写 log）；而且定义发现顺序是反的
+——`Map.set` 让 project 覆盖 personal/builtin，仓库里的 `.pi/agents/worker.md` 能换掉
+内置 worker 的 tools/model/提示词。B1 把六条不变量按 Zu 的形态重写。
+
+### 21.1 定义优先级
+
+- `discoverAgents(cwd, agentDir, projectTrusted, log?)` 改为**先到先得**：
+  builtin → personal → project（`.pi/agents`，then `.agents/agents`，仅 trusted）。
+  同名后到者不覆盖，`log` 一行写明谁被谁压住。仓库可以**新增**代理，不能替换内置。
+- frontmatter 的 `max_turns` 只接受正整数；`0`/字符串/负数一律丢弃（坏文件策略不变，
+  不致命）。
+- `AgentDefinition.maxTurns` 随定义进入 runner。
+
+### 21.2 限流与 `queued`
+
+- `MAX_CONCURRENT_PER_CAPTAIN = 4`（硬编码；跨 captain 不做全局上限）。
+- `spawn`/`resume` 一律先建 run（`status: "queued"`）入队，`pump(captainId)` 按 FIFO
+  填空位；真正启动时才改 `running` 并 `emit("subagent.started")`。`LiveRun.started`
+  区分"占过 slot"与"还在排队"。
+- `abort(queued)`：`settle("aborted", "cancelled before start")`，runner 从未被调用；
+  `running` 则走 `session.abort()`（runner 经 `attach(session)` 把 child session 交给
+  manager，abort/inject/transcript 都靠它）。
+- `archiveCaptain` 先**删队列**再结算，避免 settle → pump 在归档过程中又启动了下一
+  个 queued run；`dispose` 清空队列、run 与新 pending。
+- `protocol.ts`/`view.tsx`/两个 locale 增加 `queued`（中文"排队中"）；名册计数包含它。
+
+### 21.3 Turn cap
+
+- `createPiSubagentRunner` 在 `session.prompt(task)` 前订阅 child 的 `turn_end`（仅当有 `maxTurns`）：
+  数到 `turns === cap` 且 child 仍在跑（最后一条 assistant 有 `toolCall`）→ steer
+  `WRAP_UP` **一次**；下一次 `turn_end`（`turns > cap`）→ `session.abort()`，settle
+  `aborted`，output 取最后一条 assistant 文本。
+- 在 cap 内自然结束 → 保留真实结果，不 abort；没有 `maxTurns` → 不订阅、无 cap。
+- 不做 wall-clock 超时（provider 重试归 pi）。
+
+### 21.4 完成投递与 claim
+
+- `DeliveryBinding`（`send(batch, {triggerTurn})` + `isIdle()`）由 `dispatchExtension`
+  在 `session_start` 绑定；`send` 走 `pi.sendMessage({ customType:
+  "zu.subagent.completion", content: [text], display: true, details: { runs } },
+  { triggerTurn })`。pi 1.5.0 的 `convertToLlm` 把 custom message 映射为 user content，
+  所以它真正进入模型上下文（不是 `appendCustomEntry` 那种只留档）。
+- `settle` 把结果放进 `pendingDelivery`，除非 run 已被 `list_agents`/`wait:true` claim、
+  或 abort 原因是 `user`/`archive`/`dispose`（不该唤醒）。
+- 投递点：`turn_end`（非 aborted）→ flush 不唤醒；captain 空闲时 settle → 微任务里
+  flush 且 `triggerTurn: true`（最多唤醒一次）；`agent_settled` 为 aborted → 只以非
+  唤醒方式 flush。
+- `flushCompletions`：一次最多 6 条、一条 custom message；先标 `collected`（claim）再
+  send；send 失败/抛错把未接受的放回队首。单条 output 上限 50,000 字符，超出截断并
+  标注。`collected` 持久进 settled index，重启后不会重投。
+- `list_agents` 与 `dispatch(wait:true)` 读取即 claim，且返回文本与 push 一致（push 能
+  看到的，pull 也能看到，不会各说各话）。
+
+### 21.5 Lineage 与转录恢复
+
+- 目录仍是 `~/.pi/zu/subagents/<captainId>/`；`deriveSubagentSessionFile` 先认 settled
+  index 的 `sessionPath`，丢失时扫同目录 `_<runId>.jsonl` 后缀。
+- `transcript`：live 用 child session 的 `state.messages`；settled 用 derive 出的文件；
+  两者都失败 → 明确报错"重启后不可恢复"，不返回空列表假装成功（app 的 `selectRun`
+  把它显示为错误）。
+
+### 21.6 测试缝与纵深防御
+
+- `SubagentRunner` 把真实 `createAgentSession` 抽成可注入 seam（`createPiSubagentRunner`
+  默认实现；tests 用 fake runner 控制 settle/abort/onTurn）。`attach(session)` 让
+  manager 拿得到 child session，abort 不再是无对象的空操作。
+- `excludeTools: ["dispatch", "list_agents"]` 传给 child 的 `createAgentSession`：
+  即使未来 child 加载扩展，递归 dispatch 也在工具层被挡（`noExtensions: true` 之外
+  的第二道）。
+- 测试：`subagents.test.ts` 覆盖定义优先级（builtin 胜/untrusted 不读 project/坏
+  `max_turns`）、5 个 dispatch → 4 running + 1 queued、queued abort 不调 runner、
+  running abort 触达 attached session、归档不启动 queued、turn cap 的 steer/abort 与
+  自然结束、push-once/claim/send 失败恢复/idle 唤醒/user stop 不投递、lineage 后缀
+  恢复、缺文件明确报错、`excludeTools` 构造参数。
+- 投递语义有确定性探针：用 pi 的 `convertToLlm` 把 `zu.subagent.completion` custom
+  message 映射一次，断言它成为 user content（若 pi 升级改变该语义，测试先红）。
+- UI：`app/tests/subagents.ui.test.tsx` 断言 queued 状态与名册计数。
+
+### 21.7 非目标
+
+- 不做 fork/capture、resource owner、DAG；不做跨 captain 全局上限或 admission 配额。
+- 不做 live roster 推送（名册仍在打开时加载；需要时另开 issue）。
+- 不改 `inject` 的 steer 语义；不做 wall-clock timeout。

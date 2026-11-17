@@ -203,13 +203,14 @@ export function hostExtensionFactories(
   subagentManager: SubagentManager,
   captainId: string,
   log?: HarnessLog,
+  isIdle: () => boolean = () => false,
 ) {
   return [
     gate.extension(),
     promptSectionExtension("zu-dispatch", DISPATCH_RULE, log),
     promptSectionExtension("zu-artifacts", ARTIFACTS_RULE, log),
     artifactsExtension(log),
-    dispatchExtension(subagentManager, captainId),
+    dispatchExtension(subagentManager, captainId, isIdle),
   ];
 }
 
@@ -325,7 +326,14 @@ class PiHarnessSession implements HarnessSession {
       ...(options.trusted === undefined ? {} : { trusted: options.trusted }),
       ...(options.elicit ? { elicit: options.elicit } : {}),
       ...(options.mcpServers ? { mcpServers: options.mcpServers } : {}),
-      extensionFactories: [...hostExtensionFactories(gate, subagentManager, captainId, log), ...composed.factories],
+      extensionFactories: [
+        ...hostExtensionFactories(gate, subagentManager, captainId, log, () =>
+          typeof (sessionRef.session as any)?.isIdle === "function"
+            ? Boolean((sessionRef.session as any).isIdle())
+            : Boolean((sessionRef.session as any)?.isIdle),
+        ),
+        ...composed.factories,
+      ],
       additionalSkillPaths: composed.skillDirs,
       additionalExtensionPaths: extraExtensionPaths(),
       noExtensions: extensionsDisabled(),
@@ -922,6 +930,7 @@ function subagentHost(
   };
   return {
     agentDir,
+    log: (message) => log(message),
     captainFor: (id) =>
       sessionRef.session
         ? {

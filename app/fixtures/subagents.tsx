@@ -52,6 +52,15 @@ const runs = [
     status: "running",
     startedAt: 3,
   },
+  {
+    runId: "r3",
+    captainId: "s1",
+    containerId: "c1",
+    agent: "planner",
+    task: "plan the thing",
+    status: "queued",
+    startedAt: 4,
+  },
 ];
 
 setSubagentTransport(async (type, payload: any = {}) => {

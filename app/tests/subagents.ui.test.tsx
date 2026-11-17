@@ -10,6 +10,9 @@ test("the roster lists runs and opens a read-only transcript", async () => {
   expect(app.texts()).toContain("scout");
   expect(app.texts()).toContain("已交付");
   expect(app.texts()).toContain("运行中");
+  expect(app.texts()).toContain("planner");
+  expect(app.texts()).toContain("排队中");
+  expect(app.texts()).toContain("3 个运行");
 
   await app.press("id:subagent-run-r1");
   await app.waitFor("text:sub output");

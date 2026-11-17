@@ -131,6 +131,7 @@ export const K = {
     abort: "app.subagents.abort",
     transcript: "app.subagents.transcript",
     running: "app.subagents.running",
+    queued: "app.subagents.queued",
     settled: "app.subagents.settled",
     failed: "app.subagents.failed",
     aborted: "app.subagents.aborted",
