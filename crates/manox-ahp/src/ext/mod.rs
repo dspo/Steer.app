@@ -120,6 +120,22 @@ pub mod actions {
     /// Leaf cursor redirected (host-emitted; the journal's branch cursor has no
     /// AHP field — forking a chat is the protocol-visible half of the same fact).
     pub const LEAF_CHANGED: &str = "x-manox/leafChanged";
+    /// One reasoning run's settled timing (host-emitted): the durable clock a
+    /// client needs to label a folded reasoning part "thought for Ns" after a
+    /// reopen. AHP's `ReasoningResponsePart` carries text only, so the timing
+    /// rides here keyed by the part id. A reasoning part without a timing row
+    /// predates the anchor — clients degrade to the durationless label.
+    ///
+    /// Two contract edges clients must know:
+    /// - a run resumed over a seed (host restart mid-thinking) keeps its
+    ///   part id but re-anchors at its first post-seed delta, so the
+    ///   reopened seconds are shorter than the run's real thinking time.
+    ///   That is the contract, not a bug — the pre-restart stamps are not
+    ///   in the replayed window.
+    /// - `durationMs: 0` means the run settled within the same millisecond
+    ///   as its first delta (<1ms). Clients hide the duration or render
+    ///   "<1s"; "thought for 0s" is a misreading.
+    pub const REASONING_TIMING: &str = "x-manox/reasoningTiming";
 
     /// Every declared action.
     pub const ALL: &[&str] = &[
@@ -141,6 +157,7 @@ pub mod actions {
         LABEL_CHANGED,
         SESSION_INFO_CHANGED,
         LEAF_CHANGED,
+        REASONING_TIMING,
     ];
 }
 
