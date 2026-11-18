@@ -6,7 +6,7 @@
     "failed": 114,
     "total": 567,
     "measured": "2026-11-18",
-    "against": "feat/conformance-e2e (issue #46)"
+    "against": "bun run conformance (issue #46)"
   },
   "libghostty-vt": {
     "rev": "042b16b",
@@ -18,7 +18,11 @@
     "note": "kernel ceiling, measured with Ghostty's own esctest runner"
   },
   "ucs-detect": {
-    "status": "not-run",
-    "measured": null
+    "status": "measured",
+    "ucsDetectVersion": "2.3.9",
+    "unicode": "18.0.0",
+    "ambiguousWidth": 1,
+    "measured": "2026-11-18",
+    "note": "emulator core only (headless session, no font pipeline); full data in the evidence file"
   }
 }

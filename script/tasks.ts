@@ -114,14 +114,15 @@ async function ensureEsctest2(): Promise<string> {
  * splits the failures into what the kernel also fails upstream and what
  * is ours. Report-only by default; `--gate=p0` fails when a P0-class
  * test does. */
-async function conformanceEsctest(gate: boolean): Promise<void> {
-  const esctestDir = await ensureEsctest2();
-  console.log("conformance: running esctest2 (a full pass takes about a minute)");
+/** Runs one `#[ignore]`d conformance driver test with live echo; returns
+ * its output for the marker parsers. `--ignored` keeps plain `cargo test`
+ * fast; the filter picks the suite (esctest/ucs share the module). */
+async function runDriver(filter: string, env: Record<string, string>, label: string): Promise<string> {
   const proc = Bun.spawn(
-    ["cargo", "test", "-p", "zu-app", "conformance", "--", "--ignored", "--nocapture"],
+    ["cargo", "test", "-p", "zu-app", filter, "--", "--ignored", "--nocapture"],
     {
       cwd: join(ROOT, "native"),
-      env: { ...process.env, ZU_ESCTEST_DIR: esctestDir },
+      env: { ...process.env, ...env },
       stdout: "pipe",
       stderr: "pipe",
     },
@@ -143,9 +144,15 @@ async function conformanceEsctest(gate: boolean): Promise<void> {
   clearTimeout(killer);
   await drained;
   if (code !== 0) {
-    fail(`conformance: the esctest driver failed (exit ${code}) — see the output above`);
+    fail(`conformance: the ${label} driver failed (exit ${code}) — see the output above`);
   }
-  const text = Buffer.concat(output).toString();
+  return Buffer.concat(output).toString();
+}
+
+async function conformanceEsctest(gate: boolean): Promise<void> {
+  const esctestDir = await ensureEsctest2();
+  console.log("conformance: running esctest2 (a full pass takes about a minute)");
+  const text = await runDriver("conformance::esctest", { ZU_ESCTEST_DIR: esctestDir }, "esctest");
   const summary = /ESCTEST-SUMMARY passed=(\d+) known=(\d+) failed=(\d+) total=(\d+)/.exec(text);
   if (!summary) fail("conformance: the driver printed no ESCTEST-SUMMARY — see the output above");
   const [passed, known, failed, total] = summary.slice(1).map(Number) as number[];
@@ -193,7 +200,7 @@ async function conformanceEsctest(gate: boolean): Promise<void> {
     failed,
     total,
     measured: today,
-    against: `feat/conformance-e2e (issue #46)`,
+    against: `bun run conformance (issue #46)`,
   };
   writeFileSync(conformanceJson, `${JSON.stringify(json, null, 2)}\n`);
   console.log(`conformance: badges updated in ${conformanceJson}`);
@@ -204,6 +211,124 @@ async function conformanceEsctest(gate: boolean): Promise<void> {
     }
     console.log("conformance: --gate=p0 passes");
   }
+}
+
+/** Where ucs-detect is, when this machine has it: `$ZU_UCS_DETECT`, then
+ * the PATH, then where user pip installs land. `null` just skips the
+ * suite: ucs-detect is record-only (issue #46 P2). */
+function locateUcsDetect(): string | null {
+  const given = process.env.ZU_UCS_DETECT;
+  if (given && existsSync(given)) return given;
+  const which = Bun.which("ucs-detect");
+  if (which) return which;
+  const home = homedir();
+  const candidates = [join(home, ".local", "bin", "ucs-detect")];
+  const pythons = join(home, "Library", "Python");
+  if (existsSync(pythons)) {
+    for (const version of readdirSync(pythons)) {
+      candidates.push(join(pythons, version, "bin", "ucs-detect"));
+    }
+  }
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
+/** The ucs-detect run, record-only: reports the results, never gates, and
+ * a machine without the binary skips with an install hint. */
+async function conformanceUcs(): Promise<void> {
+  const binary = locateUcsDetect();
+  if (!binary) {
+    console.log("conformance: ucs-detect is not installed — the ucs suite is record-only (issue #46 P2), skipping");
+    console.log("  install it with `pipx install ucs-detect` (or `pip3 install --user ucs-detect`), then rerun");
+    return;
+  }
+  console.log("conformance: running ucs-detect (record-only, a few seconds)");
+  const text = await runDriver("conformance::ucs", { ZU_UCS_DETECT: binary }, "ucs");
+  const summary =
+    /^UCS-DETECT-SUMMARY software=(.*?) version=(.*?) ambiguous_width=(\d+) size=(\d+)x(\d+) seconds=(\d+)$/m.exec(
+      text,
+    );
+  if (!summary) fail("conformance: the driver printed no UCS-DETECT-SUMMARY — see the output above");
+  const jsonStart = text.indexOf("\nUCS-DETECT-JSON\n");
+  if (jsonStart < 0) fail("conformance: the driver printed no UCS-DETECT-JSON — see the output above");
+  // The echo continues past the JSON with the cargo harness's own lines
+  // (`test ... ok`, `test result: ...`): the report ends at its last `}`.
+  const report = text.slice(jsonStart + "\nUCS-DETECT-JSON\n".length);
+  const jsonEnd = report.lastIndexOf("}");
+  const results = JSON.parse(report.slice(0, jsonEnd + 1)) as {
+    ucs_detect_version: string;
+    unicode_version: string;
+    ambiguous_width: number;
+    seconds_elapsed: number;
+    software_name: string;
+    test_results: Record<string, Record<string, { n_total: number; n_errors: number }>>;
+  };
+
+  // Every width/emoji suite, per Unicode version: the issue's purpose is
+  // the width table, so those numbers lead; language/tofu are recorded too.
+  // language_results is keyed by language, not Unicode version — only keys
+  // that start with a digit get the `v`.
+  const suiteLines: string[] = [];
+  for (const [suite, versions] of Object.entries(results.test_results)) {
+    for (const [key, entry] of Object.entries(versions)) {
+      const pct = entry.n_total > 0 ? ((entry.n_total - entry.n_errors) / entry.n_total) * 100 : 0;
+      const label = /^\d/.test(key) ? `v${key}` : `[${key}]`;
+      suiteLines.push(
+        `  ${suite} ${label}: ${entry.n_total - entry.n_errors}/${entry.n_total} (${pct.toFixed(2)}%)`,
+      );
+    }
+  }
+  console.log(`\nconformance: ucs-detect ${results.ucs_detect_version} (Unicode ${results.unicode_version})`);
+  console.log(`  the terminal answered as ${results.software_name.trim() || "?"}, ambiguous width ${results.ambiguous_width}`);
+  for (const line of suiteLines) console.log(line);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const evidencePath = join(ROOT, "docs", "evidence", `ucs-detect-${today.replaceAll("-", "")}.md`);
+  writeFileSync(
+    evidencePath,
+    [
+      `# ucs-detect 记录（${today}）`,
+      "",
+      `\`bun run conformance -- ucs\`（issue #46 阶段 3，记录制）：ucs-detect ${results.ucs_detect_version}，`,
+      `Unicode ${results.unicode_version}，仿真内核只测（headless 会话，无字体管线），全程 ${Math.round(results.seconds_elapsed)} 秒。`,
+      "",
+      `终端识别为 ${results.software_name.trim() || "?"}（XTVERSION 接线生效）；歧义宽度 ${results.ambiguous_width}。`,
+      "",
+      "## 分项（通过/总数）",
+      "",
+      "```",
+      ...suiteLines.map((line) => line.replace(/^  /, "")),
+      "```",
+      "",
+      "## 口径说明",
+      "",
+      "- 宽字符/emoji 各套（wide/zwj/vs16/vs15/ri/sri/sfz/narrow）是 issue 指定的核查对象，全部近满分；",
+      "  `\u115f`（HANGUL CHOSEONG FILLER）是唯一的 wide 失败——wcwidth 记 2 格、内核记 0 格的经典分歧。",
+      "- `language_results`（grapheme 簇宽度）与 `tofu_results` 同样走仿真内核：tofu 的 glyph 覆盖协议在", 
+      "  无字体管线的 headless 里答「全未覆盖」，pct 不具备渲染含义，只作内核应答行为记录。",
+      "- Ghostty 的 `test/ucs-detect.sh` 写的 `--limit-words` 在 ucs-detect 2.3 起更名为 `--limit-graphemes`，", 
+      "  （旧名只剩读旧 YAML 的别名）；限额数值不变（5000/5000/1000）。",
+      "- 原始 JSON：",
+      "",
+      "```json",
+      report.slice(0, jsonEnd + 1),
+      "```", 
+      "",
+    ].join("\n"),
+  );
+  console.log(`conformance: evidence written to ${evidencePath}`);
+
+  const conformanceJson = join(ROOT, "docs", "evidence", "conformance.json");
+  const json = JSON.parse(readFileSync(conformanceJson, "utf8")) as Record<string, unknown>;
+  (json["ucs-detect"] as Record<string, unknown>) = {
+    status: "measured",
+    ucsDetectVersion: results.ucs_detect_version,
+    unicode: results.unicode_version,
+    ambiguousWidth: results.ambiguous_width,
+    measured: today,
+    note: "emulator core only (headless session, no font pipeline); full data in the evidence file",
+  };
+  writeFileSync(conformanceJson, `${JSON.stringify(json, null, 2)}\n`);
+  console.log(`conformance: badges updated in ${conformanceJson}`);
 }
 
 /** A `node_modules` that is a symlink to another checkout cannot be installed
@@ -465,10 +590,10 @@ switch (task) {
         process.exit(1);
       }
     }
-    if (suite !== "esctest") {
-      fail("conformance: ucs-detect is 阶段 3 of issue #46 (P2, 记录制) — not wired yet");
+    for (const run of suite === "all" ? (["esctest", "ucs"] as const) : ([suite] as const)) {
+      if (run === "esctest") await conformanceEsctest(gate);
+      else await conformanceUcs();
     }
-    await conformanceEsctest(gate);
     break;
   }
   default:

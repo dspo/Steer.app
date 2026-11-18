@@ -3,7 +3,7 @@
 <!-- conformance-badges:start -->
 [![esctest2](https://img.shields.io/badge/esctest2-411%2F567-green?style=flat-square)](docs/evidence/conformance.json)
 [![libghostty-vt](https://img.shields.io/badge/libghostty--vt-411%2F567-orange?style=flat-square)](docs/evidence/conformance.json)
-[![ucs-detect](https://img.shields.io/badge/ucs--detect-not%20run-lightgrey?style=flat-square)](docs/evidence/conformance.json)
+[![ucs-detect](https://img.shields.io/badge/ucs--detect-measured--2.3.9-green?style=flat-square)](docs/evidence/conformance.json)
 [![ghostty rev](https://img.shields.io/badge/ghostty%20rev-042b16b-blue?style=flat-square)](https://github.com/ghostty-org/ghostty)
 <!-- conformance-badges:end -->
 

@@ -81,6 +81,7 @@
       - ./app/target              # nsh 生成 workspace 的 target（不挂则两遍从头编译）
       - ./native/target             # native 工作区 target
       - /root/.cache/zu-ghostty     # libghostty-vt 的 zig/tarball/静态库缓存（native/ghostty/build.rs）
+      - /root/.cache/steer-conformance  # esctest2 tarball 缓存（conformance stage）
   env:
     NSH_VERSION: v0.5.0
     ZU_SKIP_LIVE: "1"
@@ -100,7 +101,8 @@
           git pkg-config clang unzip curl ca-certificates xz-utils \
           vim htop \
           libgtk-4-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-          libssl-dev libffi-dev
+          libssl-dev libffi-dev \
+          python3-minimal
         # 先落盘再执行（dash 无 pipefail，见文件头「环境要点」）。
         curl -fsSL https://nsh.dev/install.sh -o /tmp/nsh-install.sh
         # 装到卷内的版本子目录：挂载点不能被安装脚本 rename。
@@ -153,6 +155,12 @@
     #    不跑 bun run build：其编译目标 pin 了 bun-darwin-arm64，Linux 上不适用。──
     - name: pi-harness
       script: bun script/ci.ts harness
+
+    # ── 终端符合性（issue #46 阶段五）：esctest2 全量 + ucs-detect（无则提示并跳过）。
+    #    report-only，永远不红——红与不红都不影响合并，数字只进本 stage 日志
+    #    与 docs/evidence/。python3 由 toolchain stage 装。──
+    - name: conformance (report-only)
+      script: bun script/ci.ts conformance
 
 main:
   push:

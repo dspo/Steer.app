@@ -1,21 +1,27 @@
-//! The esctest2 conformance driver: a real esctest run against the session
+//! The conformance drivers: real tool runs against the session
 //! construction path a terminal sheet uses.
 //!
-//! `esctest2` starts under a PTY like any terminal program and pushes
+//! [`esctest2`] starts under a PTY like any terminal program and pushes
 //! escape sequences at us; the queries it depends on (`CSI 18 t`,
 //! device attributes, DECRQCRA, `CSI 8 t`) are answered by the same
 //! wiring `TerminalSession` installs, so what passes here is what the
-//! product does. The test is `#[ignore]` because it needs a downloaded
-//! esctest2, a real PTY and about three minutes: run it through
-//! `bun run conformance`, which downloads, times and scores it
-//! (`native/conformance/esctest-baseline.txt` holds what the kernel
-//! fails upstream, to tell our failures from its).
+//! product does. It is scored against
+//! `native/conformance/esctest-baseline.txt` — what the kernel fails
+//! upstream — to tell our failures from its. [`ucs-detect`] measures
+//! wide-character and emoji widths through the same session; it is
+//! record-only: the results are reported, never gated.
 //!
+//! Both are `#[ignore]` — they need a real PTY, minutes of runtime and
+//! (for esctest2) a downloaded suite: run them through
+//! `bun run conformance`, which downloads, times and scores.
+//!
+//! [`esctest2`]: https://github.com/ThomasDickey/esctest2
+//! [`ucs-detect`]: https://github.com/jquast/ucs-detect
 //! [`TerminalSession`]: crate::session::TerminalSession
 
 use std::{
     io::Read,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::mpsc::{self, RecvTimeoutError},
     time::{Duration, Instant},
 };
@@ -78,7 +84,47 @@ fn failing_names(log: &str) -> Vec<String> {
     names
 }
 
-/// Runs the whole suite once and prints what `script/tasks.ts` scores:
+/// Runs `argv` under a fresh session's pty — the same construction path
+/// `TerminalSession::open` runs, the grid takes the pty's size, then the
+/// session owns the program — and waits for its exit, bounded by
+/// [`RUN_LIMIT`]. `Ok` only when the program exited in time.
+fn run_in_session(argv: Vec<String>, cwd: Option<String>) -> Result<(), String> {
+    let (events, _) = tokio::sync::mpsc::unbounded_channel();
+    let shared = Shared::build(events);
+    let (exited, exit) = mpsc::channel::<()>();
+    let feeder = shared.clone();
+    let process = Process::spawn(
+        PtyOptions {
+            command: Some(argv[0].clone()),
+            args: Some(argv[1..].to_vec()),
+            cwd,
+            env: None,
+            cols: Some(80),
+            rows: Some(25),
+        },
+        move |bytes| feeder.feed(bytes),
+        move |_| {
+            let _ = exited.send(());
+        },
+    )?;
+    let (cols, rows) = process.control.size();
+    shared.resize(cols, rows, (0, 0));
+    shared.adopt(process.control.clone());
+
+    let started = Instant::now();
+    loop {
+        match exit.recv_timeout(Duration::from_secs(10)) {
+            Ok(()) | Err(RecvTimeoutError::Disconnected) => return Ok(()),
+            Err(RecvTimeoutError::Timeout) if started.elapsed() > RUN_LIMIT => {
+                process.control.close();
+                return Err(format!("did not finish in {RUN_LIMIT:?}"));
+            }
+            Err(RecvTimeoutError::Timeout) => {}
+        }
+    }
+}
+
+/// The whole esctest suite once, printing what `script/tasks.ts` scores:
 /// a machine-readable summary, then one failing test per line.
 ///
 /// # Panics
@@ -87,7 +133,7 @@ fn failing_names(log: &str) -> Vec<String> {
 /// or when esctest finished without a summary — both are framework
 /// failures, not test results.
 #[test]
-#[ignore = "run via `bun run conformance` (needs ZU_ESCTEST_DIR, a real PTY and ~3 min)"]
+#[ignore = "run via `bun run conformance` (needs ZU_ESCTEST_DIR, a real PTY and ~1 min)"]
 fn esctest() {
     let dir = match std::env::var("ZU_ESCTEST_DIR") {
         Ok(dir) if !dir.trim().is_empty() => PathBuf::from(dir),
@@ -103,67 +149,21 @@ fn esctest() {
     // esctest writes the report to a file, not the terminal; the task
     // reads ours after the exit.
     let logfile = std::env::temp_dir().join(format!("zu-esctest-{}.log", std::process::id()));
-    let mut args: Vec<String> = vec![script.to_string_lossy().into_owned()];
-    args.extend(ESCTEST_ARGS.iter().map(|arg| arg.to_string()));
-    args.push(format!("--timeout={ESCTEST_TIMEOUT}"));
-    args.push(format!("--logfile={}", logfile.display()));
+    let mut argv: Vec<String> = vec!["python3".to_owned(), script.to_string_lossy().into_owned()];
+    argv.extend(ESCTEST_ARGS.iter().map(|arg| arg.to_string()));
+    argv.push(format!("--timeout={ESCTEST_TIMEOUT}"));
+    argv.push(format!("--logfile={}", logfile.display()));
 
-    let (events, _) = tokio::sync::mpsc::unbounded_channel();
-    let shared = Shared::build(events);
-    let (exited, exit) = mpsc::channel::<()>();
-    let feeder = shared.clone();
-    let process = Process::spawn(
-        PtyOptions {
-            command: Some("python3".to_owned()),
-            args: Some(args),
-            cwd: Some(dir.to_string_lossy().into_owned()),
-            env: None,
-            cols: Some(80),
-            rows: Some(25),
-        },
-        move |bytes| feeder.feed(bytes),
-        move |_| {
-            let _ = exited.send(());
-        },
-    )
-    .expect("a pty for esctest");
-    // The same construction path `TerminalSession::open` runs: the grid
-    // takes the pty's size, then the session owns the program.
-    let (cols, rows) = process.control.size();
-    shared.resize(cols, rows, (0, 0));
-    shared.adopt(process.control.clone());
-
-    let started = Instant::now();
-    loop {
-        match exit.recv_timeout(Duration::from_secs(10)) {
-            Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
-            Err(RecvTimeoutError::Timeout) if started.elapsed() > RUN_LIMIT => {
-                process.control.close();
-                panic!(
-                    "esctest did not finish in {:?}; its partial log is at {}",
-                    RUN_LIMIT,
-                    logfile.display()
-                );
-            }
-            Err(RecvTimeoutError::Timeout) => {}
-        }
-    }
+    run_in_session(argv, Some(dir.to_string_lossy().into_owned()))
+        .unwrap_or_else(|error| panic!("esctest {error}"));
 
     // esctest flushes the log line by line, but the summary lands between
     // the last bytes we see and the exit; re-read briefly.
-    let log = loop {
-        match std::fs::File::open(&logfile).and_then(|mut file| {
-            let mut log = String::new();
-            file.read_to_string(&mut log)?;
-            Ok(log)
-        }) {
-            Ok(log) if parse_summary(&log).is_some() => break log,
-            _ if started.elapsed() > RUN_LIMIT => {
-                panic!("esctest left no summary in {}", logfile.display())
-            }
-            _ => std::thread::sleep(Duration::from_millis(200)),
-        }
-    };
+    let log = read_until(
+        &logfile,
+        |log| parse_summary(log).is_some(),
+        "esctest left no summary in",
+    );
 
     let Some((passed, known, failed)) = parse_summary(&log) else {
         panic!("esctest left no summary in {}", logfile.display())
@@ -177,6 +177,109 @@ fn esctest() {
     for name in names {
         println!("ESCTEST-FAILED {name}");
     }
+}
+
+/// Where `ucs-detect` lives, when this machine has it: `$ZU_UCS_DETECT`,
+/// then the PATH, then the spots user pip installs land in.
+fn locate_ucs_detect() -> Option<PathBuf> {
+    if let Some(given) = std::env::var_os("ZU_UCS_DETECT") {
+        let given = PathBuf::from(given);
+        if given.is_file() {
+            return Some(given);
+        }
+    }
+    if let Ok(path) = std::env::var("PATH") {
+        for dir in std::env::split_paths(&path) {
+            let candidate = dir.join("ucs-detect");
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    let home = PathBuf::from(std::env::var_os("HOME")?);
+    let mut candidates = vec![home.join(".local/bin/ucs-detect")];
+    if let Ok(versions) = std::fs::read_dir(home.join("Library/Python")) {
+        for version in versions.flatten() {
+            candidates.push(version.path().join("bin/ucs-detect"));
+        }
+    }
+    candidates.into_iter().find(|candidate| candidate.is_file())
+}
+
+/// The ucs-detect run, record-only (issue #46 P2): the results are
+/// reported for the evidence, never gated, and a machine without the
+/// binary skips with an install hint.
+#[test]
+#[ignore = "run via `bun run conformance -- ucs` (needs ucs-detect, a real PTY)"]
+fn ucs() {
+    let Some(binary) = locate_ucs_detect() else {
+        println!("UCS-DETECT-SKIPPED no ucs-detect on this machine");
+        println!(
+            "install it with `pipx install ucs-detect` (or `pip3 install --user ucs-detect`), then rerun"
+        );
+        return;
+    };
+
+    // Everything ucs-detect writes — its drawn UI and the cursor/device
+    // queries it needs answered — must stay on the terminal, so stderr is
+    // not redirected; the measured data takes a side exit through
+    // --save-json. The limits are Ghostty's fixed ones
+    // (test/ucs-detect.sh); its `--limit-words` is `--limit-graphemes`
+    // since ucs-detect 2.3 — the old name survives only in old YAML reruns.
+    let results = std::env::temp_dir().join(format!("zu-ucs-{}.json", std::process::id()));
+    let script = format!(
+        "{} --limit-codepoints=5000 --limit-graphemes=5000 --limit-errors=1000 --stream=stderr --save-json={}",
+        shell_quoted(&binary),
+        shell_quoted(&results)
+    );
+    run_in_session(vec!["sh".to_owned(), "-c".to_owned(), script], None).unwrap_or_else(|error| {
+        panic!(
+            "ucs-detect {error}; its partial results are at {}",
+            results.display()
+        )
+    });
+
+    let report = read_until(
+        &results,
+        |report| serde_json::from_str::<serde_json::Value>(report).is_ok(),
+        "ucs-detect left no results in",
+    );
+    let json: serde_json::Value = serde_json::from_str(&report).expect("results parse");
+    let text = |value: &serde_json::Value| value.as_str().unwrap_or("?").to_owned();
+    println!(
+        "UCS-DETECT-SUMMARY software={} version={} ambiguous_width={} size={}x{} seconds={}",
+        text(&json["software_name"]),
+        text(&json["software_version"]),
+        json["ambiguous_width"].as_u64().unwrap_or(0),
+        json["width"].as_u64().unwrap_or(0),
+        json["height"].as_u64().unwrap_or(0),
+        json["seconds_elapsed"].as_f64().unwrap_or(0.0) as u64,
+    );
+    println!("UCS-DETECT-JSON");
+    println!("{report}");
+}
+
+/// Reads `path` until `accept` says the content is complete, with brief
+/// retries inside [`RUN_LIMIT`] (the program flushes its report between
+/// the last bytes we see and the exit).
+fn read_until(path: &Path, accept: impl Fn(&str) -> bool, missing: &str) -> String {
+    let started = Instant::now();
+    loop {
+        match std::fs::File::open(path).and_then(|mut file| {
+            let mut content = String::new();
+            file.read_to_string(&mut content)?;
+            Ok(content)
+        }) {
+            Ok(content) if accept(&content) => return content,
+            _ if started.elapsed() > RUN_LIMIT => panic!("{missing} {}", path.display()),
+            _ => std::thread::sleep(Duration::from_millis(200)),
+        }
+    }
+}
+
+/// A path as a single shell word.
+fn shell_quoted(path: &Path) -> String {
+    format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"))
 }
 
 #[cfg(test)]

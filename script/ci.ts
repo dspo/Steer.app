@@ -12,6 +12,7 @@
  *               suite (`ZU_SKIP_LIVE` set by the pipeline)
  *   manox       the manox hermetic gate, both files, `ZU_MANOX_GATE=1`
  *   harness     pi-harness's own version ledger + bun test
+ *   conformance  the esctest2/ucs-detect report — report-only, never red
  *
  * `toolchain` is the one stage that stays inline shell in `.cnb.yml`: it
  * installs bun itself (apt, curl, rustup components), and there is no bun to
@@ -108,6 +109,23 @@ function harness(): void {
   run([BUN, "test"], HARNESS);
 }
 
+function conformance(): void {
+  // Report-only by decision (issue #46 §五, like Ghostty's own CI): the
+  // esctest2/ucs-detect numbers land in this stage's log whatever happens
+  // — a red conformance run never blocks a merge. `run` would exit the
+  // process on failure, so this spawns and echoes by hand.
+  console.log("conformance stage: report-only（结果不拦合并，摘要如下）");
+  const proc = Bun.spawnSync([BUN, "script/tasks.ts", "conformance"], {
+    cwd: ROOT,
+    env: process.env,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  process.stdout.write(proc.stdout.toString());
+  process.stderr.write(proc.stderr.toString());
+  console.log(`conformance stage: exit=${proc.exitCode ?? "signal"}（report-only，不拦合并）`);
+}
+
 const stages: Record<string, () => void> = {
   "layer-gate": layerGate,
   "lint-rust": lintRust,
@@ -115,6 +133,7 @@ const stages: Record<string, () => void> = {
   test,
   manox,
   harness,
+  conformance,
 };
 
 const task = process.argv[2];

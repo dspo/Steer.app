@@ -335,6 +335,11 @@ Casing II；C8 三包布局；ACP cutover（P0–P4：distro ACP 入口、`zu/ac
 容器去 harness 身份、通知按 sheet id）；**Pi × ACP 会话运行时 A0–F0**（持久进程、协议配置/命令/用量、
 权限与 elicitation、扩展 UI、子代理、sheet/容器/退出生命周期）。
 
+**终端符合性（Q118，issue #46）**：`bun run conformance`——esctest2（pin 2798f12，567 例）走与
+`TerminalSession` 同一构造路径的真 PTY，打分对照上游基线（`native/conformance/esctest-baseline.txt`，
+内核受限 114 例），report-only 不拦合并；ucs-detect（记录制）同入口 `-- ucs`。数字与证据：
+[evidence/esctest-20261118.md](evidence/esctest-20261118.md)、[evidence/ucs-detect-20261118.md](evidence/ucs-detect-20261118.md)。
+
 **待做**：
 
 1. **打包产物真机启动**：脚本已绿；发布前跑一轮真实 turn。

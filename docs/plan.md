@@ -109,6 +109,8 @@ MANOX_RUN_LIVE=1 ZU_MANOX_GATE=1 nsh test app/tests/manox.test.ts   # 真内核 
 ZU_MANOX_GATE=1 nsh test app/tests/manox.ui.test.tsx  # manox sheet 门禁
 bun script/check-layers.mjs                     # 依赖门禁（模块/域/主干）
 bun script/tasks.ts bundle                      # 打包冒烟（Helpers/pi-acp 断言）
+bun run conformance                             # 终端符合性（report-only，不拦合并；
+                                                # --gate=p0 自愿加严；issue #46）
 ```
 
 依赖门禁（S0 起成为 `nsh check` 的前置）：
