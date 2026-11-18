@@ -17,14 +17,14 @@ use std::{
     collections::HashMap,
     sync::{
         Arc, Mutex, MutexGuard, OnceLock, Weak,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering},
     },
 };
 
 use nsh_core::prelude::*;
 use zu_ghostty::{
-    ColorScheme, ProgressState, RenderState, Terminal as Ghostty,
-    sys::GHOSTTY_CELL_WIDE_SPACER_TAIL,
+    ColorScheme, DeviceAttributes, ProgressState, RenderState, SizeReport, Terminal as Ghostty,
+    XtChecksumFlags, sys::GHOSTTY_CELL_WIDE_SPACER_TAIL,
 };
 
 use crate::pty::{Control, Process, PtyExit, PtyOptions};
@@ -69,6 +69,41 @@ pub(crate) struct Emulator {
     /// How many times the program rang the bell: the view flashes when it
     /// sees the count move.
     pub(crate) bells: u64,
+    /// A window-resize request the resize callback recorded. It must not
+    /// apply it itself: the callback fires inside `term.write`, under the
+    /// session's lock, and `Shared::resize` takes that same lock. The
+    /// feeder applies it after the write released the lock.
+    pending_resize: Arc<Mutex<Option<(u16, u16)>>>,
+}
+
+impl Emulator {
+    /// The recorded request, if one is waiting.
+    fn take_pending_resize(&mut self) -> Option<(u16, u16)> {
+        self.pending_resize.lock().ok()?.take()
+    }
+}
+
+/// The grid and cell size of the last layout: what size queries answer
+/// with until the view lays out something else. The kernel may move the
+/// grid part itself (DECCOLM); `feed` syncs that back after every write.
+struct Geometry {
+    cols: AtomicU16,
+    rows: AtomicU16,
+    cell_w: AtomicU32,
+    cell_h: AtomicU32,
+}
+
+impl Geometry {
+    /// 80×24 at 10×20 device pixels a cell — what the official esctest
+    /// driver answers before anything lays the view out.
+    fn new() -> Self {
+        Self {
+            cols: AtomicU16::new(80),
+            rows: AtomicU16::new(24),
+            cell_w: AtomicU32::new(10),
+            cell_h: AtomicU32::new(20),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -91,12 +126,35 @@ pub(crate) struct Shared {
     /// Whether the background the view draws on is dark: the answer to a
     /// program's color-scheme query.
     dark: Arc<AtomicBool>,
+    /// The grid and cell size size queries answer with.
+    geometry: Geometry,
 }
 
 /// A view's request to be drawn again, with the attachment it belongs to.
 type Waker = (u64, Arc<dyn Fn() + Send + Sync>);
 
 impl Shared {
+    /// The wiring every session shares: an emulator with the query answers
+    /// set, events flowing into `events`. No program and no view attached
+    /// yet; the caller spawns the process, wires the control and (for a
+    /// real session) registers the id.
+    pub(crate) fn build(
+        events: tokio::sync::mpsc::UnboundedSender<TerminalSessionEvent>,
+    ) -> Arc<Shared> {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let id = NEXT.fetch_add(1, Ordering::Relaxed);
+        let dark = Arc::new(AtomicBool::new(false));
+        Arc::new_cyclic(|weak: &Weak<Shared>| Shared {
+            id,
+            geometry: Geometry::new(),
+            emulator: Mutex::new(Emulator::new(weak.clone(), dark.clone())),
+            control: OnceLock::new(),
+            events,
+            waker: Mutex::new(None),
+            dark,
+        })
+    }
+
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub(crate) fn id(&self) -> u64 {
         self.id
@@ -108,6 +166,12 @@ impl Shared {
         self.emulator.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// Gives the session its program's control: resize requests and typed
+    /// input flow to it from here on.
+    pub(crate) fn adopt(&self, control: Arc<Control>) {
+        let _ = self.control.set(control);
+    }
+
     /// Bytes for the program: typed keys, pastes, mouse reports.
     pub(crate) fn send(&self, bytes: &[u8]) {
         if let Some(control) = self.control.get() {
@@ -116,8 +180,18 @@ impl Shared {
     }
 
     /// Makes the grid `cols` × `rows` cells of `cell_px` device pixels, and
-    /// tells the program.
+    /// tells the program. A zero `cell_px` keeps the one before (size
+    /// queries need a cell size even before the view laid out).
     pub(crate) fn resize(&self, cols: u16, rows: u16, cell_px: (u32, u32)) {
+        let g = &self.geometry;
+        g.cols.store(cols, Ordering::Relaxed);
+        g.rows.store(rows, Ordering::Relaxed);
+        if cell_px.0 > 0 {
+            g.cell_w.store(cell_px.0, Ordering::Relaxed);
+        }
+        if cell_px.1 > 0 {
+            g.cell_h.store(cell_px.1, Ordering::Relaxed);
+        }
         let _ = self.lock().term.resize(cols, rows, cell_px.0, cell_px.1);
         if let Some(control) = self.control.get() {
             let _ = control.resize(cols, rows);
@@ -167,14 +241,50 @@ impl Shared {
         }
     }
 
-    fn feed(&self, bytes: &[u8]) {
-        let events = {
+    /// Emulates the program's output, reports its effects and applies a
+    /// window-resize request it made mid-stream — with the session lock
+    /// released between the two.
+    pub(crate) fn feed(&self, bytes: &[u8]) {
+        let (events, asked) = {
             let mut emulator = self.lock();
             emulator.term.write(bytes);
-            emulator.drain()
+            // The kernel can resize itself (DECCOLM under DEC mode 40),
+            // ahead of the view: size queries must answer what it is now.
+            let g = &self.geometry;
+            if let Some(cols) = emulator.term.cols() {
+                g.cols.store(cols, Ordering::Relaxed);
+            }
+            if let Some(rows) = emulator.term.rows() {
+                g.rows.store(rows, Ordering::Relaxed);
+            }
+            // The resize request was recorded by a callback that ran inside
+            // `write`, under this lock; taking it here is safe, applying it
+            // happens below, with the lock released.
+            (emulator.drain(), emulator.take_pending_resize())
         };
         for event in events {
             let _ = self.events.send(event);
+        }
+        if let Some(asked) = asked {
+            let g = &self.geometry;
+            let cols = if asked.1 == 0 {
+                g.cols.load(Ordering::Relaxed)
+            } else {
+                asked.1
+            };
+            let rows = if asked.0 == 0 {
+                g.rows.load(Ordering::Relaxed)
+            } else {
+                asked.0
+            };
+            self.resize(
+                cols,
+                rows,
+                (
+                    g.cell_w.load(Ordering::Relaxed),
+                    g.cell_h.load(Ordering::Relaxed),
+                ),
+            );
         }
         self.wake();
     }
@@ -185,6 +295,37 @@ impl Emulator {
         let mut term = Ghostty::new(80, 24).expect("libghostty-vt makes a terminal");
         term.set_scrollback_lines(SCROLLBACK);
         let effects = Arc::new(Mutex::new(Effects::default()));
+        let pending_resize = Arc::new(Mutex::new(None));
+
+        // esctest (and other decoders of real terminals) ask what they are
+        // talking to; the answers come from the session's own state.
+        let ask = shared.clone();
+        term.set_on_size(Box::new(move |view| {
+            let session = ask.upgrade()?;
+            let g = &session.geometry;
+            Some(SizeReport {
+                // The grid as the kernel has it now: a resize the same
+                // chunk triggered (DECCOLM) must be part of the answer.
+                rows: view.rows()?,
+                columns: view.cols()?,
+                cell_width: g.cell_w.load(Ordering::Relaxed),
+                cell_height: g.cell_h.load(Ordering::Relaxed),
+            })
+        }));
+        term.set_on_device_attributes(Box::new(DeviceAttributes::vt520));
+        term.set_xt_checksum_report(true);
+        term.set_xt_checksum_extension(XtChecksumFlags {
+            positive: true,
+            no_attributes: true,
+            no_trim: true,
+            full: true,
+        });
+        let ask = pending_resize.clone();
+        term.set_on_resize_window(Box::new(move |request| {
+            if request.rows != 0 || request.columns != 0 {
+                *ask.lock().unwrap() = Some((request.rows, request.columns));
+            }
+        }));
         term.set_write_pty(Box::new(move |bytes| {
             if let Some(shared) = shared.upgrade() {
                 shared.send(bytes);
@@ -254,6 +395,7 @@ impl Emulator {
             term,
             effects,
             bells: 0,
+            pending_resize,
         }
     }
 
@@ -399,18 +541,8 @@ impl TerminalSession {
         #[args(event)] on_event: Callback<TerminalSessionEvent>,
         cx: CallCx<'_>,
     ) -> Result<TerminalSession, String> {
-        static NEXT: AtomicU64 = AtomicU64::new(1);
-        let id = NEXT.fetch_add(1, Ordering::Relaxed);
         let (events, mut received) = tokio::sync::mpsc::unbounded_channel();
-        let dark = Arc::new(AtomicBool::new(false));
-        let shared = Arc::new_cyclic(|weak: &Weak<Shared>| Shared {
-            id,
-            emulator: Mutex::new(Emulator::new(weak.clone(), dark.clone())),
-            control: OnceLock::new(),
-            events: events.clone(),
-            waker: Mutex::new(None),
-            dark,
-        });
+        let shared = Shared::build(events.clone());
         let feeder = shared.clone();
         let process = Process::spawn(
             options,
@@ -425,10 +557,10 @@ impl TerminalSession {
             },
         )?;
         let (cols, rows) = process.control.size();
-        let _ = shared.lock().term.resize(cols, rows, 0, 0);
-        let _ = shared.control.set(process.control.clone());
+        shared.resize(cols, rows, (0, 0));
+        shared.adopt(process.control.clone());
         if let Ok(mut sessions) = registry().lock() {
-            sessions.insert(id, Arc::downgrade(&shared));
+            sessions.insert(shared.id(), Arc::downgrade(&shared));
         }
         cx.start(async move {
             while let Some(event) = received.recv().await {
@@ -575,5 +707,68 @@ impl TerminalSession {
     #[getter]
     pub fn exit_signal(&self) -> Option<String> {
         self.process.control.exit().signal
+    }
+}
+
+/// The feed path without a real PTY: the query-answer wiring and the
+/// resize-request plumbing every session and the conformance driver share.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shared() -> Arc<Shared> {
+        let (events, _) = tokio::sync::mpsc::unbounded_channel();
+        Shared::build(events)
+    }
+
+    fn grid(shared: &Shared) -> (u16, u16) {
+        let mut render = RenderState::new().unwrap();
+        let frame = render.snapshot(&shared.lock().term).unwrap();
+        (frame.cols, frame.rows)
+    }
+
+    /// A window-resize request applies after the write released the lock,
+    /// never from inside its own callback.
+    #[test]
+    fn resize_request_applies_after_the_write_released_the_lock() {
+        let shared = shared();
+        shared.feed(b"\x1b[8;30;100t");
+        assert_eq!(grid(&shared), (100, 30));
+        // A zero keeps the dimension the program left out.
+        shared.feed(b"\x1b[8;0;40t");
+        assert_eq!(grid(&shared), (40, 30));
+    }
+
+    /// The kernel can resize itself (DECCOLM under DEC mode 40), ahead of
+    /// the view: query answers follow what it is now, not the last layout.
+    #[test]
+    fn kernel_self_resize_reaches_the_query_answers() {
+        let shared = shared();
+        shared.feed(b"\x1b[?40h\x1b[?3h");
+        assert_eq!(grid(&shared), (132, 24));
+        assert_eq!(shared.geometry.cols.load(Ordering::Relaxed), 132);
+        // And back, since the mode is what carries the size.
+        shared.feed(b"\x1b[?3l");
+        assert_eq!(grid(&shared), (80, 24));
+    }
+
+    /// Writes and resize requests at once do not deadlock, and a request
+    /// that comes after them wins.
+    #[test]
+    fn concurrent_writes_and_resize_requests_do_not_deadlock() {
+        let shared = shared();
+        let feeder = shared.clone();
+        let writer = std::thread::spawn(move || {
+            for _ in 0..2000 {
+                feeder.feed(b"hello\r\n");
+            }
+        });
+        for i in 0..200 {
+            shared.feed(format!("\x1b[8;{};{}t", 10 + i % 20, 40 + i % 30).as_bytes());
+        }
+        writer.join().unwrap();
+        shared.feed(b"\x1b[8;33;77t");
+        assert_eq!(grid(&shared), (77, 33));
+        assert!(shared.lock().term.text_all().contains("hello"));
     }
 }

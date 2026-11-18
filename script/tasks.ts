@@ -17,7 +17,7 @@
  *    would test this branch's app against someone else's harness.
  */
 
-import { copyFileSync, cpSync as fsCopy, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { copyFileSync, cpSync as fsCopy, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { APP, BUN, checkNsh, fail, HARNESS, nshBinary, run, ROOT } from "./lib/toolchain.ts";
@@ -38,9 +38,173 @@ const usage = () =>
     "Usage: bun run bundle [-i] [-o] [out-dir]   (out-dir default: build)",
     "  -i    install Zu.app to /Applications once the bundle is complete",
     "  -o    open Zu.app once the bundle is complete (the /Applications copy with -i)",
-    "  -h    show this help",
+    "Usage: bun run conformance [-- esctest|ucs|all] [--gate=p0]",
+    "  esctest (default)  the esctest2 conformance run, report-only",
+    "  --gate=p0          exit non-zero when a P0-class test fails (issue #46)",
+    "  -h                 show this help",
     "  NSH=/path/to/nsh overrides the nsh binary (default: nsh)",
   ].join("\n");
+
+/** The esctest2 release the conformance run pins (issue #46), never
+ * vendored: the download goes to the cache and is verified against the
+ * sha256 before use. When Ghostty bumps, re-check the pin its own
+ * `test/esctest/build.zig.zon` carries (docs/upstream-watch.md). */
+const ESCTEST2 = {
+  url: "https://github.com/ThomasDickey/esctest2/archive/2798f12149a19c3295e9b4853ab2da4b2eff1b2b.tar.gz",
+  sha256: "04b01a8343045a6801ea9a2a849b339e1b41179197102363a43fab13b25a2e1e",
+  dir: "esctest2-2798f12149a19c3295e9b4853ab2da4b2eff1b2b",
+  cache: join(homedir(), ".cache", "steer-conformance"),
+};
+
+/** The P0 classes: on the pinned kernel the upstream runner passes every
+ * test in them, so a failure here is the embedding's, not the kernel's
+ * (issue #46). The other classes are kernel-limited and recorded in
+ * `native/conformance/esctest-baseline.txt`. */
+const P0_CLASSES = new Set([
+  "APCTests", "BSTests", "CBTTests", "CHATests", "CHTTests", "CNLTests",
+  "CPLTests", "CRTests", "CUBTests", "CUDTests", "CUFTests", "CUPTests",
+  "CUUTests", "DCHTests", "DCSTests", "DECALNTests", "DECBITests",
+  "DECDCTests", "DECFITests", "DECICTests", "DECIDTests", "DECRCTests",
+  "DECSEDTests", "DECSELTests", "DECSETTiteInhibitTests", "DECSTBMTests",
+  "DECSTRTests", "DLTests", "ECHTests", "EDTests", "ELTests", "FFTests",
+  "HPATests", "HPRTests", "HTSTests", "HVPTests", "ICHTests", "ILTests",
+  "INDTests", "LFTests", "ManipulateSelectionDataTests", "NELTests",
+  "PMTests", "REPTests", "RITests", "RMTests", "ResetColorTests",
+  "S8C1TTests", "SCORCTests", "SDTests", "SMTests", "SMTitleTests",
+  "SOSTests", "SUTests", "TBCTests", "VPATests", "VPRTests", "VTTests",
+  "XtermSaveTests",
+]);
+
+function sha256(path: string): string {
+  const hash = new Bun.CryptoHasher("sha256");
+  hash.update(readFileSync(path));
+  return hash.digest("hex");
+}
+
+/** Makes sure the pinned esctest2 is in the cache and verified; returns
+ * the directory to point `ZU_ESCTEST_DIR` at. Downloading again when the
+ * tarball does not match the pin keeps a corrupted cache from lying. */
+async function ensureEsctest2(): Promise<string> {
+  mkdirSync(ESCTEST2.cache, { recursive: true });
+  const tarball = join(ESCTEST2.cache, "esctest2.tar.gz");
+  if (existsSync(tarball) && sha256(tarball) !== ESCTEST2.sha256) {
+    console.error("conformance: the cached esctest2.tar.gz does not match the pin, downloading again");
+    rmSync(tarball);
+  }
+  if (!existsSync(tarball)) {
+    console.log(`conformance: downloading esctest2 (${ESCTEST2.url})`);
+    await Bun.write(tarball, await fetch(ESCTEST2.url));
+  }
+  if (sha256(tarball) !== ESCTEST2.sha256) {
+    fail(`conformance: esctest2.tar.gz does not match the pin ${ESCTEST2.sha256}`);
+  }
+  const dir = join(ESCTEST2.cache, ESCTEST2.dir);
+  if (!existsSync(join(dir, "esctest", "esctest.py"))) {
+    rmSync(dir, { recursive: true, force: true });
+    const unpacked = Bun.spawnSync(["tar", "-xzf", tarball, "-C", ESCTEST2.cache]);
+    if (!existsSync(join(dir, "esctest", "esctest.py"))) {
+      fail(`conformance: unpacking esctest2 failed: ${unpacked.stderr.toString().trim()}`);
+    }
+  }
+  return dir;
+}
+
+/** Runs the esctest2 conformance pass and scores it: cargo runs the
+ * `#[ignore]`d driver, the output carries the result, and the report
+ * splits the failures into what the kernel also fails upstream and what
+ * is ours. Report-only by default; `--gate=p0` fails when a P0-class
+ * test does. */
+async function conformanceEsctest(gate: boolean): Promise<void> {
+  const esctestDir = await ensureEsctest2();
+  console.log("conformance: running esctest2 (a full pass takes about a minute)");
+  const proc = Bun.spawn(
+    ["cargo", "test", "-p", "zu-app", "conformance", "--", "--ignored", "--nocapture"],
+    {
+      cwd: join(ROOT, "native"),
+      env: { ...process.env, ZU_ESCTEST_DIR: esctestDir },
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
+  const killer = setTimeout(() => proc.kill(), 15 * 60 * 1000);
+  const output: Uint8Array[] = [];
+  const pump = (stream: ReadableStream<Uint8Array>) =>
+    (async () => {
+      const reader = stream.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        output.push(value);
+        process.stdout.write(value);
+      }
+    })();
+  const drained = Promise.all([pump(proc.stdout as ReadableStream<Uint8Array>), pump(proc.stderr as ReadableStream<Uint8Array>)]);
+  const code = await proc.exited;
+  clearTimeout(killer);
+  await drained;
+  if (code !== 0) {
+    fail(`conformance: the esctest driver failed (exit ${code}) — see the output above`);
+  }
+  const text = Buffer.concat(output).toString();
+  const summary = /ESCTEST-SUMMARY passed=(\d+) known=(\d+) failed=(\d+) total=(\d+)/.exec(text);
+  if (!summary) fail("conformance: the driver printed no ESCTEST-SUMMARY — see the output above");
+  const [passed, known, failed, total] = summary.slice(1).map(Number) as number[];
+  const failing = [...text.matchAll(/^ESCTEST-FAILED (.+)$/gm)].map((match) => match[1]);
+  // The driver names every failure it parsed; a shorter list means the log's
+  // "Failing tests:" shape moved, and the split below would call an empty set
+  // "ours: 0" and wave a failing P0 gate through.
+  if (failing.length !== failed) {
+    fail(
+      `conformance: the driver named ${failing.length} failing tests but the summary says ${failed} — check failing_names() in native/src/conformance.rs against the pinned esctest2`,
+    );
+  }
+
+  // What the kernel also fails upstream; what is left is ours.
+  const baselinePath = join(ROOT, "native", "conformance", "esctest-baseline.txt");
+  const baseline = existsSync(baselinePath)
+    ? new Set(readFileSync(baselinePath, "utf8").split("\n").map((name) => name.trim()).filter(Boolean))
+    : null;
+  const upstream = baseline ? failing.filter((name) => baseline.has(name)) : [];
+  const ours = baseline ? failing.filter((name) => !baseline.has(name)) : failing;
+  const p0Failing = failing.filter((name) => P0_CLASSES.has(name.split(".")[0]));
+
+  console.log(
+    `\nconformance: esctest2 ${passed} passed / ${known} known bugs / ${failed} failed (${total})`,
+  );
+  if (!baseline) {
+    console.log(
+      `conformance: no ${join(ROOT, "native", "conformance", "esctest-baseline.txt")} — every failure counts as ours (regenerate the baseline per issue #46 §四)`,
+    );
+  } else {
+    console.log(`  kernel-limited (upstream fails them too): ${upstream.length}`);
+    console.log(`  ours (not in the upstream baseline): ${ours.length}`);
+    for (const name of ours) console.log(`    ${name}`);
+  }
+  console.log(`  P0 (${P0_CLASSES.size} classes): ${p0Failing.length === 0 ? "all green" : `${p0Failing.length} failing`}`);
+  for (const name of p0Failing) console.log(`    P0 ${name}`);
+
+  // The badges read this: the measured numbers move, the kernel's do not.
+  const today = new Date().toISOString().slice(0, 10);
+  const conformanceJson = join(ROOT, "docs", "evidence", "conformance.json");
+  const json = JSON.parse(readFileSync(conformanceJson, "utf8")) as Record<string, unknown>;
+  (json.esctest2 as Record<string, unknown>) = {
+    passed,
+    knownBugs: known,
+    failed,
+    total,
+    measured: today,
+    against: `feat/conformance-e2e (issue #46)`,
+  };
+  writeFileSync(conformanceJson, `${JSON.stringify(json, null, 2)}\n`);
+  console.log(`conformance: badges updated in ${conformanceJson}`);
+
+  if (gate) {
+    if (p0Failing.length > 0) {
+      fail(`conformance: --gate=p0 fails: ${p0Failing.length} P0-class test(s) failing`);
+    }
+    console.log("conformance: --gate=p0 passes");
+  }
+}
 
 /** A `node_modules` that is a symlink to another checkout cannot be installed
  * into (bun resolves through the link): replace it with a real install. */
@@ -281,6 +445,29 @@ switch (task) {
     bundle(outDir, installResult, openResult);
     break;
   }
+  case "conformance": {
+    // `bun run conformance -- esctest` passes the arguments after a literal
+    // `--`; argv carries it, and no suite is ever named `--`.
+    let gate = false;
+    let suite: "esctest" | "ucs" | "all" = "esctest";
+    for (const arg of process.argv.slice(3).filter((a) => a !== "--")) {
+      if (arg === "--gate=p0") gate = true;
+      else if (arg === "esctest" || arg === "ucs" || arg === "all") suite = arg;
+      else if (arg === "-h" || arg === "--help") {
+        console.log(usage());
+        process.exit(0);
+      } else {
+        console.error(`error: unknown option '${arg}'`);
+        console.error(usage());
+        process.exit(1);
+      }
+    }
+    if (suite !== "esctest") {
+      fail("conformance: ucs-detect is 阶段 3 of issue #46 (P2, 记录制) — not wired yet");
+    }
+    await conformanceEsctest(gate);
+    break;
+  }
   default:
-    fail(`unknown task: ${task} (dev, check, test, evidence, bundle)`);
+    fail(`unknown task: ${task} (dev, check, test, evidence, bundle, conformance)`);
 }

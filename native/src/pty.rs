@@ -35,21 +35,24 @@ const MAX_ARGS: usize = 4096;
 const MAX_INPUT: usize = 1 << 20;
 
 /// How a PTY starts.
+///
+/// The fields are crate-visible so tests and the conformance driver can
+/// start their own programs; the TSX side builds it as a JS object.
 #[derive(Debug, Clone, Default, JsObject)]
 pub struct PtyOptions {
     /// The program; `$SHELL`, else the platform's login shell (`/bin/zsh` on
     /// macOS, `/bin/bash` elsewhere), when left out.
-    command: Option<String>,
+    pub(crate) command: Option<String>,
     /// The program's arguments, none for the default shell.
-    args: Option<Vec<String>>,
+    pub(crate) args: Option<Vec<String>>,
     /// The working directory; the app's current directory when left out.
-    cwd: Option<String>,
+    pub(crate) cwd: Option<String>,
     /// Extra environment entries (`TERM` and `COLORTERM` are always set).
-    env: Option<BTreeMap<String, String>>,
+    pub(crate) env: Option<BTreeMap<String, String>>,
     /// Columns at start (80 when left out); the view resizes it.
-    cols: Option<u16>,
+    pub(crate) cols: Option<u16>,
     /// Rows at start (24 when left out).
-    rows: Option<u16>,
+    pub(crate) rows: Option<u16>,
 }
 
 /// How a PTY's program ended.

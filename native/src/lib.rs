@@ -17,6 +17,8 @@ use std::{
 use nsh_core::prelude::*;
 
 mod acp;
+#[cfg(test)]
+mod conformance;
 mod fs;
 mod git;
 mod instance;

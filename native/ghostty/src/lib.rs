@@ -13,6 +13,7 @@
 use std::{
     cell::RefCell,
     ffi::{CString, c_char, c_int, c_void},
+    marker::PhantomData,
 };
 
 pub mod sys;
@@ -141,8 +142,147 @@ pub struct SemanticPrompt {
     pub command: String,
 }
 
+/// The answer to XTWINOPS size queries (`CSI 14/16/18/19 t`) and mode-2048
+/// reports: the grid and the cell size the view lays out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SizeReport {
+    pub rows: u16,
+    pub columns: u16,
+    /// A cell's width in device pixels.
+    pub cell_width: u32,
+    /// A cell's height in device pixels.
+    pub cell_height: u32,
+}
+
+/// A DA answer's Pp level and feature codes (`CSI ? Pp ; Ps... c`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeviceAttributesPrimary {
+    /// The conformance level: 62 for a VT220, 65 for a VT520.
+    pub level: u16,
+    pub features: Vec<u16>,
+}
+
+/// A DA answer's terminal type, firmware and ROM cartridge numbers.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DeviceAttributesSecondary {
+    /// The terminal type: 1 for a VT220, 64 for a VT520.
+    pub device_type: u16,
+    pub firmware_version: u16,
+    pub rom_cartridge: u16,
+}
+
+/// A DA3 answer's unit id, encoded as eight hex digits.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DeviceAttributesTertiary {
+    pub unit_id: u32,
+}
+
+/// What `CSI c` (DA1), `CSI > c` (DA2) and `CSI = c` (DA3) are answered
+/// with; the terminal encodes whichever the query asked for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeviceAttributes {
+    pub primary: DeviceAttributesPrimary,
+    pub secondary: DeviceAttributesSecondary,
+    pub tertiary: DeviceAttributesTertiary,
+}
+
+impl DeviceAttributes {
+    /// The profile the official esctest driver answers with: a VT520
+    /// with ANSI color, esctest's highest VT level.
+    pub fn vt520() -> Self {
+        Self {
+            primary: DeviceAttributesPrimary {
+                level: 65,
+                features: vec![22],
+            },
+            secondary: DeviceAttributesSecondary {
+                device_type: 64,
+                firmware_version: 0,
+                rom_cartridge: 0,
+            },
+            tertiary: DeviceAttributesTertiary { unit_id: 0 },
+        }
+    }
+}
+
+/// A program's request to resize the window (`CSI 8 ; rows ; columns t`);
+/// a zero keeps that dimension. The terminal does not resize itself: the
+/// embedder decides.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ResizeWindowRequest {
+    pub rows: u16,
+    pub columns: u16,
+}
+
+/// How DECRQCRA (`CSI Pi ; Pg ; Pt ; Pl ; Pb ; Pr * y`) computes its
+/// checksum: the bits of xterm's `checksumExtension`, which also survive
+/// a reset when set before. 1 negates nothing, 2 skips cell attributes,
+/// 4 keeps blanks, 16 counts full codepoints; 8 (never-written cells as
+/// spaces) has no flag and stays off.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct XtChecksumFlags {
+    pub positive: bool,
+    pub no_attributes: bool,
+    pub no_trim: bool,
+    pub full: bool,
+}
+
+impl XtChecksumFlags {
+    fn bits(self) -> u8 {
+        u8::from(self.positive)
+            | u8::from(self.no_attributes) << 1
+            | u8::from(self.no_trim) << 2
+            | u8::from(self.full) << 4
+    }
+}
+
+/// A borrowed view of the terminal inside a callback: valid only for the
+/// callback's duration, on the thread that runs it. The callback fires
+/// while the terminal processes its input, so reads see the state the
+/// program has reached so far. The lifetime is what keeps it there — a
+/// callback cannot store it and read a terminal that has since gone away.
+#[derive(Clone, Copy)]
+pub struct TerminalRef<'a> {
+    term: sys::GhosttyTerminal,
+    _scope: PhantomData<&'a ()>,
+}
+
+impl TerminalRef<'_> {
+    /// The grid's width, as the kernel sees it right now — including a
+    /// resize the same chunk triggered (DECCOLM under DEC mode 40).
+    pub fn cols(&self) -> Option<u16> {
+        let mut cols: u16 = 0;
+        // SAFETY: the handle is live; the data kind writes a `uint16_t`.
+        let rc = unsafe {
+            sys::ghostty_terminal_get(
+                self.term,
+                sys::GHOSTTY_TERMINAL_DATA_COLS,
+                &mut cols as *mut u16 as *mut c_void,
+            )
+        };
+        (rc == sys::GHOSTTY_SUCCESS).then_some(cols)
+    }
+
+    /// The grid's height, likewise.
+    pub fn rows(&self) -> Option<u16> {
+        let mut rows: u16 = 0;
+        // SAFETY: the handle is live; the data kind writes a `uint16_t`.
+        let rc = unsafe {
+            sys::ghostty_terminal_get(
+                self.term,
+                sys::GHOSTTY_TERMINAL_DATA_ROWS,
+                &mut rows as *mut u16 as *mut c_void,
+            )
+        };
+        (rc == sys::GHOSTTY_SUCCESS).then_some(rows)
+    }
+}
+
 type WritePtyFn = Box<dyn Fn(&[u8]) + Send>;
 type EffectFn = Box<dyn Fn() + Send>;
+type SizeFn = Box<dyn for<'a> Fn(TerminalRef<'a>) -> Option<SizeReport> + Send>;
+type DeviceAttributesFn = Box<dyn Fn() -> DeviceAttributes + Send>;
+type ResizeWindowFn = Box<dyn Fn(ResizeWindowRequest) + Send>;
 type ClipboardFn = Box<dyn Fn(&str) + Send>;
 type ColorSchemeFn = Box<dyn Fn() -> Option<ColorScheme> + Send>;
 type NotificationFn = Box<dyn Fn(&str, &str) + Send>;
@@ -160,6 +300,9 @@ struct Callbacks {
     on_notification: Option<NotificationFn>,
     on_progress: Option<ProgressFn>,
     on_semantic_prompt: Option<SemanticPromptFn>,
+    on_size: Option<SizeFn>,
+    on_device_attributes: Option<DeviceAttributesFn>,
+    on_resize_window: Option<ResizeWindowFn>,
     /// The XTVERSION answer; the C side borrows it during the callback.
     xtversion: String,
 }
@@ -375,6 +518,95 @@ unsafe extern "C" fn trampoline_semantic_prompt(
     });
 }
 
+unsafe extern "C" fn trampoline_size(
+    term: sys::GhosttyTerminal,
+    ud: *mut c_void,
+    out: *mut sys::GhosttySizeReportSize,
+) -> bool {
+    // SAFETY: userdata is always our `Callbacks`; `out` is the terminal's
+    // writable out-parameter.
+    let Some(f) = unsafe { callbacks(ud) }.on_size.as_ref() else {
+        return false;
+    };
+    let view = TerminalRef {
+        term,
+        _scope: PhantomData,
+    };
+    let Some(size) = f(view) else {
+        return false;
+    };
+    // SAFETY: `out` is the terminal's writable out-parameter.
+    unsafe {
+        *out = sys::GhosttySizeReportSize {
+            rows: size.rows,
+            columns: size.columns,
+            cell_width: size.cell_width,
+            cell_height: size.cell_height,
+        };
+    }
+    true
+}
+
+unsafe extern "C" fn trampoline_device_attributes(
+    _term: sys::GhosttyTerminal,
+    ud: *mut c_void,
+    out: *mut sys::GhosttyDeviceAttributes,
+) -> bool {
+    // SAFETY: userdata is always our `Callbacks`; `out` is the terminal's
+    // writable out-parameter.
+    let Some(f) = unsafe { callbacks(ud) }.on_device_attributes.as_ref() else {
+        return false;
+    };
+    let attrs = f();
+    let mut features = [0; 64];
+    let len = attrs.primary.features.len().min(64);
+    features[..len].copy_from_slice(&attrs.primary.features[..len]);
+    // SAFETY: `out` is the terminal's writable out-parameter, and the
+    // feature array is filled to `num_features` above.
+    unsafe {
+        *out = sys::GhosttyDeviceAttributes {
+            primary: sys::GhosttyDeviceAttributesPrimary {
+                conformance_level: attrs.primary.level,
+                features,
+                num_features: len,
+            },
+            secondary: sys::GhosttyDeviceAttributesSecondary {
+                device_type: attrs.secondary.device_type,
+                firmware_version: attrs.secondary.firmware_version,
+                rom_cartridge: attrs.secondary.rom_cartridge,
+            },
+            tertiary: sys::GhosttyDeviceAttributesTertiary {
+                unit_id: attrs.tertiary.unit_id,
+            },
+        };
+    }
+    true
+}
+
+unsafe extern "C" fn trampoline_resize_window(
+    _term: sys::GhosttyTerminal,
+    ud: *mut c_void,
+    request: *const sys::GhosttyTerminalResizeWindow,
+) {
+    // SAFETY: userdata is always our `Callbacks`; the request is lent for
+    // this call, and the union is read under the tag that names it.
+    let Some(f) = unsafe { callbacks(ud) }.on_resize_window.as_ref() else {
+        return;
+    };
+    // SAFETY: the request is lent for this call.
+    let request = unsafe { &*request };
+    if request.tag != sys::GHOSTTY_TERMINAL_RESIZE_WINDOW_GRID {
+        return;
+    }
+    // SAFETY: the tag is `RESIZE_WINDOW_GRID`, so `grid` is the active
+    // field.
+    let grid = unsafe { request.value.grid };
+    f(ResizeWindowRequest {
+        rows: grid.rows,
+        columns: grid.columns,
+    });
+}
+
 impl Terminal {
     /// A terminal answering XTVERSION as "Zu", with
     /// [`DEFAULT_WORD_BOUNDARIES`] for word selection.
@@ -395,6 +627,9 @@ impl Terminal {
                 on_notification: None,
                 on_progress: None,
                 on_semantic_prompt: None,
+                on_size: None,
+                on_device_attributes: None,
+                on_resize_window: None,
                 xtversion: String::new(),
             }),
             word_boundaries: DEFAULT_WORD_BOUNDARIES.iter().map(|&c| c as u32).collect(),
@@ -518,6 +753,66 @@ impl Terminal {
         let cb = trampoline_xtversion as sys::GhosttyTerminalXtversionFn;
         // SAFETY: the option takes a `GhosttyTerminalXtversionFn`.
         unsafe { self.set_opt(sys::GHOSTTY_TERMINAL_OPT_XTVERSION, cb as *const c_void) };
+    }
+
+    /// Answer XTWINOPS size queries (`CSI 14/16/18/19 t`) and mode-2048
+    /// reports; `None` leaves one unanswered. The callback sees the
+    /// terminal as the program has made it so far.
+    pub fn set_on_size(&mut self, f: SizeFn) {
+        self.callbacks.on_size = Some(f);
+        let cb = trampoline_size as sys::GhosttyTerminalSizeFn;
+        // SAFETY: the option takes a `GhosttyTerminalSizeFn`.
+        unsafe { self.set_opt(sys::GHOSTTY_TERMINAL_OPT_SIZE, cb as *const c_void) };
+    }
+
+    /// Answer device-attributes queries (`CSI c`, `CSI > c`, `CSI = c`).
+    /// Unset leaves them unanswered.
+    pub fn set_on_device_attributes(&mut self, f: DeviceAttributesFn) {
+        self.callbacks.on_device_attributes = Some(f);
+        let cb = trampoline_device_attributes as sys::GhosttyTerminalDeviceAttributesFn;
+        // SAFETY: the option takes a `GhosttyTerminalDeviceAttributesFn`.
+        unsafe {
+            self.set_opt(
+                sys::GHOSTTY_TERMINAL_OPT_DEVICE_ATTRIBUTES,
+                cb as *const c_void,
+            )
+        };
+    }
+
+    /// Hear the program's window-resize requests (`CSI 8 t`); the grid is
+    /// not touched, the handler decides.
+    pub fn set_on_resize_window(&mut self, f: ResizeWindowFn) {
+        self.callbacks.on_resize_window = Some(f);
+        let cb = trampoline_resize_window as sys::GhosttyTerminalResizeWindowFn;
+        // SAFETY: the option takes a `GhosttyTerminalResizeWindowFn`.
+        unsafe { self.set_opt(sys::GHOSTTY_TERMINAL_OPT_RESIZE_WINDOW, cb as *const c_void) };
+    }
+
+    /// Whether DECRQCRA (`CSI Pi ; Pg ; Pt ; Pl ; Pb ; Pr * y`) is answered
+    /// at all. Off by default: a program can checksum the screen cell by
+    /// cell and read back everything on it.
+    pub fn set_xt_checksum_report(&self, enabled: bool) {
+        // SAFETY: the option takes a `bool*`, copied during the call.
+        unsafe {
+            self.set_opt(
+                sys::GHOSTTY_TERMINAL_OPT_XT_CHECKSUM_REPORT,
+                &enabled as *const bool as *const c_void,
+            )
+        };
+    }
+
+    /// How DECRQCRA computes after a reset (and from now on). See
+    /// [`XtChecksumFlags`]; esctest's `--xterm-checksum=411` wants the
+    /// `23` of xterm's `checksumExtension`.
+    pub fn set_xt_checksum_extension(&self, flags: XtChecksumFlags) {
+        let bits = flags.bits();
+        // SAFETY: the option takes a `uint8_t*`, copied during the call.
+        unsafe {
+            self.set_opt(
+                sys::GHOSTTY_TERMINAL_OPT_XT_CHECKSUM_EXTENSION,
+                &bits as *const u8 as *const c_void,
+            )
+        };
     }
 
     /// The whole terminal — scrollback and screen — as plain text.
@@ -871,6 +1166,21 @@ impl Terminal {
 
     pub fn title(&self) -> Option<String> {
         self.get_string(sys::GHOSTTY_TERMINAL_DATA_TITLE)
+    }
+
+    /// The grid's width in cells, as the kernel sees it. The kernel can
+    /// resize itself (DECCOLM under DEC mode 40) without the embedder.
+    pub fn cols(&self) -> Option<u16> {
+        let mut cols: u16 = 0;
+        // SAFETY: the data kind writes a `uint16_t`.
+        unsafe { self.get(sys::GHOSTTY_TERMINAL_DATA_COLS, &mut cols) }.then_some(cols)
+    }
+
+    /// The grid's height in cells, as the kernel sees it.
+    pub fn rows(&self) -> Option<u16> {
+        let mut rows: u16 = 0;
+        // SAFETY: the data kind writes a `uint16_t`.
+        unsafe { self.get(sys::GHOSTTY_TERMINAL_DATA_ROWS, &mut rows) }.then_some(rows)
     }
 
     pub fn pwd(&self) -> Option<String> {
@@ -1887,5 +2197,121 @@ mod more_tests {
         replies.lock().unwrap().clear();
         term.write(b"\x1b[>q");
         assert_eq!(&*replies.lock().unwrap(), b"\x1bP>|Zu\x1b\\");
+    }
+}
+
+/// The query-answer wiring the esctest conformance run needs: size
+/// reports, device attributes, DECRQCRA and window-resize requests.
+#[cfg(test)]
+mod query_tests {
+    use super::test_util::*;
+    use super::*;
+
+    /// `CSI 18 t` answers with the grid, `CSI 14/16 t` with the pixels
+    /// the size callback reported.
+    #[test]
+    fn size_queries_answer_the_reported_geometry() {
+        let (mut term, replies) = with_replies(80, 25);
+        term.set_on_size(Box::new(|view| {
+            Some(SizeReport {
+                rows: view.rows()?,
+                columns: view.cols()?,
+                cell_width: 10,
+                cell_height: 20,
+            })
+        }));
+        term.write(b"\x1b[18t");
+        assert_eq!(&*replies.lock().unwrap(), b"\x1b[8;25;80t");
+        replies.lock().unwrap().clear();
+        term.write(b"\x1b[14t");
+        assert_eq!(&*replies.lock().unwrap(), b"\x1b[4;500;800t");
+        replies.lock().unwrap().clear();
+        term.write(b"\x1b[16t");
+        assert_eq!(&*replies.lock().unwrap(), b"\x1b[6;20;10t");
+    }
+
+    /// A mode change and its size query in one chunk: the query answers
+    /// what the chunk has already made the terminal (DECCOLM under mode
+    /// 40 resizes the kernel itself).
+    #[test]
+    fn size_query_answers_a_self_resize_in_the_same_chunk() {
+        let (mut term, replies) = with_replies(80, 25);
+        term.set_on_size(Box::new(|view| {
+            Some(SizeReport {
+                rows: view.rows()?,
+                columns: view.cols()?,
+                cell_width: 10,
+                cell_height: 20,
+            })
+        }));
+        term.write(b"\x1b[?40h\x1b[?3h\x1b[18t");
+        assert_eq!(&*replies.lock().unwrap(), b"\x1b[8;25;132t");
+    }
+
+    /// The DA answers go out as the profile describes them.
+    #[test]
+    fn device_attributes_answer_with_the_reported_profile() {
+        let (mut term, replies) = with_replies(80, 25);
+        term.set_on_device_attributes(Box::new(DeviceAttributes::vt520));
+        term.write(b"\x1b[c\x1b[>c\x1b[=c");
+        let answered = String::from_utf8_lossy(&*replies.lock().unwrap()).into_owned();
+        assert_eq!(
+            answered, "\x1b[?65;22c\x1b[>64;0;0c\x1bP!|00000000\x1b\\",
+            "DA1/DA2/DA3 as the VT520 profile"
+        );
+    }
+
+    /// DECRQCRA reports a checksum when enabled, as the extension bits
+    /// describe, and stays silent when disabled.
+    #[test]
+    fn decrqcra_reports_a_checksum_when_enabled() {
+        let (mut term, replies) = with_replies(80, 25);
+        term.write(b"ab");
+        term.set_xt_checksum_extension(XtChecksumFlags {
+            positive: true,
+            no_attributes: true,
+            no_trim: true,
+            full: true,
+        });
+        term.write(b"\x1b[2;1;1;1;1;2*y");
+        assert!(
+            replies.lock().unwrap().is_empty(),
+            "no checksum without the opt-in"
+        );
+        term.set_xt_checksum_report(true);
+        term.write(b"\x1b[2;1;1;1;1;2*y");
+        let answered = String::from_utf8_lossy(&*replies.lock().unwrap()).into_owned();
+        // The DEC form: DCS Pi ! ~ <four hex digits> ST.
+        assert!(
+            answered.starts_with("\x1bP2!~") && answered.ends_with("\x1b\\"),
+            "the request echoed with a checksum, got {answered:?}"
+        );
+        replies.lock().unwrap().clear();
+        term.write(b"\x1b[2;1;1;1;1;2*y");
+        let again = String::from_utf8_lossy(&*replies.lock().unwrap()).into_owned();
+        assert_eq!(answered, again, "the checksum is deterministic");
+    }
+
+    /// `CSI 8 t` reaches the callback and touches no grid: the embedder
+    /// decides.
+    #[test]
+    fn resize_requests_reach_the_callback_not_the_grid() {
+        let (mut term, replies) = with_replies(80, 25);
+        let asked = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let sink = asked.clone();
+        term.set_on_resize_window(Box::new(move |request| {
+            *sink.lock().unwrap() = Some(request);
+        }));
+        term.write(b"\x1b[8;30;100t");
+        assert_eq!(
+            *asked.lock().unwrap(),
+            Some(ResizeWindowRequest {
+                rows: 30,
+                columns: 100,
+            })
+        );
+        let frame = RenderState::new().unwrap().snapshot(&term).unwrap();
+        assert_eq!((frame.cols, frame.rows), (80, 25), "the grid is untouched");
+        assert!(replies.lock().unwrap().is_empty());
     }
 }

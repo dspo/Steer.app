@@ -43,6 +43,9 @@ Zu（祖冲之）是 coding agent 的 macOS 桌面工作台：nsh（TSX/AppKit�
   `terminal-sheet.visual`、`hero-terminals.ui` 的退出用例）——终端是 AppKit 视图，headless 里是空盒子，
   **不带该变量这些用例静默跳过**；`native/src/term_view` 的几何/IME/键位单测随 `cargo test` 在 macOS 跑
 - pi-harness 自检：`cd pi-harness && bun run check-version && bun test`
+- 终端符合性：`bun run conformance [-- esctest|ucs|all] [--gate=p0]`——report-only 不拦合并，
+  需 python3 与网络（首次下载 esctest2 到 `~/.cache/steer-conformance/`），全量约 1 分钟；
+  验收口径与基线见 issue #46 与 `native/conformance/README.md`
 - `ZU_SKIP_LIVE=1` = CI 口径：跳过 live 模型/LSP 与 acp-load-probe
 - 终端/ghostty 构建：首次 `cargo check` 由 `native/ghostty/build.rs` 下载并编译 libghostty-vt
   （zig 0.17，冷构建约 4 分钟）；`ZU_GHOSTTY_CACHE` 指向缓存目录可复用静态库，

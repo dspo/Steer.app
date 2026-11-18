@@ -89,7 +89,9 @@ pub const GHOSTTY_TERMINAL_OPT_WRITE_PTY: c_int = 1;
 pub const GHOSTTY_TERMINAL_OPT_BELL: c_int = 2;
 pub const GHOSTTY_TERMINAL_OPT_XTVERSION: c_int = 4;
 pub const GHOSTTY_TERMINAL_OPT_TITLE_CHANGED: c_int = 5;
+pub const GHOSTTY_TERMINAL_OPT_SIZE: c_int = 6;
 pub const GHOSTTY_TERMINAL_OPT_COLOR_SCHEME: c_int = 7;
+pub const GHOSTTY_TERMINAL_OPT_DEVICE_ATTRIBUTES: c_int = 8;
 pub const GHOSTTY_TERMINAL_OPT_COLOR_FOREGROUND: c_int = 11;
 pub const GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND: c_int = 12;
 pub const GHOSTTY_TERMINAL_OPT_COLOR_CURSOR: c_int = 13;
@@ -104,6 +106,9 @@ pub const GHOSTTY_TERMINAL_OPT_DESKTOP_NOTIFICATION: c_int = 29;
 pub const GHOSTTY_TERMINAL_OPT_PROGRESS_REPORT: c_int = 30;
 pub const GHOSTTY_TERMINAL_OPT_TERMINFO_NAME: c_int = 37;
 pub const GHOSTTY_TERMINAL_OPT_SEMANTIC_PROMPT: c_int = 42;
+pub const GHOSTTY_TERMINAL_OPT_XT_CHECKSUM_REPORT: c_int = 44;
+pub const GHOSTTY_TERMINAL_OPT_XT_CHECKSUM_EXTENSION: c_int = 45;
+pub const GHOSTTY_TERMINAL_OPT_RESIZE_WINDOW: c_int = 47;
 
 /// `GHOSTTY_TERMINAL_DATA_*`
 pub const GHOSTTY_TERMINAL_DATA_COLS: c_int = 1;
@@ -1312,6 +1317,107 @@ pub type GhosttyTerminalSemanticPromptFn = unsafe extern "C" fn(
     terminal: GhosttyTerminal,
     userdata: *mut c_void,
     event: *const GhosttyTerminalSemanticPrompt,
+);
+
+// ---------------------------------------------------------------------------
+// Size reports, device attributes, window resize, DECRQCRA (terminal.h,
+// size_report.h, device.h)
+// ---------------------------------------------------------------------------
+
+/// `GhosttySizeReportSize` (size_report.h): the terminal geometry the
+/// size callback answers XTWINOPS queries and mode-2048 reports with.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GhosttySizeReportSize {
+    pub rows: u16,
+    pub columns: u16,
+    pub cell_width: u32,
+    pub cell_height: u32,
+}
+
+/// `GhosttyTerminalSizeFn`: false suppresses the report.
+pub type GhosttyTerminalSizeFn = unsafe extern "C" fn(
+    terminal: GhosttyTerminal,
+    userdata: *mut c_void,
+    out_size: *mut GhosttySizeReportSize,
+) -> bool;
+
+/// `GhosttyDeviceAttributesPrimary` (device.h): the DA1 answer's Pp and
+/// up to 64 feature codes.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct GhosttyDeviceAttributesPrimary {
+    pub conformance_level: u16,
+    pub features: [u16; 64],
+    pub num_features: usize,
+}
+
+/// `GhosttyDeviceAttributesSecondary` (device.h): the DA2 answer.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GhosttyDeviceAttributesSecondary {
+    pub device_type: u16,
+    pub firmware_version: u16,
+    pub rom_cartridge: u16,
+}
+
+/// `GhosttyDeviceAttributesTertiary` (device.h): the DA3 answer's unit id.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GhosttyDeviceAttributesTertiary {
+    pub unit_id: u32,
+}
+
+/// `GhosttyDeviceAttributes` (device.h): all three DA answers at once; the
+/// terminal encodes whichever the query asked for.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct GhosttyDeviceAttributes {
+    pub primary: GhosttyDeviceAttributesPrimary,
+    pub secondary: GhosttyDeviceAttributesSecondary,
+    pub tertiary: GhosttyDeviceAttributesTertiary,
+}
+
+/// `GhosttyTerminalDeviceAttributesFn`: false leaves the query unanswered.
+pub type GhosttyTerminalDeviceAttributesFn = unsafe extern "C" fn(
+    terminal: GhosttyTerminal,
+    userdata: *mut c_void,
+    out_attrs: *mut GhosttyDeviceAttributes,
+) -> bool;
+
+/// `GHOSTTY_TERMINAL_RESIZE_WINDOW_GRID` (the only tag today).
+pub const GHOSTTY_TERMINAL_RESIZE_WINDOW_GRID: c_int = 0;
+
+/// `GhosttyTerminalResizeWindowGrid`: a grid resize request, 0 keeping
+/// the dimension.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GhosttyTerminalResizeWindowGrid {
+    pub rows: u16,
+    pub columns: u16,
+}
+
+/// `GhosttyTerminalResizeWindowValue`: the request's value, read by tag.
+/// Not `Copy`: a union cannot safely claim it.
+#[repr(C)]
+pub union GhosttyTerminalResizeWindowValue {
+    pub grid: GhosttyTerminalResizeWindowGrid,
+    pub padding: [u64; 2],
+}
+
+/// `GhosttyTerminalResizeWindow`: a program's window-resize request.
+#[repr(C)]
+pub struct GhosttyTerminalResizeWindow {
+    pub tag: c_int,
+    pub value: GhosttyTerminalResizeWindowValue,
+}
+
+/// `GhosttyTerminalResizeWindowFn`: the terminal does not resize itself;
+/// the embedder decides.
+pub type GhosttyTerminalResizeWindowFn = unsafe extern "C" fn(
+    terminal: GhosttyTerminal,
+    userdata: *mut c_void,
+    request: *const GhosttyTerminalResizeWindow,
 );
 
 // ---------------------------------------------------------------------------

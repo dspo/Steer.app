@@ -1,12 +1,12 @@
 {
   "v": 1,
   "esctest2": {
-    "passed": 0,
-    "knownBugs": 0,
-    "failed": 567,
+    "passed": 411,
+    "knownBugs": 42,
+    "failed": 114,
     "total": 567,
     "measured": "2026-11-18",
-    "against": "feat/ghostty-nsview (PR #38)"
+    "against": "feat/conformance-e2e (issue #46)"
   },
   "libghostty-vt": {
     "rev": "042b16b",
