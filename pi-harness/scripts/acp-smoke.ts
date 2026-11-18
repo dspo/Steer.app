@@ -138,18 +138,6 @@ async function request(method: string, params?: unknown, timeoutMs = 90_000): Pr
   return response;
 }
 
-function drainedUpdateCount(sessionId: string): number {
-  let count = 0;
-  for (let index = notifications.length - 1; index >= 0; index -= 1) {
-    const message = notifications[index]!;
-    if (message.method === "session/update" && message.params?.sessionId === sessionId) {
-      notifications.splice(index, 1);
-      count += 1;
-    }
-  }
-  return count;
-}
-
 // ----------------------------------------------------------------- checks
 
 const cwd = mkdtempSync(join(tmpdir(), "pi-acp-smoke-"));
@@ -223,9 +211,30 @@ try {
     );
     assert(prompt.result, `session/prompt failed: ${JSON.stringify(prompt.error)}`);
     assert(prompt.result.stopReason === "end_turn", `stopReason should be end_turn, got ${prompt.result.stopReason}`);
-    const updates = drainedUpdateCount(sessionId);
+    // 6a. A live turn announces the user's own message and settles the
+    // reply: pi persists messages at message_end and never emits
+    // entry_appended for them, so the distro reads the entry back. A
+    // regression here leaves the client's optimistic row re-keyless and the
+    // reply an open draft (and a prompt sent while that draft is open lands
+    // above the answer it replies to).
+    const liveKinds = new Set<string>();
+    let updates = 0;
+    for (let index = notifications.length - 1; index >= 0; index -= 1) {
+      const message = notifications[index]!;
+      if (message.method !== "session/update" || message.params?.sessionId !== sessionId) continue;
+      notifications.splice(index, 1);
+      updates += 1;
+      const update = message.params?.update as Record<string, any> | undefined;
+      if (!update) continue;
+      if (update.sessionUpdate === "user_message_chunk") liveKinds.add("user");
+      if (update.sessionUpdate === "agent_message_chunk" && update._meta?.pi?.settled === true) {
+        liveKinds.add("settle");
+      }
+    }
     assert(updates > 0, "the live turn should have streamed at least one session/update");
-    console.log(`live prompt ok: stopReason=end_turn, updates=${updates}`);
+    assert(liveKinds.has("user"), "a live turn must send the user's message chunk (user_entry_chunks)");
+    assert(liveKinds.has("settle"), "a live turn must settle the assistant message (settle marker)");
+    console.log(`live prompt ok: stopReason=end_turn, updates=${updates} (user chunk + settle)`);
 
     // 7. the session file exists under ~/.pi/agent/sessions/.
     const sessionFile = findSessionFile(sessionId);

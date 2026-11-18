@@ -254,8 +254,6 @@ class PiHarnessSession implements HarnessSession {
   private currentModel: PiMeta["model"] | undefined;
   /** The last settled assistant stop reason of the running turn. */
   private lastStop: string | undefined;
-  /** The last settled assistant provider error, when the turn ended in one. */
-  private lastError: string | undefined;
   /** The approval gate the permission extension uses. */
   private readonly gate: PermissionGate;
   /** The settings the session's services loaded (model scope, defaults). */
@@ -684,31 +682,44 @@ class PiHarnessSession implements HarnessSession {
   }
 
   /**
-   * A message entry appended to the session file: the user's own prompt (its
-   * chunk lands with the entry's id, re-keying the client's optimistic row)
-   * or the assistant's settled message (the settle marker, `_meta.pi` only).
+   * The session entry a message just persisted, read back after the write:
+   * the user's own prompt (its chunk lands with the entry's id, re-keying the
+   * client's optimistic row) or the assistant's settled message (the settle
+   * marker, `_meta.pi` only).
+   *
+   * pi 1.5.0 persists a message at `message_end` and never announces a
+   * regular message with `entry_appended` (that event covers custom entries
+   * and boundary drafts only), so the entry is read back by the branch
+   * position the append landed at — one microtask after the event, when the
+   * write has happened but before the run moves on.
    */
-  private entryAppendedUpdate(entry: unknown): SessionUpdate | undefined {
-    if (!isRecord(entry) || entry.type !== "message" || typeof entry.id !== "string") return undefined;
-    const message = isRecord(entry.message) ? entry.message : {};
+  private emitPersistedMessage(index: number, role: "user" | "assistant"): void {
+    const entry = this.manager.getBranch()[index];
+    if (!entry || entry.type !== "message" || typeof entry.id !== "string") return;
+    const message = entry.message as {
+      role?: string;
+      content?: unknown;
+      stopReason?: string;
+      errorMessage?: string;
+    };
+    if (message?.role !== role) return;
     const parsed = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
     const at = Number.isFinite(parsed) ? parsed : Date.now();
-    if (message.role === "user") {
+    if (role === "user") {
       for (const update of userEntryUpdates(entry.id, message.content, at)) this.emit(update);
-      return undefined;
+      return;
     }
-    if (message.role === "assistant") {
-      const durationMs = this.currentMessageAt !== undefined ? Math.max(0, at - this.currentMessageAt) : undefined;
-      return settledUpdate({
+    const durationMs = this.currentMessageAt !== undefined ? Math.max(0, at - this.currentMessageAt) : undefined;
+    this.emit(
+      settledUpdate({
         entryId: entry.id,
         at,
         ...(durationMs !== undefined ? { durationMs } : {}),
         ...(this.currentModel ? { model: this.currentModel } : {}),
-        ...(this.lastStop !== undefined ? { stopReason: stopReasonFromPi(this.lastStop) } : {}),
-        ...(this.lastError ? { error: this.lastError } : {}),
-      });
-    }
-    return undefined;
+        ...(message.stopReason !== undefined ? { stopReason: stopReasonFromPi(message.stopReason) } : {}),
+        ...(message.errorMessage ? { error: message.errorMessage } : {}),
+      }),
+    );
   }
 
   /** pi events in, ACP update payloads out — synchronously, preserving order. */
@@ -743,16 +754,24 @@ class PiHarnessSession implements HarnessSession {
             stopReason?: string;
             errorMessage?: string;
           };
+          // The entry lands in the file right after this event, so its id is
+          // only readable a microtask later (see emitPersistedMessage).
+          if (message?.role === "user" || message?.role === "assistant") {
+            const index = this.manager.getBranch().length;
+            const role = message.role;
+            queueMicrotask(() => this.emitPersistedMessage(index, role));
+          }
           if (message?.role !== "assistant") return;
           // Track the turn's final stop reason; the prompt reply reads it.
           // A provider error rides the settle marker's `_meta.pi` — it is
           // never stuffed into a text chunk (issue #20 §5.1).
           this.lastStop = message.stopReason;
-          this.lastError = message.errorMessage || undefined;
           return;
         }
         case "entry_appended": {
-          this.emit(this.entryAppendedUpdate((event as { entry?: unknown }).entry));
+          // A custom entry or a boundary draft: no transcript row has a
+          // shape for it (pi announces regular messages from message_end,
+          // above). Agent-side state, not conversation.
           return;
         }
         case "tool_execution_start": {

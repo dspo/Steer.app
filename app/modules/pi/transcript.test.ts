@@ -1,5 +1,13 @@
 import { expect, test } from "nsh/test";
-import { emptyTranscript, entryText, reduceTranscript, reduceUpdates, transcriptRows } from "./transcript";
+import {
+  emptyTranscript,
+  entryText,
+  reduceTranscript,
+  reduceUpdates,
+  transcriptRows,
+  type Entry,
+  type TranscriptState,
+} from "./transcript";
 
 // The transcript reducer's own suite (issue #20 §8): live and replay
 // sequences take one path and agree entry for entry; the settle marker
@@ -156,6 +164,120 @@ test("the optimistic row re-keys onto the real chunk in place", () => {
   expect(state.entries).toHaveLength(1);
   expect(state.entries[0].id).toBe("e7");
   if (state.entries[0].kind === "user") expect(state.entries[0].pi?.at).toBe(42);
+});
+
+test("a follow-up queued mid-turn reads after the reply it interrupted", () => {
+  // The turn is streaming; the user's next message is added optimistically
+  // while it runs (sessions.ts `optimisticUser`), so the row sits in entries
+  // before the reply — which is still the draft.
+  let state: TranscriptState = {
+    ...emptyTranscript(),
+    entries: [{ kind: "user", id: "e0", text: "first" } as Entry],
+    draft: { id: "m1", text: "answering the first" },
+    activeId: "m1",
+    seq: 1,
+  };
+  state = { ...state, entries: [...state.entries, { kind: "user", id: "pending:1", text: "follow up" }] };
+  // While the reply streams, the draft renders ahead of the follow-up.
+  expect(transcriptRows(state).map((row) => row.id)).toEqual(["e0", "m1", "pending:1"]);
+  // The reply settles: it must land ahead of the queued row, not after it.
+  state = reduceTranscript(state, {
+    sessionUpdate: "agent_message_chunk",
+    content: { type: "text", text: "" },
+    messageId: "e1",
+    _meta: { pi: { settled: true, entryId: "e1", stopReason: "end_turn" } },
+  });
+  expect(state.entries.map((entry) => entry.id)).toEqual(["e0", "e1", "pending:1"]);
+  expect(state.draft).toBeNull();
+  // The queued text's own entry chunk re-keys that row in place, though a
+  // reply sits between it and the tail.
+  state = reduceTranscript(state, {
+    sessionUpdate: "user_message_chunk",
+    content: { type: "text", text: "follow up" },
+    messageId: "e2",
+    _meta: { pi: { at: 43, entryId: "e2" } },
+  });
+  expect(state.entries.map((entry) => entry.id)).toEqual(["e0", "e1", "e2"]);
+  expect(transcriptRows(state).map((row) => row.id)).toEqual(["e0", "e1", "e2"]);
+});
+
+test("a tool card inside a streaming reply lands ahead of a queued row", () => {
+  let state: TranscriptState = {
+    ...emptyTranscript(),
+    entries: [
+      { kind: "user", id: "e0", text: "first" } as Entry,
+      { kind: "user", id: "pending:1", text: "queued" } as Entry,
+    ],
+    draft: { id: "m1", text: "thinking" },
+    activeId: "m1",
+    seq: 1,
+  };
+  state = reduceTranscript(state, {
+    sessionUpdate: "tool_call",
+    toolCallId: "t1",
+    name: "bash",
+    title: "bash ls",
+    status: "in_progress",
+  });
+  expect(state.entries.map((entry) => entry.id)).toEqual(["e0", "m1", "t1", "pending:1"]);
+});
+
+test("an expanded slash input adopts the entry's text, never a second row", () => {
+  // pi expands `/` input before persisting (a skill becomes a <skill …>
+  // block), so the entry's text is not the typed words. The optimistic row
+  // is still that message: one row, the entry's text, the entry's id.
+  let state: TranscriptState = {
+    ...emptyTranscript(),
+    entries: [{ kind: "user", id: "pending:1", text: "/skill:review" } as Entry],
+    seq: 1,
+  };
+  state = reduceTranscript(state, {
+    sessionUpdate: "user_message_chunk",
+    content: { type: "text", text: "<skill name=\"review\">…</skill>\ncheck the diff" },
+    messageId: "e9",
+    _meta: { pi: { at: 44, entryId: "e9" } },
+  });
+  expect(state.entries).toHaveLength(1);
+  expect(state.entries[0].kind).toBe("user");
+  expect(state.entries[0].id).toBe("e9");
+  expect(entryText(state.entries[0])).toContain("<skill name=\"review\">");
+  // The same chunk again (a repeated frame) changes nothing.
+  state = reduceTranscript(state, {
+    sessionUpdate: "user_message_chunk",
+    content: { type: "text", text: "<skill name=\"review\">…</skill>\ncheck the diff" },
+    messageId: "e9",
+    _meta: { pi: { at: 44, entryId: "e9" } },
+  });
+  expect(state.entries).toHaveLength(1);
+});
+
+test("queued messages keep their order as each expanded entry lands", () => {
+  let state: TranscriptState = {
+    ...emptyTranscript(),
+    entries: [
+      { kind: "user", id: "e0", text: "first" } as Entry,
+      { kind: "user", id: "pending:1", text: "/skill:a" } as Entry,
+      { kind: "user", id: "pending:2", text: "/skill:b" } as Entry,
+    ],
+    seq: 2,
+  };
+  state = reduceTranscript(state, {
+    sessionUpdate: "user_message_chunk",
+    content: { type: "text", text: "expanded a" },
+    messageId: "e1",
+    _meta: { pi: { at: 1, entryId: "e1" } },
+  });
+  state = reduceTranscript(state, {
+    sessionUpdate: "user_message_chunk",
+    content: { type: "text", text: "expanded b" },
+    messageId: "e2",
+    _meta: { pi: { at: 2, entryId: "e2" } },
+  });
+  expect(state.entries.map((entry) => [entry.id, entryText(entry)])).toEqual([
+    ["e0", "first"],
+    ["e1", "expanded a"],
+    ["e2", "expanded b"],
+  ]);
 });
 
 test("a tool partial replaces its snapshot; the end frame adds diffs and stats", () => {

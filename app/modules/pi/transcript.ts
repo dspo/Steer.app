@@ -167,20 +167,31 @@ export function reduceUpdates(updates: AcpUpdate[]): TranscriptState {
 function flushDraft(state: TranscriptState, exceptId?: string): TranscriptState {
   const draft = state.draft;
   if (!draft || draft.id === exceptId) return state;
-  return {
-    ...state,
-    entries: [
-      ...state.entries,
-      {
-        kind: "assistant",
-        id: draft.id,
-        text: draft.text,
-        ...(draft.thoughts ? { thoughts: draft.thoughts } : {}),
-        ...(draft.pi ? { pi: { ...draft.pi } } : {}),
-      },
-    ],
-    draft: null,
-  };
+  const entries = [...state.entries];
+  entries.splice(appendAt(entries), 0, {
+    kind: "assistant",
+    id: draft.id,
+    text: draft.text,
+    ...(draft.thoughts ? { thoughts: draft.thoughts } : {}),
+    ...(draft.pi ? { pi: { ...draft.pi } } : {}),
+  });
+  return { ...state, entries, draft: null };
+}
+
+/**
+ * Where a new row lands: before the optimistic rows the user queued while
+ * this turn was still running. The message belongs after the reply it
+ * interrupted — the list renders those rows after the draft for the same
+ * reason — so everything the turn produces is inserted ahead of them.
+ */
+function appendAt(entries: Entry[]): number {
+  let index = entries.length;
+  while (index > 0) {
+    const entry = entries[index - 1];
+    if (entry.kind !== "user" || !isPendingId(entry.id)) break;
+    index -= 1;
+  }
+  return index;
 }
 
 function reduceUserChunk(state: TranscriptState, update: AcpUpdate): TranscriptState {
@@ -196,9 +207,27 @@ function reduceUserChunk(state: TranscriptState, update: AcpUpdate): TranscriptS
     return { ...base, entries };
   }
   // The optimistic row is ours: when the real chunk arrives with the same
-  // words, the row re-keys onto the ACP id in place.
-  if (last?.kind === "user" && isPendingId(last.id) && last.text === text) {
-    entries[entries.length - 1] = { ...last, id, pi: meta ?? last.pi };
+  // words, the row re-keys onto the ACP id in place. It need not be the last
+  // row — a message queued during the previous turn already has that turn's
+  // reply below it by the time the entry chunk lands.
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry.kind === "user" && isPendingId(entry.id) && entry.text === text) {
+      entries[index] = { ...entry, id, pi: meta ?? entry.pi };
+      return { ...base, entries };
+    }
+  }
+  // One chunk per user entry: the same id arriving again (a repeated frame)
+  // changes nothing, and must not consume another optimistic row.
+  if (entries.some((entry) => entry.kind === "user" && entry.id === id)) return base;
+  // The words can differ: pi expands `/` input before persisting (a skill
+  // becomes a `<skill …>` block, a template its body). The oldest pending
+  // row is still that message — adopt the entry's authoritative text in
+  // place rather than minting a second row the replay will never show.
+  const at = appendAt(entries);
+  if (at < entries.length) {
+    const pending = entries[at] as UserEntry;
+    entries[at] = { ...pending, id, text, pi: meta ?? pending.pi };
     return { ...base, entries };
   }
   entries.push({ kind: "user", id, text, ...(meta ? { pi: meta } : {}) });
@@ -222,7 +251,7 @@ function reduceAgentChunk(state: TranscriptState, update: AcpUpdate): Transcript
   if (meta?.entryId) {
     // A replay's chunks are born under their entry's id: they build the
     // entry directly; the marker adds the settle facts.
-    entries.push({
+    entries.splice(appendAt(entries), 0, {
       kind: "assistant",
       id: target,
       text,
@@ -251,7 +280,7 @@ function reduceThoughtChunk(state: TranscriptState, update: AcpUpdate): Transcri
     return { ...base, entries };
   }
   if (meta?.entryId) {
-    entries.push({
+    entries.splice(appendAt(entries), 0, {
       kind: "assistant",
       id: target,
       text: "",
@@ -295,7 +324,7 @@ function reduceToolCall(state: TranscriptState, update: AcpUpdate): TranscriptSt
     ...(Array.isArray(update.locations) ? { locations: update.locations as Array<{ path: string }> } : {}),
   };
   if (index >= 0) entries[index] = { ...entries[index], ...card };
-  else entries.push(card);
+  else entries.splice(appendAt(entries), 0, card);
   return { ...base, entries };
 }
 
@@ -307,7 +336,7 @@ function reduceToolCallUpdate(state: TranscriptState, update: AcpUpdate): Transc
   if (index < 0) {
     // A settlement with no open card (a replayed result whose call was in an
     // unloaded branch): keep the result as its own card.
-    entries.push({
+    entries.splice(appendAt(entries), 0, {
       kind: "tool",
       id: toolCallId,
       toolCallId,
@@ -347,15 +376,13 @@ function reduceNotice(state: TranscriptState, update: AcpUpdate): TranscriptStat
   if (!text) return state;
   const base = flushDraft(state);
   const seq = base.seq + 1;
-  const entries = [
-    ...base.entries,
-    {
-      kind: "note" as const,
-      id: `notice:${seq}`,
-      ...(stringOf(notice.severity) ? { severity: stringOf(notice.severity)! } : {}),
-      text,
-    },
-  ];
+  const entries = [...base.entries];
+  entries.splice(appendAt(entries), 0, {
+    kind: "note" as const,
+    id: `notice:${seq}`,
+    ...(stringOf(notice.severity) ? { severity: stringOf(notice.severity)! } : {}),
+    text,
+  });
   return { ...base, entries, seq };
 }
 
@@ -382,7 +409,7 @@ function settleInto(state: TranscriptState, entryId: string, meta: PiMeta): Tran
   }
   const draft = state.draft;
   if (draft) {
-    entries.push({
+    entries.splice(appendAt(entries), 0, {
       kind: "assistant",
       id: entryId,
       text: draft.text,
@@ -408,7 +435,7 @@ function settleInto(state: TranscriptState, entryId: string, meta: PiMeta): Tran
   }
   // No streamed text reached the client (an error entry, a fast settle):
   // the marker itself is the record.
-  entries.push({ kind: "assistant", id: entryId, text: "", pi: settlePi });
+  entries.splice(appendAt(entries), 0, { kind: "assistant", id: entryId, text: "", pi: settlePi });
   return { ...state, entries, activeId: undefined };
 }
 
@@ -503,10 +530,21 @@ export function entryText(entry: Entry): string {
   return entry.text;
 }
 
-/** The transcript rows the list renders: the settled entries plus the draft. */
+/**
+ * The transcript rows the list renders: the settled entries plus the draft.
+ * The draft is the turn still writing, so it precedes any optimistic row the
+ * user queued while it ran — the follow-up reads after the answer it
+ * interrupted, not before it.
+ */
 export function transcriptRows(state: TranscriptState | undefined): Entry[] {
   if (!state) return [];
-  const rows = state.draft ? [...state.entries, draftEntry(state.draft)] : state.entries;
+  if (!state.draft) return state.entries.map(normalizeEntry);
+  const at = appendAt(state.entries);
+  const rows = [
+    ...state.entries.slice(0, at),
+    draftEntry(state.draft),
+    ...state.entries.slice(at),
+  ];
   return rows.map(normalizeEntry);
 }
 
