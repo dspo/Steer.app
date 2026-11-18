@@ -91,7 +91,8 @@ Zu（祖冲之）是 coding agent 的 macOS 桌面工作台：nsh（TSX/AppKit�
 
 ## 工作方法
 
-- **以 PR 为目标的编辑活动在独立 git worktree 中进行**
+- **PR 编辑在独立 git worktree 中进行**。惯例：`PWD=$(pwd) git worktree add $PWD.worktrees/pr_topic -b feat/pr_topic origin/main`；PR 合并后主动回收 origin 与本地对应的 branch、worktree
+- **先回应再动手**：收到 user message 后，第一次写操作前随口说一句你的理解与打算，说完就继续，不等确认
 - **尽早交付 PR**：提出 PR 后不要傻等 CI 通过才交付给用户——让用户的静态 review 与 CI 并行，节省开发者时间
 - **review 时别重复劳动**：CI 与验证脚本能验证的东西，非必要不跑
 - **review 必须给结论**：除了意见，明确三选一——`approve` / `approve with changes`（address comments and self-merge）/ `request changes`
