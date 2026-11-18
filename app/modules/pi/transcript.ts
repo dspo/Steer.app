@@ -203,6 +203,9 @@ function reduceUserChunk(state: TranscriptState, update: AcpUpdate): TranscriptS
   const entries = [...base.entries];
   const last = entries[entries.length - 1];
   if (last?.kind === "user" && last.id === id) {
+    // One chunk per user entry: an identical repeat is a duplicate frame,
+    // same rule the same-id guard below applies to a row mid-list.
+    if (last.text === text) return base;
     entries[entries.length - 1] = { ...last, text: last.text + text };
     return { ...base, entries };
   }

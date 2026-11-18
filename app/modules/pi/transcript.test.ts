@@ -241,7 +241,8 @@ test("an expanded slash input adopts the entry's text, never a second row", () =
   expect(state.entries[0].kind).toBe("user");
   expect(state.entries[0].id).toBe("e9");
   expect(entryText(state.entries[0])).toContain("<skill name=\"review\">");
-  // The same chunk again (a repeated frame) changes nothing.
+  // The same chunk again (a repeated frame) changes nothing — the row sits
+  // last here, so the repeat hits the tail branch, not the same-id guard.
   state = reduceTranscript(state, {
     sessionUpdate: "user_message_chunk",
     content: { type: "text", text: "<skill name=\"review\">…</skill>\ncheck the diff" },
@@ -249,6 +250,27 @@ test("an expanded slash input adopts the entry's text, never a second row", () =
     _meta: { pi: { at: 44, entryId: "e9" } },
   });
   expect(state.entries).toHaveLength(1);
+  expect(entryText(state.entries[0])).toBe("<skill name=\"review\">…</skill>\ncheck the diff");
+});
+
+test("a repeated frame spares the optimistic rows queued behind it", () => {
+  // The re-keyed row is not last anymore: the follow-up was queued while its
+  // turn ran. The duplicate must no-op, not consume the queued row.
+  let state: TranscriptState = {
+    ...emptyTranscript(),
+    entries: [
+      { kind: "user", id: "e9", text: "expanded" } as Entry,
+      { kind: "user", id: "pending:2", text: "queued" } as Entry,
+    ],
+    seq: 2,
+  };
+  state = reduceTranscript(state, {
+    sessionUpdate: "user_message_chunk",
+    content: { type: "text", text: "expanded" },
+    messageId: "e9",
+    _meta: { pi: { at: 44, entryId: "e9" } },
+  });
+  expect(state.entries.map((entry) => entry.id)).toEqual(["e9", "pending:2"]);
 });
 
 test("queued messages keep their order as each expanded entry lands", () => {

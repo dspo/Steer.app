@@ -224,7 +224,7 @@ ACP 的 chunk 形状没有给客户端转录需要的锚点，这些事实走 AC
 | `entryId` | 每个 chunk；replay 与 live 相同（pi 的 session entry id） |
 | `settled` | settle marker：**空文本 `agent_message_chunk`**，其 `_meta.pi` 另带 `durationMs`（首 delta → entry 落盘）、`stopReason`（ACP 词表）、`error`（provider 错误，不再伪装成文本 chunk） |
 
-用户消息落盘后发 `user_entry_chunks`（同 `messageId` + `_meta.pi.at/entryId`）——客户端乐观行按 entryId 就地换键。**落盘信号来自 `message_end` 之后回读 branch**：pi 1.5.0 只在 `message_end` 里持久化普通消息，`entry_appended` 只覆盖 custom entry / boundary draft（实测一个 live turn 的 `entry_appended` 数是 0），因此 user 与 assistant 的 entry id 都在 microtask 里按「落盘前的 branch 长度」回读，assistant 的 settle marker 同样走这条回读路径。
+用户消息落盘后发 `user_entry_chunks`（同 `messageId` + `_meta.pi.at/entryId`）——客户端乐观行按 entryId 就地换键（同文精确匹配优先；pi 会展开 `/` 输入，落盘文本非原文，落空时最老的尾部乐观行就地换键并采纳 entry 文本；同 id 重复帧 no-op）。**落盘信号来自 `message_end` 之后回读 branch**：pi 1.5.0 只在 `message_end` 里持久化普通消息，`entry_appended` 只覆盖 custom entry / boundary draft（实测一个 live turn 的 `entry_appended` 数是 0），因此 user 与 assistant 的 entry id 都在 microtask 里按「落盘前的 branch 长度」回读，assistant 的 settle marker 同样走这条回读路径。
 
 **`_meta.zu`** — 挂在 `tool_call_update` 的**结束帧**（partial 不带）：
 
