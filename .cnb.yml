@@ -7,7 +7,7 @@
 # 逻辑在 script/ci.ts（与 script/tasks.ts 共享 nsh 发现/版本校验/spawn 纪律，
 # 见 script/lib/toolchain.ts），本地 macOS 跑同一入口即可复现。toolchain 是
 # 唯一的 inline shell 例外：它负责安装 bun 本身（apt/curl/rustup component），
-# 在它跑完之前没有 bun 可以执行任何 TS。
+# 在它跑完之前没有 bun 可以执行任何 TS；仓库不放独立的 shell 脚本文件。
 #
 # 不含 bundle：`bun script/tasks.ts bundle` 依赖 macOS（AppKit 宿主、bun
 # --target=bun-darwin-arm64、codesign），CNB SAAS 只有 Linux 节点；
@@ -159,3 +159,17 @@ main:
     - *check-and-test
   pull_request:
     - *check-and-test
+
+# ── 云原生开发（点分支页「云原生开发」按钮）：用 .ide/Dockerfile 构建镜像，
+#    把 CI 同款工具链预装进开发环境，打开即可 bun run check / test。
+$:
+  vscode:
+    - docker:
+        build: .ide/Dockerfile
+        image: cnbcool/default-dev-env:latest
+      services:
+        - vscode
+        - docker
+      stages:
+        - name: toolchain ready
+          script: nsh --version && bun --version && cargo --version
