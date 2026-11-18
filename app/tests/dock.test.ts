@@ -9,6 +9,7 @@ import {
   panelIds,
   replaceSheet,
   sheetCount,
+  splitRight,
   pruneLayout,
 } from "../core/dock";
 import { defaultLayoutForSessions, layoutSessions, sessionIdOfSheet, sessionSheetId } from "../modules/pi/sheets";
@@ -49,6 +50,32 @@ test("pruning drops sheets of sessions a container no longer has", () => {
   const emptied = pruneLayout(layout, new Set());
   expect(layoutSessions(emptied)).toEqual([]);
   expect(activePanelIds(emptied)).toEqual([]);
+});
+
+test("splitRight opens a new group beside the sheet it is called from", () => {
+  const base = defaultLayoutForSessions(["s1"]);
+  const split = splitRight(base, "session:s1", "plan:c1");
+  // The session keeps its group on the left; the plan shows in a new one.
+  expect(panelIds(split)).toEqual(["session:s1", "plan:c1"]);
+  expect(activePanelIds(split)).toEqual(["session:s1", "plan:c1"]);
+  expect(split.center.type === "split" && split.center.axis).toBe("horizontal");
+  // One instance per sheet: splitting again just shows the open plan.
+  const again = splitRight(split, "session:s1", "plan:c1");
+  expect(panelIds(again)).toEqual(["session:s1", "plan:c1"]);
+  expect(activePanelIds(again)).toEqual(["session:s1", "plan:c1"]);
+  // The neighbor group keeps its other tabs.
+  const busy = appendSheet(base, "subagents:c1", "session:s1");
+  const fromBusy = splitRight(busy, "session:s1", "plan:c1");
+  expect(panelIds(fromBusy)).toEqual(["session:s1", "subagents:c1", "plan:c1"]);
+  // The neighbor group keeps showing its own active tab (subagents).
+  expect(activePanelIds(fromBusy)).toEqual(["subagents:c1", "plan:c1"]);
+  // A `beside` nobody shows falls back to appending. (A fresh base: the
+  // dock helpers above mutated the shared tree in place.)
+  const pristine = defaultLayoutForSessions(["s1"]);
+  const ghost = splitRight(pristine, "session:gone", "plan:c1");
+  expect(ghost.center.type).toBe("tabs");
+  expect(panelIds(ghost)).toEqual(["session:s1", "plan:c1"]);
+  expect(activePanelIds(ghost)).toEqual(["plan:c1"]);
 });
 
 test("opening the same auxiliary sheet twice keeps one tab", () => {

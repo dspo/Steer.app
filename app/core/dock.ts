@@ -165,6 +165,36 @@ export function pruneLayout(layout: DockAreaLayout, keep: Set<string>): DockArea
 }
 
 /**
+ * Opens `id` in a new group split to the right of the group that shows
+ * `beside` — the "split right" of the sheet the user is reading. The
+ * neighbor group keeps its tabs; the new group holds only `id` and shows it.
+ * A layout that already carries `id` just activates it (one instance per
+ * sheet); a `beside` nobody shows falls back to appending.
+ */
+export function splitRight(layout: DockAreaLayout, beside: string, id: string): DockAreaLayout {
+  if (beside === id || hasSheet(layout, id)) return activateSheet(layout, id);
+  const graft = (node: DockNode): DockNode => {
+    if (node.type === "tabs") {
+      if (!node.panels.includes(beside)) return node;
+      return {
+        type: "split",
+        axis: "horizontal",
+        children: [node, { type: "tabs", panels: [id], activeIndex: 0 }],
+      };
+    }
+    let changed = false;
+    const children = node.children.map((child) => {
+      const grafted = graft(child);
+      if (grafted !== child) changed = true;
+      return grafted;
+    });
+    return changed ? { ...node, children } : node;
+  };
+  const center = graft(layout.center);
+  return center === layout.center ? appendSheet(layout, id) : { ...layout, center };
+}
+
+/**
  * Puts `to` where `from` was, in `from`'s group and at its slot, and shows
  * it: a start page's action replaces its tab instead of leaving it beside the
  * target. Without `from` (it was closed), `to` is appended and shown.

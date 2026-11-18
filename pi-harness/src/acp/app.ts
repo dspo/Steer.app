@@ -17,6 +17,7 @@
  *   _zu/subagents/*       → subagent runs (B3)
  *   _zu/ask/pending       → restart-surviving question cards (B2)
  *   _zu/ask/answer        → resolve a live wait or inject a late answer (B2)
+ *   _zu/todos/list|write  → the session plan the panel edits (A2)
  *   _zu/ask/create        → the model's structured questions (A1, server→client)
  *
  * This file must not import pi. The pi glue sits behind `HarnessPorts`
@@ -48,6 +49,7 @@ import {
 import { codedError, JSONRPC_CODE, normalizeError, sessionNotFoundError } from "./errors";
 import { PI_VERSION } from "../version";
 import { promptBlocksToText } from "./mapping";
+import { EMPTY_PLAN, TODO_FAILURE_TEXT, type TodoFile, type TodoOpResult } from "../todos/core";
 import type { TrustElicit } from "../pi/trust";
 
 /** Server→client requests a session may make while a turn runs (or between
@@ -98,6 +100,14 @@ export interface HarnessSession {
   answers?: {
     answer(toolCallId: string, response: unknown): Promise<{ delivered: "live" | "late" | "none" }>;
     pending(): Array<{ toolCallId: string; args: unknown }>;
+  };
+  /** The session plan surface (`_zu/todos/*`, A2). The store is shared with
+   * the `todo_*` tools, so a panel edit and a tool read see one file. */
+  todos?: {
+    /** Whether the model has the matching `todo_*` tools registered. */
+    enabled?: boolean;
+    list(): TodoFile;
+    write(op: unknown): TodoOpResult;
   };
 }
 
@@ -278,6 +288,27 @@ export function createAcpApp(ports: HarnessPorts, log: HarnessLog = () => {}): A
       throw codedError(JSONRPC_CODE.invalidParams, "unknown_ask", `no answerable ask for ${toolCallId}`);
     }
     return { delivered };
+  });
+
+  // The session plan (A2). The panel polls `list` and edits through `write`;
+  // both hit the same store the `todo_*` tools use, so neither side needs a
+  // push to stay current. A session without the surface (a fake, a bare
+  // runtime) reads as an empty plan and refuses writes.
+  app.onRequest("_zu/todos/list", (raw: any) => raw as any, async (cx) => {
+    const session = requireSession(cx.params.sessionId);
+    return { enabled: session.todos?.enabled ?? false, plan: session.todos?.list() ?? EMPTY_PLAN };
+  });
+
+  app.onRequest("_zu/todos/write", (raw: any) => raw as any, async (cx) => {
+    const session = requireSession(cx.params.sessionId);
+    if (!session.todos) {
+      throw codedError(JSONRPC_CODE.methodNotFound, "todos_unavailable", "no plan surface on this session");
+    }
+    const result = session.todos.write(cx.params.op);
+    if (!result.ok) {
+      throw codedError(JSONRPC_CODE.invalidParams, result.reason, TODO_FAILURE_TEXT[result.reason]);
+    }
+    return { plan: result.file };
   });
 
   app.onRequest("session/prompt", async (cx) => {

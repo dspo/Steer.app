@@ -6,8 +6,12 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ndJsonStream, type SessionUpdate, type StopReason } from "@agentclientprotocol/sdk";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { applyTodoOp, EMPTY_PLAN, readPlan } from "../todos/core";
 import { DISPATCH_RULE } from "../extensions/prompt-section";
 import { ARTIFACTS_RULE } from "../extensions/artifacts";
 import { hostExtensionFactories } from "./pi-session";
@@ -49,6 +53,7 @@ class FakeSession implements HarnessSession {
       elicit?: boolean;
       subagents?: HarnessSession["subagents"];
       answers?: HarnessSession["answers"];
+      todos?: HarnessSession["todos"];
       /** The banner facts the announce step sends (absent = no banner). */
       banner?: SessionBanner | null;
     },
@@ -168,6 +173,10 @@ class FakeSession implements HarnessSession {
 
   get answers(): HarnessSession["answers"] {
     return this.spec.answers;
+  }
+
+  get todos(): HarnessSession["todos"] {
+    return this.spec.todos;
   }
 }
 
@@ -891,6 +900,64 @@ describe("method surface", () => {
     expect(data.code).toBe("unknown_ask");
     await client.close();
     await client2.close();
+  });
+
+  test("the _zu/todos methods share the tools' store through the wire", async () => {
+    const root = mkdtempSync(join(tmpdir(), "zu-todos-wire-"));
+    try {
+      const todos: HarnessSession["todos"] = {
+        enabled: true,
+        list: () => readPlan("wire-1", root),
+        write: (op) => applyTodoOp("wire-1", root, op),
+      };
+      const session = new FakeSession({ id: "pi-17", todos });
+      const { ports } = fakePorts([session]);
+      const client = startClient(ports);
+      await initialize(client);
+      await client.request("session/new", { cwd: "/tmp/proj" });
+
+      // A session without a plan reads as empty, not as an error.
+      const empty = await client.request("_zu/todos/list", { sessionId: "pi-17" });
+      expect((empty.result as Record<string, unknown>).plan).toEqual(EMPTY_PLAN);
+      expect((empty.result as Record<string, unknown>).enabled).toBe(true);
+
+      // A panel add rides the write; the next list sees the same file.
+      const written = await client.request("_zu/todos/write", {
+        sessionId: "pi-17",
+        op: { kind: "add", title: "From the panel", origin: "user" },
+      });
+      const plan = (written.result as Record<string, unknown>).plan as { todos: Array<{ id: string; title: string }> };
+      expect(plan.todos).toHaveLength(1);
+      expect(plan.todos[0]).toMatchObject({ title: "From the panel", origin: "user" });
+      const listed = await client.request("_zu/todos/list", { sessionId: "pi-17" });
+      expect((listed.result as Record<string, unknown>).plan).toEqual(plan);
+
+      // A refusal is a coded error whose data.code names the store's reason.
+      const bad = await client.request("_zu/todos/write", {
+        sessionId: "pi-17",
+        op: { kind: "promote", id: "t-404" },
+      });
+      const badData = (bad.error as Record<string, unknown>).data as Record<string, unknown>;
+      expect(badData.code).toBe("unknown-id");
+
+      // No surface: list is empty, write refuses with its own code.
+      const bare = new FakeSession({ id: "pi-18" });
+      const ports2 = fakePorts([bare]).ports;
+      const client2 = startClient(ports2);
+      await initialize(client2);
+      await client2.request("session/new", { cwd: "/tmp/proj" });
+      const bareList = await client2.request("_zu/todos/list", { sessionId: "pi-18" });
+      expect((bareList.result as Record<string, unknown>).plan).toEqual(EMPTY_PLAN);
+      expect((bareList.result as Record<string, unknown>).enabled).toBe(false);
+      const bareWrite = await client2.request("_zu/todos/write", { sessionId: "pi-18", op: { kind: "add", title: "x" } });
+      expect(((bareWrite.error as Record<string, unknown>).data as Record<string, unknown>).code).toBe(
+        "todos_unavailable",
+      );
+      await client.close();
+      await client2.close();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

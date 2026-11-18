@@ -51,4 +51,17 @@ describe("the approval gate and ask_user_question", () => {
     expect(await handler({ toolName: "ask_user_question" })).toBeUndefined();
     expect(await handler({ toolName: "bash" })).toBeUndefined();
   });
+
+  test("read-only mode: the plan tools keep the plan honest (A2)", async () => {
+    // The todo_* tools write the session's own state file, not the workspace;
+    // blocking them would freeze the visible plan mid-run.
+    const handler = handlerFor("read-only");
+    for (const tool of ["todo_list", "todo_add", "todo_update", "todo_promote", "todo_remove", "todo_write"]) {
+      expect(await handler({ toolName: tool })).toBeUndefined();
+    }
+    expect(await handler({ toolName: "write" })).toEqual({
+      block: true,
+      reason: expect.stringContaining("read-only mode"),
+    });
+  });
 });

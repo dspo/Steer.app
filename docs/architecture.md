@@ -193,7 +193,7 @@ App.tsx（装配点：startModules() + 跟随系统语言 + lifecycle）
 - **sheet 身份 = 稳定 id**（`kind:instance`）：`home:{containerId}`、`home:scratch`、`session:{sessionId}`、
   `manox-chat:{threadId}:{chatId}`、`terminal:{containerId}:{n}`、`webview:{containerId}:{n}`、
   `files:{containerId}`、`editor:{containerId}:{b64 path}`、`diff:{containerId}:{b64 old~new}`、
-  `changes/history/problems:{containerId}`、`subagents:{containerId}`。
+  `changes/history/problems:{containerId}`、`subagents/plan:{containerId}`。
 - **容器标题 = 存活的最早创建 sheet 的 `title()`**（`sheetOrder` 创建序）；起始页不参与。
 - **起始页是对象实例化面板**：三行 tile（对话 / 工具 / 终端代理），处处相同；属性（容器 / 项目 / cwd）由上下文决定。每个 tile 每次按下新建一个实例，新 sheet 与起始页并排（调色板保留）；容器内新建对话 = 在当前容器加一个 `session:{id}` sheet。
 - **scratch 画布**：无 cwd/进程/注册表/持久化；提交后铸真实容器并迁移 sheet。
@@ -284,7 +284,19 @@ terminal 模块的一个 intent。
 `~/.pi/zu/subagents/index.json`，重启后经一个 resume 的 captain 读取。见
 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §7–§9.8。
 
-### 5.7 不变量
+### 5.7 会话 TODO plan（pi 模块）
+
+每个 pi 会话有一个可持久 plan：`~/.pi/zu/todos/<sessionId>.json`，两级（loose lane + groups），
+agent 用 `todo_*` 六工具维护，用户在 `plan:{containerId}` 面板增删勾选；读写都经
+`_zu/todos/{list,write}`（harness 是唯一写者，工具与面板共享同一 store）。入口是 composer
+上方的横幅：plan 还有未完成项时，横幅以盲文点阵 spinner 显示当前 in_progress item（无
+in_progress 则显示下一个 pending，spinner 静止），点击即把当前 session sheet 向右拆分出
+plan 面板；plan 全部完成后横幅消失，本版无历史入口。用户编辑时 harness 引导模型：编辑注入
+plan note 并唤醒重读；删除先打断正在跑的 turn（防止模型继续做已删除的 item）。规则与纪律在
+`todos` 内置扩展（见 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §18、§23）里：一条
+`zu-todos` prompt section + 一个 `todos` 技能；live list 不进 prompt（会破 cache，也会过期）。
+
+### 5.8 不变量
 
 1. pi → Zu 兼容最高优先；解析失败不阻塞启动。
 2. 容器 cwd == 创建时确认的目标。

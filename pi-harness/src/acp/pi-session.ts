@@ -61,10 +61,14 @@ import {
 } from "./mapping";
 import { replayUpdates, type ReplayEntry } from "./replay";
 import { askExtensionEntry, type AskBridge } from "../extensions/ask";
+import { todosExtensionEntry } from "../extensions/todos";
 import { composeExtensions, ZU_EXTENSIONS } from "../extensions/registry";
 import { DISPATCH_RULE, promptSectionExtension } from "../extensions/prompt-section";
 import { ARTIFACTS_RULE, artifactsExtension } from "../extensions/artifacts";
 import { readZuSettings, zuStateDir } from "../settings";
+import { applyTodoOp, readPlan, todosRoot } from "../todos/core";
+import { PLAN_NOTE_TYPE, PlanSteer, planEditFacts } from "../todos/steer";
+import { TODO_TOOL_NAMES } from "../todos/tools";
 import { createPiServices } from "../pi/services";
 import { PI_VERSION } from "../version";
 import type { AcpMcpServer } from "../pi/mcp";
@@ -135,6 +139,10 @@ const READ_ONLY_TOOLS = new Set([
   // workspace, runs no command and touches no network, so it must not open
   // the approval card in ask mode nor trip read-only's write block.
   "ask_user_question",
+  // A2: the plan tools write the session's own state file (~/.pi/zu/todos/),
+  // never the workspace — they pass the gate for the same reason, so a
+  // read-only run can still keep its plan honest.
+  ...TODO_TOOL_NAMES,
 ]);
 
 /** The session's live approval gate: mode, remembered allows, client bridge. */
@@ -262,6 +270,14 @@ class PiHarnessSession implements HarnessSession {
   private readonly subagentManager: SubagentManager;
   /** The interactive-tool mailbox (B2): late answers and supersede. */
   private readonly answerRegistry: AnswerRegistry;
+  /** The plan store's directory (`~/.pi/zu/todos`); the tools get the same
+   * derivation from the extension entry, so both write one file. */
+  private readonly todosDir: string;
+  /** Whether `disabledExtensions` left the `todos` tools registered. */
+  private readonly planToolsEnabled: boolean;
+  /** The panel-edit steering: notes into the conversation, wakes at settle,
+   * and interrupts a running turn before a removal lands. */
+  private readonly planSteer: PlanSteer;
   /** Compaction ids are per session and stable across start/end events. */
   private compactionSeq = 0;
   private currentCompactionId = "";
@@ -278,6 +294,8 @@ class PiHarnessSession implements HarnessSession {
     settingsManager: SettingsManager,
     subagentManager: SubagentManager,
     answerRegistry: AnswerRegistry,
+    todosDir: string,
+    planToolsEnabled: boolean,
   ) {
     this.manager = manager;
     this.session = session;
@@ -287,6 +305,31 @@ class PiHarnessSession implements HarnessSession {
     this.settingsManager = settingsManager;
     this.subagentManager = subagentManager;
     this.answerRegistry = answerRegistry;
+    this.todosDir = todosDir;
+    this.planToolsEnabled = planToolsEnabled;
+    this.planSteer = new PlanSteer({
+      // The idle probe reads pi's own session state, whichever shape 1.5.0
+      // ships it in (the same defensive read the dispatch factory uses).
+      idle: () => {
+        const session = this.session as unknown as { isIdle?: unknown } | null;
+        return typeof session?.isIdle === "function" ? Boolean(session.isIdle()) : Boolean(session?.isIdle);
+      },
+      abort: () => this.session.abort(),
+      inject: async (text, { wake }) => {
+        // The note joins the context (not appendCustomEntry) and, when the
+        // session is between turns, wakes one so the plan is re-read now.
+        await this.session.sendCustomMessage(
+          {
+            customType: PLAN_NOTE_TYPE,
+            content: [{ type: "text", text }],
+            display: true,
+            details: { source: "user" },
+          },
+          { triggerTurn: wake },
+        );
+      },
+      log,
+    });
     this.id = manager.getSessionId();
     this.gate.sessionId = this.id;
     this.subscribe();
@@ -323,12 +366,18 @@ class PiHarnessSession implements HarnessSession {
     // build; a settings change lands on the next session/new|load (no hot
     // reload — see docs/pi-acp-IMPLEMENTATION.md §18).
     const zuSettings = await readZuSettings(agentDir);
+    const gate = new PermissionGate(log);
+    const captainId = manager.getSessionId();
     // A1: the ask tool waits through B2's AnswerRegistry; the ref is filled
     // once the registry exists below (the extension captures it by identity).
     const askBridge: { current: AskBridge | null } = { current: null };
-    const composed = composeExtensions([...ZU_EXTENSIONS, askExtensionEntry(askBridge)], zuSettings);
-    const gate = new PermissionGate(log);
-    const captainId = manager.getSessionId();
+    // A2: the plan tools and the `_zu/todos/*` channel share one store keyed
+    // by this session's id, so the entry is built per session like ask's.
+    const composed = composeExtensions(
+      [...ZU_EXTENSIONS, askExtensionEntry(askBridge), todosExtensionEntry(captainId, agentDir)],
+      zuSettings,
+    );
+    const todosDir = todosRoot(agentDir);
     const sessionRef: { session: PiAgentSession | null } = { session: null };
     const trustRef = { trusted: options.trusted ?? false };
     const subagentManager = new SubagentManager(
@@ -408,6 +457,8 @@ class PiHarnessSession implements HarnessSession {
       built.services.settingsManager,
       subagentManager,
       answerRegistry,
+      todosDir,
+      !zuSettings.disabled.has("todos"),
     );
     try {
       await created.session.bindExtensions({
@@ -471,6 +522,36 @@ class PiHarnessSession implements HarnessSession {
   /** The interactive-tool mailbox for `_zu/ask/*` (B2). */
   get answers() {
     return this.answerRegistry;
+  }
+
+  /**
+   * The session plan surface for `_zu/todos/*` (A2): the same store the
+   * `todo_*` tools use, so a panel edit is the model's next `todo_list` and
+   * a tool's write is the panel's next poll. Unconditional — the panel works
+   * even when the user turned the `todos` extension off.
+   *
+   * A successful `write` is a user edit (the panel is this surface's only
+   * caller — the model writes through its tools), so it also steers: the
+   * change becomes a note in the conversation and wakes the model to
+   * re-read; a removal interrupts a running turn first, so the model cannot
+   * finish work the user just took away (see ../todos/steer.ts). When the
+   * `todos` extension is disabled there is no `todo_list` to re-read, so a
+   * write only lands in the file and the entry advertises that with
+   * `enabled: false`.
+   */
+  get todos() {
+    return {
+      enabled: this.planToolsEnabled,
+      list: () => readPlan(this.id, this.todosDir),
+      write: (op: unknown) => {
+        const before = readPlan(this.id, this.todosDir);
+        const result = applyTodoOp(this.id, this.todosDir, op);
+        if (result.ok && this.planToolsEnabled) {
+          void this.planSteer.afterEdit(planEditFacts(op, before));
+        }
+        return result;
+      },
+    };
   }
 
   configOptions(): SessionConfigOption[] {
@@ -832,8 +913,15 @@ class PiHarnessSession implements HarnessSession {
           this.emitUsage();
           return;
         }
+        case "agent_settled": {
+          // Plan notes queued while the turn ran go out now. A settle the
+          // user caused (abort) flushes without waking: the user said stop,
+          // and a plan note must not overrule that by starting a turn.
+          void this.planSteer.flush(!event.aborted);
+          return;
+        }
         default:
-          // Turn lifecycle, compaction, retries, queue updates: no P0 update
+          // Turn lifecycle, retries, queue updates: no P0 update
           // shape (v2 §5.0 moves them to core events in later stages).
           return;
       }

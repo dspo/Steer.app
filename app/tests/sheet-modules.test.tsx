@@ -38,6 +38,7 @@ test("every shipped kind is registered with a title, a glyph and a total parser"
     "changes:c1",
     "history:c1",
     "problems:c1",
+    "plan:c1",
     "manox-chat:t1:c1",
   ];
   for (const id of ids) {

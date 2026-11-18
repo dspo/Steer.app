@@ -12,8 +12,10 @@
  *   and its skill stops loading too (`skillDirs` → `additionalSkillPaths`);
  * - a name conflict has an owner in pi's diagnostics (`zu:<name>`).
  *
- * This file is the mechanism only; `ZU_EXTENSIONS` ships empty on purpose.
- * A2 adds the first entry with one line plus a `skills/todos/SKILL.md`.
+ * This file is the mechanism only; the static `ZU_EXTENSIONS` ships empty on
+ * purpose. The real entries (A1's ask, A2's todos) need per-session state, so
+ * they compose at build time in `PiHarnessSession.build` — one entry, one
+ * skill dir, no changes to the wiring.
  *
  * ## Precedence (verified against pi 1.5.0, not assumed)
  *
@@ -76,9 +78,12 @@ export interface ComposedExtensions {
 export const ZU_EXTENSION_PREFIX = "zu:";
 
 /**
- * The extensions this build ships. Empty in B3: the mechanism is tested with
- * fixtures, and A2 adds `{ name: "todos", ... }` here — one entry and one
- * `skills/todos/SKILL.md`, no changes to the wiring.
+ * The extensions this build ships as static entries. Empty on purpose: the
+ * mechanism is tested with fixtures, and every real entry so far needs
+ * per-session state, so it composes at build time instead — A1's ask (the
+ * mailbox bridge) and A2's todos (the store keyed by the session id) are
+ * appended in `PiHarnessSession.build` as `todosExtensionEntry(...)`-style
+ * helpers, and this array stays free for genuinely static entries.
  */
 export const ZU_EXTENSIONS: ZuExtension[] = [];
 

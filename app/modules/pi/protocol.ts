@@ -40,6 +40,85 @@ export interface SubagentRun {
   collected?: boolean;
 }
 
+// --- session plan (A2) -------------------------------------------------------
+// The plan's wire shapes, mirroring the harness store's TodoFile. They are
+// plain projections on purpose: the app never imports the harness.
+
+export type PlanStatus = "pending" | "in_progress" | "done";
+export type PlanOrigin = "agent" | "user";
+
+export interface PlanTodo {
+  id: string;
+  title: string;
+  status: PlanStatus;
+  origin: PlanOrigin;
+  note?: string;
+  summary?: string;
+  verification?: string;
+  commitSubject?: string;
+}
+
+export interface PlanGroup {
+  id: string;
+  title: string;
+  todos: PlanTodo[];
+}
+
+export interface PlanFile {
+  v: 1;
+  todos: PlanTodo[];
+  groups: PlanGroup[];
+}
+
+/** The derived state of a group; never stored, computed on render. */
+export type PlanGroupStatus = "pending" | "active" | "done";
+
+/** One edit the panel sends over `_zu/todos/write`; the harness validates. */
+export type PlanOp =
+  | { kind: "add"; title: string; origin: PlanOrigin; group?: string }
+  | {
+      kind: "update";
+      id: string;
+      status?: PlanStatus;
+      note?: string;
+      summary?: string;
+      verification?: string;
+      commitSubject?: string;
+    }
+  | { kind: "promote"; id: string }
+  | { kind: "remove"; id: string }
+  | { kind: "writeGroups"; groups: Array<{ id?: string; title: string; todos: Array<{ id?: string; title: string }> }> };
+
+export const EMPTY_PLAN: PlanFile = { v: 1, todos: [], groups: [] };
+
+/** A group's derived status, same rule as the store's `groupStatus`. */
+export function planGroupStatus(group: PlanGroup): PlanGroupStatus {
+  if (group.todos.length === 0) return "pending";
+  if (group.todos.every((todo) => todo.status === "done")) return "done";
+  if (group.todos.some((todo) => todo.status === "in_progress")) return "active";
+  return "pending";
+}
+
+/**
+ * The plan's current item for the composer banner: the in_progress step if
+ * one is set (it is globally unique), else the next pending step scanning
+ * the groups first, then the loose lane. `null` when there is nothing left
+ * to do — an all-done plan shows no banner, and with it no entry to the
+ * finished history (accepted for this version).
+ */
+export function planCurrentItem(file: PlanFile): { title: string; active: boolean } | null {
+  const active = [...file.todos, ...file.groups.flatMap((group) => group.todos)].find(
+    (todo) => todo.status === "in_progress",
+  );
+  if (active) return { title: active.title, active: true };
+  for (const group of file.groups) {
+    const next = group.todos.find((todo) => todo.status === "pending");
+    if (next) return { title: next.title, active: false };
+  }
+  const next = file.todos.find((todo) => todo.status === "pending");
+  return next ? { title: next.title, active: false } : null;
+}
+
 export interface SessionModelInfo {
   provider: string;
   id: string;

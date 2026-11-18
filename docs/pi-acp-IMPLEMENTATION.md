@@ -719,8 +719,10 @@ prompt 其余部分（含 provider prefix cache）不动。
     `skillDirs` 只取启用项、按 registry 顺序去重。
   - factory 以具名 inline 形式交给 pi：`{ name: "zu:<name>", factory }`，
     在扩展列表与冲突诊断里显示为 `<inline:zu:<name>>`。
-  - `ZU_EXTENSIONS` 本 issue **为空**：机制用 fixture 测，A2 加第一项
-    （`todos` + `skills/todos/SKILL.md`）。
+  - `ZU_EXTENSIONS` 本 issue **为空**：机制用 fixture 测。第一个真实条目由 A2 落地
+    （`todos`，见 §23）；因为 store 按会话组织，条目和 A1 的 ask 一样在 build 时合成进
+    `composeExtensions([...ZU_EXTENSIONS, askExtensionEntry(...), todosExtensionEntry(...)])`，
+    静态数组仍为空。
 - 启用判定：`disabledExtensions` 命中即跳过；`defaultEnabled: false` 当前也是跳过
   （v1 只实现 disable，opt-in 列表是后续 issue，不是一个漏掉的分支）。
 - 永远在线的权限门、prompt section、dispatch 不进 registry：它们是会话机制，
@@ -1112,3 +1114,129 @@ type AskResponse =
 
 - 选项预览/图片/文件预览/并排对比（A3 之后）；discuss 的 reason 枚举；
   独立「跳过本题」按钮（留空提交与 Skip 已覆盖）；多轮追问协议（模型重新调用即新的一轮）。
+
+## 23. 会话 TODO plan（A2，2026-11-18）
+
+**目标**：给每个 pi 会话一个可持久、双方可写的 TODO plan——agent 用六个 `todo_*` 工具维护，
+用户在一个原生面板增删勾选，文件落 `~/.pi/zu/todos/<sessionId>.json`。纪律靠
+「工具描述 + 一个技能 + 一条 byte-stable 规则」，**live list 不进 prompt**（会破 provider cache，
+也会在用户编辑后过期——这是上游记录过的失败尝试，直接不做）。
+
+### 23.1 数据模型与 store（`pi-harness/src/todos/core.ts`，pi 无关）
+
+- `TodoFile { v: 1, todos[], groups[] }`：`todos` 是 loose lane（工作前的共享草稿），`groups`
+  每个 group 是一个用户请求的结果（`g-<base36>`），item 是 `t-<base36>`、状态
+  `pending|in_progress|done`、`origin: agent|user`；group 状态派生（all done → done；任一
+  in_progress → active），不存。没有 priority。
+- 不变量（纯函数里强制，工具层不重复）：全局最多一个 `in_progress`（设第二个，第一个回
+  pending）；done 保留在列表；离开 done 时 `summary/verification/commitSubject` 清空
+  （同 patch 重述则保留）；title 写入前 `\s+` 压成一个空格；id 由 store 生成（顺序 base36）。
+- 所有变更操作返回判别式结果 `{ ok, file } / { ok, reason }`，reason 词表：
+  `invalid-op / invalid-id / invalid-status / unknown-id / unknown-group / grouped-step /
+  empty-title / title-collision / loose-item`；`TODO_FAILURE_TEXT` 给每条一段英文文案，
+  工具错误与 wire 错误共用。
+- 读：缺失/坏 JSON/形状不对 → 空计划，绝不抛；写：临时文件 + `rename`，先 `mkdir -p`。
+  `planPath` 校验 sessionId 必须匹配 `^[A-Za-z0-9._-]+$`（路径段守卫）。
+- `applyTodoOp(sessionId, root, op)` 是 wire 信封的调度器：读盘 → 分发 → 写盘一气唬成，
+  失败的 op 不落盘。
+- `todo_write` 是按 id 的 reconcile：已知 id 保留状态（传入 status 被忽略）、可改名；未知 id
+  新建 pending（可自带 `t-*` id）；缺失的 grouped id 删除；空 group 合法；**loose lane 不被
+  它触碰**——loose id 出现在 group 输入里直接拒绝（`loose-item`），promote 是唯一的
+  lane→group 路径。group 标题全计划唯一，与现存未提及 group 撞名也是
+  `title-collision`（fail-closed：要么带 id，要么改名，不允许静默替换）。
+
+### 23.2 六个工具与扩展（`pi-harness/src/todos/tools.ts` + `extensions/todos.ts`）
+
+- `todo_list`（无参）、`todo_add(title, group?)`、`todo_update(id, status?, note?, summary?,
+  verification?, commitSubject?)`、`todo_promote(id)`、`todo_remove(id)`、
+  `todo_write(groups[])`。工具名是模型接口，固定 `todo_*`。
+- 每个工具读盘 → op → 写盘一个同步段；返回紧凑文本 + `details: { plan }`（新 TodoFile，
+  B4 的卡片通道可消费）；拒绝时 `isError` + reason 文案，文件不动。
+- 不变量写在 tool description 里：单步、done 保留、用户可改、write 不是覆盖、
+  verification 写「实际跑过的检查」。
+- `todo_*` 进审批门的 `READ_ONLY_TOOLS`：写的是会话自己的状态文件（`~/.pi/zu/todos/`），
+  不是工作区——ask 模式不弹卡，read-only 不拦（否则只读跑会把 plan 冻住）。
+- `zu-todos` section 与工具同厂注册（不是 `hostExtensionFactories` 的常驻位）：关掉
+  `todos` 扩展，工具、技能、规则一起消失，prompt 不再宣传一个不存在的机制。规则文本
+  模块级常量、无插值（B5 §17 的纪律）。
+
+### 23.3 技能与归属
+
+- `pi-harness/skills/todos/SKILL.md`（frontmatter `name: todos`，description 只写触发条件）。
+  内容全部重写：何时建（用户明确要求，或 ≥3 个实质步骤且已理解任务）、粒度（1–2 步不建；
+  3–7 步一个 group；>10 步拆 group）、按序执行一步一个 in_progress、阻塞写 note 告诉用户
+  跳过、每次选步/用户输入后/结束前重读 `todo_list`、用户删的不加回、done 保留、
+  代码改动写 summary/verification/commitSubject、fix 请求重开同一 item。
+- `todosExtensionEntry(sessionId, agentDir)` 提供 `skillDirs: [bundledSkillDir("todos")]`，
+  随扩展开关进出 `additionalSkillPaths`（§18.4）；`bun run bundle` 的复制断言从源树派生，
+  加技能不用改脚本。
+
+### 23.4 宿主通道与面板
+
+| 方法 | 方向 | 语义 |
+|---|---|---|
+| `_zu/todos/list` | client→agent | `{ sessionId } → { plan: TodoFile }`；无 plan 面返回空计划 |
+| `_zu/todos/write` | client→agent | `{ sessionId, op } → { plan }`；失败 `invalid_params` + `data.code = reason` |
+
+- `PiHarnessSession.todos`（list/write）与 `subagents` 同构，**无条件存在**：面板读写的是
+  store，不是扩展；关掉 `todos` 扩展只影响模型侧，面板照常工作。`write` 的唯一调用方是
+  面板，所以每次成功写入都是用户编辑，附带模型侧引导（见 §23.5）。
+- 工具与通道共享同一 store（同 sessionId 同 root），无缓存：面板改完，模型下一次
+  `todo_list` 就看到；模型写完，面板下一轮轮询就看到。
+- **入口是 composer 横幅**（`app/modules/pi/plan-banner.tsx`）：plan 还有未完成项时，
+  ChatView 的 composer dock 顶部显示一条横幅——左侧盲文点阵 spinner（Canvas 绘制，不依赖
+  字体带盲文字形；120ms/帧沿 2×3 六点阵顺时针转，reduce motion 时静止）+ 当前 item 标题。
+  当前 item = 全局唯一 in_progress；无则下一个 pending（扫描 groups 后 loose），spinner
+  静止变暗。点击横幅 = 把当前 session sheet 向右拆分（`core/dock.ts` 的 `splitRight`）出
+  `plan:{containerId}` 面板；已开则激活。**plan 全部完成后不显示横幅，也即没有历史入口**
+  （本版接受）。横幅只画在容器 captain session（面板读的就是它的 plan）。
+- 面板 `plan:{containerId}`（`app/modules/pi/todos.ts` + `view.tsx` 的 PlanBody）：单列
+  （草稿 + group 块），mounted 时每 1500ms 轮询；添加进 loose（`origin: user`），勾选 =
+  `update(done)`、再点 = `update(pending)`（重开），提升、删除各一个按钮；不拖拽、不编辑
+  note/标题（v1）。`pi.plan` intent 走同一拆分入口。
+
+### 23.5 用户编辑的引导与打断（steer）
+
+`pi-harness/src/todos/steer.ts`（`PlanSteer`，纯逻辑可单测；`PiHarnessSession` 用真端口接
+线）：面板的每次成功写入都让模型知道——
+
+- **编辑 = 引导**：变更成为一条 conversation 内的 note（`zu.plan.note` custom entry，进
+  LLM 上下文），批量合并为一条（多次点击一个 turn，不一次点击一个 turn）：列出变更
+  （added/removed/marked done/reopened/promoted/restructured）+ 指令「Re-read the plan
+  (todo_list) before you continue」。session 空闲时 note 直接发出并**唤醒一个 turn**；
+  turn 运行中 note 排队，`agent_settled` 时发出。
+- **删除 = 打断**：模型可能正在执行刚被删除的 item——turn 运行中先 `abort()` 打断，再发
+  note（「do not re-add it and do not keep working on it」）并唤醒，模型重读计划、继续剩余
+  工作。空闲时删除不 abort，只引导。
+- **用户的 stop 不被覆盖**：`agent_settled { aborted: true }` 的 flush 不唤醒（note 只进
+  上下文）——用户手动停下的 turn，不能被一条 plan note 重新拉起。
+- note 文案按 op 派生（`planEditFacts`，title 从 op 前的 plan 解析——删除的 title 只存在于
+  旧文件里）；malformed op 不引导。
+
+### 23.6 测试与门禁
+
+- `todos/core.test.ts`：唯一 in_progress、done 保留/离开清空、reconcile（保留/新建/缺失
+  删除/loose 不动/空 group/移动/撞名）、promote 四种失败、标题压缩、坏文件读空、原子写、
+  路径段校验、applyTodoOp 信封与失败不落盘、紧凑渲染。
+- `todos/steer.test.ts`：note 按 op 派生、空闲编辑即时注入+唤醒、运行中编辑排队并在
+  settle flush、批量合并、删除运行中先 abort、删除空闲不 abort、用户 stop 的 flush 不
+  唤醒、inject 失败仅记日志。
+- `extensions/todos.test.ts`：技能在包内且经真 loader 加载、六工具注册、section
+  byte-stable、工具经真 store 读写与拒绝。
+- `acp/app.test.ts`：`_zu/todos/*` 的 wire 行为（空计划/写回/coded reason/无表面）。
+- `acp/pi-session.test.ts`：门在 read-only 下放行 `todo_*`。
+- `app/tests/dock.test.ts`：`splitRight`（新组在右、同组 tab 保留、重复拆分激活、无锚点
+  回落 append）。
+- `app/tests/plan.ui.test.tsx`（fixture `app/fixtures/plan.tsx`）：横幅当前 item、点击拆分
+  （左右两 surface 都在）、面板全路径（勾选/重开/删除/提升/添加）、1500ms 轮询重读、
+  全部完成后横幅消失。
+- 门禁：`(cd pi-harness && bun test)`、`bun run build`、`nsh check app`、
+  `ZU_SKIP_LIVE=1 nsh test app`。
+
+### 23.7 非目标
+
+- 面板不渲染 PR body/commit、不做 change/spec artifacts、不做用户编辑 note/标题、
+  不做拖拽排序与优先级；
+- plan 属于单个会话（面板显示容器第一个 session 的 plan），不做多会话共享；
+- 不做 live 推送（轮询足够，`_zu/todos/changed` 是后续接口位）；
+- 不做 plan 的归档/恢复 UI。
