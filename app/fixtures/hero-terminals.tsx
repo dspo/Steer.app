@@ -7,13 +7,27 @@ import {
   loadContainers,
   setContainerTransport,
 } from "../core/containers";
-import { error as sessionError, seedSession } from "../modules/pi/sessions";
+import { error as sessionError, seedSession, setSessionTransport } from "../modules/pi/sessions";
 import { assistantEntry } from "../modules/pi/transcript";
 import { terminalInfo } from "../domains/pty";
 import { sheetOrder } from "../core/containers";
 import { registerAllModules } from "../modules/register-all";
+import { setWorkspaceDir } from "../domains/state";
 
 registerAllModules();
+
+// The Hero's Terminal/Claude actions mint terminal resources of c1; nothing
+// outside the fixture's own folders is touched.
+setWorkspaceDir("/tmp/zu-hero-terminals-ws");
+
+// A new conversation inside c1 mints a session through the (old) session
+// transport: the fixture answers the create and nothing else, so the new
+// sheet is real without a harness process.
+setSessionTransport(async (type: string) => {
+  if (type === "session.create")
+    return { id: "new1", path: "/tmp/zu-hero-terminals-new1.jsonl", cwd: "/tmp", name: "New conversation", messages: [] };
+  throw new Error(`fixture session transport: ${type}`);
+});
 
 /**
  * §2.1.1 F2: a Pi container's Hero opens terminals *of that container*.

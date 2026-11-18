@@ -74,7 +74,7 @@ test("switching to a container with a conversation shows its transcript, not the
   await app.waitFor("id:session-transcript", { timeout: 60000 });
   expect(app.texts()).toContain("hello A");
   expect(app.texts()).toContain("answer A");
-  expect(app.shows("id:hero-input")).toBe(false);
+  expect(app.shows("id:launch-zu")).toBe(false);
 
   // An empty container's start page is its composer, not a transcript.
   await app.press(`Open container ${bContainerTitle(b)}`);

@@ -17,15 +17,15 @@ type DockRegion = NonNullable<DockAreaLayout["left"]>;
 
 export type { DockAreaLayout, DockNode, DockRegion };
 
-/** The scratch canvas's Hero sheet: the one sheet no container owns. */
+/** The scratch canvas's start-page sheet: the one sheet no container owns. */
 export const SCRATCH_SHEET = "home:scratch";
 
-/** A canvas's Hero sheet: the container's start page, or the scratch one. */
+/** A canvas's start-page sheet: the container's, or the scratch one. */
 export function homeSheetId(containerId: string | null): string {
   return containerId ? `home:${containerId}` : SCRATCH_SHEET;
 }
 
-/** The container a Hero sheet belongs to, or `null` for the scratch canvas. */
+/** The container a start-page sheet belongs to, or `null` for scratch. */
 export function homeSheetContainer(id: string): string | null {
   if (id === SCRATCH_SHEET) return null;
   return id.startsWith("home:") ? id.slice("home:".length) : null;
@@ -166,7 +166,7 @@ export function pruneLayout(layout: DockAreaLayout, keep: Set<string>): DockArea
 
 /**
  * Puts `to` where `from` was, in `from`'s group and at its slot, and shows
- * it: a Hero's action replaces the Hero tab instead of leaving it beside the
+ * it: a start page's action replaces its tab instead of leaving it beside the
  * target. Without `from` (it was closed), `to` is appended and shown.
  */
 export function replaceSheet(layout: DockAreaLayout, from: string, to: string): DockAreaLayout {

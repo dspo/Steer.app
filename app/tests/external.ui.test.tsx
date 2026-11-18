@@ -1,69 +1,66 @@
 import { afterAll, beforeEach, expect, open, test } from "nsh/test";
-import { State } from "zu/native";
-import { createProject } from "../core/projects";
+import { Fs, State } from "zu/native";
+import { setWorkspaceDir } from "../domains/state";
 import { copy } from "../ui/copy";
 
-
-// The shell's external-container path: the Hero's action row creates a
-// real Terminal container, the canvas shows its terminal sheet with no
-// composer, and archiving it closes the PTY and removes the row. The PTY's
-// output is exercised by terminal.ui.test.tsx; here the concern is the shell
-// wiring and the registry row.
+// The shell's external-container path: the start page's tool tile creates a
+// real Terminal container (Chats, its own scratch workspace), the canvas
+// shows its terminal sheet, and archiving it closes the PTY and removes the
+// row. The PTY's output is exercised by terminal.ui.test.tsx; here the
+// concern is the shell wiring and the registry row.
 
 // Each case gets its own registry and a fresh sidecar: `open` runs the app in
 // a VM that shares the native module's process-wide state, and another test
 // file may have pointed it at the real `~/.pi/zu` since this module loaded.
+let workspaceDir = "";
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 beforeEach(async () => {
   State.setStateDir(`/tmp/zu-m7-ui-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
+  workspaceDir = `/tmp/zu-m7-ws-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  setWorkspaceDir(workspaceDir);
 });
 
 afterAll(async () => {
   State.setStateDir("");
+  setWorkspaceDir("");
 });
 
-/**
- * The Hero's tools that mint a workspace need a project (DESIGN §4.1), so
- * each case gives the scratch canvas one and picks it from the chip.
- */
-async function makeProject(): Promise<string> {
-  // The projects file is the UI's fold (zu/state): write it before the app
-  // boots so its own fold reads it — no sidecar anywhere.
-  const made = await createProject("M7", [{ path: "/tmp", primary: true }]);
-  return made?.id ?? "";
-}
-
-async function pickProject(app: any, projectId: string): Promise<void> {
-  await app.waitFor("id:hero-input", { timeout: 20000 });
-  await app.press("id:hero-project");
-  await app.waitFor(`id:hero-project-${projectId}`, { timeout: 20000 });
-  await app.press(`id:hero-project-${projectId}`);
-}
-
-test("the Hero opens an external terminal container without a composer", async () => {
-  const projectId = await makeProject();
+test("the start page opens an external terminal container without a composer", async () => {
   const app = await open("../App.tsx", { network: "live", width: 1200, height: 800 });
   // The ACP boot mounts the folds at once; no phase label exists to wait on.
-  // No containers: the canvas is the scratch canvas, whose only sheet is
-  // the Hero (a tab of the tree, not a page beside it).
-  await app.waitFor("id:external-terminal");
-  expect(app.texts()).toContain(copy("开始", "Home"));
+  // No containers: the canvas is the scratch canvas, whose only sheet is the
+  // start page (a tab of the tree, not a page beside it).
+  await app.waitFor("id:launch-terminal");
+  expect(app.texts()).toContain(copy("新建", "New"));
   await app.waitFor("id:tab-plus-home:scratch");
-  await pickProject(app, projectId);
-  await app.waitUntil(() => app.enabled("id:external-terminal"), { timeout: 20000 });
-  await app.press("id:external-terminal");
-  // The terminal sheet, titled by the container's kind and cwd, takes the
-  // canvas over; there is no pi composer anywhere.
-  await app.waitUntil(() => app.texts().some((text) => text.startsWith(copy("终端 · ", "Terminal · "))), {
-    timeout: 15000,
-  });
+  // A tool needs no project: outside one it lands in Chats with a scratch
+  // folder of its own.
+  expect(app.enabled("id:launch-terminal")).toBe(true);
+  await app.press("id:launch-terminal");
+  // The terminal sheet takes the canvas over; there is no pi composer
+  // anywhere. Its scratch workspace has no useful folder name, so the sheet
+  // and the row are titled by the kind alone.
+  await app.waitFor("id:terminal-view", { timeout: 15000 });
   expect(app.count("id:session-send")).toBe(0);
-  expect(app.shows("id:terminal-view")).toBe(true);
-  const title = app.texts().find((text) => text.startsWith(copy("终端 · ", "Terminal · ")))!;
+  const title = copy("终端", "Terminal");
+  expect(app.texts()).toContain(title);
+  // Its workspace is a folder of the test's own workspace, not the home
+  // folder and not /tmp.
+  const scratchEntries = async (): Promise<string[]> => {
+    try {
+      return (await Fs.list(workspaceDir, "scratch")).map((entry) => entry.name);
+    } catch {
+      return [];
+    }
+  };
+  expect((await scratchEntries()).length).toBe(1);
 
-  // Archiving the external container closes its PTY and removes the row.
+  // Archiving the external container closes its PTY, removes the row, and
+  // deletes its scratch workspace with it.
   await app.press(`label:${copy("归档容器", "Archive container")} ${title}`);
-  await app.waitUntil(() => !app.texts().some((text) => text === title), { timeout: 10000 });
+  await app.waitUntil(() => !app.shows("id:terminal-view"), { timeout: 10000 });
   expect(app.shows("id:terminal-view")).toBe(false);
-  // No engine-stop tail: the cutover's boot starts no engine, and the
-  // titlebar carries no engine controls in the ACP transport.
+  for (let waited = 0; waited < 5000 && (await scratchEntries()).length > 0; waited += 100) await sleep(100);
+  expect(await scratchEntries()).toEqual([]);
 }, 60000);

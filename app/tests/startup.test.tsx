@@ -1,14 +1,12 @@
 import { afterAll, beforeEach, expect, open, test } from "nsh/test";
 import { Fs, State } from "zu/native";
-import { copy } from "../ui/copy";
 import { activeContainerId, containers, loadContainers } from "../core/containers";
 import { openPath, sessionIdsOfContainer } from "../modules/pi/container";
 import { setAcpCommandOverride } from "../modules/pi/acp/acp";
-import { createProject, projects } from "../core/projects";
 import { entries, refreshSessions } from "../modules/pi/sessions";
 import { entryText } from "../modules/pi/transcript";
 import { stubCommand, stubPath } from "../fixtures/stub-command";
-import { resetStateCache } from "../domains/state";
+import { resetStateCache, setWorkspaceDir } from "../domains/state";
 
 // §2.1-2's acceptance, in the post-cutover world: the app opens on the
 // registry's active container and draws its conversation without a click —
@@ -53,6 +51,7 @@ beforeEach(async () => {
   // A fresh registry per case: the second case starts on the scratch canvas.
   stateDir = `/tmp/zu-s21-2-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
   State.setStateDir(stateDir);
+  setWorkspaceDir(`/tmp/zu-s21-ws-${Date.now()}-${Math.floor(Math.random() * 1e6)}`);
   State.setAgentDir(agentDir);
   resetStateCache();
   await loadContainers();
@@ -84,56 +83,42 @@ test("startup shows the registry's active container and hydrates its conversatio
   // reopen leg), which is where its truth lives.
   await app.waitUntil(() => app.texts().includes("startup marker alpha"), { timeout: 60000 });
   // The canvas is this container's sheet, not a page and not the Hero.
-  expect(app.shows("id:hero-input")).toBe(false);
+  expect(app.shows("id:launch-zu")).toBe(false);
   expect(activeContainerId() !== null || containers().length === 1).toBe(true);
   expect(entries().some((entry) => entry.kind === "user" && entryText(entry) === "startup marker alpha")).toBe(true);
 }, 240000);
 
-// The Hero's tools spawn real CLIs (`pi`, `claude`, `codex`, `copilot`) in a
-// real terminal — the machine's own tooling, nothing the repo ships. A bare
-// CI image has none of them, which ZU_SKIP_LIVE (the CI 口径) skips; the
-// sheets themselves are exercised everywhere by projects.ui's Hero cases.
+// The start page's terminal agents spawn real CLIs (`pi`, `claude`,
+// `codex`, `copilot`) in a real terminal — the machine's own tooling, nothing
+// the repo ships. A bare CI image has none of them, which ZU_SKIP_LIVE (the CI
+// 口径) skips; the sheets themselves are exercised everywhere by projects.ui's
+// start-page cases.
 const t = process.env?.["ZU_SKIP_LIVE"] === "1" ? test.skip : test;
 
-t("the scratch Hero's project action opens its sheets", async () => {
-  // The Hero's minting tools need a project (DESIGN §4.1); this case is
-  // about the sheets they produce, so give the scratch canvas one.
-  const made = await createProject("S21", [{ path: "/tmp", primary: true }]);
-  expect(made).toBeTruthy();
-  expect(projects().some((project) => project.id === made?.id)).toBe(true);
-
+t("a terminal agent's tile opens its sheet in a container of its own", async () => {
   const app = await open("./app-stub-acp.tsx", { network: "live", width: 1280, height: 800, host: { params: { acpStub: STUB } } });
-  await app.waitFor("id:hero-project", { timeout: 20000 });
-  await app.press("id:hero-project");
-  await app.waitFor(`id:hero-project-${made?.id}`, { timeout: 20000 });
-  await app.press(`id:hero-project-${made?.id}`);
-  await app.waitFor("id:hero-pi", { timeout: 20000 });
-  await app.waitUntil(() => app.enabled("id:hero-pi"), { timeout: 20000 });
+  await app.waitFor("id:launch-pi", { timeout: 20000 });
 
-  // Pi: the native `pi` CLI, opened as a terminal of the container the
-  // scratch Hero mints (§2.1.1 F3).
-  await app.press("id:hero-pi");
+  // Pi: the native `pi` CLI, in a container minted for the process (Chats,
+  // its own scratch workspace).
+  await app.press("id:launch-pi");
   await app.waitUntil(() => app.shows("id:terminal-view"), { timeout: 60000 });
-  expect(app.texts().some((text) => text.startsWith("Pi · "))).toBe(true);
-  expect(app.shows("id:hero-input")).toBe(false);
+  expect(app.texts()).toContain("Pi");
+  expect(app.shows("id:launch-pi")).toBe(false);
 
-  // Each TUI action leaves the scratch canvas for its terminal sheet. New
-  // starts on Chats (no project), so each pass picks the project again.
+  // Each TUI tile leaves the scratch canvas for its terminal sheet. New
+  // starts on Chats again, and the tool needs no project.
   for (const [tool, label] of [
-    ["external-claude", "Claude Code"],
-    ["external-codex", "Codex"],
-    ["external-copilot", "GitHub Copilot"],
+    ["launch-claude", "Claude Code"],
+    ["launch-codex", "Codex"],
+    ["launch-copilot", "GitHub Copilot"],
   ] as const) {
     await app.press("id:new-container");
-    await app.waitFor("id:hero-input", { timeout: 20000 });
-    await app.press("id:hero-project");
-    await app.waitFor(`id:hero-project-${made?.id}`, { timeout: 20000 });
-    await app.press(`id:hero-project-${made?.id}`);
+    await app.waitFor("id:launch-claude", { timeout: 20000 });
     await app.press(`id:${tool}`);
     await app.waitUntil(() => app.shows("id:terminal-view"), { timeout: 30000 });
-    expect(app.shows("id:hero-input")).toBe(false);
+    expect(app.shows("id:launch-claude")).toBe(false);
     // The container's kind is its label: in the tab and the sidebar row.
     expect(app.texts().some((text) => text.includes(label))).toBe(true);
   }
-  void copy;
 }, 240000);

@@ -56,24 +56,46 @@ export interface SheetKindSpec {
   parse: (id: SheetId) => unknown | null;
 }
 
-/** One arm of the Hero's harness segment. */
-export interface HeroStarter {
-  id: string;
-  label: string;
-  submit: (
-    text: string,
-    context: { cwd: string | null; model: string | null; effort: string; sheetId: string },
-  ) => Promise<void>;
+/** One row of the start page (the object's own group, in this order). */
+export type LauncherGroup = "conversation" | "tool" | "agent";
+
+/** The attributes an instantiable object is pressed with. The start page is
+ * the same everywhere; the context only pins what the instance inherits. */
+export interface LaunchContext {
+  /** The container to add the instance to; null mints one. */
+  containerId: string | null;
+  /** The project the context pins; null is Chats. */
+  projectId: string | null;
+  /** The cwd the context pins (a container's, a project root, or the
+   * conversation fallback). Null means the object's own fallback: a tool
+   * minted outside a project gets its per-container `scratch/<id>` folder. */
+  cwd: string | null;
 }
 
-/** One direct tool row beside the Hero's built-in tools. */
-export interface ContributedTool {
+/** One instantiable object on the start page. Every press mints a new
+ * instance — a conversation, a terminal, a browser page — never focuses an
+ * existing one. */
+export interface Launcher {
+  /** The object's stable id (`zu`, `manox`, `terminal`, `browser`, `claude`,
+   * `codex`, `copilot`, `pi`). */
   id: string;
-  label: string;
+  /** The tile's label, read at draw time so the shell's language applies; a
+   * product name is not translated. */
+  label: () => string;
+  /** A glyph name from `ui/ui.tsx`, or a brand icon (`brand`). */
   glyph?: string;
-  testID: string;
-  disabled?: () => boolean;
-  onPress: () => void;
+  brand?: string;
+  /** The row it belongs to (conversations, tools, terminal agents). */
+  group: LauncherGroup;
+  /** Ordering inside the group (smaller first). */
+  order?: number;
+  /** A conversation asks which project to start in when the context pins
+   * none; a tool defaults to Chats. */
+  asksProject?: boolean;
+  /** Creates the instance and opens its sheet beside the start page (the
+   * palette stays usable, so repeated presses need no `+`). A rejection is
+   * the start page's error line. */
+  instantiate: (context: LaunchContext) => void | Promise<void>;
 }
 
 /** What an intent handler receives. */
@@ -112,13 +134,11 @@ export interface SheetModule {
   /** The kinds this module owns (one or more). */
   kinds: SheetKindSpec[];
   /** Capability ids the module consumes (`fs`, `git`, `pty`, `lsp`, `acp`,
-   * `state`, `pimodels`, `manox`). Declarative: the assembly point resolves
-   * them; the dependency gate checks them. */
+   * `state`, `manox`). Declarative: the assembly point resolves them; the
+   * dependency gate checks them. */
   capabilities?: string[];
-  hero?: {
-    starters?: HeroStarter[];
-    tools?: ContributedTool[];
-  };
+  /** The objects the start page instantiates (docs/DESIGN §4.1). */
+  launchers?: Launcher[];
   /** The titlebar's tools menu, in `order`. */
   titlebar?: TitlebarAction[];
   /** Sidebar search results for a query (a harness's own session index). */

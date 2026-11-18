@@ -22,7 +22,6 @@ mod git;
 mod instance;
 mod lsp;
 mod picker;
-mod pimodels;
 mod pty;
 mod session;
 mod state;
@@ -40,7 +39,6 @@ pub use git::{Git, GitBranch, GitBranches, GitChange, GitCommit, GitDiff, GitSta
 pub use instance::{Instance, InstanceClaim};
 pub use lsp::{Lsp, LspExit, LspOptions};
 pub use picker::Picker;
-pub use pimodels::{PiModelInfo, PiModels, PiProvider};
 pub use pty::{Pty, PtyExit, PtyOptions};
 pub use session::{TerminalFind, TerminalSession, TerminalSessionEvent};
 pub use state::{ScanSession, SessionScan, State, StateRead, StateWrite};
@@ -57,6 +55,11 @@ pub(crate) static STATE_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 /// container registry); a packaged app always loads them.
 pub(crate) static NO_EXTENSIONS: Mutex<bool> = Mutex::new(false);
 
+/// The workspace parent (`~/.steer` unless a test points it elsewhere): the
+/// `__chat__/` folder and per-container `scratch/` folders live here, apart from
+/// the state directory so an agent working in them cannot touch the registry.
+pub(crate) static WORKSPACE_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
+
 /// pi's home for the sidecar (`~/.pi/agent` unless a test points it
 /// elsewhere): credentials and `models.json`. The model list a session
 /// reports comes from here, so an empty directory is the no-models state.
@@ -71,7 +74,6 @@ fn native(registry: &mut Registry) {
         .module::<Git>()
         .module::<Instance>()
         .module::<Picker>()
-        .module::<PiModels>()
         .module::<State>()
         .class::<Acp>()
         .class::<Lsp>()

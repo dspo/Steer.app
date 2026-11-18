@@ -18,6 +18,7 @@ import {
   type DockAreaLayout,
 } from "./dock";
 import { notifyContainerArchived, notifyContainerShown, notifyLayoutChanged, notifySheetActivated, restoreSheetIds } from "./registry";
+import { dropScratch } from "./workspace";
 
 /**
  * The container store: the sidebar's rows, the active container and its view
@@ -81,15 +82,6 @@ export function setContainerTransport(next: ContainerTransport | null): void {
   transport = next;
 }
 
-/** How the scratch canvas's sheets move onto a container it mints (a module
- * that owns scratch pages installs this; core only needs the new ids). */
-let transferScratchSheets: ((containerId: string) => string[]) | null = null;
-
-/** Installs (or clears) the scratch-canvas sheet transfer. */
-export function setScratchSheetTransfer(next: ((containerId: string) => string[]) | null): void {
-  transferScratchSheets = next;
-}
-
 /** Live containers, newest activity first (stable tie-breaks). */
 export function liveContainers(): ContainerRecord[] {
   return containers()
@@ -144,7 +136,7 @@ function adoptSheetOrder(rows: ContainerRecord[]): void {
   sheetOrder.set(next);
 }
 
-/** The scratch canvas before anything happens on it: its Hero sheet. */
+/** The scratch canvas before anything happens on it: its start page. */
 function defaultScratchLayout(): DockAreaLayout {
   return defaultLayoutForSheets([SCRATCH_SHEET]);
 }
@@ -166,7 +158,7 @@ function showScratch(): void {
   syncVisible();
 }
 
-/** "New": the scratch canvas with its Hero sheet. */
+/** "New": the scratch canvas with its start page. */
 export async function openScratch(): Promise<void> {
   const ticket = takeCanvasTicket();
   if (activeContainerId() !== null) await flushLayout();
@@ -375,7 +367,7 @@ async function switchNow(id: string, ticket: number): Promise<void> {
 }
 
 /** The canvas for a container with no stashed layout: its recorded sheets,
- * else its Hero. */
+ * else its start page. */
 function defaultCanvasFor(container: ContainerRecord): DockAreaLayout {
   const known = sheetOrder()[container.id] ?? [];
   return known.length > 0 ? defaultLayoutForSheets(known) : defaultLayoutForSheets([homeSheetId(container.id)]);
@@ -414,12 +406,11 @@ async function createNow(options: CreateContainerOptions, ticket: number): Promi
       updatedAt: now,
       ...(options.projectId !== undefined ? { projectId: options.projectId } : {}),
     };
-    const moved = fromScratch ? (transferScratchSheets?.(container.id) ?? []) : [];
     if (fromScratch) scratchLayout.set(defaultScratchLayout());
     upsertContainer(container);
     noteMembership(container.id, options.projectId ?? null);
     if (!ticketCurrent(ticket)) return container;
-    const sheets = [...options.sheets, ...moved];
+    const sheets = options.sheets;
     activateCanvas(container, defaultLayoutForSheets(sheets.length ? sheets : [homeSheetId(container.id)]), null);
     await flushLayout();
     return container;
@@ -479,6 +470,7 @@ export async function archiveContainer(id: string): Promise<void> {
       containers.set(data.containers ?? []);
       pruneHeld();
       notifyContainerArchived(id);
+      dropScratch(id);
       if (activeContainerId() === id) {
         savedFor = null;
         const next = data.activeContainerId;
@@ -502,6 +494,7 @@ export async function archiveContainer(id: string): Promise<void> {
     void saveRegistry();
     pruneHeld();
     notifyContainerArchived(id);
+    dropScratch(id);
     if (activeContainerId() === id) {
       savedFor = null;
       const next = liveContainers()[0]?.id ?? null;
@@ -541,12 +534,12 @@ export function setLayout(next: DockAreaLayout): void {
   syncVisible();
   notifyLayoutChanged(panelIds(next));
   scheduleSave();
-  // Q69: the last sheet gone leaves no place to work — including the Hero's
+  // Q69: the last sheet gone leaves no place to work — including the start page's
   // own ×, which is why the last tab is closable at all.
   if (containerId && sheetCount(next) === 0) void archiveContainer(containerId);
 }
 
-/** Opens (or activates) the active canvas's Hero sheet. */
+/** Opens (or activates) the active canvas's start-page sheet. */
 export function openHomeSheet(prefer?: string | null): void {
   const id = homeSheetId(activeContainerId());
   noteSheetOpened(id);

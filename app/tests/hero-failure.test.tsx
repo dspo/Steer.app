@@ -1,19 +1,18 @@
 import { expect, open, test } from "nsh/test";
 
-// A start that fails says why, in the shell's error line, and keeps what the
-// user wrote. Before, the rejection had nobody to catch it: the draft was
-// cleared and the screen said nothing (an unhandled rejection in the console).
+// A start that fails says why, in the start page's error line (and the
+// shell's status line). Before the object model, the rejection had nobody to
+// catch it: the screen said nothing (an unhandled rejection in the console).
 
-test("a Hero start that cannot make a session says so and keeps the draft", async () => {
+test("a start page whose conversation cannot be made says so and stays put", async () => {
   const app = await open("../fixtures/hero-failure.tsx", { width: 1200, height: 800 });
-  await app.waitFor("id:hero-input");
-  await app.type("id:hero-input", "hello failure");
-  await app.submit("id:hero-input");
+  await app.waitFor("id:launch-zu");
+  await app.press("id:launch-zu");
   await app.waitUntil(() => app.texts().some((text) => text.includes("the pi harness was not found")), {
     timeout: 10000,
   });
   expect(app.texts().some((text) => text.includes("the pi harness was not found"))).toBe(true);
-  // The message is what the bar carries, not a session that opened.
-  expect(app.value("id:hero-input")).toBe("hello failure");
-  expect(app.shows("id:hero-input")).toBe(true);
+  // The failure opened no session: the start page is still the canvas.
+  expect(app.shows("id:launch-zu")).toBe(true);
+  expect(app.count("id:session-input")).toBe(0);
 });

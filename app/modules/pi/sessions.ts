@@ -876,28 +876,6 @@ export async function chooseSessionModel(id: string, provider: string, modelId: 
 
 /** The view of `id`, if the shell has seen it. A pi session id minted after
  * its view existed resolves through the ACP alias map to the view's key. */
-/** Applies the Hero's pre-session pick through the protocol (after the
- * session is minted): model as `provider/id`, effort as the thought level. */
-export async function applySessionConfig(
-  id: string,
-  prefs: { model?: string | null; effort?: string | null },
-): Promise<void> {
-  const session = liveSession(id);
-  if (!session) return;
-  try {
-    if (prefs.model && prefs.model.includes("/")) {
-      await session.setConfig("model", prefs.model);
-    }
-    if (prefs.effort) {
-      await session.setConfig("thought_level", prefs.effort);
-    }
-    syncProtocolState(id);
-    await loadSessionModels(id, true);
-  } catch (failure) {
-    patchView(id, { error: String(failure) });
-  }
-}
-
 export function viewFor(id: string | null | undefined): SessionView | undefined {
   return id ? views()[id] : undefined;
 }

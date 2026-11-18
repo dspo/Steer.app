@@ -1,12 +1,20 @@
 import { mount } from "nsh";
 import { Workbench } from "../shell/shell";
 import { containerError, loadContainers, setContainerTransport, sheetOrder } from "../core/containers";
-import { error as sessionError } from "../modules/pi/sessions";
+import { error as sessionError, setSessionTransport } from "../modules/pi/sessions";
 import { assistantEntry } from "../modules/pi/transcript";
 import { seedSession } from "../modules/pi/sessions";
 import { registerAllModules } from "../modules/register-all";
 
 registerAllModules();
+
+// A conversation started inside a container mints a session over the (old)
+// session transport; the fixture answers the create and nothing else.
+setSessionTransport(async (type: string) => {
+  if (type === "session.create")
+    return { id: "new-session", path: "/tmp/containers-new.jsonl", cwd: "/tmp/alpha", name: "New conversation", messages: [] };
+  throw new Error(`fixture session transport: ${type}`);
+});
 
 /**
  * Two containers without an engine: the container store talks to an

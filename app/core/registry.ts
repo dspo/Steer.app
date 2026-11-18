@@ -1,10 +1,9 @@
 import { signal } from "nsh";
 import type { JSX } from "nsh";
 import type {
-  ContributedTool,
-  HeroStarter,
   IntentContext,
   IntentResult,
+  Launcher,
   SearchHit,
   SheetId,
   SheetKindSpec,
@@ -32,8 +31,7 @@ interface RegisteredKind {
 
 const modules = new Map<string, SheetModule>();
 const kinds = new Map<string, RegisteredKind>();
-const starters = signal<HeroStarter[]>([]);
-const tools = signal<ContributedTool[]>([]);
+const launchers = signal<Launcher[]>([]);
 const intents = new Map<string, (payload: unknown, context: IntentContext) => IntentResult>();
 const titlebar: TitlebarAction[] = [];
 const searchers: Array<(query: string) => SearchHit[]> = [];
@@ -55,8 +53,7 @@ export function registerModule(module: SheetModule): void {
   }
   modules.set(module.id, module);
   for (const spec of module.kinds) kinds.set(spec.kind, { moduleId: module.id, spec });
-  if (module.hero?.starters?.length) starters.set([...starters(), ...module.hero.starters]);
-  if (module.hero?.tools?.length) tools.set([...tools(), ...module.hero.tools]);
+  if (module.launchers?.length) launchers.set([...launchers(), ...module.launchers]);
   for (const [name, handler] of Object.entries(module.intents ?? {})) {
     if (intents.has(name)) throw new Error(`intent ${name} is already registered`);
     intents.set(name, handler);
@@ -104,14 +101,9 @@ export function sheetClosable(id: SheetId): boolean {
   return sheetSpec(id)?.closable?.(id) ?? true;
 }
 
-/** The Hero's contributed harness starters, in registration order. */
-export function heroStarters(): HeroStarter[] {
-  return starters();
-}
-
-/** The Hero's contributed tool rows, in registration order. */
-export function heroTools(): ContributedTool[] {
-  return tools();
+/** The start page's instantiable objects, in registration order. */
+export function startPageLaunchers(): Launcher[] {
+  return launchers();
 }
 
 /** The titlebar's contributed actions, ordered by `order`. */

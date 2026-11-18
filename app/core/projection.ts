@@ -18,7 +18,7 @@ export type TabBarBox = {
   y: number;
   width: number;
   height: number;
-  /** A panel of the group: the Hero opens beside it (any member works). */
+  /** A panel of the group: the start page opens beside it (any member works). */
   anchor: string;
   /** The group's first panel, so the box keeps its identity across switches. */
   key: string;

@@ -1,6 +1,7 @@
-import { browserTabTitle, dropBrowserPages, openBrowserSheet } from "./store";
+import { browserTabTitle, createBrowserContainer, dropBrowserPages, openBrowserSheet } from "./store";
 import { BrowserBody } from "./view";
 import { K, t } from "../../ui/i18n";
+import { activeContainerId, containerError } from "../../core/containers";
 import type { SheetModule } from "../../../contracts/module";
 
 /**
@@ -18,19 +19,44 @@ export const browserModule: SheetModule = {
       glyph: "globe",
       testID: "open-browser",
       order: 20,
-      onPress: () => openBrowserSheet(),
+      onPress: () => {
+        const containerId = activeContainerId();
+        if (containerId) openBrowserSheet(containerId);
+        else
+          void createBrowserContainer(null, null).catch((error) =>
+            containerError.set(error instanceof Error ? error.message : String(error)),
+          );
+      },
     },
   ],
   intents: {
     "browser.open": (payload) => {
-      const { containerId = null, replace, url } = (payload ?? {}) as {
+      const { containerId = null, url } = (payload ?? {}) as {
         containerId?: string | null;
-        replace?: string;
         url?: string;
       };
-      return openBrowserSheet(containerId, replace, url);
+      // A page is a container's resource; the start page mints one for an
+      // external browser. An intent without a container has nothing to open.
+      if (!containerId) return null;
+      return openBrowserSheet(containerId, url);
     },
   },
+  launchers: [
+    {
+      id: "browser",
+      label: () => t(K.browser.open),
+      glyph: "globe",
+      group: "tool",
+      order: 20,
+      instantiate: async (context) => {
+        if (context.containerId) {
+          openBrowserSheet(context.containerId);
+          return;
+        }
+        await createBrowserContainer(context.projectId, context.cwd);
+      },
+    },
+  ],
   onContainerArchive: (containerId) => dropBrowserPages(containerId),
   kinds: [
     {

@@ -123,6 +123,7 @@ test("the titlebar and the search are module contributions", () => {
 
 test("intents resolve through the owning module and unknown intents are null", () => {
   expect(dispatchIntent("nope.nothing", {}, { containerId: null })).toBeNull();
-  // A browser works on any canvas, so its intent needs no container.
-  expect(dispatchIntent("browser.open", { containerId: null }, { containerId: null })).toBeTruthy();
+  // A browser page is a container's resource; without a container the
+  // start page's launcher mints one, not this intent.
+  expect(dispatchIntent("browser.open", { containerId: null }, { containerId: null })).toBeNull();
 });

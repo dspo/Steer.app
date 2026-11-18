@@ -27,12 +27,10 @@ import {
   type TerminalViewRef,
 } from "../../domains/pty";
 import {
-  activeCwd,
   closeSheet,
   containerOfSheet,
   containers,
   createContainerRecord,
-  fallbackCwd,
   layout,
   noteSheetOpened,
   openSheet,
@@ -40,12 +38,13 @@ import {
   setLayout,
 } from "../../core/containers";
 import { appendSheet, panelIds, replaceSheet, visiblePanels } from "../../core/dock";
+import { scratchCwd } from "../../core/workspace";
 import { K, t } from "../../ui/i18n";
 import { Dot, Glyph, SheetIconButton } from "../../ui/ui";
 import { notifySettled } from "../../core/notifications";
 import { dispatchIntent } from "../../core/registry";
 import { SHEET_MONO } from "../../ui/fonts";
-import type { SheetModule } from "../../../contracts/module";
+import type { LaunchContext, SheetModule } from "../../../contracts/module";
 
 /**
  * The terminal sheet (`terminal:{containerId}:{n}`): one terminal resource of
@@ -290,25 +289,30 @@ function nextTerminalIndex(containerId: string): number {
   return max + 1;
 }
 
-/** Opens a terminal resource in a container, replacing `fromSheet` when given. */
-export function openTerminalSheet(containerId: string, action: TerminalAction, fromSheet?: string): string | null {
+/** Opens a terminal resource in a container (a new sheet beside the start page). */
+export function openTerminalSheet(containerId: string, action: TerminalAction): string | null {
   const container = containers().find((row) => row.id === containerId);
   if (!container) return null;
   const sheetId = terminalSheetId(containerId, nextTerminalIndex(containerId));
   registerTerminal(sheetId, action);
-  openSheet(sheetId, fromSheet);
+  openSheet(sheetId);
   return sheetId;
 }
 
-/** Mints an external container whose single sheet is its terminal. */
+/** Mints an external container whose single sheet is its terminal. Outside
+ * a project the container's workspace is its own `scratch/<id>` folder, made
+ * after the id is known; a project context pins the root. */
 export async function createExternalContainer(
   action: TerminalAction = "shell",
   projectId: string | null = null,
-): Promise<string | null> {
-  const target = projectCwd(projectId) || activeCwd() || fallbackCwd();
-  if (!target) return null;
+  cwd: string | null = null,
+): Promise<string> {
   const now = Date.now();
   const containerId = `external:${action.toLowerCase()}:${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  // No project root and no workspace is the start page's error line, never a
+  // silent fallback into the home folder.
+  const target = cwd || projectCwd(projectId) || (await scratchCwd(containerId));
+  if (!target) throw new Error("cannot create the workspace for this terminal");
   const sheetId = terminalSheetId(containerId, 1);
   registerTerminal(sheetId, action);
   const container = await createContainerRecord({
@@ -317,7 +321,19 @@ export async function createExternalContainer(
     projectId,
     sheets: [sheetId],
   });
-  return container?.id ?? null;
+  if (!container) throw new Error("cannot create the terminal's container");
+  return container.id;
+}
+
+/** A start-page tile's instantiate: in a container the terminal is a
+ * resource of that container (the start page's tab becomes the terminal's);
+ * outside one it mints the external container the process lives in. */
+async function instantiateTerminal(action: TerminalAction, context: LaunchContext): Promise<void> {
+  if (context.containerId) {
+    openTerminalSheet(context.containerId, action);
+    return;
+  }
+  await createExternalContainer(action, context.projectId, context.cwd);
 }
 
 /** The terminal kind's registration. */
@@ -332,23 +348,57 @@ export const terminalModule: SheetModule = {
   onContainerArchive: (containerId) => closeTerminalsOfContainer(containerId),
   intents: {
     "terminal.open": (payload) => {
-      const { containerId = null, action = "shell", fromSheet } = (payload ?? {}) as {
+      const { containerId = null, action = "shell" } = (payload ?? {}) as {
         containerId?: string | null;
         action?: TerminalAction;
-        fromSheet?: string;
       };
       if (!containerId) return null;
-      return openTerminalSheet(containerId, action, fromSheet) ?? null;
+      return openTerminalSheet(containerId, action) ?? null;
     },
     "terminal.createExternal": async (payload) => {
-      const { action = "shell", projectId = null } = (payload ?? {}) as {
+      const { action = "shell", projectId = null, cwd = null } = (payload ?? {}) as {
         action?: TerminalAction;
         projectId?: string | null;
+        cwd?: string | null;
       };
-      const containerId = await createExternalContainer(action, projectId);
-      return containerId ? terminalSheetId(containerId, 1) : null;
+      const containerId = await createExternalContainer(action, projectId, cwd);
+      return terminalSheetId(containerId, 1);
     },
   },
+  launchers: [
+    {
+      id: "terminal",
+      label: () => t(K.external.terminal),
+      glyph: "terminal",
+      group: "tool",
+      order: 10,
+      instantiate: (context) => instantiateTerminal("shell", context),
+    },
+    {
+      id: "claude",
+      label: () => t(K.external.claude),
+      brand: "claude",
+      group: "agent",
+      order: 10,
+      instantiate: (context) => instantiateTerminal("Claude", context),
+    },
+    {
+      id: "codex",
+      label: () => t(K.external.codex),
+      brand: "codex",
+      group: "agent",
+      order: 20,
+      instantiate: (context) => instantiateTerminal("Codex", context),
+    },
+    {
+      id: "copilot",
+      label: () => t(K.external.copilot),
+      brand: "copilot",
+      group: "agent",
+      order: 30,
+      instantiate: (context) => instantiateTerminal("Copilot", context),
+    },
+  ],
   kinds: [
     {
       kind: "terminal",
@@ -360,7 +410,9 @@ export const terminalModule: SheetModule = {
         const container = containers().find((row) => row.id === terminalSheetContainer(id));
         const label = terminalActionLabel(terminalAction(id) ?? "shell");
         const folder = container?.cwd.split("/").filter(Boolean).pop();
-        return folder ? `${label} · ${folder}` : label;
+        // A scratch workspace's folder is the container's own id: it names
+        // nothing a reader can use, so the kind's label stands alone.
+        return folder && folder !== container?.id ? `${label} · ${folder}` : label;
       },
       body: ({ id }) => <TerminalBody id={id} />,
       parse: (id) => (id.startsWith("terminal:") ? id.slice("terminal:".length) : null),

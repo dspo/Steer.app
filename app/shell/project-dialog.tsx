@@ -34,7 +34,8 @@ const projectDialogError = signal<string | null>(null);
 const projectPicking = signal(false);
 let projectCreated: ((project: ProjectRecord) => void) | null = null;
 
-/** Opens the project dialog; `onCreated` adopts the new project (the Hero's chip). */
+/** Opens the project dialog; `onCreated` adopts the new project (the start
+ * page's conversation menu is the one caller). */
 export function openProjectDialog(onCreated?: (project: ProjectRecord) => void): void {
   projectNameDraft.set("");
   projectRootsDraft.set([]);

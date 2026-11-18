@@ -169,7 +169,9 @@ function publish(handle: TerminalHandle): void {
 function seedTitle(container: { id: string; cwd: string }, action: TerminalAction): string {
   const label = terminalActionLabel(action);
   const folder = baseName(container.cwd);
-  return folder ? `${label} · ${folder}` : label;
+  // A scratch workspace's folder is the container's own id: it names nothing
+  // a reader can use, so the kind's label stands alone.
+  return folder && folder !== container.id ? `${label} · ${folder}` : label;
 }
 
 /** What a session's program did besides drawing. */

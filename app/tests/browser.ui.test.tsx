@@ -19,15 +19,16 @@ async function address(app: { type: (selector: string, text: string) => Promise<
 test("the top bar opens browser sheets, and the address bar normalizes a domain", async () => {
   const app = await open("../fixtures/browser.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:open-hero");
-  // The Hero's Browser action is an entry too: it opens the sheet in the
+  // The start page's Browser tile is an entry too: it opens the sheet in the
   // active container and becomes a tab beside it.
   await app.press("id:open-hero");
-  await app.waitFor("id:hero-browser");
-  await app.press("id:hero-browser");
+  await app.waitFor("id:launch-browser");
+  await app.press("id:launch-browser");
   await app.waitFor("id:browser-address");
-  expect(app.shows("id:hero-browser")).toBe(false);
-  // The browser took the Hero's tab; the Hero is gone, not beside it.
-  expect(app.count("id:hero-input")).toBe(0);
+  // The page opens beside the start page: the palette tab stays, so another
+  // object can be opened without `+`.
+  expect(app.count("id:tab-close-home:pi:browser-fixture")).toBe(1);
+  expect(app.count("id:launch-zu")).toBe(1);
 
   // The default page says what may load and where page messages go.
   expect(app.count("id:browser-empty")).toBe(1);

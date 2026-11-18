@@ -124,3 +124,35 @@ export function resetStateCache(): void {
 export function layoutName(containerId: string): string {
   return `layouts/${encodeURIComponent(containerId)}.json`;
 }
+
+/** The workspace parent (`~/.steer`): the start page's `__chat__/` and
+ * `scratch/` folders live here, apart from the state directory. */
+export function workspaceDir(): string | null {
+  return State.workspaceDir();
+}
+
+/** Points the workspace parent elsewhere (tests); an empty string restores
+ * `~/.steer`. */
+export function setWorkspaceDir(path: string): void {
+  State.setWorkspaceDir(path);
+}
+
+/** Creates a workspace folder (`Chats`, `scratch/<containerId>`) and returns
+ * its path; null when the platform cannot make it. */
+export async function ensureWorkspace(relative: string): Promise<string | null> {
+  try {
+    return await State.ensureWorkspace(relative);
+  } catch (error) {
+    noteError(error);
+    return null;
+  }
+}
+
+/** Removes a workspace folder and everything in it (a container archive). */
+export async function removeWorkspace(relative: string): Promise<void> {
+  try {
+    await State.removeWorkspace(relative);
+  } catch (error) {
+    noteError(error);
+  }
+}

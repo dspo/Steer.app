@@ -46,7 +46,7 @@ Zu.app（nsh TSX / AppKit）
 ├─ modules/manox        manox 模块：AHP client（vendored reducers 折叠）
 │    └─ zu/native 的 Manox 单例 ──▶ in-proc 宿主半边（manox v0.12.0）
 │         durable: ~/.manox/core/*（journal）
-└─ domains/ ──▶ zu/native（Rust）：acp / fs / git / lsp / pty / state / pimodels / picker / instance，
+└─ domains/ ──▶ zu/native（Rust）：acp / fs / git / lsp / pty / state / manox / picker / instance，
                 terminal（自绘 ghostty 组件）
 ```
 
@@ -71,7 +71,7 @@ Zu.app（nsh TSX / AppKit）
 - **模型/档位/命令/用量/审批**：协议状态。`session/new|resume|load` 回 `configOptions`/`modes`，
   `session/set_config_option`、`session/set_mode` 切换；`available_commands_update`、
   `usage_update`、`session_info_update`、`compaction_update`、`notice` 投影进 `SessionView`。
-  Hero 的预选在会话建立后经 `set_config_option` 应用，不再有 spawn env。
+  起始页不再预选模型/effort：新会话使用机器默认配置。
 - **容器 ↔ 会话**：`pi` 模块维护自己的 `containerId → sessionIds` 投影（不再写进容器记录）；
   容器记录只存 `sheetOrder`（标题序，可持久化）。
 - 协议映射与 P0–P4 的历史裁决见 [pi-acp-PROTOCOL.md](pi-acp-PROTOCOL.md)。
@@ -149,7 +149,7 @@ UI 不持 fs / process：文件读写只经 `zu/fs`，进程只经 native 域。
 | 域 | 职责 | 形态 |
 |---|---|---|
 | `Acp` | 每个会话的 `pi-acp` 子进程：argv、cwd、进程组、有界帧（32 MiB） | class（一会话一个） |
-| `State` | `read`/`write`（原子、版本拒绝）、`scan_sessions`（mtime 水位） | module |
+| `State` | `read`/`write`（原子、版本拒绝）、`scan_sessions`（mtime 水位）、`ensure_workspace`/`remove_workspace`（`~/.steer` 下的 `__chat__/` 与 `scratch/<id>/`） | module |
 | `Fs` | 显式根、越界/符号链接拒绝、2 MiB 读、原子写、`ERR_FS_STALE` | module |
 | `Git` | shell out、根必须为仓库顶层、porcelain v2、无网络/无全局配置 | module |
 | `Lsp` | 每容器×语言族一个进程、有界 `Content-Length` 帧、无 shell | class |
@@ -158,7 +158,6 @@ UI 不持 fs / process：文件读写只经 `zu/fs`，进程只经 native 域。
 | `zu.terminal` | macOS 原生组件（`native/src/term_view`）：按 id 附着会话，自有 NSView 以 CoreText 逐格绘制（方框/块/盲文/Powerline 按几何画），自身是 `NSTextInputClient`；鼠标上报、选择手势、链接、查找高亮、滚动条、闪烁、焦点上报都在视图内；剪贴板、链接（开进浏览器 sheet）、查找栏出到 TSX | native component |
 | `Instance` | 单实例锁：临时文件 + `hard_link`、pid 判活、死锁回收 | module |
 | `Picker` | Finder 目录选择 | module |
-| `PiModels` | 模型目录（`~/.pi`）+ 无模型原因 | module |
 | `Manox` | AHP 宿主单例 + 帧泵 + `restart` | module（另一注册面） |
 
 重型集成一律在 native 侧；TS 侧只做协议与 UI。
@@ -195,8 +194,8 @@ App.tsx（装配点：startModules() + 跟随系统语言 + lifecycle）
   `manox-chat:{threadId}:{chatId}`、`terminal:{containerId}:{n}`、`webview:{containerId}:{n}`、
   `files:{containerId}`、`editor:{containerId}:{b64 path}`、`diff:{containerId}:{b64 old~new}`、
   `changes/history/problems:{containerId}`、`subagents:{containerId}`。
-- **容器标题 = 存活的最早创建 sheet 的 `title()`**（`sheetOrder` 创建序）；Hero 不参与。
-- **Hero 是容器起始页**：项目 chip、composer、harness 选择与动作行；在容器内提交/选动作会就地替换 Hero。
+- **容器标题 = 存活的最早创建 sheet 的 `title()`**（`sheetOrder` 创建序）；起始页不参与。
+- **起始页是对象实例化面板**：三行 tile（对话 / 工具 / 终端代理），处处相同；属性（容器 / 项目 / cwd）由上下文决定。每个 tile 每次按下新建一个实例，新 sheet 与起始页并排（调色板保留）；容器内新建对话 = 在当前容器加一个 `session:{id}` sheet。
 - **scratch 画布**：无 cwd/进程/注册表/持久化；提交后铸真实容器并迁移 sheet。
 - **终端是容器资源**：一个容器可多个 `terminal:{containerId}:{n}`，PTY 按资源 id 记账；归档杀全部。
 - **浏览器**：每 sheet 一个 `WebView`；不可见时卸载、按 store URL 重挂载（nsh 没有 pause API）。
@@ -265,7 +264,7 @@ terminal 模块的一个 intent。
 - **settle ≠ 死**：容器只有 idle/running。
 - **archive 是唯一 teardown**：结束时序为「更新注册表 → 结束资源（PTY/LSP/连接）→ 摘行」；
   记录、会话文件与布局保留。
-- **无 sheet 自动归档**：容器的 `sheetCount` 归零时切到相邻容器再 archive（Hero 也计入）。
+- **无 sheet 自动归档**：容器的 `sheetCount` 归零时切到相邻容器再 archive（起始页也计入）。
 - **外部进程即容器**（现状）：进程退出 → sheet 关 → 容器归档。
 - **外部改动复活**：归档容器的会话文件被 CLI 继续后，下次对账复活并提示。
 

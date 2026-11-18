@@ -4,6 +4,7 @@ import { refreshSessions, releaseSession, sessionHasName, sessionTitle, viewFor 
 import { sessionIdOfSheet } from "./sheets";
 import { closeAllSessions } from "./acp/host";
 import { activeContainerId } from "../../core/containers";
+import { dispatchIntent } from "../../core/registry";
 import { visiblePanels } from "../../core/dock";
 import { ChatView } from "./chat-view";
 import { MessageRow } from "./subagent-row";
@@ -17,9 +18,8 @@ import {
   openAuxSheet,
   rememberContainerSessions,
   openPath,
+  newSessionInContainer,
   sessionIdsOfContainer,
-  startFromScratch,
-  startInContainer,
 } from "./container";
 import { searchSessions } from "./search";
 
@@ -178,7 +178,7 @@ function releaseClosedSessions(ids: string[]): void {
  * container operations (create, show, open a file, hydrate). */
 export const piModule: SheetModule = {
   id: "pi",
-  capabilities: ["acp", "state", "pimodels"],
+  capabilities: ["acp", "state"],
   initialize: () => {
     // The restored layout asks for its visible sessions before the sidebar's
     // file scan has the path/cwd they need; hydrate again once it lands, or
@@ -203,30 +203,6 @@ export const piModule: SheetModule = {
   },
   search: (query) => searchSessions(query),
   intents: {
-    "pi.create": (payload) => {
-      const { cwd = null, projectId = null } = (payload ?? {}) as { cwd?: string | null; projectId?: string | null };
-      return createContainer(cwd ?? undefined, projectId).then((id) => (id ? `session:${id}` : null));
-    },
-    "pi.submit": async (payload) => {
-      const target = (payload ?? {}) as {
-        text: string;
-        cwd?: string | null;
-        projectId?: string | null;
-        containerId?: string | null;
-        sheetId?: string;
-        model?: string | null;
-        effort?: string | null;
-      };
-      if (target.containerId) await startInContainer(target.containerId, target.text, target.sheetId);
-      else
-        await startFromScratch(target.text, {
-          cwd: target.cwd ?? undefined,
-          projectId: target.projectId ?? null,
-          model: target.model ?? null,
-          effort: target.effort ?? null,
-        });
-      return null;
-    },
     "pi.openPath": async (payload) => {
       const { path } = (payload ?? {}) as { path?: string };
       if (path) await openPath(path);
@@ -239,6 +215,45 @@ export const piModule: SheetModule = {
       return `subagents:${containerId}`;
     },
   },
+  launchers: [
+    {
+      id: "zu",
+      label: () => "Zu",
+      glyph: "chat",
+      group: "conversation",
+      order: 10,
+      asksProject: true,
+      instantiate: async (context) => {
+        if (context.containerId) {
+          await newSessionInContainer(context.containerId);
+          return;
+        }
+        await createContainer(context.cwd ?? undefined, context.projectId);
+      },
+    },
+    {
+      id: "pi",
+      label: () => t(K.external.pi),
+      brand: "pi",
+      group: "agent",
+      order: 40,
+      instantiate: async (context) => {
+        if (context.containerId) {
+          dispatchIntent(
+            "terminal.open",
+            { containerId: context.containerId, action: "Pi" },
+            { containerId: context.containerId },
+          );
+          return;
+        }
+        await dispatchIntent(
+          "terminal.createExternal",
+          { action: "Pi", projectId: context.projectId, cwd: context.cwd },
+          { containerId: null },
+        );
+      },
+    },
+  ],
   kinds: [
     {
       kind: "session",

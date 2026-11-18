@@ -17,6 +17,11 @@
 //!   reads each file's header line, its name, its first user text and a
 //!   message count — bounded, never the whole transcript into memory.
 //!
+//! It also owns the **workspace parent** (`~/.steer`): `ensure_workspace` /
+//! `remove_workspace` make and drop the start page's `__chat__/` and
+//! `scratch/<containerId>/` folders, kept apart from the state directory so
+//! an agent working in one cannot touch the registry.
+//!
 //! Zero protocol semantics: the shapes above these files stay in TSX, the
 //! same split as [`crate::acp`]. The engine sidecar has no access here —
 //! its own scratch state lives in an `engine/` subdirectory it is pointed
@@ -32,7 +37,7 @@ use std::{
 
 use nsh_core::prelude::*;
 
-use crate::{AGENT_DIR, zu_dir};
+use crate::{AGENT_DIR, WORKSPACE_DIR, zu_dir};
 
 /// The most bytes of one session file the header scan reads for the name and
 /// the preview; the rest of the file only feeds the message count.
@@ -50,6 +55,7 @@ const ERR_NAME: &str = "ERR_STATE_NAME";
 const ERR_STALE: &str = "ERR_STATE_STALE";
 const ERR_JSON: &str = "ERR_STATE_JSON";
 const ERR_IO: &str = "ERR_STATE_IO";
+const ERR_WORKSPACE: &str = "ERR_STATE_WORKSPACE";
 
 /// What `read` found: the file's text, its top-level `v` (null when the file
 /// has none), and the mtime/size pair a staleness-aware caller may keep.
@@ -188,6 +194,45 @@ impl State {
                 Some(PathBuf::from(path.trim()))
             };
         }
+    }
+
+    /// The workspace parent: `~/.steer` unless a test points it elsewhere.
+    /// The start page's fallbacks live under it — `__chat__/` for a
+    /// conversation with no project, `scratch/<containerId>/` for a tool
+    /// container minted outside a project — so they are apart from the state
+    /// directory (an agent's `rm` in a workspace cannot reach the registry).
+    /// The folder is created on use, never here.
+    pub fn workspace_dir() -> Option<String> {
+        workspace_root_path()
+            .ok()
+            .map(|dir| dir.display().to_string())
+    }
+
+    /// Points the workspace parent at `path`; an empty string restores
+    /// `~/.steer`. Tests use it to keep scratch folders out of the home folder.
+    pub fn set_workspace_dir(path: String) {
+        if let Ok(mut dir) = WORKSPACE_DIR.lock() {
+            *dir = if path.trim().is_empty() {
+                None
+            } else {
+                Some(PathBuf::from(path.trim()))
+            };
+        }
+    }
+
+    /// Creates `relative` under the workspace parent (parents included) and
+    /// returns its path. `relative` is one or more names — `__chat__`,
+    /// `scratch/<containerId>` — with no escape, no absolute path and no
+    /// hidden segment; an existing directory is returned as it is.
+    pub async fn ensure_workspace(relative: String) -> Result<String, JsError> {
+        in_task(move || ensure_workspace_in(&relative)).await
+    }
+
+    /// Removes `relative` under the workspace parent and everything inside
+    /// it; a folder that is already gone is not an error. Used when a
+    /// container is archived, so its scratch folder does not outlive it.
+    pub async fn remove_workspace(relative: String) -> Result<(), JsError> {
+        in_task(move || remove_workspace_in(&relative)).await
     }
 }
 
@@ -404,6 +449,78 @@ fn create_temp(parent: &Path) -> Result<(PathBuf, fs::File), JsError> {
 
 fn state_error(code: &str, message: impl Into<String>) -> JsError {
     JsError::Error(message.into()).with_code(code)
+}
+
+// --- the workspace parent ---------------------------------------------------
+
+/// `~/.steer` (or the test override), without making it.
+fn workspace_root_path() -> Result<PathBuf, JsError> {
+    if let Some(dir) = WORKSPACE_DIR.lock().ok().and_then(|dir| dir.clone()) {
+        return Ok(dir);
+    }
+    if let Ok(dir) = std::env::var("ZU_WORKSPACE_DIR")
+        && !dir.trim().is_empty()
+    {
+        return Ok(PathBuf::from(dir.trim()));
+    }
+    let home = std::env::var("HOME")
+        .map_err(|_| state_error(ERR_IO, "HOME is not set, so there is no workspace"))?;
+    Ok(PathBuf::from(home).join(".steer"))
+}
+
+/// `~/.steer` (or the test override), created on first use.
+fn workspace_root() -> Result<PathBuf, JsError> {
+    let dir = workspace_root_path()?;
+    fs::create_dir_all(&dir)
+        .map_err(|error| state_error(ERR_IO, format!("cannot create the workspace: {error}")))?;
+    Ok(dir)
+}
+
+/// A workspace-relative name checked before any I/O: `__chat__`,
+/// `scratch/<containerId>` — plain names, no escape, no hidden segment. Both
+/// the make and the remove legs validate through here so the rule cannot
+/// drift apart.
+fn workspace_name(relative: &str) -> Result<&str, JsError> {
+    let trimmed = relative.trim();
+    let valid = !trimmed.is_empty()
+        && !trimmed.starts_with('/')
+        && !trimmed.contains('\\')
+        && !trimmed.contains('\0')
+        && trimmed.split('/').all(|segment| {
+            !segment.is_empty() && segment != "." && segment != ".." && !segment.starts_with('.')
+        });
+    if !valid {
+        return Err(state_error(
+            ERR_WORKSPACE,
+            format!("a workspace name is plain relative segments: {trimmed:?}"),
+        ));
+    }
+    Ok(trimmed)
+}
+
+fn ensure_workspace_in(relative: &str) -> Result<String, JsError> {
+    let target = workspace_root()?.join(workspace_name(relative)?);
+    fs::create_dir_all(&target).map_err(|error| {
+        state_error(
+            ERR_IO,
+            format!("cannot create {}: {error}", target.display()),
+        )
+    })?;
+    Ok(target.display().to_string())
+}
+
+fn remove_workspace_in(relative: &str) -> Result<(), JsError> {
+    // Removing must not create the workspace: a container archived on a
+    // machine without one has nothing to clean up.
+    let target = workspace_root_path()?.join(workspace_name(relative)?);
+    match fs::remove_dir_all(&target) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(state_error(
+            ERR_IO,
+            format!("cannot remove {}: {error}", target.display()),
+        )),
+    }
 }
 
 // --- the session index ------------------------------------------------------
@@ -1017,5 +1134,40 @@ mod tests {
         let truncated = truncate_chars("你好世界", 3);
         assert_eq!(truncated.chars().count(), 3);
         assert!(truncated.ends_with('\u{2026}'));
+    }
+
+    #[test]
+    fn workspace_names_stay_under_the_workspace_parent() {
+        let root = TempRoot::new();
+        WORKSPACE_DIR
+            .lock()
+            .unwrap()
+            .replace(root.path().to_path_buf());
+        let chats = ensure_workspace_in("__chat__").unwrap();
+        assert_eq!(chats, root.path().join("__chat__").display().to_string());
+        assert!(Path::new(&chats).is_dir());
+        let scratch = ensure_workspace_in("scratch/external:terminal:1").unwrap();
+        assert!(Path::new(&scratch).is_dir());
+        assert_eq!(
+            workspace_name("../escape").unwrap_err().code(),
+            Some(ERR_WORKSPACE)
+        );
+        assert_eq!(
+            workspace_name("/tmp").unwrap_err().code(),
+            Some(ERR_WORKSPACE)
+        );
+        assert_eq!(
+            workspace_name("scratch/.hidden").unwrap_err().code(),
+            Some(ERR_WORKSPACE)
+        );
+        assert_eq!(
+            workspace_name("scratch//x").unwrap_err().code(),
+            Some(ERR_WORKSPACE)
+        );
+        remove_workspace_in("scratch/external:terminal:1").unwrap();
+        assert!(!Path::new(&scratch).exists());
+        // Removing a folder twice is the archive path's normal case.
+        remove_workspace_in("scratch/external:terminal:1").unwrap();
+        WORKSPACE_DIR.lock().unwrap().take();
     }
 }

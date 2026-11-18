@@ -65,7 +65,7 @@ G1（审批/扩展 UI）、G2（模型/档位/压缩）、G3（子代理）是�
 2. **协议原生优先**：stable v1 有标准位的（config/mode/permission/elicitation/commands/usage/info/
    compaction/notice），一律用标准；只有子代理与 host 状态用 `_zu/*` 扩展方法。
 3. **客户端是投影**：UI 渲染 `SessionView`，不自行推断"哪个模型可用/哪条命令支持/什么上下文"。
-4. **配置只有一个写面**：Hero 预选 → `set_config_option`；之后会话内所有切换走同一方法。
+4. **配置只有一个写面**：`set_config_option`；起始页不预选（Q116），进入会话页后的所有切换都走同一方法。
 5. **删除代偿**：env、静态斜杆、假不可用、no-op UI 都随迁移删除，不保留双路径。
 6. **恢复是 spawn + resume，不是重连**：stdio 连接随进程死；重开是显式的状态转移。
 
@@ -174,9 +174,9 @@ G1（审批/扩展 UI）、G2（模型/档位/压缩）、G3（子代理）是�
 - `session/new` 与 `resume` 都返回完整的 `configOptions`；任何变化发 `config_option_update`。
 - `set_config_option` 对未知 id/非法值回 `-32602`，状态不变。
 - 配置在会话/转录里持久；resume 后恢复。
-- Hero 的预选仍然用 native `PiModels`（不为了拉菜单 spawn 进程）；会话绑定后以 `configOptions`
-  为准，首次 `resume/new` 之后用 `set_config_option` 应用预选。两个来源都读 `~/.pi`，允许短暂不一致，
-  但不允许第三个来源。
+- 起始页不预选模型/档位（Q116）：新会话使用机器默认配置，进入会话页后以 `configOptions` 为准，
+  切换一律走 `set_config_option`。Pi 的模型列表只有 `configOptions` 一个来源（native `PiModels`
+  已随 Q116 删除）。manox 目前也以内核默认为起点（#55 恢复会话页的宿主目录与 picker）。
 
 ### 4.4 命令
 
@@ -386,7 +386,7 @@ app/modules/pi/
 - 策略（审批模式）放在 `⋯` 菜单的"权限"小节；当前值以文字显示（不只用图标）。
 - 会话中切换立即 `set_config_option`；若正在 streaming，菜单项标注"下一轮生效"（实际以 distro 为准，
   客户端在 `config_option_update` 前显示 pending 态）。
-- Hero 的预选仍是同一套视觉，但语义是"新会话初始配置"。
+- 起始页不预选（Q116）；新会话使用机器默认配置，模型/档位只在会话页切换。
 
 ### 9.4 斜杆命令
 

@@ -51,7 +51,7 @@ app/
   core/                 # 关系模型：registry / containers / dock / projects / lifecycle / notifications / shell-actions / types
   shell/                # 外壳：workbench、sidebar、titlebar、tab-plus、project-dialog、settings/search/updates
   canvas/               # sheet 解析（registry 查找）与容器标题、`+`
-  domains/              # 能力的 TS 型面（唯一 import zu/native）：fs / git / lsp / pty / state / pimodels / acp / manox / picker / instance
+  domains/              # 能力的 TS 型面（唯一 import zu/native）：fs / git / lsp / pty / state / acp / manox / picker / instance
   modules/
     home/               # kind: home              能力：—（起始页，core 注册）
     browser/            # kind: webview           能力：—
@@ -59,14 +59,14 @@ app/
     files/              # kinds: files/editor/diff 能力：fs
     git/                # kinds: changes/history  能力：git
     problems/           # kind: problems          能力：lsp
-    pi/                 # kinds: session/subagents 能力：acp, state, pimodels
+    pi/                 # kinds: session/subagents 能力：acp, state
     manox/              # kind: manox-chat        能力：manox
   App.tsx               # 唯一装配点（startModules()）
 contracts/
   module.ts             # 模块契约（跨模块词汇）
   ahp/                  # vendored AHP
 native/
-  src/                  # 一个 zu/native 注册面：acp/fs/git/pty/lsp/state/pimodels/picker/instance
+  src/                  # 一个 zu/native 注册面：acp/fs/git/pty/lsp/state/manox/picker/instance
   manox/                # manox/native 注册面
 ```
 
@@ -115,11 +115,8 @@ export interface SheetModule {
   /** 能力声明：装配点据此注入域；也是门禁的检查依据。 */
   capabilities?: string[];                 // ["fs"], ["pty"], []
 
-  /** Hero（容器起始页）的贡献；有就显示，没有就不显示。 */
-  hero?: {
-    starters?: HeroStarter[];              // 一段对话/动作的入口
-    footer?: FooterSlot[];                 // 模型、effort 等输入框底栏槽位
-  };
+  /** 起始页（对象实例化面板）的贡献：一个模块可以贡献多个对象。 */
+  launchers?: Launcher[];                  // { id, label, glyph|brand, group, order, asksProject, instantiate }
   sidebar?: SidebarSection;                // 侧栏分组：**当前 seam 已移除**（7d2d523），
                                            // S0 不恢复；等「合并的项目投影」有真实消费者再定形状
   titlebar?: ActionContribution[];
@@ -134,8 +131,9 @@ export interface SheetModule {
 }
 ```
 
-贡献面的类型（`HeroStarter`、`ActionContribution`、`CommandContribution`、`SearchProvider`）沿用/扩展现有
-`contrib.tsx` 的 `ContributedTool` 与 `HeroSubmitter`；`SidebarSection` 当前不存在（7d2d523 移除了
+`Launcher` 的 `instantiate(context)` 收到属性解析后的 `{ containerId, projectId, cwd, sheetId }`：
+home 只做属性解析与渲染，模块自己决定新建什么、放进哪个容器。`asksProject` 为真的对象（对话）在
+没有项目上下文时由 home 弹「聊天 / 项目 / 新建项目」。`SidebarSection` 当前不存在（7d2d523 移除了
 `ContributedSection`），S0 不恢复，等合并的项目投影需要时再定形状。壳只渲染，不解释内容。
 
 ### 4.1 装配
@@ -148,7 +146,7 @@ registerModule(filesModule);
 registerModule(gitModule);
 registerModule(terminalModule);
 registerModule(problemsModule);
-registerModule(piModule, { acp, state, pimodels });
+registerModule(piModule, { acp, state });
 registerModule(manoxModule, { manox });
 ```
 
@@ -173,7 +171,7 @@ return spec.body({ id, containerId, visible: isVisible(id) });
   （registry、projects、layout、settings）。`state` 是基础设施而不是面向模块的能力；`bun script/check-layers.mjs`
   显式允许 `core/shell → domains/state`（以及 shell 的 `instance`/`picker` 宿主服务），其余零例外。
 - **域是能力的唯一实现点**：`fs` 服务 Files/Editor/Diff/Problems/SVG（若将来要监视文件）；
-  `git` 服务 Changes/History；`pty` 服务 Terminal 与 TUI 动作；`acp` + `state` + `pimodels` 服务 pi；
+  `git` 服务 Changes/History；`pty` 服务 Terminal 与 TUI 动作；`acp` + `state` 服务 pi；
   `manox` 服务 manox 对话。
 - **什么时候才开新 native 域**：需要进程、宿主策略（canonicalize/越界拒绝）、或 Rust 依赖（in-proc 内核）。
   纯 TS 能做的（SVG 解析、地址规范化、状态机）不进 native。
@@ -212,8 +210,8 @@ return spec.body({ id, containerId, visible: isVisible(id) });
 | | pi | manox |
 |---|---|---|
 | kind | `session`（+ `subagents`） | `manox-chat` |
-| 能力 | `acp`（轮级子进程）、`state`（会话索引）、`pimodels`（模型目录） | `manox`（in-proc AHP）；模型经 native 桥注册 pi 的 provider（Q104） |
-| Hero | starter `pi`，footer 贡献模型/effort（spawn env 生效） | starter `manox`（registration-qualified model ref） |
+| 能力 | `acp`（轮级子进程）、`state`（会话索引） | `manox`（in-proc AHP）；模型经 native 桥注册 pi 的 provider（Q104） |
+| 起始页 | launcher `zu`（对话）与 `pi`（原生 TUI）；不预选模型/effort | launcher `manox`（对话；cwd 来自上下文） |
 | 搜索 | `search` 贡献会话索引（`modules/pi/search.ts`） | 无独立搜索源 |
 | 子代理 | kind `subagents`；目标形态见 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §7 | — |
 | 崩溃域 | 进程隔离（每条 turn 一个 `pi-acp`） | 应用内单例；泵边界 `catch_unwind`，panic → transport error → 重连 |
@@ -233,14 +231,14 @@ return spec.body({ id, containerId, visible: isVisible(id) });
 
 | 现状 | 模块 | 能力 | 备注 |
 |---|---|---|---|
-| `session`、chat-view、composer、`subagents` | `pi` | acp/state/pimodels | 对话面整体随模块迁入 |
+| `session`、chat-view、composer、`subagents` | `pi` | acp/state | 对话面整体随模块迁入 |
 | `manox-chat`、manox composer | `manox` | manox | 已经接近目标形状 |
 | `terminal`、四类 TUI | `terminal` | pty | 「外部容器」变成 intent |
 | `webview` | `browser` | — | 零 native 的完整公民 |
 | `files`/`editor`/`diff` | `files` | fs | 三张 sheet 一个模块一个域 |
 | `changes`/`history` | `git` | git | 同上 |
 | `problems` | `problems` | lsp | 诊断状态在域 |
-| `home` | `home`（core） | — | 起始页由壳拥有，内容由贡献组合 |
+| `home` | `home`（core） | — | 起始页由壳拥有：解析容器/项目/cwd 属性，tile 由各模块的 `launchers` 贡献 |
 
 ## 10. 新增一种 sheet：SVG 预览器
 

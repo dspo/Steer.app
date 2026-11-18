@@ -10,7 +10,7 @@ Zu（祖冲之）是 coding agent 的 macOS 桌面工作台：nsh（TSX/AppKit�
   `modules/`(home/browser/files/git/terminal/problems/pi/manox)、`domains/`、`ui/`
 - `contracts/` — 跨模块词汇：`module.ts`（SheetKindSpec/SheetModule）、`ahp/`（vendored AHP
   类型 + reducers，PIN.md 记上游版本）
-- `native/` — Rust `zu/native`（acp/fs/git/lsp/pty/state/picker/instance/pimodels 各域）
+- `native/` — Rust `zu/native`（acp/fs/git/lsp/pty/state/picker/instance 等各域）
 - `native/ghostty/` — `zu-ghostty`：libghostty-vt 的手写 FFI + 构建脚本（pinned rev/zig/sha256），
   终端的仿真核；`native/src/session.rs` 的 `TerminalSession` 持有程序与仿真器（随 PTY 存活）；
   `native/src/term_view/` 是 macOS 原生组件 `zu.terminal`（按 id 附着会话：CoreText 按格绘制 + 自身即

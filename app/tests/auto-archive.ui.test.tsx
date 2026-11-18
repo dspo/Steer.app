@@ -1,6 +1,6 @@
 import { expect, open, test } from "nsh/test";
 
-// Q69's acceptance: closing a container's last sheet — the Hero included,
+// Q69's acceptance: closing a container's last sheet — the start page included,
 // since every tab carries its × now — empties it, and a container with
 // nothing to show leaves the sidebar with the 180 ms exit while the canvas
 // moves on. The fixture reads the store, so the assertions are sheet ids,
@@ -12,7 +12,7 @@ test("closing a container's last sheets archives it, with the row's exit", async
   // The 4pt drag handle lives in the gutter between the sidebar and the card.
   expect(app.shows("id:sidebar-handle")).toBe(true);
 
-  // The × on each tab: the session's, then the Hero's — the last tab of a
+  // The × on each tab: the session's, then the start page's — the last tab of a
   // group is closable too, which is what makes this path reachable.
   await app.press("id:tab-close-home:c1");
   await app.press("id:tab-close-session:s1");
@@ -20,7 +20,7 @@ test("closing a container's last sheets archives it, with the row's exit", async
   // The archive reached the transport and the canvas (no container left)
   // lands on the scratch Hero; the sidebar animates the row out (§3.8) and
   // then has nothing to show.
-  await app.waitFor("id:hero-input", { timeout: 5000 });
+  await app.waitFor("id:launch-zu", { timeout: 5000 });
   const state = () => app.texts().find((text) => text.startsWith("panels=")) ?? "";
   await app.waitUntil(() => state().includes("rows=0") && state().includes("container.archive:c1"), {
     timeout: 5000,

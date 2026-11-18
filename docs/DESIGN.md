@@ -12,7 +12,7 @@
 
 - 颜色只从 `theme.json` 的语义 token 取；`*.tsx` 里没有 raw hex / `rgb()` / `black` / `white`。
 - 半径来自有限阶梯：8（控件）、10（行）、12（表面/对话框/composer）。
-- 阴影只给浮起的东西：选中行、Hero/对话框、菜单、toast。平面区域靠背景和 hairline 分界。
+- 阴影只给浮起的东西：选中行、对话框、菜单、toast。平面区域靠背景和 hairline 分界。
 - 字体走 12 / 12.5 / 13 / 14 / 14.5 / 15 / 18 的窄阶梯；正文 14.5 / 22，次要信息 10.5–12。
 - 动效只解释变化：120ms 颜色/透明度，180ms 背景 + 阴影。没有装饰性动画。
 
@@ -25,7 +25,7 @@
 | `background` | `#ffffff` | `#131316` | 画布、composer 外沿 |
 | `card` | `#ffffff` | `#1b1b1f` | 选中行、composer 卡片、对话框 |
 | `sidebar` | `#fafafd` | `#171719` | 项目/会话栏 |
-| `inset` | `#f7f7f9` | `#101013` | 页签条、Hero 底、工具卡 |
+| `inset` | `#f7f7f9` | `#101013` | 页签条、工具卡 |
 | `popover` | `#ffffff` | `#1e1e23` | 菜单/弹出层 |
 | `toast` | `#ffffff` | `#1e1e23` | toast 面 |
 | `foreground` | `#1d1d1f` | `#e8e8ea` | 主文字 |
@@ -47,7 +47,7 @@
 
 ```ts
 shadowCard()    // 0 1px 2px shadow                    选中行
-shadowRaised()  // 0 1px 2px + 0 8px 24px shadow      Hero / 菜单 / toast
+shadowRaised()  // 0 1px 2px + 0 8px 24px shadow      菜单 / toast
 shadowDialog()  // 0 2px 6px + 0 18px 44px shadow-strong  对话框
 motion.fast     // 120ms ease-out：background/opacity/color/border
 motion.medium   // 180ms ease-out：background/opacity/box-shadow
@@ -97,7 +97,7 @@ motionStyle()   // 用户在系统里减少动态效果时返回 {}
 | 悬停 | 未选页签 `hover` 底；选中不动 |
 | 分层 | 轨道与药丸在 `DockArea` **之前**声明、`pointerEvents: none`：页签的标签画在它上面，卡片画在它下面。`groupClass` 因此不铺底色（内容框自己铺 `background`） |
 | 关闭控件 | 右侧 20pt 热区，`opacity 0` → hover 1，图标 `close` 10pt |
-| 新增页签 | 轨道的右端留 34pt 给常驻 `+`（在轨道内，像 macOS 分段控件的尾部动作），在该 panel 打开 `home:{containerId}`（Hero） |
+| 新增页签 | 轨道的右端留 34pt 给常驻 `+`（在轨道内，像 macOS 分段控件的尾部动作），在该 panel 打开 `home:{containerId}`（起始页） |
 
 `+` 是 20pt 的 ghost 按钮（图标 11pt、`muted-foreground`），垂直居中于组标题栏。nsh 0.4.0 的
 tab bar 没有尾部插槽，它由 app 覆盖层画在每组右端（[architecture.md](architecture.md) §4.2）。
@@ -165,7 +165,7 @@ zoom/compact 的投影。
 
 | 范围 | 字体 |
 |---|---|
-| 正文（会话、Hero、note、banner 文案） | **Geist** 300/400/500/600（`Geist-Light/Regular/Medium/SemiBold.ttf`）；转录正文用 300（Light），标签/标题用 400–600 |
+| 正文（会话、起始页 tile、note、banner 文案） | **Geist** 300/400/500/600（`Geist-Light/Regular/Medium/SemiBold.ttf`）；转录正文用 300（Light），标签/标题用 400–600 |
 | 代码面（编辑器、终端、Diff、工具 I/O、inline code） | **Geist Mono** 300/400/500（`GeistMono-Light/Regular/Medium.ttf`）；转录工具块用 300 |
 | 轮廓（顶栏、侧栏、页签、按钮、对话框） | 系统字体（不变） |
 
@@ -180,7 +180,7 @@ Geist 无 CJK——中文回退系统字体，验收看行高不跳变；行高�
 
 ### 3.5 工具行图标
 
-Hero 的两排动作使用各 CLI 的品牌图标（24pt 光学尺寸）：
+起始页的对话/工具/TUI tile 使用各 CLI 的品牌图标（24pt 光学尺寸）：
 
 | 动作 | 图标来源 |
 |---|---|
@@ -213,7 +213,7 @@ Hero 的两排动作使用各 CLI 的品牌图标（24pt 光学尺寸）：
 | `/thinking` | **本地**：循环下一个思考档位（`session/set_config_option` 的 `thought_level`） |
 | `/compact` | **本地**：`/compact` 作为 prompt 交给 distro，进度走 `compaction_update` |
 | `/clear` | **本地**：清空本地会话视图（历史留在磁盘，重开即回来） |
-| `/new` | **本地**：开 scratch 的 Hero（与「新建」同一入口） |
+| `/new` | **本地**：开 scratch 的起始页（与「新建」同一入口） |
 | `/resume` | **本地**：打开侧栏的会话搜索 |
 | 扩展/模板/技能命令 | distro 的 `available_commands_update` 提供 name + description，**弹层逐条列出**；选中后按原文进 `session/prompt` |
 | 其余未知命令 | 同样按原文进 `session/prompt`，由 distro 的分派器决定；**没有静态"不支持"表** |
@@ -334,24 +334,37 @@ Pi 会话的完整交互状态（审批卡、elicitation、命令候选、恢复
 
 ## 4. 表面语言
 
-### 4.1 动作可用性矩阵
+### 4.1 起始页：对象实例化面板
 
-三种画布上下文下，每个动作是否可用，以及它在容器内的语义（§2.1.1 是行
-Terminal/Claude/Codex/Copilot/Pi 的定义来源）：
+起始页（`home:{containerId}` / `home:scratch`）在外部、项目内、容器内**长相完全一致**：
+三行可实例化对象——`[Zu] [Manox]`、`[Terminal] [Browser]`、`[Claude Code] [Codex] [GitHub Copilot] [Pi]`。
+每个 tile 每次按下都**新建一个实例**（一个 sheet），不聚焦已有实例，也不限实例数。起始页是**可复用的调色板**：新实例在旁边开 tab，调色板自己留着，连续创建不需要反复按 `+`。
+没有 composer、模型/effort 选择、项目 chip 或 harness 分段；会话页的空态 composer 是另一回事
+（第一句话的地方）。
 
-| 动作 | 容器内 | scratch + 项目 | scratch 无项目 |
-|---|---|---|---|
-| 浏览器（Hero、顶栏） | ✓ 在该容器开 `webview:{containerId}:{n}` | ✓ 开 `webview:scratch:{n}`，铸容器时随迁 | ✓ 同左 |
-| 终端 / Claude / Codex / Copilot | ✓ 该容器的终端资源 `terminal:{containerId}:{n}`（F2） | ✓ 先铸容器再接：external 容器（"进程即容器"） | ✗ 先选项目 |
-| Pi | ✓ 原生 `pi` CLI 的终端资源（F3），不动 Zu 会话 | ✓ 先铸 Pi 容器，再在其中开 TUI | ✗ 先选项目 |
-| composer | ✓ 该容器的 captain 会话 | ✓ 铸 Pi 容器并把首条消息发进去 | ✓ 铸 Chats 容器（聊天是合法目标） |
-| 文件 / 更改 / 历史 / 问题（顶栏 ⋯） | ✓ | ✗ 需要容器：先提交 composer 或选一个动作 | ✗ 同左 |
-| 项目 chip | 只显示归属，不可改 | ✓ 选项目 / Chats / 新建项目 | ✓ 同左 |
+不同上下文只决定新实例的三个属性：
 
-"scratch 无项目"指 chip 停在 Chats：可以开始一段 Chats 对话，但铸工作区的动作
-（终端/TUI）要求先选项目，避免把进程绑到一个任意目录。禁用不是隐藏：按钮仍在位，
-只是 `opacity-40`，读屏与 tooltip 仍说明它是哪个动作。
+| 属性 | 规则 |
+|---|---|
+| `container` | 当前上下文有容器 → 用它（新实例是该容器的一个 sheet）；没有 → 新建容器 |
+| `project` | 上下文有项目（容器归属，或侧栏项目行的 `+`）→ 继承；没有 → 对话弹「聊天 / 项目 / 新建项目」，工具默认聊天 |
+| `cwd` | 容器 cwd > 项目主根 > 对象回退（对话 → `~/.steer/__chat__/`；工具 → `~/.steer/scratch/<containerId>/`） |
 
+| 上下文 | 容器 | 项目 | 对话 cwd | 工具 cwd |
+|---|---|---|---|---|
+| 外部（无容器/项目） | 新建 | 对话：询问；工具：聊天 | `__chat__/` | `scratch/<containerId>/` |
+| 项目内（无容器） | 新建 | 继承 | 项目根 | 项目根 |
+| 容器内 | 当前容器 | 继承 | 容器 cwd | 容器 cwd |
+
+- **Chat 是特殊项目**：`projectId = null`，语义上等同一个特殊项目；任何对象都不要求关联项目。
+- **外部工具直接建容器**（浏览器也是），不再在 scratch 画布暂存页面；`scratch/<containerId>/`
+  随容器归档删除。不用系统 `/tmp`：容器 cwd 是持久记录，`/tmp` 被清理后重开容器会失败。
+- **容器内新建对话**把新 `session:{id}` / `manox-chat:{…}` 加进当前容器（不新建容器）。
+- **工作区根是 `~/.steer`**，与 state（`~/.pi/zu`）分离：agent 在 `__chat__/` 或 scratch 里误删
+  只会毁掉工作区文件，不会碰 registry/layouts/settings。
+- 文件 / 更改 / 历史 / 问题（顶栏 ⋯）仍需要容器：先开一个工具或对话，或从已有容器进入。
+- 开始与失败：tile 在实例建立期间显示 `…`，失败在页面上给一行原因（同一原因也进状态行）；
+  页面不因失败被替换。
 
 - **行**：透明底；hover `bg-hover`；pressed `bg-accent/60`；选中 `bg-card` + `shadowCard()` +
   文字 600。hover 时行尾菜单/归档从 `opacity-0` 进到 1（120ms），同一条命令也在菜单和
@@ -361,9 +374,10 @@ Terminal/Claude/Codex/Copilot/Pi 的定义来源）：
 - **Composer**：外层 `border-t + line`，卡片 `bg-card`、`border-border`、半径 12、
   `shadowCard()`；输入区无边框，焦点用 caret 表达；footer 左侧 10.5pt 提示，右侧 30pt
   圆形发送（primary / destructive / muted 三态）。
-- **Hero / 项目对话框**：同一张白卡：半径 12、`border-border`、20pt 内边距、15pt 标题、
-  12pt 标签、10pt 输入半径、8pt 按钮；Hero 用 `shadowRaised()`，对话框用
-  `shadowDialog()`；backdrop 用 `bg-scrim`。
+- **起始页 tile**：一组安静的药丸——半径 8、`border-line`、`bg-card`、12.5pt 标签，
+  hover `bg-hover`、pressed 透明度 70；不放卡片阴影。项目/菜单沿用 Menu 表面。
+- **项目对话框**：白卡：半径 12、`border-border`、20pt 内边距、15pt 标题、12pt 标签、
+  10pt 输入半径、8pt 按钮；`shadowDialog()`；backdrop 用 `bg-scrim`。
 - **Menu**：`bg-popover`、半径 12、`border-border`、`popupStyle` + `shadowRaised()`；行
   半径 8、10pt 横内边距、hover/focus `bg-hover`、pressed `bg-accent`。所有菜单共用一套。
 - **Toast**：`bg-toast`、半径 12、`border-border`、`shadowRaised()`、12pt 文案；hover
@@ -432,7 +446,7 @@ selected/dark/900 断点；过渡中间帧与 streaming/menu/dialog 动画需在
    选择框此前贴在窗口左上角。这是 M6 发现并修掉的既有缺陷。
 5. **悬停/按下/焦点成对出现。** 行加 hover + pressed + focus-visible；图标按钮统一
    radius 8 与 outline focus；菜单行加 focus/pressed。焦点用 outline，避开选中行内联阴影。
-6. **所有浮层共用一套表面。** 菜单、toast、Hero、两种对话框都用 12 半径 +
+6. **所有浮层共用一套表面。** 菜单、toast、两种对话框都用 12 半径 +
    `border-border` + 同一组 `shadow*`；没有第二套菜单样式。
 7. **滚动条主题化。** `Scrollbar.setTheme` 是唯一入口，thumb 颜色来自 token，随
    light/dark 切换。

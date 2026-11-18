@@ -179,10 +179,10 @@ test("a page's target=_blank and window.open become a sheet navigation", async (
 // A link from another sheet (the terminal's Cmd+click) opens a browser sheet
 // already on its page, under the same address policy as the address bar.
 test("a browser sheet opened for a link starts on it", () => {
-  const id = openBrowserSheet("c-link", undefined, "https://ghostty.org/docs");
+  const id = openBrowserSheet("c-link", "https://ghostty.org/docs");
   expect(browserPage(id).url).toBe("https://ghostty.org/docs");
   expect(browserPage(id).loading).toBe(true);
-  const refused = openBrowserSheet("c-link", undefined, "javascript:alert(1)");
+  const refused = openBrowserSheet("c-link", "javascript:alert(1)");
   expect(browserPage(refused).url).toBeNull();
   dropBrowserPages("c-link");
 });

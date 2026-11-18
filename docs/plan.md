@@ -41,7 +41,7 @@
 | 阶段 | 产出 | 证据 |
 |---|---|---|
 | S0 | `contracts/module.ts`、`app/core/registry.ts`、`registerModule/startModules`；home/browser 先注册 | `sheet-modules.test.tsx`；`bun script/check-layers.mjs` |
-| S1 | `app/domains/`（fs/git/lsp/pty/state/pimodels/acp/manox/picker/instance）；`zu/native` 只在此出现 | `bun script/check-layers.mjs` 零违例 |
+| S1 | `app/domains/`（fs/git/lsp/pty/state/acp/manox/picker/instance）；`zu/native` 只在此出现 | `bun script/check-layers.mjs` 零违例 |
 | S2 | files/git/terminal/problems 模块化；`canvas/sheets.tsx` 只剩 registry 查找 + 未知占位 | `nsh test app` 全绿 |
 | S3 | pi/manox 模块化；容器去 `kind`/`sessions`；通知按 sheet id；旧 wire 与 `pi-engine` 删除 | 同上；pi-harness 36 单测、manox 门禁绿 |
 

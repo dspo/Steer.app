@@ -1,6 +1,7 @@
 import { signal, WebView, type WebViewNavigation } from "nsh";
-import { appendSheet, panelIds, replaceSheet } from "../../core/dock";
-import { activeContainerId, layout, noteSheetOpened, setLayout, setScratchSheetTransfer } from "../../core/containers";
+import { appendSheet, panelIds } from "../../core/dock";
+import { createContainerRecord, layout, noteSheetOpened, projectCwd, setLayout } from "../../core/containers";
+import { scratchCwd } from "../../core/workspace";
 import { K, t } from "../../ui/i18n";
 
 /**
@@ -80,14 +81,6 @@ export function browserSheetId(containerId: string, instance: number): string {
   return `webview:${containerId}:${instance}`;
 }
 
-/**
- * The owner id the scratch canvas uses in browser sheet ids. The scratch
- * canvas has no container row, so its pages need a stable owner of their
- * own; they stay here until the Hero mints a container, then move with it
- * (`transferScratchBrowserSheets`).
- */
-const SCRATCH_CANVAS = "scratch";
-
 /** A browser sheet id's container and instance, or null for another kind. */
 export function parseBrowserSheetId(id: string): { containerId: string; instance: number } | null {
   const prefix = "webview:";
@@ -109,62 +102,48 @@ export function nextBrowserInstance(containerId: string, ids: string[]): number 
   return highest + 1;
 }
 
-/** A container's browser sheet ids, in layout order. */
-function browserSheetsOf(containerId: string, ids: string[] = panelIds(layout())): string[] {
-  return ids.filter((id) => parseBrowserSheetId(id)?.containerId === containerId);
-}
-
 /**
- * Opens a browser sheet on a canvas: a container's, or the scratch canvas's
- * (no container yet). The next instance number, so a canvas can hold
- * several. `replace` is the Hero sheet the action came from: the browser
- * takes that tab's place instead of sitting beside it; `url`, the page it
- * opens on.
+ * Opens a browser sheet in a container. The next instance number, so a
+ * container can hold several; `url`, the page it opens on. A page always
+ * belongs to a container: the start page mints one for an external browser.
  */
-export function openBrowserSheet(
-  containerId: string | null = activeContainerId(),
-  replace?: string,
-  url?: string,
-): string {
-  const canvas = containerId ?? SCRATCH_CANVAS;
+export function openBrowserSheet(containerId: string, url?: string): string {
   const ids = [...panelIds(layout()), ...Object.keys(pages())];
-  const id = browserSheetId(canvas, nextBrowserInstance(canvas, ids));
+  const id = browserSheetId(containerId, nextBrowserInstance(containerId, ids));
   ensureBrowserPage(id);
   // A page opened for an address (a link from another sheet) loads it at
   // mount, as an address the user typed: only what `normalizeAddress` takes.
   const address = url ? normalizeAddress(url) : null;
   if (address?.ok) setBrowserNavigating(id, address.url);
   noteSheetOpened(id);
-  setLayout(replace ? replaceSheet(layout(), replace, id) : appendSheet(layout(), id));
+  setLayout(appendSheet(layout(), id));
   return id;
 }
 
-/**
- * Moves the scratch canvas's browser sheets onto a just-minted container:
- * the page state is re-keyed, so an open page survives the move, and the new
- * sheet ids come back in layout order for the container's own layout. Called
- * while the scratch canvas is still the active one.
- */
-function transferScratchBrowserSheets(containerId: string): string[] {
-  const ids = browserSheetsOf(SCRATCH_CANVAS);
-  if (ids.length === 0) return [];
-  const current = pages();
-  const next: Record<string, BrowserPageState> = {};
-  for (const [id, page] of Object.entries(current)) {
-    if (parseBrowserSheetId(id)?.containerId !== SCRATCH_CANVAS) next[id] = page;
-  }
-  const first = nextBrowserInstance(containerId, [
-    ...panelIds(layout()),
-    ...Object.keys(current),
-    ...Object.keys(next),
-  ]);
-  const moved = ids.map((id, index) => {
-    const target = browserSheetId(containerId, first + index);
-    next[target] = current[id] ?? { ...EMPTY_PAGE, messages: [] };
-    return target;
+/** Mints the external container a browser page lives in when the start page
+ * (or the titlebar) opens one outside any container: the page is a resource
+ * of a real container from the first frame, not a scratch page to move later.
+ * Outside a project the container's workspace is its own scratch folder. */
+export async function createBrowserContainer(
+  projectId: string | null = null,
+  cwd: string | null = null,
+): Promise<string> {
+  const now = Date.now();
+  const containerId = `external:browser:${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  // No project root and no workspace is the start page's error line, never a
+  // silent fallback into the home folder.
+  const target = cwd || projectCwd(projectId) || (await scratchCwd(containerId));
+  if (!target) throw new Error("cannot create the workspace for this browser");
+  const sheetId = browserSheetId(containerId, 1);
+  ensureBrowserPage(sheetId);
+  const container = await createContainerRecord({
+    id: containerId,
+    cwd: target,
+    ...(projectId !== undefined ? { projectId } : {}),
+    sheets: [sheetId],
   });
-  pages.set(next);
-  return moved;
+  if (!container) throw new Error("cannot create the browser's container");
+  return container.id;
 }
 
 /** Forgets every browser sheet of a container (archive). */
@@ -408,8 +387,3 @@ export function externalOpenUrl(data: string): string | null {
   }
   return null;
 }
-
-// A scratch canvas's pages belong to the container it mints; the container
-// store cannot import this module (it is the other way round), so the move is
-// installed here, once.
-setScratchSheetTransfer(transferScratchBrowserSheets);

@@ -11,8 +11,12 @@ import { stubCommandAt } from "./stub-command";
 import { defaultLayoutForSheets } from "../core/dock";
 import { setFolderPicker } from "../domains/picker";
 import { registerAllModules } from "../modules/register-all";
+import { setWorkspaceDir } from "../domains/state";
 
 registerAllModules();
+
+// The start page's tool tiles mint containers in the test's own workspace.
+setWorkspaceDir("/tmp/zu-projects-ws");
 
 // Headless tests never launch Finder: the picker answers with the next
 // folder in this list, so the dialog's add/remove/primary flow is real.
@@ -103,6 +107,13 @@ async function containerTransport(type: string, payload: any = {}): Promise<any>
         session: { id: sessionId, path: `/tmp/${sessionId}.jsonl`, cwd: record.cwd, name: "Chat", containerId: id, messages: [] },
       };
     }
+    case "container.archive": {
+      const target = records.find((row) => row.id === payload.containerId);
+      if (target) target.archived = true;
+      const next = records.find((row) => !row.archived);
+      if (active === payload.containerId) active = next?.id ?? null;
+      return { containers: records, activeContainerId: active };
+    }
     case "layout.put":
       layouts[payload.containerId] = { layout: payload.layout, zoom: payload.zoom };
       return { containerId: payload.containerId, layout: payload.layout, zoom: payload.zoom };
@@ -158,7 +169,7 @@ function Probe() {
   };
   return (
     <Text testID="fixture-state" class="text-[10px] font-mono text-foreground">
-      {`panels=${panelIds(layout()).join(",")} active=${activeContainerId() ?? "scratch"} project=${project()} pages=${pages()}`}
+      {`panels=${panelIds(layout()).join(",")} active=${activeContainerId() ?? "scratch"} project=${project()} cwd=${containers().find((row) => row.id === activeContainerId())?.cwd ?? "none"} pages=${pages()}`}
     </Text>
   );
 }

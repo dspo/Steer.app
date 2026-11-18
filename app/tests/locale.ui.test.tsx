@@ -7,12 +7,18 @@ import { expect, open, test } from "nsh/test";
 
 function expectLocale(app: { texts: () => string[] }, chinese: boolean): void {
   const texts = app.texts();
+  // The start page's labels are the shell's copy: the tool tile's word and
+  // the page's heading follow the system language.
   if (chinese) {
-    expect(texts).toContain("开始你的对话");
-    expect(texts).not.toContain("Start a conversation");
+    expect(texts).toContain("终端");
+    expect(texts).toContain("新建");
+    expect(texts).not.toContain("Terminal");
+    expect(texts).not.toContain("New");
   } else {
-    expect(texts).toContain("Start a conversation");
-    expect(texts).not.toContain("开始你的对话");
+    expect(texts).toContain("Terminal");
+    expect(texts).toContain("New");
+    expect(texts).not.toContain("终端");
+    expect(texts).not.toContain("新建");
   }
 }
 

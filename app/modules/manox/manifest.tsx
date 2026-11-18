@@ -1,25 +1,20 @@
 import { K, t } from "../../ui/i18n";
 import { registerModule } from "../../core/registry";
 import { ManoxChatBody } from "./conversation";
-import {
-  createManoxThread,
-  manoxChatSheetId,
-  parseManoxChatSheet,
-  sendManoxMessage,
-} from "./stores";
-import { chatOf } from "./stores";
-import { layout, noteSheetOpened, setLayout } from "../../core/containers";
+import { createManoxThread, manoxChatSheetId, parseManoxChatSheet, threadContainerId } from "./stores";
+import { activeContainerId, createContainerRecord, layout, noteSheetOpened, setLayout, switchContainer } from "../../core/containers";
 import { appendSheet } from "../../core/dock";
+import { chatsCwd } from "../../core/workspace";
 import { effectiveState } from "./ahp";
-import { manoxModelRef, usableModels } from "../../domains/pimodels";
 import type { ChatState } from "../../../contracts/ahp/channels-chat/state";
 import type { SessionState } from "../../../contracts/ahp/channels-session/state";
 import { chatResource, sessionResource } from "./stores";
 
 /**
  * The manox module (docs/sheet-module-ARCHITECTURE.md §8): one `manox-chat`
- * kind and the Hero's Manox starter. It is a citizen like pi, not an add-on —
- * the assembly point is `App.tsx`, the only file that imports modules.
+ * kind and the start page's Manox entry. It is a citizen like pi, not an
+ * add-on — the assembly point is `App.tsx`, the only file that imports
+ * modules.
  */
 
 let registered = false;
@@ -40,31 +35,41 @@ export function registerManoxModule(): void {
         parse: (id) => parseManoxChatSheet(id),
       },
     ],
-    hero: {
-      starters: [
-        {
-          id: "manox",
-          label: "Manox",
-          submit: async (text, context) => {
-            // The Hero hands a pi ref (`provider/id`); the kernel wants the
-            // registration-qualified form the provider bridge registered under.
-            const piRef = context.model?.split("/") ?? [];
-            const row =
-              piRef.length === 2
-                ? usableModels().find((r) => r.provider.id === piRef[0] && r.model.id === piRef[1])
-                : undefined;
-            const modelRef = row ? manoxModelRef(row) : context.model;
-            const { threadId, chatId } = await createManoxThread({
-              cwd: context.cwd,
-              model: modelRef,
-              effort: context.effort,
-            });
-            openManoxChat(threadId, chatId);
-            sendManoxMessage(threadId, chatId, text);
-          },
+    launchers: [
+      {
+        id: "manox",
+        label: () => "Manox",
+        glyph: "chat",
+        group: "conversation",
+        order: 20,
+        asksProject: true,
+        instantiate: async (context) => {
+          const cwd = context.cwd ?? (await chatsCwd());
+          if (!cwd) throw new Error("no folder to start the conversation in");
+          const { threadId, chatId } = await createManoxThread({ cwd });
+          const sheetId = manoxChatSheetId(threadId, chatId);
+          if (context.containerId) {
+            // A thread is a conversation inside the container the start page
+            // belongs to; its chat opens beside the palette (B2 brings the
+            // thread its own container projection). A switch during the
+            // thread's create still lands the sheet in the container the
+            // user pressed from, so the instance is never silently lost.
+            if (activeContainerId() !== context.containerId) await switchContainer(context.containerId);
+            noteSheetOpened(sheetId);
+            setLayout(appendSheet(layout(), sheetId));
+            return;
+          }
+          // Outside a container the thread gets one, so the chat is a row of
+          // the workspace like any other conversation.
+          await createContainerRecord({
+            id: threadContainerId(threadId),
+            cwd,
+            projectId: context.projectId,
+            sheets: [sheetId],
+          });
         },
-      ],
-    },
+      },
+    ],
   });
 }
 

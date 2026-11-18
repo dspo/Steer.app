@@ -49,11 +49,10 @@ export function setProjectTransport(next: ProjectTransport | null): void {
   transport = next;
 }
 
-/** The project the next conversation starts in; null is Chats. */
-export const heroProjectId = signal<string | null>(null);
-/** Opened from a project row: the target cannot be changed in this pass. */
-export const heroLocked = signal(false);
-export const heroStarting = signal(false);
+/** The project the scratch start page was opened with (a project row's `+`);
+ * null is Chats. The start page draws the same in every context — this only
+ * pins the attributes a tile's instance inherits. */
+export const launchProjectId = signal<string | null>(null);
 
 interface ProjectsFile {
   projects?: ProjectRecord[];
@@ -222,10 +221,9 @@ export function containersIn(projectId: string | null): ContainerRecord[] {
   return liveContainers().filter((container) => containerProject(container) === projectId);
 }
 
-/** Opens the scratch canvas' Hero, optionally locked to a project row's
- * target. The hero is a sheet of that canvas, not a page state. */
-export function openHero(projectId: string | null, locked = false): void {
-  heroProjectId.set(projectId);
-  heroLocked.set(locked);
+/** Opens the scratch canvas' start page. A project row's `+` passes its
+ * project so the tiles inherit it; the canvas still looks the same. */
+export function openStartPage(projectId: string | null = null): void {
+  launchProjectId.set(projectId);
   void openScratch();
 }

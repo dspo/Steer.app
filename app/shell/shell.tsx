@@ -26,7 +26,7 @@ import {
   containerProject,
   containersIn,
   loadProjects,
-  openHero,
+  openStartPage,
   orderedProjects,
   projectError,
 } from "../core/projects";
@@ -400,7 +400,7 @@ function Sidebar() {
           accessibilityLabel={t(K.container.create)}
           class="h-7 flex-row items-center gap-1 rounded-lg border border-line bg-card px-2 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
           style={{ ...motionStyle("fast") }}
-          onPress={() => openHero(null)}
+          onPress={() => openStartPage()}
         >
           <Glyph name="plus" size={10} tint={token("foreground")} />
           <Text class="text-[11px] font-medium text-foreground">{t(K.sidebar.new)}</Text>
@@ -472,14 +472,14 @@ function Sidebar() {
                     <ProjectGroup
                       projectId={project().id}
                       name={project().name}
-                      onCreate={() => openHero(project().id, true)}
+                      onCreate={() => openStartPage(project().id)}
                     />
                   )}
                 </Each>
                 <ProjectGroup
                   projectId={null}
                   name={t(K.project.chats)}
-                  onCreate={() => openHero(null, true)}
+                  onCreate={() => openStartPage()}
                 />
               </View>
             </If>
@@ -653,8 +653,8 @@ function SwitcherTitle(props: { panel: string; active: boolean }) {
 
 /**
  * The canvas: the sheet tree and nothing else. Every surface here is a sheet
- * — a container's conversation, terminal, browser, Hero, or the scratch
- * canvas's Hero — so there is no page state to fall out of step with the
+ * — a container's conversation, terminal, browser, start page, or the scratch
+ * canvas's start page — so there is no page state to fall out of step with the
  * tabs. The `+` overlay sits above each group's tab bar.
  */
 function Canvas() {
@@ -769,7 +769,7 @@ function Canvas() {
         // it.
         renderPanel={() => <View style={{ flex: 1 }} />}
         renderEmpty={() => (
-          // A canvas with no sheet: the Hero is one click away, and it is a
+          // A canvas with no sheet: the start page is one click away, and it is a
           // sheet like any other (closing it leaves this state).
           <View class="flex-1 items-center justify-center gap-2 bg-card" style={{ pointerEvents: "auto" }}>
             <Text class="text-sm font-semibold text-foreground">{t(K.canvas.emptyTitle)}</Text>
@@ -825,7 +825,7 @@ export function Workbench() {
   });
   // New is a scratch canvas wherever the user is; the sidebar's button and
   // a project row's `+` reach the same canvas.
-  keymap.bind("mod+n", () => openHero(null));
+  keymap.bind("mod+n", () => openStartPage());
   return (
     // S3's one-layer shell: the whole window is `sidebar`; the content is
     // the card the Canvas draws (DESIGN §3).

@@ -1,7 +1,7 @@
 import { signal } from "nsh";
 import type { SessionThinkingLevel } from "./protocol";
 import { clearSessionView, compactSession, send, setThinkingLevel, viewFor } from "./sessions";
-import { openHero } from "../../core/projects";
+import { openStartPage } from "../../core/projects";
 import { K, t } from "../../ui/i18n";
 
 /**
@@ -104,7 +104,7 @@ async function runLocal(sessionId: string, name: string): Promise<void> {
       clearSessionView(sessionId);
       return;
     case "new":
-      openHero(null);
+      openStartPage();
       return;
     default:
       return;

@@ -19,7 +19,7 @@ State.setStateDir(STATE_DIR);
 test("hiding the window keeps the app alive with no sidecar", async () => {
   const app = await open("../App.tsx", { network: "live", platform: "macos", width: 1200, height: 800 });
   try {
-    await app.waitFor("id:hero-input", { timeout: 30000 });
+    await app.waitFor("id:launch-zu", { timeout: 30000 });
     const win = app.window("main");
 
     await app.window("main").pressClose();

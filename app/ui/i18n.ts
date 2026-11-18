@@ -138,15 +138,11 @@ export const K = {
     interrupted: "app.subagents.interrupted",
   },
   hero: {
+    /** The empty *session* page's heading (not the start page). */
     title: "app.hero.title",
-    subtitle: "app.hero.subtitle",
-    placeholder: "app.hero.placeholder",
-    project: "app.hero.project",
-    starting: "app.hero.starting",
-    model: "app.hero.model",
-    effort: "app.hero.effort",
-    modelNone: "app.hero.modelNone",
-    orOpen: "app.hero.orOpen",
+  },
+  launcher: {
+    title: "app.launcher.title",
   },
   container: {
     title: "app.container.title",
@@ -439,8 +435,6 @@ export const K = {
     problemsNote: "app.sheet.problems.note",
     sessionTitle: "app.sheet.session.title",
     sessionNote: "app.sheet.session.note",
-    homeTitle: "app.sheet.home.title",
-    homeNote: "app.sheet.home.note",
     terminalTitle: "app.sheet.terminal.title",
     terminalNote: "app.sheet.terminal.note",
     webviewTitle: "app.sheet.webview.title",

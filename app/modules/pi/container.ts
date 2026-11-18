@@ -12,9 +12,8 @@ import {
   sheetOrder,
   switchContainer,
 } from "../../core/containers";
-import type { ContainerRecord } from "../../core/types";
-import { appendSheet, panelIds, replaceSheet, visiblePanels } from "../../core/dock";
-import { applySessionConfig, createSession, focusSession, openSession, refreshSessions, send, sessions, setSessionLoading, viewFor } from "./sessions";
+import { appendSheet, panelIds, visiblePanels } from "../../core/dock";
+import { createSession, focusSession, openSession, sessions, setSessionLoading, viewFor } from "./sessions";
 import { defaultLayoutForSessions, layoutSessions, sessionIdOfSheet, sessionSheetId } from "./sheets";
 
 /**
@@ -62,91 +61,40 @@ export function hostsPi(containerId: string | null): boolean {
  * session id (`pi:{sessionId}`) as before, but the record itself is generic;
  * the session is this module's.
  */
-export async function createContainer(
-  cwd?: string,
-  projectId?: string | null,
-  prefs: { model?: string | null; effort?: string | null } = {},
-): Promise<string | null> {
-  try {
-    const target = cwd || projectCwd(projectId) || activeCwd() || fallbackCwd();
-    if (!target) throw new Error("no folder to start the conversation in");
-    const sessionId = await createSession(target);
-    await applySessionConfig(sessionId, prefs);
-    const view = viewFor(sessionId);
-    const container = await createContainerRecord({
-      id: `pi:${sessionId}`,
-      cwd: target,
-      ...(projectId !== undefined ? { projectId } : {}),
-      sheets: [sessionSheetId(sessionId)],
-    });
-    if (!container) return sessionId;
-    sessionsByContainer.set(container.id, [...new Set([...(sessionsByContainer.get(container.id) ?? []), sessionId])]);
-    focusSession(sessionId);
-    void view;
-    return sessionId;
-  } catch (failure) {
-    throw failure;
-  }
-}
-
-/** Creates (or reuses) the captain session of a container and returns its id. */
-async function ensureCaptain(container: ContainerRecord): Promise<string | null> {
-  const existing = [...knownSessionIds(container.id), ...rememberContainerSessions(container.id)];
-  if (existing[0]) return existing[0];
-  const sessionId = await createSession(container.cwd);
-  sessionsByContainer.set(container.id, [...knownSessionIds(container.id), sessionId]);
-  openSheet(sessionSheetId(sessionId));
+export async function createContainer(cwd?: string, projectId?: string | null): Promise<string | null> {
+  // The start page resolves a folder (a project root or `__chat__/`); a
+  // missing one is its error line, never a silent fallback into home.
+  const target = cwd || projectCwd(projectId);
+  if (!target) throw new Error("no folder to start the conversation in");
+  const sessionId = await createSession(target);
+  const container = await createContainerRecord({
+    id: `pi:${sessionId}`,
+    cwd: target,
+    ...(projectId !== undefined ? { projectId } : {}),
+    sheets: [sessionSheetId(sessionId)],
+  });
+  if (!container) return sessionId;
+  sessionsByContainer.set(container.id, [...new Set([...(sessionsByContainer.get(container.id) ?? []), sessionId])]);
+  focusSession(sessionId);
   return sessionId;
 }
 
 /**
- * Shows a container's captain session: its sheet replaces the Hero when
- * `fromSheet` is it, else it opens beside `prefer`; its transcript loads.
+ * Mints a new conversation inside an existing container (`session:{id}` added
+ * to its layout, beside the start page). The container's cwd is the start
+ * context; no container is created.
  */
-export async function showContainerSession(containerId: string, fromSheet?: string): Promise<void> {
+export async function newSessionInContainer(containerId: string): Promise<string | null> {
   const container = containers().find((row) => row.id === containerId);
-  if (!container) return;
+  if (!container) return null;
   if (activeContainerId() !== container.id) await switchContainer(container.id);
-  const sessionId = await ensureCaptain(container);
-  if (!sessionId) return;
+  const sessionId = await createSession(container.cwd);
+  sessionsByContainer.set(container.id, [...new Set([...knownSessionIds(container.id), sessionId])]);
   const sheetId = sessionSheetId(sessionId);
   noteSheetOpened(sheetId);
-  setLayout(fromSheet ? replaceSheet(layout(), fromSheet, sheetId) : appendSheet(layout(), sheetId));
-  await hydrateSession(sessionId);
-}
-
-/** Sends a Hero's first message in a container's captain session. */
-export async function startInContainer(containerId: string, text: string, heroSheetId?: string): Promise<boolean> {
-  const prompt = text.trim();
-  if (!prompt) return false;
-  const container = containers().find((row) => row.id === containerId);
-  if (!container) return false;
-  await showContainerSession(containerId, heroSheetId);
-  const sessionId = sessionIdsOfContainer(containerId)[0];
-  if (!sessionId) return false;
-  await send(prompt, sessionId);
-  return true;
-}
-
-/** From a fresh canvas: a pi container plus the first message. */
-export async function startFromScratch(
-  text: string,
-  target: {
-    cwd?: string;
-    projectId?: string | null;
-    model?: string | null;
-    effort?: string | null;
-  } = {},
-): Promise<boolean> {
-  const prompt = text.trim();
-  if (!prompt) return false;
-  const sessionId = await createContainer(target.cwd, target.projectId, {
-    model: target.model,
-    effort: target.effort,
-  });
-  if (!sessionId) return false;
-  await send(prompt, sessionId);
-  return true;
+  setLayout(appendSheet(layout(), sheetId));
+  focusSession(sessionId);
+  return sessionId;
 }
 
 /**
