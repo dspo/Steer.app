@@ -1,4 +1,4 @@
-import { Clipboard, effect, List, type ListRef, signal, Text, token, View } from "nsh";
+import { Clipboard, effect, Scroll, type ViewRef, signal, Text, token, View } from "nsh";
 import { Input } from "nsh/base";
 import { K, t } from "../../ui/i18n";
 import { Glyph, motionStyle, type GlyphName } from "../../ui/ui";
@@ -82,6 +82,18 @@ interface DisplayTurn {
 /** The reply's model name: the turn's own selection first, else the thread's
  * configured model ref, resolved against the pi catalogue (the gallery shows
  * the model beside the assistant's avatar). */
+const modelLabels = new Map<string, string>();
+
+function labelForRef(ref: string): string {
+  const cached = modelLabels.get(ref);
+  if (cached !== undefined) return cached;
+  const id = ref.includes("/") ? ref.slice(ref.lastIndexOf("/") + 1) : ref;
+  const row = usableModels().find((candidate) => candidate.model.id === id);
+  const label = row ? modelLabel(row) : id;
+  modelLabels.set(ref, label);
+  return label;
+}
+
 function modelLabelOf(turn: DisplayTurn, threadId: string): string {
   const explicit = turn.message.model?.id;
   let ref = typeof explicit === "string" ? explicit : "";
@@ -90,10 +102,7 @@ function modelLabelOf(turn: DisplayTurn, threadId: string): string {
     const value = state?.config?.values?.["model"] ?? state?.config?.schema?.properties?.["model"]?.default;
     if (typeof value === "string") ref = value;
   }
-  if (!ref) return "";
-  const id = ref.includes("/") ? ref.slice(ref.lastIndexOf("/") + 1) : ref;
-  const row = usableModels().find((candidate) => candidate.model.id === id);
-  return row ? modelLabel(row) : id;
+  return ref ? labelForRef(ref) : "";
 }
 
 const dayKey = (at: number) => {
@@ -110,65 +119,108 @@ function turnText(parts: ResponsePart[]): string {
     .trim();
 }
 
-/** Flattens the chat's turns and their parts into keyed rows, inserting the
- * day line wherever the timeline crosses midnight. */
-function rowsOf(chat: ChatState | null, chatId: string, threadId: string): Row[] {
-  if (!chat) return [];
+/** One turn's rows, carrying the day cursor across turns. */
+function projectTurn(
+  turn: DisplayTurn,
+  chatId: string,
+  threadId: string,
+  active: boolean,
+  lastDay: string | null,
+): { rows: Row[]; lastDay: string | null } {
+  const rows: Row[] = [];
+  const at = turn.startedAt ? Date.parse(turn.startedAt) : NaN;
+  if (Number.isFinite(at)) {
+    const day = dayKey(at);
+    if (day !== lastDay) {
+      lastDay = day;
+      rows.push({ kind: "day", id: `day:${day}`, at: turn.startedAt! });
+    }
+  }
+  const attachments = (turn.message.attachments ?? [])
+    .map((attachment) => {
+      const record = attachment as { name?: unknown; title?: unknown; uri?: unknown };
+      const value = record.name ?? record.title ?? record.uri;
+      return typeof value === "string" ? value : "";
+    })
+    .filter((name) => name.length > 0);
+  rows.push({ kind: "user", id: `user:${turn.id}`, text: turn.message.text, attachments });
+  if (turn.parts.length > 0) {
+    rows.push({ kind: "header", id: `header:${turn.id}`, turnId: turn.id, model: modelLabelOf(turn, threadId) });
+  }
+  const last = turn.parts.length - 1;
+  for (let index = 0; index < turn.parts.length; index += 1) {
+    const part = turn.parts[index];
+    if (!part) continue;
+    const partId = "id" in part && typeof part.id === "string" ? part.id : String(index);
+    // The settled run's durable clock (the metrics extension face). A part
+    // without a row predates the anchor or the kernel lacks the face — the
+    // label stays durationless rather than guessed.
+    const durationMs = part.kind === "reasoning" ? reasoningTimingOf(chatId, partId)?.durationMs : undefined;
+    rows.push({
+      kind: "part",
+      id: `part:${turn.id}:${partId}`,
+      chatId,
+      turnId: turn.id,
+      part,
+      streaming: active && index === last,
+      live: active,
+      durationMs,
+    });
+  }
+  if (!active) {
+    const text = turnText(turn.parts);
+    if (text.length > 0) rows.push({ kind: "actions", id: `actions:${turn.id}`, turnId: turn.id, text });
+  }
+  return { rows, lastDay };
+}
+
+/** The completed turns' rows, cached by the turns array's identity: streaming
+ * replaces the active turn per delta, the completed array only when a turn
+ * settles. Rebuilding every turn per token was the jank behind scrolling. */
+let cachedTurns: ChatState["turns"] | null = null;
+let cachedMetrics: unknown = null;
+let cachedRows: Row[] = [];
+let cachedLastDay: string | null = null;
+
+function projectCompleted(chat: ChatState, chatId: string, threadId: string): void {
+  const metrics = effectiveState<{ reasoningTimings?: unknown }>(metricsResource(chatId));
+  if (chat.turns === cachedTurns && metrics === cachedMetrics) return;
+  cachedTurns = chat.turns;
+  cachedMetrics = metrics;
   const rows: Row[] = [];
   let lastDay: string | null = null;
-  const project = (turn: DisplayTurn, active: boolean) => {
-    const at = turn.startedAt ? Date.parse(turn.startedAt) : NaN;
-    if (Number.isFinite(at)) {
-      const day = dayKey(at);
-      if (day !== lastDay) {
-        lastDay = day;
-        rows.push({ kind: "day", id: `day:${day}`, at: turn.startedAt! });
-      }
-    }
-    const attachments = (turn.message.attachments ?? [])
-      .map((attachment) => {
-        const record = attachment as { name?: unknown; title?: unknown; uri?: unknown };
-        const value = record.name ?? record.title ?? record.uri;
-        return typeof value === "string" ? value : "";
-      })
-      .filter((name) => name.length > 0);
-    rows.push({ kind: "user", id: `user:${turn.id}`, text: turn.message.text, attachments });
-    if (turn.parts.length > 0) {
-      rows.push({ kind: "header", id: `header:${turn.id}`, turnId: turn.id, model: modelLabelOf(turn, threadId) });
-    }
-    const last = turn.parts.length - 1;
-    for (let index = 0; index < turn.parts.length; index += 1) {
-      const part = turn.parts[index];
-      if (!part) continue;
-      const partId = "id" in part && typeof part.id === "string" ? part.id : String(index);
-      // The settled run's durable clock (the metrics extension face). A part
-      // without a row predates the anchor or the kernel lacks the face — the
-      // label stays durationless rather than guessed.
-      const durationMs = part.kind === "reasoning" ? reasoningTimingOf(chatId, partId)?.durationMs : undefined;
-      rows.push({
-        kind: "part",
-        id: `part:${turn.id}:${partId}`,
-        chatId,
-        turnId: turn.id,
-        part,
-        streaming: active && index === last,
-        live: active,
-        durationMs,
-      });
-    }
-    if (!active) {
-      const text = turnText(turn.parts);
-      if (text.length > 0) rows.push({ kind: "actions", id: `actions:${turn.id}`, turnId: turn.id, text });
-    }
-  };
   for (const turn of chat.turns) {
-    project({ id: turn.id, startedAt: turn.startedAt, message: turn.message, parts: turn.responseParts }, false);
+    const projected = projectTurn(
+      { id: turn.id, startedAt: turn.startedAt, message: turn.message, parts: turn.responseParts },
+      chatId,
+      threadId,
+      false,
+      lastDay,
+    );
+    rows.push(...projected.rows);
+    lastDay = projected.lastDay;
   }
-  if (chat.activeTurn) {
-    const active = chat.activeTurn;
-    project({ id: active.id, startedAt: active.startedAt, message: active.message, parts: active.responseParts }, true);
-  }
-  return rows;
+  cachedRows = rows;
+  cachedLastDay = lastDay;
+}
+
+/** Flattens the chat into keyed rows: the cached completed turns, then the
+ * active turn's rows (only that tail is rebuilt while a turn streams). */
+function rowsOf(chat: ChatState | null, chatId: string, threadId: string): Row[] {
+  if (!chat) return [];
+  projectCompleted(chat, chatId, threadId);
+  const active = chat.activeTurn;
+  if (!active) return cachedRows;
+  return [
+    ...cachedRows,
+    ...projectTurn(
+      { id: active.id, startedAt: active.startedAt, message: active.message, parts: active.responseParts },
+      chatId,
+      threadId,
+      true,
+      cachedLastDay,
+    ).rows,
+  ];
 }
 
 // --- parts ------------------------------------------------------------------
@@ -557,45 +609,36 @@ export function ManoxChatBody(props: { id: string }) {
   const empty = () => rows().length === 0;
   const copied = signal<string | null>(null);
 
-  let list: ListRef | undefined;
+  let bottom: ViewRef | undefined;
   /** Whether the reader is at the bottom: the jump button hides there. The
-   * list itself holds the position while new parts stream in. */
+   * scroll view holds its position while new parts stream in. */
   const following = signal(true);
+  const revealEnd = (animated = true) => {
+    queueMicrotask(() => bottom?.reveal({ vertical: "end", animated }));
+  };
   const toEnd = (animated = true) => {
     following.set(true);
-    // `scrollToIndex` resolves against the list's current sizes, where
-    // `scrollToEnd` can stop short of a row whose height was an estimate.
-    const jump = () => {
-      const last = rows().length - 1;
-      if (last >= 0) list?.scrollToIndex({ index: last, viewPosition: 1, animated });
-    };
-    queueMicrotask(jump);
-    // The heights settle after the data change; a couple of later tries
-    // land on the true end.
-    setTimeout(() => following() && jump(), 150);
-    setTimeout(() => following() && jump(), 600);
+    revealEnd(animated);
+    // The layout settles after the data change; a later try lands on the
+    // true end (the same reason the list needed retries).
+    setTimeout(() => following() && revealEnd(animated), 150);
   };
-  // A freshly opened chat reads from its end; after that the list follows
-  // the stream only while it is already at the bottom. `onScroll` keeps
-  // `following` honest for every scroll (a wheel included), and no scroll is
-  // issued while the reader is above the end.
+  // A freshly opened chat reads from its end; after that the view follows
+  // the stream only while it is already at the bottom.
   let opened = false;
   let queued = false;
   effect(() => {
     const count = rows().length;
-    if (opened && !following()) return;
     if (!opened) {
       opened = true;
-      toEnd(false);
+      queueMicrotask(() => revealEnd(false));
       return;
     }
-    if (count === 0 || queued) return;
+    if (count === 0 || !following() || queued) return;
     queued = true;
     queueMicrotask(() => {
       queued = false;
-      if (!following()) return;
-      const last = rows().length - 1;
-      if (last >= 0) list?.scrollToIndex({ index: last, viewPosition: 1, animated: true });
+      if (following()) revealEnd(true);
     });
   });
 
@@ -627,49 +670,48 @@ export function ManoxChatBody(props: { id: string }) {
         }
       >
         <View class="flex-1" style={{ minHeight: 0, width: "100%", maxWidth: 820, alignSelf: "center" }}>
-          <List
+          <Scroll
             testID="manox-transcript"
-            ref={(node) => (list = node)}
-            each={rows()}
-            keyExtractor={(row) => row.id}
-            estimatedItemSize={90}
+            scrollbar={false}
             style={{ flex: 1 }}
-            contentStyle={{
-              paddingTop: 16,
-              paddingBottom: 16,
-              gap: 12,
-            }}
+            contentStyle={{ paddingTop: 16, paddingBottom: 16 }}
             onScroll={(event) => {
-              following.set(event.offset.y + event.size.height >= event.contentSize.height - 40);
+              const atBottom = event.offset.y + event.size.height >= event.contentSize.height - 40;
+              if (following() !== atBottom) following.set(atBottom);
             }}
           >
-            {(row) => {
-              const current = () => row();
-              switch (current().kind) {
-                case "day":
-                  return <DaySeparator label={(current() as Extract<Row, { kind: "day" }>).at} />;
-                case "user": {
-                  const user = current() as Extract<Row, { kind: "user" }>;
-                  return <UserMessage text={user.text} attachments={user.attachments} />;
-                }
-                case "header": {
-                  const header = current() as Extract<Row, { kind: "header" }>;
-                  return <AssistantHeader model={header.model} />;
-                }
-                case "part":
-                  return <PartRow row={current() as Extract<Row, { kind: "part" }>} />;
-                case "actions":
-                  return (
-                    <ActionRow
-                      testID={`chat-actions:${(current() as Extract<Row, { kind: "actions" }>).turnId}`}
-                      actions={actions(current() as Extract<Row, { kind: "actions" }>)}
-                    />
-                  );
-                default:
-                  return null;
-              }
-            }}
-          </List>
+            <View style={{ gap: 12 }}>
+              <Each of={rows()} key={(row) => row.id}>
+                {(row) => {
+                  const current = () => row();
+                  switch (current().kind) {
+                    case "day":
+                      return <DaySeparator label={(current() as Extract<Row, { kind: "day" }>).at} />;
+                    case "user": {
+                      const user = current() as Extract<Row, { kind: "user" }>;
+                      return <UserMessage text={user.text} attachments={user.attachments} />;
+                    }
+                    case "header": {
+                      const header = current() as Extract<Row, { kind: "header" }>;
+                      return <AssistantHeader model={header.model} />;
+                    }
+                    case "part":
+                      return <PartRow row={current() as Extract<Row, { kind: "part" }>} />;
+                    case "actions":
+                      return (
+                        <ActionRow
+                          testID={`chat-actions:${(current() as Extract<Row, { kind: "actions" }>).turnId}`}
+                          actions={actions(current() as Extract<Row, { kind: "actions" }>)}
+                        />
+                      );
+                    default:
+                      return null;
+                  }
+                }}
+              </Each>
+              <View ref={(node) => (bottom = node)} style={{ height: 1 }} />
+            </View>
+          </Scroll>
           <If when={!following()}>
             <JumpToLatest label={t(K.manox.jumpLatest)} streaming={streaming()} onPress={() => toEnd()} />
           </If>

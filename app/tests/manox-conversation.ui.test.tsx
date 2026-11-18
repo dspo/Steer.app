@@ -9,16 +9,6 @@ async function shot(app: { screenshot: (path?: string | null) => Promise<Uint8Ar
   }
 }
 
-/** Whether this run draws the app (a screenshot exists only on a real target). */
-async function drawsTheApp(app: any): Promise<boolean> {
-  try {
-    const shot = await app.screenshot();
-    return shot.length > 0;
-  } catch {
-    return false;
-  }
-}
-
 // The gallery shapes over a seeded AHP chat: the thinking collapse, the tool
 // card (a terminal result's preview and exit code), the day line, an error
 // line, the reply's copy action, and the list's follow behavior.
@@ -77,22 +67,16 @@ test("a reply's copy action reports the copy", async () => {
 
 test("a reader scrolled up stays put when the chat grows", async () => {
   const app = await open("../fixtures/manox-conversation.tsx", { width: 1200, height: 800 });
-  const drawn = await drawsTheApp(app);
   await app.waitFor("id:manox-transcript");
   await app.waitFor("text:filler-40");
   // Scroll up into the history, then grow the chat from the fixture.
   await app.scroll("id:manox-transcript", -1200);
   await app.waitFor("id:chat-jump-latest");
-  const top = () => app.texts().find((text) => /^filler-\d+$/.test(text)) ?? "";
-  const before = top();
-  expect(before.length > 0).toBe(true);
   await app.press("id:fixture-append");
   await app.wait(300);
-  // On a real host (where the list virtualizes and scrolling is real) the
-  // reader did not get dragged to the new bottom.
-  if (drawn) expect(app.shows("text:extra reply 1")).toBe(false);
-  // The jump control returns the reader to the follow lane (it hides when
-  // the list is following again), and the new bottom is reachable.
+  // The reader was not dragged to the new bottom: the jump control is still
+  // up (it only hides when the view follows the stream again).
+  expect(app.shows("id:chat-jump-latest")).toBe(true);
   await app.press("id:chat-jump-latest");
   await app.waitUntil(() => !app.shows("id:chat-jump-latest"), { timeout: 10000 });
 });
