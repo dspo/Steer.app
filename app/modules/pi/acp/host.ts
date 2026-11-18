@@ -59,22 +59,24 @@ export const SUPERSEDE_RESPONSE = { action: "supersede" } as const;
 
 /** One model-initiated structured question (B2 types the shape, A1 ships the
  * `_zu/ask/create` lane that sends it). */
+export interface AskQuestion {
+  question: string;
+  /** Short category header rendered above the question. */
+  header: string;
+  multiSelect: boolean;
+  options: Array<{
+    label: string;
+    description: string;
+    /** Why the model thinks this option fits, shown as a hint. */
+    recommendedReason?: string;
+  }>;
+}
+
 export interface AskRequest {
   sessionId: string;
   /** The parked tool call this ask belongs to; answers are keyed by it. */
   toolCallId: string;
-  questions: Array<{
-    question: string;
-    /** Short category header rendered above the question. */
-    header: string;
-    multiSelect: boolean;
-    options: Array<{
-      label: string;
-      description: string;
-      /** Why the model thinks this option fits, shown as a hint. */
-      recommendedReason?: string;
-    }>;
-  }>;
+  questions: AskQuestion[];
 }
 
 export type AskResponse =
@@ -82,7 +84,9 @@ export type AskResponse =
       action: "accept";
       /** One entry per question: picked labels, free text, or discuss notes. */
       answers: Array<
-        { kind: "option"; labels: string[] } | { kind: "custom"; text: string } | { kind: "discuss"; notes: string }
+        | { kind: "option"; labels: string[]; /** A typed note supplements the picks. */ text?: string }
+        | { kind: "custom"; text: string }
+        | { kind: "discuss"; notes: string; /** The options the user leans toward. */ labels?: string[] }
       >;
     }
   /** The user dismissed the card without answering. */
@@ -98,9 +102,8 @@ export interface SessionHandlers {
   onUpdate(update: AcpUpdate): void;
   requestPermission(request: PermissionRequest): Promise<PermissionResponse>;
   requestElicitation(request: ElicitationRequest): Promise<ElicitationResponse>;
-  /** The `_zu/ask/create` lane; A1 starts sending it, so the type is already
-   * reserved here. B2 does not dispatch it yet (`handleClientRequest` has no
-   * branch for it) — wiring the card is A1's. */
+  /** The `_zu/ask/create` lane: the ask_user_question card. Absent (e.g. a
+   * headless client) → the harness gets `{ action: "cancel" }`. */
   requestAsk?(request: AskRequest): Promise<AskResponse>;
   onExit(reason: string): void;
 }
@@ -236,6 +239,14 @@ export class AcpSession {
     if (message.method === "elicitation/create") {
       const request = message.params as ElicitationRequest;
       const pending = this.handlers?.requestElicitation(request);
+      void (pending ?? Promise.resolve({ action: "cancel" }))
+        .then((response) => this.connection.respond(id, response))
+        .catch(() => this.connection.respond(id, { action: "cancel" }));
+      return;
+    }
+    if (message.method === "_zu/ask/create") {
+      const request = message.params as AskRequest;
+      const pending = this.handlers?.requestAsk?.(request);
       void (pending ?? Promise.resolve({ action: "cancel" }))
         .then((response) => this.connection.respond(id, response))
         .catch(() => this.connection.respond(id, { action: "cancel" }));

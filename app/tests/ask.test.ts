@@ -99,6 +99,46 @@ test("answering a live card resolves it in-process without the wire", async () =
   expect(pendingAsks()["live-session:tc-live"]).toBeUndefined();
 });
 
+test("a live ask rides _zu/ask/create in and its answer back out (A1)", async () => {
+  setAcpCommandOverride(stubCommand({ STUB_ASK_CREATE: "1", STUB_UNIQUE_SESSION: "1" }));
+  try {
+    const key = String(await createSession("/tmp/zu-ask-a"));
+    await send("which db", key);
+    await until("the live ask card", () => pendingAsks()[`${key}:tc-ask-create`] !== undefined);
+    const entry = pendingAsks()[`${key}:tc-ask-create`];
+    expect(entry?.sessionId).toBe(key);
+    expect(entry?.resolve).toBeTruthy();
+    expect((entry?.args as any)?.questions?.[0]?.header).toBe("Database");
+    expect(viewFor(key)?.sessionState).toBe("waiting_user");
+    await answerAsk(key, "tc-ask-create", {
+      action: "accept",
+      answers: [{ kind: "option", labels: ["Postgres"] }],
+    });
+    // The stub settles the prompt only after the answer returns, so ready
+    // proves the response rode the wire as the `_zu/ask/create` reply.
+    await until("the turn to settle", () => viewFor(key)?.sessionState === "ready");
+    expect(pendingAsks()[`${key}:tc-ask-create`]).toBeUndefined();
+  } finally {
+    setAcpCommandOverride(null);
+    pendingAsks.set({});
+  }
+});
+
+test("the user's own send supersedes a live ask and settles the pipeline (A1)", async () => {
+  setAcpCommandOverride(stubCommand({ STUB_ASK_CREATE: "1", STUB_UNIQUE_SESSION: "1" }));
+  try {
+    const key = String(await createSession("/tmp/zu-ask-a"));
+    await send("which db", key);
+    await until("the live ask card", () => pendingAsks()[`${key}:tc-ask-create`] !== undefined);
+    await send("never mind, I picked for you", key);
+    await until("the card to drop", () => pendingAsks()[`${key}:tc-ask-create`] === undefined);
+    await until("both turns to settle", () => viewFor(key)?.sessionState === "ready");
+  } finally {
+    setAcpCommandOverride(null);
+    pendingAsks.set({});
+  }
+});
+
 test("the user's own send supersedes the waiting cards", async () => {
   setAcpCommandOverride(stubCommand({ STUB_PENDING_ASKS: "1", STUB_ASK_ANSWER: "1", STUB_UNIQUE_SESSION: "1" }));
   try {

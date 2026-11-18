@@ -192,6 +192,45 @@ test(
 );
 
 test(
+  "an ask_user_question card request reaches the session's client bridge (A1)",
+  withStub({ STUB_ASK_CREATE: "1" }, async (open) => {
+    const session = await open();
+    const asked: any[] = [];
+    session.setHandlers({
+      onUpdate: () => {},
+      requestPermission: async () => ({ outcome: { outcome: "cancelled" } }),
+      requestElicitation: async () => ({ action: "decline" }),
+      requestAsk: async (request) => {
+        asked.push(request);
+        return { action: "accept", answers: [{ kind: "option", labels: ["Postgres"] }] };
+      },
+      onExit: () => {},
+    });
+    // The stub settles the prompt only after the answer returns, so end_turn
+    // proves the `_zu/ask/create` response rode the wire.
+    expect(await session.prompt("which db")).toBe("end_turn");
+    expect(asked[0].toolCallId).toBe("tc-ask-create");
+    expect(asked[0].questions[0].header).toBe("Database");
+    expect(asked[0].questions[0].options.map((option: any) => option.label)).toEqual(["Postgres", "SQLite"]);
+  }),
+);
+
+test(
+  "an ask card request without a handler answers cancelled (A1)",
+  withStub({ STUB_ASK_CREATE: "1" }, async (open) => {
+    const session = await open();
+    session.setHandlers({
+      onUpdate: () => {},
+      requestPermission: async () => ({ outcome: { outcome: "cancelled" } }),
+      requestElicitation: async () => ({ action: "decline" }),
+      onExit: () => {},
+    });
+    // No requestAsk: the harness gets { action: "cancel" } and continues.
+    expect(await session.prompt("which db")).toBe("end_turn");
+  }),
+);
+
+test(
   "resume reattaches without replaying the transcript",
   withStub({}, async () => {
     const { session, replay } = await openExistingSession("stub-0000-0002", "/tmp");

@@ -17,6 +17,7 @@
  *   _zu/subagents/*       → subagent runs (B3)
  *   _zu/ask/pending       → restart-surviving question cards (B2)
  *   _zu/ask/answer        → resolve a live wait or inject a late answer (B2)
+ *   _zu/ask/create        → the model's structured questions (A1, server→client)
  *
  * This file must not import pi. The pi glue sits behind `HarnessPorts`
  * (src/acp/pi-session.ts), which keeps `bun test` free of pi and of network.
@@ -24,6 +25,7 @@
  * session object; the app only supplies the client context.
  */
 
+import type { AskRequest, AskResponse } from "../extensions/ask";
 import {
   PROTOCOL_VERSION,
   agent,
@@ -53,6 +55,8 @@ import type { TrustElicit } from "../pi/trust";
 export interface HarnessClientBridge {
   requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse>;
   elicit(params: CreateElicitationRequest): Promise<CreateElicitationResponse>;
+  /** A1: `_zu/ask/create` — the ask_user_question card request. */
+  ask?(request: AskRequest): Promise<AskResponse>;
 }
 
 /** What the adapter needs from a live session. Implemented by the pi glue. */
@@ -336,6 +340,7 @@ export function createAcpApp(ports: HarnessPorts, log: HarnessLog = () => {}): A
     return {
       requestPermission: (params) => client.request("session/request_permission", params),
       elicit: (params) => client.request("elicitation/create", params),
+      ask: (request) => client.request("_zu/ask/create", request as any) as Promise<AskResponse>,
     };
   }
 

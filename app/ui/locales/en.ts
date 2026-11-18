@@ -430,4 +430,13 @@ export const en: Record<string, string> = {
   "app.trust.title": "Trust this project?",
   "app.trust.accept": "Trust and load",
   "app.trust.decline": "Not now",
+  "app.ask.progress": "Question %{current} of %{total}",
+  "app.ask.recommended": "Why this one: %{reason}",
+  "app.ask.other": "Other: type your own answer",
+  "app.ask.discuss": "Chat about this",
+  "app.ask.discussPlaceholder": "What's on your mind?",
+  "app.ask.submit": "Submit",
+  "app.ask.back": "← Back",
+  "app.ask.next": "Next →",
+  "app.ask.cancel": "Skip",
 };

@@ -872,8 +872,9 @@ UI 重启后问题卡片消失；用户等得不耐烦自己打字时，卡住�
 - 自定义 entry 词汇：`zu.ask`（announce：工具发问，args 即问题结构）、
   `zu.ask.answer`（receipt：答案投递回执，重复投递靠它幂等）、
   `zu.tool-response`（晚到答案的注入通道）。
-- `INTERACTIVE_TOOLS: Record<string, InteractiveTool>` 是注册表，**本 issue 留空**：
-  A1（#12）open，先落机制后落工具；所有行为由 fixture/stub 测试覆盖。
+- `INTERACTIVE_TOOLS: Record<string, InteractiveTool>` 是注册表：B2 先落机制（fixture/stub
+  测试覆盖），A1（#12）落地后由 `ask.ts` 的模块副作用注册 `ask_user_question`（见 §22）。
+  修复与扫描按注册表工作，空表时是 no-op。
   修复与扫描对空 registry 都是 no-op，主线上零行为变化。
 - `InteractiveTool`：`name` + `waiter(answer)`；A1 注册时提供 waiter，答案即回合内解决。
 
@@ -952,7 +953,7 @@ UI 重启后问题卡片消失；用户等得不耐烦自己打字时，卡住�
 
 ### 20.6 非目标
 
-- 发问工具本身与 UI 问题卡片的渲染交互（A1，#12；`requestAsk` 只是类型预留）；
+- 发问工具本身与 UI 问题卡片的渲染交互（B2 只留 `requestAsk` 类型；A1 已落地，见 §22）；
 - 多轮 ask（一次工具调用一问）与 ask 超时/自动降级；
 - manox 侧的对等 mailbox（manox 有自己的 AHP 宿主，另行设计）；
 - 把 `zu.ask` announce 回放进 transcript 折叠规则（`fold.ts` 本期不动）。
@@ -1044,3 +1045,68 @@ UI 重启后问题卡片消失；用户等得不耐烦自己打字时，卡住�
 - 不做 fork/capture、resource owner、DAG；不做跨 captain 全局上限或 admission 配额。
 - 不做 live roster 推送（名册仍在打开时加载；需要时另开 issue）。
 - 不改 `inject` 的 steer 语义；不做 wall-clock timeout。
+
+## 22. 结构化提问（A1，2026-11-18）
+
+**目标**：模型经 `ask_user_question` 向用户发起 1–4 个结构化问题，答案以稳定 envelope 回到模型。
+
+### 22.1 工具与 schema
+
+- `pi-harness/src/extensions/ask.ts`（注册名 `ask_user_question`，`executionMode: "sequential"`）：
+  1–4 题 × 1–4 选项；`header` ≤16、`label` ≤60、`description` ≤400、
+  `recommendedReason` ≤160；`multiSelect` 可选（默认 false）。
+- 保留标签（`Other` / `Type something.` / `Chat about this` / `Discuss this…` /
+  `None of these` / `Next →`）由卡片拥有；`execute` 在 trim + lowercase 后 fail-closed
+  拒绝，错误只报题号/选项号，不回显整段 JSON。
+- `askExtension(bridge)` 只做「发问 + 等」；等待、晚到、supersede、重启修复全部走 B2 的
+  `AnswerRegistry`（§20）。abort signal 故意忽略：用户可能走开，会话关闭由 B2 的悬空修复兜底。
+- 门禁：`ask_user_question` 在 `READ_ONLY_TOOLS` 里（提问不改工作区）——`ask` 模式不弹
+  审批卡，`read-only` 模式不被当成写操作拦掉。
+
+### 22.2 请求/应答（`_zu/ask/create`）
+
+harness → client 的 JSON-RPC 请求（server→client），`host.ts` 的 `requestAsk` 与
+permission/elicitation 同构；无 handler 回 `{action:"cancel"}`。
+
+```ts
+type AskAnswer =
+  | { kind: "option"; labels: string[]; text?: string }   // 选项 + 可选的补充文字
+  | { kind: "custom"; text: string }                       // 只有自由文字
+  | { kind: "discuss"; notes: string; labels?: string[] }; // 先聊聊，保留倾向选项
+type AskResponse =
+  | { action: "accept"; answers: AskAnswer[] }             // 每题一项，按题序
+  | { action: "cancel" }
+  | { action: "supersede" };
+```
+
+- 每题都可以留空：空答案提交为 `{kind:"option", labels: []}`，envelope 渲染 `(no answer)`。
+- 选项与补充文字**同发**（文字不覆盖选项）：信封是 `Postgres — additionally: …`；
+  discuss 带倾向选项时追加 `Leaning toward: …`。
+- `cancel` → “The user dismissed the question. Continue without an answer.”；
+  `supersede` → B2 的 pending ack + `terminate: true`。
+
+### 22.3 卡片（`app/modules/pi/ask.tsx`）
+
+- dock 在 composer 上方、`ApprovalCard` 之前；一卡一次工具调用，多题分页
+  （`第 n 题，共 m 题`）。
+- 单选画圆圈、多选画方框；再次点击已选项取消。每题一个自由输入 +「先聊聊」开关
+  （开关是模式：开启后即使 notes 为空也不作答，占位符切到讨论提示）。
+- 底部按钮分角固定：上一题/下一题在左下（到头置灰、位置不动）；不答/提交在右下。
+  Submit 始终可用。
+- 卡片状态按 `toolCallId` 归零（页码与三份草稿）；supersede 不重挂载组件，旧答案不会
+  漏进下一次提问。
+
+### 22.4 测试与门禁
+
+- `pi-harness/src/extensions/ask.test.ts`：schema/保留标签/信封（含留空、选项+文字、
+  discuss+倾向）/工具结果/cancel/supersede。
+- `app/tests/ask.ui.test.tsx`：选项提交、留空提交、取消选择、选项+补充文字、
+  discuss 保留倾向、discuss 无 notes、分页与置灰、新问清空、Skip。
+- `app/tests/ask.test.ts` / `acp.test.ts`：live ask 经 wire 往返、发送 supersede、
+  无 handler → cancelled。
+- 门禁：`nsh check app`、`ZU_SKIP_LIVE=1 nsh test .`、`cd pi-harness && bun test`。
+
+### 22.5 非目标
+
+- 选项预览/图片/文件预览/并排对比（A3 之后）；discuss 的 reason 枚举；
+  独立「跳过本题」按钮（留空提交与 Skip 已覆盖）；多轮追问协议（模型重新调用即新的一轮）。

@@ -60,6 +60,7 @@ import {
   type PiMeta,
 } from "./mapping";
 import { replayUpdates, type ReplayEntry } from "./replay";
+import { askExtensionEntry, type AskBridge } from "../extensions/ask";
 import { composeExtensions, ZU_EXTENSIONS } from "../extensions/registry";
 import { DISPATCH_RULE, promptSectionExtension } from "../extensions/prompt-section";
 import { ARTIFACTS_RULE, artifactsExtension } from "../extensions/artifacts";
@@ -122,10 +123,22 @@ const APPROVAL_MODES: SessionModeState = {
 };
 
 /** Tools that are safe to run without a prompt in `ask` mode. */
-const READ_ONLY_TOOLS = new Set(["read", "ls", "find", "grep", "glob", "search", "view"]);
+const READ_ONLY_TOOLS = new Set([
+  "read",
+  "ls",
+  "find",
+  "grep",
+  "glob",
+  "search",
+  "view",
+  // A1: asking the user a question only reads their intent — it writes no
+  // workspace, runs no command and touches no network, so it must not open
+  // the approval card in ask mode nor trip read-only's write block.
+  "ask_user_question",
+]);
 
 /** The session's live approval gate: mode, remembered allows, client bridge. */
-class PermissionGate {
+export class PermissionGate {
   mode = "ask";
   sessionId = "";
   bridge: HarnessClientBridge | null = null;
@@ -312,7 +325,10 @@ class PiHarnessSession implements HarnessSession {
     // build; a settings change lands on the next session/new|load (no hot
     // reload — see docs/pi-acp-IMPLEMENTATION.md §18).
     const zuSettings = await readZuSettings(agentDir);
-    const composed = composeExtensions(ZU_EXTENSIONS, zuSettings);
+    // A1: the ask tool waits through B2's AnswerRegistry; the ref is filled
+    // once the registry exists below (the extension captures it by identity).
+    const askBridge: { current: AskBridge | null } = { current: null };
+    const composed = composeExtensions([...ZU_EXTENSIONS, askExtensionEntry(askBridge)], zuSettings);
     const gate = new PermissionGate(log);
     const captainId = manager.getSessionId();
     const sessionRef: { session: PiAgentSession | null } = { session: null };
@@ -345,6 +361,46 @@ class PiHarnessSession implements HarnessSession {
       sessionManager: manager,
     });
     sessionRef.session = created.session;
+    const answerRegistry = new AnswerRegistry(manager, INTERACTIVE_TOOLS, {
+      log,
+      inject: async (text, meta) => {
+        // A late answer enters the conversation as its own display message
+        // and wakes the model so it reacts to the answer (B2).
+        await created.session.sendCustomMessage(
+          {
+            customType: TOOL_RESPONSE_TYPE,
+            content: [{ type: "text", text }],
+            display: true,
+            details: meta,
+          },
+          { triggerTurn: true },
+        );
+      },
+    });
+    // A1: the ask tool's wait = B2 announce + the `_zu/ask/create` wire
+    // request, both settling through the registry so every path (live answer,
+    // wire answer, supersede, client drop) writes its receipt exactly once.
+    askBridge.current = {
+      ask: (request) =>
+        new Promise((resolve) => {
+          answerRegistry.announce(
+            request.toolCallId,
+            { questions: request.questions },
+            resolve as (response: unknown) => void,
+          );
+          const client = gate.bridge;
+          if (!client?.ask) {
+            // Defensive: attachClient only installs the bridge with an ask
+            // face, so this means no client — don't strand the waiter.
+            void answerRegistry.answer(request.toolCallId, { action: "cancel" });
+            return;
+          }
+          client
+            .ask({ ...request, sessionId: manager.getSessionId() })
+            .then((response) => answerRegistry.answer(request.toolCallId, response))
+            .catch(() => answerRegistry.answer(request.toolCallId, { action: "cancel" }));
+        }),
+    };
     const rec = new PiHarnessSession(
       manager,
       created.session,
@@ -353,22 +409,7 @@ class PiHarnessSession implements HarnessSession {
       gate,
       built.services.settingsManager,
       subagentManager,
-      new AnswerRegistry(manager, INTERACTIVE_TOOLS, {
-        log,
-        inject: async (text, meta) => {
-          // A late answer enters the conversation as its own display message
-          // and wakes the model so it reacts to the answer (B2).
-          await created.session.sendCustomMessage(
-            {
-              customType: TOOL_RESPONSE_TYPE,
-              content: [{ type: "text", text }],
-              display: true,
-              details: meta,
-            },
-            { triggerTurn: true },
-          );
-        },
-      }),
+      answerRegistry,
     );
     try {
       await created.session.bindExtensions({

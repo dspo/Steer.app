@@ -7,6 +7,7 @@ import { EntryRow, Caret } from "./entry-row";
 import { MessageRow } from "./subagent-row";
 import { ChatComposer } from "./composer";
 import { ApprovalCard, ElicitationDialog } from "./approvals";
+import { AskCard } from "./ask";
 import { Glyph } from "../../ui/ui";
 import { SessionBanner } from "./session-banner";
 import { HistoryLoading } from "./history-loading";
@@ -124,6 +125,8 @@ export function Conversation(props: { id: string }) {
       </List>
       {/* The composer draws its own hairline, exactly its width. */}
       <View class="bg-background" style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 10, gap: 8 }}>
+        {/* Fixed dock order: the ask blocks the model, the approval gates it. */}
+        <AskCard sessionId={props.id} />
         <ApprovalCard sessionId={props.id} />
         <ChatComposer sessionId={props.id} autofocus hairline />
       </View>
@@ -143,6 +146,7 @@ function Hero(props: { id: string }) {
         <Text class="text-[16px] font-black text-foreground" style={{ textAlign: "center", fontFamily: SHEET_FONT }}>
           {t(K.hero.title)}
         </Text>
+        <AskCard sessionId={props.id} />
         <ApprovalCard sessionId={props.id} />
         <ChatComposer sessionId={props.id} autofocus />
       </View>

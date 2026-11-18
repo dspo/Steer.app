@@ -428,4 +428,13 @@ export const zhCN: Record<string, string> = {
   "app.trust.title": "信任这个项目？",
   "app.trust.accept": "信任并加载",
   "app.trust.decline": "暂不信任",
+  "app.ask.progress": "第 %{current} 题，共 %{total} 题",
+  "app.ask.recommended": "推荐理由：%{reason}",
+  "app.ask.other": "其他：自己写点什么",
+  "app.ask.discuss": "先聊聊这个，不作答",
+  "app.ask.discussPlaceholder": "说说你的想法",
+  "app.ask.submit": "提交",
+  "app.ask.back": "← 上一题",
+  "app.ask.next": "下一题 →",
+  "app.ask.cancel": "不答了",
 };

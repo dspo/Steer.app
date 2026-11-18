@@ -385,6 +385,29 @@ function attachSession(key: string, session: AcpSession): void {
         });
         patchView(key, { sessionState: "waiting_user" });
       }),
+    // A1: the ask_user_question card. Keyed by the harness's toolCallId so
+    // the entry lines up with B2's seeded shape (`args.questions`); answering
+    // resolves this promise, which is the `_zu/ask/create` JSON-RPC response.
+    requestAsk: (request) =>
+      new Promise((resolve) => {
+        const recordKey = `${key}:${request.toolCallId}`;
+        if (pendingAsks()[recordKey]) {
+          // Practically unreachable (toolCallIds are unique per call); keep
+          // the existing card and settle the stray request as dismissed.
+          resolve({ action: "cancel" });
+          return;
+        }
+        pendingAsks.set({
+          ...pendingAsks(),
+          [recordKey]: {
+            sessionId: key,
+            toolCallId: request.toolCallId,
+            args: { questions: request.questions },
+            resolve: resolve as (response: unknown) => void,
+          },
+        });
+        patchView(key, { sessionState: "waiting_user" });
+      }),
     onExit: (reason) => {
       acpTurns.delete(key);
       acpQueues.delete(key);
@@ -402,19 +425,23 @@ function attachSession(key: string, session: AcpSession): void {
 }
 
 /** Drops a session's question cards before the user's own message prompts.
- * Live waits are superseded by the harness when the prompt lands; seeded
- * cards (no live waiter after a restart) are retired on the harness via the
- * wire sentinel — without it the next open would re-seed questions the user
- * answered by typing (B2). Best-effort: a dead process has nothing left to
- * retire, and the next seed would surface what is still genuinely pending. */
+ * Live waits answer the harness's `_zu/ask/create` with the supersede
+ * sentinel: the tool acks + ends its turn and B2's registry writes the
+ * receipt (idempotent with the harness's own supersedeAll — whichever fires
+ * first settles the ask). Seeded cards (no live waiter after a restart) are
+ * retired via the wire sentinel — without it the next open would re-seed
+ * questions the user answered by typing (B2). Best-effort: a dead process
+ * has nothing left to retire, and the next seed would surface what is still
+ * genuinely pending. */
 function supersedePendingAsks(key: string): void {
   const entries = Object.entries(pendingAsks());
   const keep = entries.filter(([, entry]) => entry.sessionId !== key);
   if (keep.length === entries.length) return;
   const queued = seededSupersedes.get(key) ?? [];
   for (const [, entry] of entries) {
-    if (entry.sessionId !== key || entry.resolve) continue;
-    if (!queued.some((record) => record.toolCallId === entry.toolCallId)) {
+    if (entry.sessionId !== key) continue;
+    if (entry.resolve) entry.resolve(SUPERSEDE_RESPONSE);
+    else if (!queued.some((record) => record.toolCallId === entry.toolCallId)) {
       queued.push({ toolCallId: entry.toolCallId });
     }
   }
@@ -649,6 +676,10 @@ export function turnActive(id: string | null | undefined): boolean {
 
 /** The ACP send: a running turn queues the text; an idle view starts one. */
 function acpSend(key: string, text: string): void {
+  // The user's own words supersede waiting asks at send time (A1): a turn
+  // parked on a live ask card must not block the queue — and the queued
+  // turn's supersede — behind the very card the message is answering.
+  supersedePendingAsks(key);
   const busy = acpTurns.has(key) || (views()[key]?.streaming ?? false);
   if (busy) {
     const next = [...(acpQueues.get(key) ?? []), text];

@@ -45,6 +45,7 @@ import { join } from "path";
 
 const permissionId = 9001;
 const elicitationId = 9002;
+const askCreateId = 9003;
 let pending: string | null = null;
 let askRetired = false;
 
@@ -226,12 +227,26 @@ function handle(line: string): void {
       );
       return;
     }
+    if (on("STUB_ASK_CREATE") && line.includes("which db")) {
+      // A1: the ask_user_question card. Settles only after the client
+      // answers, so a passing turn proves the response rode the wire. Other
+      // prompts settle directly (a superseding send must not re-ask).
+      write(
+        `{"jsonrpc":"2.0","id":${askCreateId},"method":"_zu/ask/create","params":{"sessionId":"${sid}","toolCallId":"tc-ask-create","questions":[{"question":"Which database?","header":"Database","multiSelect":false,"options":[{"label":"Postgres","description":"Boring and proven"},{"label":"SQLite","description":"Zero ops"}]}]}}`,
+      );
+      return;
+    }
     write(`{"jsonrpc":"2.0","id":${pending},"result":{"stopReason":"end_turn"}}`);
     pending = null;
   } else if (line.includes(`"id":9001`)) {
     write(`{"jsonrpc":"2.0","id":${pending},"result":{"stopReason":"end_turn"}}`);
     pending = null;
   } else if (line.includes(`"id":9002`)) {
+    write(`{"jsonrpc":"2.0","id":${pending},"result":{"stopReason":"end_turn"}}`);
+    pending = null;
+  } else if (line.includes(`"id":9003`)) {
+    // The ask card's answer came back; only now does the turn settle, so a
+    // passing turn proves the response rode the wire.
     write(`{"jsonrpc":"2.0","id":${pending},"result":{"stopReason":"end_turn"}}`);
     pending = null;
   } else if (line.includes(`"method":"session/cancel"`)) {

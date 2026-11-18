@@ -548,6 +548,17 @@ export const K = {
     tooLarge: "app.git.tooLarge",
     commandFailed: "app.git.commandFailed",
   },
+  ask: {
+    progress: "app.ask.progress",
+    recommended: "app.ask.recommended",
+    other: "app.ask.other",
+    discuss: "app.ask.discuss",
+    discussPlaceholder: "app.ask.discussPlaceholder",
+    submit: "app.ask.submit",
+    back: "app.ask.back",
+    next: "app.ask.next",
+    cancel: "app.ask.cancel",
+  },
 } as const;
 
 /** Every key the shell uses, as a flat list (the parity test's input). */
