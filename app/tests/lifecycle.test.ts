@@ -7,7 +7,7 @@ import { Instance, State } from "zu/native";
 // directory). The claim's file semantics are in `src/instance.rs`'s tests.
 //
 // The state directory is this test's own: the developer's running app holds
-// the real `~/.pi/zu` claim, which is exactly the behavior under test, not a
+// the real `~/.steer` claim, which is exactly the behavior under test, not a
 // reason for a test to fail.
 const STATE_DIR = `/tmp/zu-m12-lifecycle-${Date.now()}`;
 State.setStateDir(STATE_DIR);

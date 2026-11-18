@@ -6,7 +6,7 @@ extension: `skills/<extension>/SKILL.md`, where `<extension>` is the
 
 - The extension declares the directory in its `skillDirs`; only enabled
   extensions hand their roots to pi's `additionalSkillPaths`. Disabling an
-  extension in `~/.pi/zu/settings.json` stops its skill loading too.
+  extension in `~/.steer/settings.json` stops its skill loading too.
 - The factory resolves the roots through `skillsBase()`: source runs read
   this tree, the packaged app reads `Contents/Helpers/skills` beside
   `pi-acp`. `bun run bundle` (`script/tasks.ts`) copies the tree and fails the

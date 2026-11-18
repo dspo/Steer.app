@@ -29,7 +29,7 @@ Zu（祖冲之）是 coding agent 的 macOS 桌面工作台：nsh（TSX/AppKit�
 统一入口 `script/tasks.ts`（需要 bun、cargo、nsh CLI 三套工具链）。前置：nsh 版本必须等于
 `.cnb.yml` 的 `NSH_VERSION`（tasks.ts 会校验；`NSH=/path/to/nsh` 可覆盖）。
 
-- `bun run dev` — 开发实例；默认端口 8810，状态目录 `~/.pi/zu-dev`（与已安装的 Zu.app 可同时运行）
+- `bun run dev` — 开发实例；默认端口 8810，状态目录 `~/.steer/dev`（与已安装的 Zu.app 可同时运行）
 - `bun run check` — `nsh check app`：TSX **唯一类型检查口** + 逐 crate cargo check
 - `bun run test` — `nsh test .`（app/ 下 headless 测试）；`native/` 的成员 crate（`zu-ghostty`）另需
   `cd native && cargo test --workspace`（CI 的 test stage 两者都跑）
@@ -77,7 +77,7 @@ Zu（祖冲之）是 coding agent 的 macOS 桌面工作台：nsh（TSX/AppKit�
 - **UI 不持 fs/process**：文件只经 `zu/fs`，进程只经 native 域（`app/domains/` 是唯一 native 面）
 - **`app/nsh.json` 能力面保护的是 UI 代码，不是 agent 动作**——harness 工具以用户权限运行，别读成「agent 沙箱」；
   剪贴板同理：`capabilities.clipboard: true` 不开，组件里的复制/OSC 52 会被能力门拒绝
-- **文件是事实**：会话权威在 `~/.pi/agent/sessions/`（pi）/ `~/.manox/`（manox）；Zu 状态在 `~/.pi/zu/`，
+- **文件是事实**：会话权威在 `~/.pi/agent/sessions/`（pi）/ `$MANOX_HOME/`（manox，默认 `~/.steer/.manox`）；Zu 状态在 `~/.steer/`，
   只由 UI 经 `zu/state` 读写（临时文件 + rename，版本拒绝 `ERR_STATE_STALE`；持久文件顶层带 `"v"`）
 - **pi → Zu 兼容最高优先**：官方 pi CLI 产生的会话必须能列出/打开/续跑；解析失败不阻塞启动
 - **容器没有 harness 身份**：Project → Container → Sheet 三层；「容器的会话有哪些」是 pi 模块自己的投影

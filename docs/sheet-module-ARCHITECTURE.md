@@ -215,7 +215,7 @@ return spec.body({ id, containerId, visible: isVisible(id) });
 | 搜索 | `search` 贡献会话索引（`modules/pi/search.ts`） | 无独立搜索源 |
 | 子代理 | kind `subagents`；目标形态见 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §7 | — |
 | 崩溃域 | 进程隔离（每条 turn 一个 `pi-acp`） | 应用内单例；泵边界 `catch_unwind`，panic → transport error → 重连 |
-| 权威 | `~/.pi` 会话文件 | `~/.manox` journal |
+| 权威 | `~/.pi` 会话文件 | `$MANOX_HOME` journal |
 
 保留的设计约束（原双 harness 设计里仍然成立的）：
 

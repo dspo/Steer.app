@@ -7,7 +7,7 @@
 //! `Callback::post` (callbacks are engine-thread-only, so the host thread
 //! never touches one). `send` queues a client frame into the session;
 //! `restart` replaces the session — the real host singleton (and its durable
-//! journal under `~/.manox`) persists, so the AHP `reconnect` leg reconciles
+//! journal under `$MANOX_HOME`) persists, so the AHP `reconnect` leg reconciles
 //! from `lastSeenServerSeq` against the same host; `stop` ends the runtime
 //! thread; and the panic boundary is `catch_unwind` at the host-half seam,
 //! reported to TSX as a `transport-error` frame event (never an unwind into

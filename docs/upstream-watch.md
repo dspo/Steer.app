@@ -81,6 +81,8 @@ M-tty 扩 trait。现在 spike 走的是**自己的组件**，不再使用 `Term
 | 2026-11-16 | nsh `f4d68f7`（v0.5.0，未 bump） | NSH-CLIP-SYNC / NSH-MOUSE-PRESS / NSH-COPY-HOOK | CLIP 仍缺同步读；MOUSE 无 MouseDown；COPY 待真机验证 | `nsh-core` 检查见 §3 行内路径；spike 报告 `docs/evidence/ghostty-spike.md` |
 | 2026-11-16 | Ghostty `042b16b`（未 bump） | GHO-CLIP-ASYNC / GHO-RENDER-LINK / GHO-API-STABLE / GHO-MOUSE-ENCODER / GHO-SELECTION | CLIP 仍要求同步；RENDER-LINK 仍无 cell 级；API pre-1.0；MOUSE/SELECTION 已可用 | `include/ghostty/vt/*.h`；spike 的 `native/ghostty/src/sys.rs` 转写 |
 | 2026-11-16 | nsh `f4d68f7`（未 bump） | NSH-COPY-HOOK | **satisfied（本 repo 侧）**：补 `capabilities.clipboard: true` 后 `Cmd+C` 在 headless 与 macOS 真宿主均触发；nsh 测试用内存剪贴板 | `app/nsh.json`；`terminal.ui.test.tsx` 的 `Cmd+C copies the selection` |
+| 2026-11-18 | manox `v0.12.0` → `v0.12.1` | NSH-CLIP-SYNC / NSH-MOUSE-PRESS / GHO-CLIP-ASYNC / GHO-RENDER-LINK / GHO-API-STABLE / GHO-MOUSE-ENCODER / GHO-SELECTION | missing / missing / missing / missing / watch / satisfied / satisfied；本依赖不涉及 nsh/Ghostty 项，状态不变 | `dspo/manox` v0.12.1 checkout `6a02100`；仓库内无 nsh/Ghostty pin 变更 |
+| 2026-11-18 | manox `v0.12.0` → `v0.12.1` | v0.12.0 的 3 处 `MANOX_HOME` 绕过（sandbox 可写根、子代理 core 目录、cx provider 配置） | **satisfied**：三处均改走 `MANOX_HOME`；下游把 manox home 迁到 `~/.steer/.manox` 并完成迁移 | `crates/manox-harness/src/ext/sandbox.rs:336`、`core/session/identity.rs:146`、`ext/provider.rs:24` 及各自测试（v0.12.1） |
 
 > 台账只增不改：一次 bump 一行；结果用 `missing` / `satisfied` / `changed` / `unchecked`。
 

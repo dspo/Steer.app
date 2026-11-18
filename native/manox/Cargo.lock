@@ -2640,8 +2640,8 @@ dependencies = [
 
 [[package]]
 name = "manox-agent"
-version = "0.12.0"
-source = "git+https://github.com/dspo/manox.git?tag=v0.12.0#e11e7fb43f140a4dbfbb941cc278d1968cf6f8ab"
+version = "0.12.1"
+source = "git+https://github.com/dspo/manox.git?tag=v0.12.1#6a02100eabaa04933975412499778628e61a47e6"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -2695,8 +2695,8 @@ dependencies = [
 
 [[package]]
 name = "manox-ahp"
-version = "0.12.0"
-source = "git+https://github.com/dspo/manox.git?tag=v0.12.0#e11e7fb43f140a4dbfbb941cc278d1968cf6f8ab"
+version = "0.12.1"
+source = "git+https://github.com/dspo/manox.git?tag=v0.12.1#6a02100eabaa04933975412499778628e61a47e6"
 dependencies = [
  "ahp",
  "ahp-types",
@@ -2715,8 +2715,8 @@ dependencies = [
 
 [[package]]
 name = "manox-ahp-runtime"
-version = "0.12.0"
-source = "git+https://github.com/dspo/manox.git?tag=v0.12.0#e11e7fb43f140a4dbfbb941cc278d1968cf6f8ab"
+version = "0.12.1"
+source = "git+https://github.com/dspo/manox.git?tag=v0.12.1#6a02100eabaa04933975412499778628e61a47e6"
 dependencies = [
  "ahp",
  "ahp-types",
@@ -2742,8 +2742,8 @@ dependencies = [
 
 [[package]]
 name = "manox-codemode"
-version = "0.12.0"
-source = "git+https://github.com/dspo/manox.git?tag=v0.12.0#e11e7fb43f140a4dbfbb941cc278d1968cf6f8ab"
+version = "0.12.1"
+source = "git+https://github.com/dspo/manox.git?tag=v0.12.1#6a02100eabaa04933975412499778628e61a47e6"
 dependencies = [
  "async-trait",
  "rquickjs",
@@ -2755,8 +2755,8 @@ dependencies = [
 
 [[package]]
 name = "manox-harness"
-version = "0.12.0"
-source = "git+https://github.com/dspo/manox.git?tag=v0.12.0#e11e7fb43f140a4dbfbb941cc278d1968cf6f8ab"
+version = "0.12.1"
+source = "git+https://github.com/dspo/manox.git?tag=v0.12.1#6a02100eabaa04933975412499778628e61a47e6"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -2792,8 +2792,8 @@ dependencies = [
 
 [[package]]
 name = "manox-providers"
-version = "0.12.0"
-source = "git+https://github.com/dspo/manox.git?tag=v0.12.0#e11e7fb43f140a4dbfbb941cc278d1968cf6f8ab"
+version = "0.12.1"
+source = "git+https://github.com/dspo/manox.git?tag=v0.12.1#6a02100eabaa04933975412499778628e61a47e6"
 dependencies = [
  "anyhow",
  "dirs",
@@ -2805,8 +2805,8 @@ dependencies = [
 
 [[package]]
 name = "manox-session-core"
-version = "0.12.0"
-source = "git+https://github.com/dspo/manox.git?tag=v0.12.0#e11e7fb43f140a4dbfbb941cc278d1968cf6f8ab"
+version = "0.12.1"
+source = "git+https://github.com/dspo/manox.git?tag=v0.12.1#6a02100eabaa04933975412499778628e61a47e6"
 dependencies = [
  "ahp",
  "ahp-types",
@@ -2831,8 +2831,8 @@ dependencies = [
 
 [[package]]
 name = "manox-workspace"
-version = "0.12.0"
-source = "git+https://github.com/dspo/manox.git?tag=v0.12.0#e11e7fb43f140a4dbfbb941cc278d1968cf6f8ab"
+version = "0.12.1"
+source = "git+https://github.com/dspo/manox.git?tag=v0.12.1#6a02100eabaa04933975412499778628e61a47e6"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4871,8 +4871,8 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "supervisor"
-version = "0.12.0"
-source = "git+https://github.com/dspo/manox.git?tag=v0.12.0#e11e7fb43f140a4dbfbb941cc278d1968cf6f8ab"
+version = "0.12.1"
+source = "git+https://github.com/dspo/manox.git?tag=v0.12.1#6a02100eabaa04933975412499778628e61a47e6"
 dependencies = [
  "anyhow",
  "async-channel",

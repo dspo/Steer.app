@@ -37,7 +37,7 @@ use std::{
 
 use nsh_core::prelude::*;
 
-use crate::{AGENT_DIR, EXTRA_EXTENSIONS, NO_EXTENSIONS, harness_path};
+use crate::{AGENT_DIR, EXTRA_EXTENSIONS, NO_EXTENSIONS, harness_path, zu_dir};
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -285,6 +285,12 @@ impl Acp {
         if let Some(dir) = AGENT_DIR.lock().ok().and_then(|dir| dir.clone()) {
             builder.env("PI_CODING_AGENT_DIR", dir);
         }
+        // The harness must read the same state root the app writes; a
+        // derived legacy root would silently split settings and subagents.
+        builder.env(
+            "ZU_STATE_DIR",
+            zu_dir().map_err(|error| acp_error(ERR_SPAWN, error))?,
+        );
         if let Some(env) = env {
             for (name, value) in env {
                 if name.is_empty()

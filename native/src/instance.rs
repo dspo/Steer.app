@@ -1,7 +1,7 @@
 //! `zu/native`'s `Instance`: one app per state directory.
 //!
 //! The engine's port is a fixed constant and its state lives in one
-//! `~/.pi/zu`, so a second Zu must not start a second engine. This module
+//! `~/.steer`, so a second Zu must not start a second engine. This module
 //! owns the claim: a lock file under the app's state directory, created
 //! exclusively (`create_new`) and recording the process that owns it. A
 //! lock whose process is gone is stale and is reclaimed; a lock whose
@@ -31,7 +31,7 @@ use std::{
 
 use nsh_core::prelude::*;
 
-/// The lock file's name under the state directory (`~/.pi/zu`).
+/// The lock file's name under the state directory (`~/.steer`).
 const LOCK_NAME: &str = "instance.lock";
 /// How many create/read rounds a contention takes before giving up. Each
 /// round either creates the lock, sees a live owner, or reclaims a stale

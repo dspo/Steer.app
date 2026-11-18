@@ -4,7 +4,7 @@ import { copy } from "../ui/copy";
 
 
 // The claim and the engine state go to this test's own directory: the
-// developer's running app holds the real `~/.pi/zu` claim.
+// developer's running app holds the real `~/.steer` claim.
 const STATE_DIR = `/tmp/zu-m12-app-${Date.now()}`;
 State.setStateDir(STATE_DIR);
 

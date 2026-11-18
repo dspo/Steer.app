@@ -6,7 +6,7 @@
  * that follow (ask, todos, visualize, artifacts) each need an identity so
  * that:
  *
- * - `disabledExtensions` in `~/.pi/zu/settings.json` can turn one off
+ * - `disabledExtensions` in `~/.steer/settings.json` can turn one off
  *   without touching the always-on gate/dispatch pair;
  * - a skill belongs to the extension that uses it: disable the extension,
  *   and its skill stops loading too (`skillDirs` → `additionalSkillPaths`);
@@ -58,7 +58,7 @@ export interface ZuExtension {
   defaultEnabled?: boolean;
 }
 
-/** What the harness reads from `~/.pi/zu/settings.json`, once per session. */
+/** What the harness reads from `~/.steer/settings.json`, once per session. */
 export interface ZuExtensionSettings {
   /** The extensions the user turned off. */
   disabled: ReadonlySet<string>;

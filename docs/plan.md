@@ -5,7 +5,7 @@
 > [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md)，决策见 [decisions.md](decisions.md)。
 > 已完成的工作不再逐批叙述——细节在 git 历史与测试里；本文件只保留**待做**与**门禁**。
 
-## 0. 当前状态（2026-11-13）
+## 0. 当前状态（2026-11-18）
 
 已交付：
 
@@ -33,6 +33,19 @@
 复制闪光——见 [evidence/transcript-tui.md](evidence/transcript-tui.md) 的「真机待确认」）。
 
 当前交付分支：`feat/transcript-tui`（独立 worktree），合并请求指向 `origin/main`。
+
+## 0.1 三套 home 拆分（issue #62，Q117）
+
+`native/src/lib.rs` 的 Zu 状态根改为 `~/.steer` 并从 `~/.pi/zu` move 迁移；`acp.rs` 向
+`pi-acp` 注入 `ZU_STATE_DIR`；harness 的 `zuStateDir()` 优先读 env；manox 升 v0.12.1，
+`boot()` 在内核初始化前把 `MANOX_HOME` 落到 `~/.steer/.manox` 并从 `~/.manox` move 迁移，
+`~/.claude` 保持共享。dev 用 `~/.steer/dev` + `~/.steer/dev/manox` 双隔离。
+
+发布前真机验收：全新安装无 `~/.pi/zu`/`~/.manox` 新写入；预置旧目录后升级能恢复项目、
+布局与既有 manox 会话；原生 `pi` 与 Zu 的会话/trust 互通；`bun run dev` 不碰生产状态；
+`find ~/.pi -name zu` 为空；sandbox manox 会话能写 `$MANOX_HOME`。
+
+发布说明必须醒目标注：升级前退出旧 Zu、manox-app 与 cx，避免旧进程继续写迁移前的 inode；move 迁移不可自动回滚，降级前需在 app 退出后手工把 `~/.steer` 移回 `~/.pi/zu`、把 `~/.steer/.manox` 移回 `~/.manox`，旧版本也看不到新状态下产生的更新。
 
 ## 1. sheet 模块化（已完成）
 

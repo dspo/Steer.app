@@ -1,10 +1,10 @@
 /**
- * `~/.pi/zu/settings.json` is written by the app and only read here. The
+ * `~/.steer/settings.json` is written by the app and only read here. The
  * contract that matters: a bad or missing file never stops a session, and
  * `disabledExtensions` is the only key that becomes behavior.
  */
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,7 +16,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-/** An agent dir shaped like `~/.pi/agent`, with optional settings in `~/.pi/zu`. */
+/** An agent dir shaped like `~/.pi/agent`, with optional settings in `~/.steer`. */
 function sandbox(settings?: string): { agentDir: string; stateDir: string } {
   const root = mkdtempSync(join(tmpdir(), "zu-settings-"));
   roots.push(root);
@@ -31,8 +31,20 @@ function sandbox(settings?: string): { agentDir: string; stateDir: string } {
 }
 
 describe("zuStateDir", () => {
-  test("derives ~/.pi/zu from the agent dir, like the subagent store", () => {
+  const previous = process.env.ZU_STATE_DIR;
+  beforeEach(() => { delete process.env.ZU_STATE_DIR; });
+  afterEach(() => {
+    if (previous === undefined) delete process.env.ZU_STATE_DIR;
+    else process.env.ZU_STATE_DIR = previous;
+  });
+
+  test("derives the legacy root from the agent dir without an override", () => {
     expect(zuStateDir("/home/me/.pi/agent")).toBe("/home/me/.pi/zu");
+  });
+
+  test("uses ZU_STATE_DIR when the app injects it", () => {
+    process.env.ZU_STATE_DIR = "/home/me/.steer";
+    expect(zuStateDir("/home/me/.pi/agent")).toBe("/home/me/.steer");
   });
 });
 

@@ -49,8 +49,8 @@ pub use state::{ScanSession, SessionScan, State, StateRead, StateWrite};
 /// development builds use it; a packaged app leaves it empty).
 pub(crate) static EXTRA_EXTENSIONS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-/// The state directory beside pi's state (`~/.pi/zu` unless a test points
-/// it elsewhere): registry, layouts, token, generation and log.
+/// Zu's state directory (`~/.steer` unless a test points it elsewhere):
+/// registry, layouts, settings, subagents and the instance lock.
 pub(crate) static STATE_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Whether the next sidecar skips extensions (tests that only exercise the
@@ -125,7 +125,10 @@ mod font_tests {
     }
 }
 
-/// `~/.pi/zu`, created on first use.
+/// Zu's state root. A test override or an explicit `ZU_STATE_DIR` wins;
+/// otherwise the default is `~/.steer`, migrated once from `~/.pi/zu` with a
+/// move (never a copy). Migration failure falls back to the legacy root so
+/// the app can still start and retry on the next launch.
 pub(crate) fn zu_dir() -> Result<PathBuf, String> {
     if let Some(dir) = STATE_DIR.lock().ok().and_then(|dir| dir.clone()) {
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -139,9 +142,51 @@ pub(crate) fn zu_dir() -> Result<PathBuf, String> {
         return Ok(dir);
     }
     let home = std::env::var("HOME").map_err(|_| "HOME is not set".to_owned())?;
-    let dir = PathBuf::from(home).join(".pi").join("zu");
+    let target = PathBuf::from(&home).join(".steer");
+    let legacy = PathBuf::from(&home).join(".pi").join("zu");
+    let dir = match migrate_zu_home(&legacy, &target) {
+        Ok(()) => target,
+        Err(error) => {
+            eprintln!(
+                "zu: state migration from {} to {} failed: {error}; using the legacy root",
+                legacy.display(),
+                target.display()
+            );
+            legacy
+        }
+    };
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
+}
+
+const ZU_STATE_ENTRIES: &[&str] = &[
+    "registry.json",
+    "projects.json",
+    "settings.json",
+    "layouts",
+    "subagents",
+];
+
+/// Move the legacy Zu state into `~/.steer`. One directory rename when the
+/// target is absent; otherwise a per-entry move that leaves already migrated
+/// entries alone. The per-entry branch never moves `instance.lock`: an older
+/// process may still hold it. Both branches are idempotent after an
+/// interrupted run.
+fn migrate_zu_home(legacy: &Path, target: &Path) -> Result<(), String> {
+    if !legacy.exists() {
+        return Ok(());
+    }
+    if !target.exists() {
+        return std::fs::rename(legacy, target).map_err(|e| e.to_string());
+    }
+    for entry in ZU_STATE_ENTRIES {
+        let from = legacy.join(entry);
+        let to = target.join(entry);
+        if from.exists() && !to.exists() {
+            std::fs::rename(&from, &to).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 /// A pi-harness helper binary by name (`pi-engine`, `pi-acp`), packaged
@@ -208,5 +253,143 @@ mod tests {
             capabilities.pointer("/process/execute").is_none(),
             "processes go through the native module"
         );
+    }
+}
+
+#[cfg(test)]
+mod home_migration_tests {
+    use super::*;
+    use std::sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    static HOME_LOCK: Mutex<()> = Mutex::new(());
+
+    struct HomeGuard {
+        previous: Option<String>,
+        zu_state: Option<String>,
+    }
+
+    impl HomeGuard {
+        fn set(root: &Path) -> Self {
+            let guard = Self {
+                previous: std::env::var("HOME").ok(),
+                zu_state: std::env::var("ZU_STATE_DIR").ok(),
+            };
+            // SAFETY: serialized by HOME_LOCK and restored on drop; no
+            // kernel/native initialization happens inside these tests.
+            unsafe {
+                std::env::set_var("HOME", root);
+                std::env::remove_var("ZU_STATE_DIR");
+            }
+            *STATE_DIR.lock().unwrap() = None;
+            guard
+        }
+    }
+
+    impl Drop for HomeGuard {
+        fn drop(&mut self) {
+            unsafe {
+                match &self.previous {
+                    Some(home) => std::env::set_var("HOME", home),
+                    None => std::env::remove_var("HOME"),
+                }
+                match &self.zu_state {
+                    Some(dir) => std::env::set_var("ZU_STATE_DIR", dir),
+                    None => std::env::remove_var("ZU_STATE_DIR"),
+                }
+            }
+            *STATE_DIR.lock().unwrap() = None;
+        }
+    }
+
+    fn root(name: &str) -> PathBuf {
+        static SEQ: OnceLock<AtomicUsize> = OnceLock::new();
+        let seq = SEQ.get_or_init(|| AtomicUsize::new(0));
+        let dir = std::env::temp_dir().join(format!(
+            "zu-home-test-{name}-{}-{}",
+            std::process::id(),
+            seq.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn zu_home_moves_the_whole_directory_when_target_is_absent() {
+        let _lock = HOME_LOCK.lock().unwrap();
+        let home = root("whole");
+        let legacy = home.join(".pi/zu");
+        std::fs::create_dir_all(legacy.join("layouts")).unwrap();
+        std::fs::write(legacy.join("registry.json"), "{}").unwrap();
+        std::fs::write(legacy.join("instance.lock"), "old").unwrap();
+        let _guard = HomeGuard::set(&home);
+
+        let dir = zu_dir().unwrap();
+        assert_eq!(dir, home.join(".steer"));
+        assert_eq!(
+            std::fs::read_to_string(dir.join("registry.json")).unwrap(),
+            "{}"
+        );
+        assert!(dir.join("layouts").is_dir());
+        assert_eq!(
+            std::fs::read_to_string(dir.join("instance.lock")).unwrap(),
+            "old"
+        );
+        assert!(!legacy.exists());
+    }
+
+    #[test]
+    fn zu_home_moves_entries_and_leaves_the_lock_when_target_exists() {
+        let _lock = HOME_LOCK.lock().unwrap();
+        let home = root("entries");
+        let legacy = home.join(".pi/zu");
+        let target = home.join(".steer");
+        std::fs::create_dir_all(legacy.join("subagents")).unwrap();
+        std::fs::write(legacy.join("projects.json"), "legacy").unwrap();
+        std::fs::write(legacy.join("settings.json"), "legacy").unwrap();
+        std::fs::write(legacy.join("instance.lock"), "old").unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("settings.json"), "new").unwrap();
+        let _guard = HomeGuard::set(&home);
+
+        let dir = zu_dir().unwrap();
+        assert_eq!(dir, target);
+        assert_eq!(
+            std::fs::read_to_string(target.join("projects.json")).unwrap(),
+            "legacy"
+        );
+        assert_eq!(
+            std::fs::read_to_string(target.join("settings.json")).unwrap(),
+            "new"
+        );
+        assert!(target.join("subagents").is_dir());
+        assert!(!target.join("instance.lock").exists());
+        assert!(legacy.join("instance.lock").exists());
+    }
+
+    #[test]
+    fn an_explicit_state_dir_never_migrates() {
+        let _lock = HOME_LOCK.lock().unwrap();
+        let home = root("override");
+        let legacy = home.join(".pi/zu");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("registry.json"), "{}").unwrap();
+        let explicit = home.join("custom-state");
+        let previous_zu_state = std::env::var("ZU_STATE_DIR").ok();
+        // SAFETY: serialized by HOME_LOCK, restored by the guard below.
+        unsafe { std::env::set_var("ZU_STATE_DIR", &explicit) };
+        let guard = HomeGuard {
+            previous: std::env::var("HOME").ok(),
+            zu_state: previous_zu_state,
+        };
+        unsafe { std::env::set_var("HOME", &home) };
+
+        assert_eq!(zu_dir().unwrap(), explicit);
+        assert!(legacy.join("registry.json").exists());
+        assert!(!home.join(".steer").exists());
+        drop(guard);
     }
 }

@@ -324,7 +324,7 @@ ACP 没有子代理标准位，因此用扩展方法/通知：
 | `_zu/subagents/abort` | client→agent | 中止 live run |
 | `_zu/subagents/updated` | agent→client | 状态/结算通知 |
 
-- settled 索引落 `~/.pi/zu/subagents/`（跨重启可读）；live 只在进程内。
+- settled 索引落 `~/.steer/subagents/`（跨重启可读）；live 只在进程内。
 - 有 live run 时进程保留到 run 结束；容器归档先 abort 再 kill。
 - 客户端 `modules/pi/subagents.ts` 从 `transport = null → 不可用` 改为真实方法；名册/转录 UI 保留。
 
@@ -1021,7 +1021,7 @@ UI 重启后问题卡片消失；用户等得不耐烦自己打字时，卡住�
 
 ### 21.5 Lineage 与转录恢复
 
-- 目录仍是 `~/.pi/zu/subagents/<captainId>/`；`deriveSubagentSessionFile` 先认 settled
+- 目录仍是 `~/.steer/subagents/<captainId>/`；`deriveSubagentSessionFile` 先认 settled
   index 的 `sessionPath`，丢失时扫同目录 `_<runId>.jsonl` 后缀。
 - `transcript`：live 用 child session 的 `state.messages`；settled 用 derive 出的文件；
   两者都失败 → 明确报错"重启后不可恢复"，不返回空列表假装成功（app 的 `selectRun`

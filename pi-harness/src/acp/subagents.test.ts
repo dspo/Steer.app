@@ -376,6 +376,26 @@ describe("completion delivery", () => {
 });
 
 describe("lineage", () => {
+  test("the state root follows ZU_STATE_DIR when the app injects it", () => {
+    const root = workspace();
+    const previousStateDir = process.env.ZU_STATE_DIR;
+    const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+    const captainDir = join(root, "steer", "subagents", "cap-1");
+    mkdirSync(captainDir, { recursive: true });
+    const sessionFile = join(captainDir, "123_run-abc.jsonl");
+    writeFileSync(sessionFile, "");
+    process.env.ZU_STATE_DIR = join(root, "steer");
+    process.env.PI_CODING_AGENT_DIR = join(root, "agent");
+    try {
+      expect(deriveSubagentSessionFile("cap-1", "run-abc")).toBe(sessionFile);
+    } finally {
+      if (previousStateDir === undefined) delete process.env.ZU_STATE_DIR;
+      else process.env.ZU_STATE_DIR = previousStateDir;
+      if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+    }
+  });
+
   test("a lost index path is recovered from the run id suffix", () => {
     const root = workspace();
     const captainDir = join(root, "zu", "subagents", "cap-1");

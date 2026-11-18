@@ -360,7 +360,7 @@ Pi 会话的完整交互状态（审批卡、elicitation、命令候选、恢复
 - **外部工具直接建容器**（浏览器也是），不再在 scratch 画布暂存页面；`scratch/<containerId>/`
   随容器归档删除。不用系统 `/tmp`：容器 cwd 是持久记录，`/tmp` 被清理后重开容器会失败。
 - **容器内新建对话**把新 `session:{id}` / `manox-chat:{…}` 加进当前容器（不新建容器）。
-- **工作区根是 `~/.steer`**，与 state（`~/.pi/zu`）分离：agent 在 `__chat__/` 或 scratch 里误删
+- **工作区根是 `~/.steer`**，与 Zu 状态（同根的 `registry.json` 等文件）分离：agent 在 `__chat__/` 或 scratch 里误删
   只会毁掉工作区文件，不会碰 registry/layouts/settings。
 - 文件 / 更改 / 历史 / 问题（顶栏 ⋯）仍需要容器：先开一个工具或对话，或从已有容器进入。
 - 开始与失败：tile 在实例建立期间显示 `…`，失败在页面上给一行原因（同一原因也进状态行）；

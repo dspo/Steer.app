@@ -1057,7 +1057,7 @@ type ReplayMessageShape = import("./replay").ReplayMessage;
  * resources stay unloaded instead of silently loading.
  */
 /** The subagent manager's host: this session is its captain; settled runs
- * live in `~/.pi/zu/subagents/index.json`. */
+ * live in `~/.steer/subagents/index.json`. */
 function subagentHost(
   cwd: string,
   manager: SessionManager,

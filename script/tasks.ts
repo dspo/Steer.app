@@ -31,7 +31,7 @@ const PORT = process.env.PORT ?? "8810";
 /** `bun dev`'s state directory, beside the installed app's. The single-instance
  * claim is a file under the state dir, so a dev instance that shared it would
  * render "Zu is already running" and never boot the engine while Zu.app runs. */
-const DEV_STATE = join(homedir(), ".pi", "zu-dev");
+const DEV_STATE = join(homedir(), ".steer", "dev");
 
 const usage = () =>
   [
@@ -397,12 +397,15 @@ switch (task) {
     const nsh = nshBinary();
     checkNsh(nsh);
     ensureHarness();
-    // The installed Zu owns `~/.pi/zu`'s lock; give dev its own state dir so
-    // both run at once. `ZU_STATE_DIR` still wins when set explicitly.
+    // The installed Zu owns `~/.steer`'s lock and manox home; dev gets its
+    // own roots so both run at once. `ZU_STATE_DIR` still wins when set
+    // explicitly. `ZU_STATE_DIR` suppresses state migration; `MANOX_HOME`
+    // suppresses manox migration.
     const stateDir = process.env.ZU_STATE_DIR ?? DEV_STATE;
-    console.log(`dev state: ${stateDir}`);
+    const manoxHome = process.env.MANOX_HOME ?? join(stateDir, "manox");
+    console.log(`dev state: ${stateDir}; dev manox: ${manoxHome}`);
     // `nsh run` blocks while the app runs: the terminal is its own.
-    run([nsh, "run", "--port", PORT], APP, { ZU_STATE_DIR: stateDir });
+    run([nsh, "run", "--port", PORT], APP, { ZU_STATE_DIR: stateDir, MANOX_HOME: manoxHome });
     break;
   }
   case "check": {

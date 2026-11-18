@@ -2,7 +2,7 @@
  * The app's `settings.json`, read-only from the harness side.
  *
  * The app (`app/domains/state.ts` over `zu/state`) is the only writer, at
- * `~/.pi/zu/settings.json`; the harness only needs the extension switches.
+ * `~/.steer/settings.json`; the harness only needs the extension switches.
  * Reading is deliberately forgiving: a missing, half-written or corrupt file
  * (the app writes it atomically, but a hand edit is fair game) must never
  * stop a session from starting — it means "no extension is disabled".
@@ -20,12 +20,13 @@ import type { ZuExtensionSettings } from "./extensions/registry";
 export const ZU_SETTINGS_FILE = "settings.json";
 
 /**
- * `~/.pi/zu`, derived from the agent dir (`~/.pi/agent`) exactly like the
- * subagent store does. `ZU_STATE_DIR` is the app's concern; the harness is
- * spawned with the same HOME and reads the installed app's file.
+ * The app's state root, normally `~/.steer`. The app injects `ZU_STATE_DIR`
+ * when it spawns the harness; the agent-dir derivation is the fallback for
+ * standalone runs and older callers.
  */
 export function zuStateDir(agentDir: string = getAgentDir()): string {
-  return join(agentDir, "..", "zu");
+  const explicit = process.env.ZU_STATE_DIR?.trim();
+  return explicit ? explicit : join(agentDir, "..", "zu");
 }
 
 /**

@@ -13,7 +13,7 @@ import { K, t } from "../ui/i18n";
  * A desktop app claims the state directory before it starts the sidecar.
  * When another live process owns it, this instance renders the
  * "already running" state instead and never boots an engine: the fixed
- * state directory (`~/.pi/zu`) belongs to the first instance, and a second
+ * state directory (`~/.steer`) belongs to the first instance, and a second
  * sidecar would collide with it. The claim's file and pid check live in
  * `src/instance.rs`; this module only decides what the window shows.
  *

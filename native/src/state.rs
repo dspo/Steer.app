@@ -1,7 +1,7 @@
 //! `zu/state`: the UI's durable state and the session index (v2 §6).
 //!
 //! The registry, the projects, the layouts and the settings live as JSON
-//! files under the state directory (`~/.pi/zu` unless `ZU_STATE_DIR` or a
+//! files under the state directory (`~/.steer` unless `ZU_STATE_DIR` or a
 //! test points elsewhere). The **UI is the writer** — the writer inversion
 //! of v2 — so this module gives TSX three operations:
 //!

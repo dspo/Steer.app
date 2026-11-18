@@ -104,7 +104,7 @@ agent 面的定制一律以 distro 扩展/适配层为落点。
 └──────┬─────────────────────────────┬───────────────────────────┘
        │                             │ ACP：JSON-RPC 2.0 / ndjson / stdio
        ▼                             ▼
-  ~/.pi + ~/.pi/zu/（磁盘，唯一权威） pi-harness ×N（轮级子进程，settle 即退出）
+  ~/.pi + ~/.steer/（磁盘，唯一权威） pi-harness ×N（轮级子进程，settle 即退出）
                                      ┌────────────────────────────────┐
                                      │ ACP 适配层（stdio ↔ SDK，进程内）│
                                      │ pi SDK（createAgentSession）    │
@@ -157,7 +157,7 @@ JIT entitlement 在 harness 上）；pi pin + 扩展 + 适配器同包同版本�
 - **预热永不铸文件**（v2 裁决，修 v1 缺口）：预热只做 spawn + `initialize`（+ resume 场景的 `load`——
   load 不铸新文件）；`session/new` 推迟到**该进程被真实 prompt 认领时**。否则被遗弃的预热进程会在
   `~/.pi/agent/sessions/` 留下空会话文件，污染存储与侧栏索引。
-- 子会话住 `~/.pi/zu/subagents/{captainId}/`（三重自证不变），captain 住 pi 原生位置。
+- 子会话住 `~/.steer/subagents/{captainId}/`（三重自证不变），captain 住 pi 原生位置。
 
 ### 4.4 与 pi-acp 的关系（v2 新增）
 
@@ -282,7 +282,7 @@ spawn 命令由用户给出，UI 标注「未 pin，随生态更新」。代价�
 | 数据 | 唯一写者 | 读者 |
 |---|---|---|
 | pi 会话 JSONL（captain + subagent） | 对应 harness 进程（或外部 pi CLI） | UI fold |
-| `~/.pi/zu/`（容器、projects、layouts、settings、未读回执） | **UI，经 `zu/state`**（原子写、版本字段、stale 检测）——**v2 明确：注册表写者从 engine 反转为 UI** | UI fold |
+| `~/.steer/`（容器、projects、layouts、settings、未读回执） | **UI，经 `zu/state`**（原子写、版本字段、stale 检测）——**v2 明确：注册表写者从 engine 反转为 UI** | UI fold |
 | 活 run 注册表 | 不落盘——`zu/acp` 进程表 + UI store；孤儿标记由 harness 自己写（§7.3） | UI |
 | 子代理 settled 名册 | 不单独写——子会话文件三重自证，扫描即名册 | UI fold |
 
@@ -331,7 +331,7 @@ sessionPath；同一时刻最多一个未绑定预热。冷启动预算（spawn 
 照 `zu/lsp` 的有界帧先例）、stdin 写、exit → Callback、stderr 回调、kill、Drop 兜底。**零 JSON 解析、
 零 id 配对**（§3）。
 
-**孤儿收割**：run 标记由 **harness 自己**在 spawn 时写（`~/.pi/zu/runs/{pid}.json`：pid、startedAt、
+**孤儿收割**：run 标记由 **harness 自己**在 spawn 时写（`~/.steer/runs/{pid}.json`：pid、startedAt、
 sessionPath 认领后补），settle 退出时自删——宿主 SIGKILL 后标记仍在、进程仍活，下次启动扫标记、
 pid 判活、孤儿一律 kill（控制端已死无法收养，durable 内容全在文件）。id 形状用
 `{millis}-{pid}-{counter}`（reviu 配方：双实例同秒不撞）。
@@ -470,7 +470,7 @@ v1「store 接口不变」的说法收窄为这句话：`snapshot/subscribe` 语
 5. **容器注册表瘦身**：顺势改 overrides-only（research A1「Pi 容器不落盘」）——与本架构兼容，独立裁决。
 6. **distro 更新节奏**：第一阶段随 app 原子更新；独立更新通道（pi 升级快于 app）是后续产品决策。
 7. **并发内存画像**：N×Bun 的实测值进 §7.4 的回退阈值输入（与 1 合并测）。
-8. **generic agents 的目录归属**（P5 期）：客户端转录存 `~/.pi/zu/transcripts/{agentId}/` 还是独立根，
+8. **generic agents 的目录归属**（P5 期）：客户端转录存 `~/.steer/transcripts/{agentId}/` 还是独立根，
    到 P5 再裁。
 
 ## 14. 参考

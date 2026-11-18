@@ -10,7 +10,7 @@
 
 **Zu 是 nsh（AppKit）写的桌面工作台，会话来源是两种 harness**：pi 是一会话一持久 ACP 进程（`pi-acp`），
 manox 是进程内 AHP 宿主（`native/manox`）。两者都只是容器里的一种 sheet；壳与容器模型零 harness 语义，
-会话的 durable 权威都在磁盘（`~/.pi` 会话文件 / `~/.manox` journal），零活进程可读。
+会话的 durable 权威都在磁盘（`~/.pi` 会话文件 / `$MANOX_HOME` journal），零活进程可读。
 
 ## 1. 第一性约束
 
@@ -25,7 +25,7 @@ manox 是进程内 AHP 宿主（`native/manox`）。两者都只是容器里的�
 
 | 原则 | 内容 |
 |---|---|
-| **兼容方向不对称** | pi → Zu 是硬约束：pi 原生产生的会话必须能列出、显示、打开、续跑。Zu → pi 允许增强部分不可见（subagents 与 Zu 状态住 `~/.pi/zu/`）。 |
+| **兼容方向不对称** | pi → Zu 是硬约束：pi 原生产生的会话必须能列出、显示、打开、续跑。Zu → pi 允许增强部分不可见（subagents 与 Zu 状态住 `~/.steer/`）。 |
 | **三类对象** | 会话（durable，settle ≠ 死）/ 资源（进程生命周期）/ 视图（无生命周期，开关不影响前两类）。 |
 | **关系模型只有三层** | Project → Container → Sheet。Container 是组织单元（cwd、项目归属、布局），**没有 harness 身份**；harness 属于 sheet 的 kind。 |
 | **壳零模块语义** | 壳只渲染注册表，不解释 kind 的业务含义；目标契约见 [sheet-module-ARCHITECTURE.md](sheet-module-ARCHITECTURE.md)。 |
@@ -44,8 +44,8 @@ Zu.app（nsh TSX / AppKit）
 │    └─ 每个会话一个持久 pi-acp ──▶ pi 1.5.0（Bun 单文件）
 │         durable: ~/.pi/agent/sessions/*.jsonl
 ├─ modules/manox        manox 模块：AHP client（vendored reducers 折叠）
-│    └─ zu/native 的 Manox 单例 ──▶ in-proc 宿主半边（manox v0.12.0）
-│         durable: ~/.manox/core/*（journal）
+│    └─ zu/native 的 Manox 单例 ──▶ in-proc 宿主半边（manox v0.12.1）
+│         durable: $MANOX_HOME/core/*（journal）
 └─ domains/ ──▶ zu/native（Rust）：acp / fs / git / lsp / pty / state / manox / picker / instance，
                 terminal（自绘 ghostty 组件）
 ```
@@ -120,8 +120,8 @@ UI 不持 fs / process：文件读写只经 `zu/fs`，进程只经 native 域。
 
 ```
 ~/.pi/agent/sessions/--{encodedCwd}--/{timestamp}_{sessionId}.jsonl   # pi 会话（pi CLI 可见）
-~/.manox/                                                             # manox 内核状态（journal）
-~/.pi/zu/
+~/.steer/
+  .manox/                                                         # manox home（MANOX_HOME，journal）
   registry.json        # 容器注册表（UI 写，读时兼容旧形状）
   projects.json        # Project + membership
   layouts/{id}.json    # 每容器布局与 zoom
@@ -223,7 +223,7 @@ rich presentation（widget/footer/custom…）没有 ACP 等价面，降级为�
 ### 4.6 常驻、通知与更新
 
 - 关窗收起不退出；托盘 Show/Hide；`⌘Q` 先释放单实例锁再退出。
-- 单实例锁在状态目录（`~/.pi/zu/instance.lock`），pid 判活；第二实例只显示提示、不启引擎。
+- 单实例锁在状态目录（`~/.steer/instance.lock`），pid 判活；第二实例只显示提示、不启引擎。
 - 通知只在主窗口不可见/失焦时发；pi 的 turn settle 由模块调用 `core/notifications.notifySettled`
   （以 sheet id 为单位），按 id 替换、5 s 去重；按下恢复窗口、切到该 sheet 的容器并打开它。
 - 更新三态（development / 未配置 / 可检查）；安装成功即退出进程，UI 保持「正在安装」。
@@ -234,10 +234,10 @@ rich presentation（widget/footer/custom…）没有 ACP 等价面，降级为�
 
 | 对象 | 权威 | 存储 |
 |---|---|---|
-| Project / membership | UI store（读写成对） | `~/.pi/zu/projects.json` |
-| 容器注册表 | UI（经 `zu/state`） | `~/.pi/zu/registry.json` |
+| Project / membership | UI store（读写成对） | `~/.steer/projects.json` |
+| 容器注册表 | UI（经 `zu/state`） | `~/.steer/registry.json` |
 | pi 会话转录 | pi | `~/.pi/agent/sessions/` |
-| manox thread/chat | manox | `~/.manox/` journal |
+| manox thread/chat | manox | `$MANOX_HOME/` journal |
 | 资源（PTY / webview / LSP） | native 域 / nsh UI | 不持久 |
 | 视图布局 | UI | `layouts/{id}.json` |
 | 未读 / 活跃 run | 运行时 | 不持久 |
@@ -281,7 +281,7 @@ terminal 模块的一个 intent。
 
 `dispatch` 扩展在 ACP 进程内恢复（只注册进 captain；子会话 `noExtensions`），名册/转录/派发/中止走
 `_zu/subagents/{list,transcript,dispatch,abort}`。live run 只在内存，settled 索引落
-`~/.pi/zu/subagents/index.json`，重启后经一个 resume 的 captain 读取。见
+`~/.steer/subagents/index.json`，重启后经一个 resume 的 captain 读取。见
 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §7–§9.8。
 
 ### 5.7 会话 TODO plan（pi 模块）
@@ -316,7 +316,7 @@ plan note 并唤醒重读；删除先打断正在跑的 turn（防止模型继�
 | UI | nsh（TSX root，AppKit 后端） | 原生输入/滚动/无障碍；DockArea/TextView/Editor/DiffView 现成 |
 | pi | 精确 pin `1.5.0`，Bun `--compile` 单入口 `pi-acp` | 官方支持 bun 二进制分发 |
 | pi 传输 | ACP over stdio，一会话一持久进程 | 进程隔离、公共协议、崩溃后 resume |
-| manox | git pin `v0.12.0`，in-proc AHP | 内核即宿主，零进程；接受崩溃域不对称 |
+| manox | git pin `v0.12.1`，in-proc AHP | 内核即宿主，零进程；接受崩溃域不对称 |
 | 重型集成 | Rust native module，按域拆注册面 | Q28/Q31 |
 | 终端核 | `TerminalSession`（libghostty-vt，Rust 侧随 PTY 存活）+ 原生组件 `zu.terminal` | 网格与输入法是元素层给不了的保证（Q114）；输出与按键不经 TSX（Q115） |
 | 浏览器 | nsh `WebView` | 无需自研 |
@@ -358,7 +358,7 @@ Casing II；C8 三包布局；ACP cutover（P0–P4：distro ACP 入口、`zu/ac
 - **LSP**：每容器×语言族一个进程；诊断只保留打开文件；全文 `didChange`；命令解析保留 rustup symlink。
 - **malachite-bigint 双版本**：生成的 `.nsh/rust/Cargo.lock` 需 `cargo update -p malachite-bigint@0.14.0 --precise 0.12.0`
   （`native/manox/Cargo.toml` 有注释）。
-- **manox provider 路径**：上游直查 `~/.manox`（`MANOX_HOME` 可覆盖），测试隔离需 `MANOX_HOME`+`MANOX_CLAUDE_HOME`+`HOME` 三变量。
+- **manox provider 路径**：v0.12.1 起跟随 `MANOX_HOME`（默认 `~/.steer/.manox`），测试隔离由 gate 的 hermetic home 负责；生产启动不设置 `MANOX_CLAUDE_HOME`，`~/.claude` 保持共享。Hermetic gate 仍会临时重定向 `MANOX_CLAUDE_HOME`/`HOME`，避免 credential-free 门禁读到开发者真实 Claude 状态。
 - **审批通知**：审批卡在会话内渲染；窗口不在前台时的系统通知（设计 §9.7）尚未接线。
 - **审批快捷键/页签圆点**：`⏎/⌘⏎/Esc` 与容器行/页签的 `waiting_user` 圆点未做。
 - **子代理名册**：live run 只在内存；重启后需先 resume 一个 captain 才能读 settled 索引。

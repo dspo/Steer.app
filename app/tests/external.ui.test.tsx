@@ -11,7 +11,7 @@ import { copy } from "../ui/copy";
 
 // Each case gets its own registry and a fresh sidecar: `open` runs the app in
 // a VM that shares the native module's process-wide state, and another test
-// file may have pointed it at the real `~/.pi/zu` since this module loaded.
+// file may have pointed it at the real `~/.steer` since this module loaded.
 let workspaceDir = "";
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 

@@ -12,7 +12,7 @@
 //! `docs/ahp-v3-architecture.md` §A):
 //!
 //! ```text
-//! manox-harness session jsonl (durable kernel records, ~/.manox/core/…)
+//! manox-harness session jsonl (durable kernel records, $MANOX_HOME/core/…)
 //! manox-ahp-runtime  (kernel journal → AHP action projection, Backend impl)
 //! manox-ahp          (Host: channels, serverSeq, JSON-RPC router)
 //! native/manox       (this crate: the pump's bridge + panic boundary)
@@ -47,7 +47,7 @@ use serde_json::Value;
 
 /// The error message a model-less turn settles with. It names the fix, not
 /// the internals.
-const NO_MODEL_MESSAGE: &str = "no model is configured — add a provider in cx Settings (~/.manox/cx.providers.config.yaml) \
+const NO_MODEL_MESSAGE: &str = "no model is configured — add a provider in cx Settings ($MANOX_HOME/cx.providers.config.yaml) \
      and try again";
 
 /// The pi-provider bridge: registers the machine's pi providers (its
@@ -160,32 +160,64 @@ fn wire_key(api: &str) -> Option<&'static str> {
 pub(crate) static HERMETIC: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
-/// Redirects the state roots to a throwaway dir when the boot initiator asked
-/// for a hermetic host. `HOME` moves with it, deliberately: the harness's
-/// provider-config lookup (`manox_harness::provider::default_config_path`)
-/// resolves `$HOME/.manox` directly and does not honor `MANOX_HOME`, so
-/// without the HOME redirect a credential-free gate would read the
-/// developer's live credentials — the model gate would never fire, and a
-/// gate meant to be credential-free would run real model turns. An explicit
-/// `MANOX_HOME` always wins (the caller asked for a specific root); the
-/// kernel's own `test_support::hermetic_home` takes the same shape for the
-/// same reason.
-fn apply_requested_isolation() {
-    if !HERMETIC.load(std::sync::atomic::Ordering::Acquire) {
+/// Resolves the manox state root before any kernel initialization: hermetic
+/// boots keep the throwaway root, an explicit `MANOX_HOME` is respected
+/// as-is, and everything else lands at `~/.steer/.manox` (moved from
+/// `~/.manox` once when the target is absent). Production boots never set
+/// `MANOX_CLAUDE_HOME`, so `~/.claude` stays the shared Claude ecosystem
+/// root. Hermetic gate boots still redirect all three env vars to a
+/// throwaway root; that isolation predates this home split and keeps the
+/// credential-free gate from reading the developer's live Claude state.
+fn configure_manox_home() {
+    if HERMETIC.load(std::sync::atomic::Ordering::Acquire) {
+        if std::env::var_os("MANOX_HOME").is_some() {
+            return;
+        }
+        let home =
+            std::env::temp_dir().join(format!("zu-manox-runner-home-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(home.join("core"));
+        // SAFETY: gate-process setup, before any kernel initialization in
+        // this process; the kernel resolves these at call time.
+        unsafe {
+            std::env::set_var("MANOX_HOME", &home);
+            std::env::set_var("MANOX_CLAUDE_HOME", home.join("claude"));
+            std::env::set_var("HOME", &home);
+        }
         return;
     }
     if std::env::var_os("MANOX_HOME").is_some() {
         return;
     }
-    let home = std::env::temp_dir().join(format!("zu-manox-runner-home-{}", std::process::id()));
-    let _ = std::fs::create_dir_all(home.join("core"));
-    // SAFETY: gate-process setup, before any kernel initialization in this
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        return;
+    };
+    let legacy = home.join(".manox");
+    let steer_root = home.join(".steer");
+    let target = steer_root.join(".manox");
+    // `rename` does not create the destination's parent. The app usually
+    // already has `~/.steer` (it is also the workspace root, and `zu_dir()`
+    // creates it during the instance claim), but boot must not depend on that
+    // ordering.
+    let _ = std::fs::create_dir_all(&steer_root);
+    let root = if !target.exists() && legacy.exists() {
+        match std::fs::rename(&legacy, &target) {
+            Ok(()) => target,
+            Err(error) => {
+                eprintln!(
+                    "zu: manox migration from {} to {} failed: {error}; using the legacy root",
+                    legacy.display(),
+                    target.display()
+                );
+                legacy
+            }
+        }
+    } else {
+        target
+    };
+    let _ = std::fs::create_dir_all(&root);
+    // SAFETY: boot-time setup, before any kernel initialization in this
     // process; the kernel resolves these at call time.
-    unsafe {
-        std::env::set_var("MANOX_HOME", &home);
-        std::env::set_var("MANOX_CLAUDE_HOME", home.join("claude"));
-        std::env::set_var("HOME", &home);
-    }
+    unsafe { std::env::set_var("MANOX_HOME", &root) };
 }
 
 /// Boots the process-global kernel stack and returns the AHP runtime (the
@@ -193,14 +225,14 @@ fn apply_requested_isolation() {
 /// its own singleton.
 ///
 /// The state root resolves through the kernel's own path authority
-/// (`manox_agent::paths::manox_home`): `MANOX_HOME` overrides `~/.manox`
+/// (`manox_agent::paths::manox_home`): `MANOX_HOME` overrides the default root
 /// wholesale at call time, so a test process points it at a temp dir before
 /// the first boot and never touches the real store. `manox_agent::init()`
 /// covers the kernel's startup bundle (global tokio runtime, object store,
 /// provider registry, thread store, skills/commands/plugins).
 pub(crate) fn boot() -> Result<Arc<AhpRuntime>, String> {
     // The env must land before any kernel initialization reads it.
-    apply_requested_isolation();
+    configure_manox_home();
     // The steps below are each process singletons, but their handshake is
     // not atomic: the builder must be installed before `runtime` consumes
     // it, so two concurrent boots could race the install. One lock, and a
@@ -702,6 +734,106 @@ mod pi_bridge_tests {
         assert!(
             manox_harness::model_ref::resolve_model_ref(&registry, &reference).is_some(),
             "the ref {reference} resolves"
+        );
+    }
+}
+
+#[cfg(test)]
+mod home_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Mutex, OnceLock};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvGuard {
+        home: Option<std::ffi::OsString>,
+        manox_home: Option<std::ffi::OsString>,
+        manox_claude_home: Option<std::ffi::OsString>,
+    }
+
+    impl EnvGuard {
+        fn set_home(home: &Path) -> Self {
+            let guard = Self {
+                home: std::env::var_os("HOME"),
+                manox_home: std::env::var_os("MANOX_HOME"),
+                manox_claude_home: std::env::var_os("MANOX_CLAUDE_HOME"),
+            };
+            unsafe {
+                std::env::set_var("HOME", home);
+                std::env::remove_var("MANOX_HOME");
+                std::env::remove_var("MANOX_CLAUDE_HOME");
+            }
+            guard
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            unsafe {
+                restore("HOME", &self.home);
+                restore("MANOX_HOME", &self.manox_home);
+                restore("MANOX_CLAUDE_HOME", &self.manox_claude_home);
+            }
+        }
+    }
+
+    unsafe fn restore(name: &str, value: &Option<std::ffi::OsString>) {
+        match value {
+            Some(value) => unsafe { std::env::set_var(name, value) },
+            None => unsafe { std::env::remove_var(name) },
+        }
+    }
+
+    fn root() -> PathBuf {
+        static SEQ: OnceLock<AtomicUsize> = OnceLock::new();
+        let seq = SEQ.get_or_init(|| AtomicUsize::new(0));
+        let dir = std::env::temp_dir().join(format!(
+            "zu-manox-home-test-{}-{}",
+            std::process::id(),
+            seq.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn manox_home_moves_legacy_state_and_does_not_set_claude_home() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let home = root();
+        let legacy = home.join(".manox");
+        std::fs::create_dir_all(legacy.join("core")).unwrap();
+        std::fs::write(legacy.join("settings.toml"), "x").unwrap();
+        let _guard = EnvGuard::set_home(&home);
+        HERMETIC.store(false, Ordering::Release);
+
+        configure_manox_home();
+
+        let target = home.join(".steer/.manox");
+        assert_eq!(std::env::var_os("MANOX_HOME").unwrap(), target.as_os_str());
+        assert!(target.join("core").is_dir());
+        assert_eq!(
+            std::fs::read_to_string(target.join("settings.toml")).unwrap(),
+            "x"
+        );
+        assert!(!legacy.exists());
+        assert!(std::env::var_os("MANOX_CLAUDE_HOME").is_none());
+    }
+
+    #[test]
+    fn manox_home_keeps_an_explicit_override() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let home = root();
+        let explicit = home.join("custom-manox");
+        let _guard = EnvGuard::set_home(&home);
+        unsafe { std::env::set_var("MANOX_HOME", &explicit) };
+        HERMETIC.store(false, Ordering::Release);
+
+        configure_manox_home();
+        assert_eq!(
+            std::env::var_os("MANOX_HOME").unwrap(),
+            explicit.as_os_str()
         );
     }
 }
