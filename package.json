@@ -6,6 +6,9 @@
     "dev": "bun script/tasks.ts dev",
     "check": "bun script/tasks.ts check",
     "test": "bun script/tasks.ts test",
+    "gate": "bun script/ci.ts gate",
+    "gate:fast": "bun script/ci.ts fast",
+    "hooks:install": "git config core.hooksPath .githooks",
     "evidence": "bun script/tasks.ts evidence",
     "conformance": "bun script/tasks.ts conformance",
     "bundle": "bun script/tasks.ts bundle"

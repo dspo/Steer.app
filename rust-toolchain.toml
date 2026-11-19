@@ -1,0 +1,7 @@
+# The merge gate is local (docs/decisions.md Q119), so the Rust version is
+# pinned here instead of being defined by a CI image. 1.99.1 is what the
+# rust:slim-trixie image carried when auto-CI was retired; a bump here is a pin
+# change like NSH_VERSION (docs/upstream-watch.md).
+[toolchain]
+channel = "1.99.1"
+components = ["clippy", "rustfmt"]

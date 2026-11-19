@@ -27,12 +27,23 @@ Zu（祖冲之）是 coding agent 的 macOS 桌面工作台：nsh（TSX/AppKit�
 ## 命令
 
 统一入口 `script/tasks.ts`（需要 bun、cargo、nsh CLI 三套工具链）。前置：nsh 版本必须等于
-`.cnb.yml` 的 `NSH_VERSION`（tasks.ts 会校验；`NSH=/path/to/nsh` 可覆盖）。
+`.cnb.yml` 的 `NSH_VERSION`（tasks.ts 会校验；`NSH=/path/to/nsh` 可覆盖），Rust 版本由
+`rust-toolchain.toml` 钉住（1.99.1 + clippy/rustfmt）。
 
+**门禁在本地**（Q119）：cnb 的 check-and-test 不再随 push/PR 自动跑，只在
+`git push origin HEAD:ci/remote` 时执行一遍 Linux 复核；main push 仅在 NPC 镜像输入
+（`.ide/Dockerfile*` 或 `.cnb.yml`）变化时用 `ifModify` 重建 NPC 镜像。`$` 下的
+NPC 事件流水线保持不变。
+
+- `bun run gate` — **本地完整门禁，合并前必须绿**：layer gate → rustfmt/clippy（两个 workspace）→
+  `nsh check app` → native `cargo test` + headless → manox 门禁 → macOS 终端门禁 → pi-harness
+  （含 darwin 编译）
+- `bun run gate:fast` — 秒级门禁（layer gate + rustfmt + harness 版本台账）；`.githooks/pre-push`
+  调用它，首次 clone / 新 worktree 后跑一次 `bun run hooks:install`
 - `bun run dev` — 开发实例；默认端口 8810，状态目录 `~/.steer/dev`（与已安装的 Zu.app 可同时运行）
 - `bun run check` — `nsh check app`：TSX **唯一类型检查口** + 逐 crate cargo check
 - `bun run test` — `nsh test .`（app/ 下 headless 测试）；`native/` 的成员 crate（`zu-ghostty`）另需
-  `cd native && cargo test --workspace`（CI 的 test stage 两者都跑）
+  `cd native && cargo test --workspace`（gate 的 test stage 两者都跑）
 - 分层门禁：`bun script/check-layers.mjs`
 - Rust 门禁（两个 workspace **各跑一遍**）：在 `native/` 与 `native/manox/` 里分别
   `cargo fmt --all --check && cargo clippy --all-targets -- -D warnings`
@@ -46,7 +57,8 @@ Zu（祖冲之）是 coding agent 的 macOS 桌面工作台：nsh（TSX/AppKit�
 - 终端符合性：`bun run conformance [-- esctest|ucs|all] [--gate=p0]`——report-only 不拦合并，
   需 python3 与网络（首次下载 esctest2 到 `~/.cache/steer-conformance/`），全量约 1 分钟；
   验收口径与基线见 issue #46 与 `native/conformance/README.md`
-- `ZU_SKIP_LIVE=1` = CI 口径：跳过 live 模型/LSP 与 acp-load-probe
+- `ZU_SKIP_LIVE=1` = gate 口径（`bun run gate` 的 test stage 显式带上）：跳过 live 模型/LSP 与
+  acp-load-probe；手动跑 `bun run test` 不受影响
 - 终端/ghostty 构建：首次 `cargo check` 由 `native/ghostty/build.rs` 下载并编译 libghostty-vt
   （zig 0.17，冷构建约 4 分钟）；`ZU_GHOSTTY_CACHE` 指向缓存目录可复用静态库，
   `GHOSTTY_SRC`/`GHOSTTY_ZIG` 可指向本地 checkout/toolchain
@@ -61,8 +73,9 @@ Zu（祖冲之）是 coding agent 的 macOS 桌面工作台：nsh（TSX/AppKit�
 
 ## 依赖 bump（硬性）
 
-任何 pin 变更都算：nsh 的 git rev / `.cnb.yml` 的 `NSH_VERSION`、Ghostty 的
-`GHOSTTY_REV`/zig（`native/ghostty/build.rs`）、manox tag、pi-harness/bun、lock 级 pin。
+任何 pin 变更都算：nsh 的 git rev / `.cnb.yml` 的 `NSH_VERSION`、`rust-toolchain.toml` 的
+Rust channel、Ghostty 的 `GHOSTTY_REV`/zig（`native/ghostty/build.rs`）、manox tag、
+pi-harness/bun、lock 级 pin。
 
 1. 先读 `docs/upstream-watch.md`，对每条 `open` / `verify` 项在**新版本**里核对，不能只读文档；
 2. 在它的核对台账加一行：日期、旧→新、逐条结果（`missing` / `satisfied` / `changed` / `unchecked`）；
@@ -96,10 +109,13 @@ Zu（祖冲之）是 coding agent 的 macOS 桌面工作台：nsh（TSX/AppKit�
 
 - **PR 编辑在独立 git worktree 中进行**。惯例：`PWD=$(pwd) git worktree add $PWD.worktrees/pr_topic -b feat/pr_topic origin/main`；PR 合并后主动回收 origin 与本地对应的 branch、worktree
 - **先回应再动手**：收到 user message 后，第一次写操作前随口说一句你的理解与打算，说完就继续，不等确认
-- **尽早交付 PR**：提出 PR 后不要傻等 CI 通过才交付给用户——让用户的静态 review 与 CI 并行，节省开发者时间
-- **review 时别重复劳动**：CI 与验证脚本能验证的东西，非必要不跑
+- **尽早交付 PR**：提出 PR 后不要傻等远端检查才交付给用户——让用户的静态 review 与本地 gate 并行，节省开发者时间
+- **合并前跑本地 gate**：`bun run gate` 必须绿，PR 描述贴结果；首次 clone / 新 worktree 后
+  `bun run hooks:install`，之后每次 push 自动跑 `gate:fast`
+- **review 时别重复劳动**：本地 gate 与验证脚本能验证的东西，非必要不跑
 - **review 必须给结论**：除了意见，明确三选一——`approve` / `approve with changes`（address comments and self-merge）/ `request changes`
-- **推进合并要处理所有问题**：以「勿以善小而不为，勿以恶小而为之」的心态，nit 级也要处理；合并前 CI 必须通过
+- **推进合并要处理所有问题**：以「勿以善小而不为，勿以恶小而为之」的心态，nit 级也要处理；合并前
+  `bun run gate` 必须绿
 - **不留 follow-up**：不要总想着丢给下一个 PR 或等用户后续跟踪——follow-up 当场处理，要么附进当前 PR，要么立即主动开 follower-up PR
 - **subagent 任务以 10–60 分钟为宜**：太小自己顺手做掉（交接上下文反而浪费），太大不可控——明确边界、拆分阶段委派
 - **subagent 的工作必须评审验收**：必要时要求返工；小瑕疵自己接手随手修掉

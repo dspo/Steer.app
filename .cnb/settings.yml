@@ -12,6 +12,8 @@ npc:
         你运行在本仓库的开发环境镜像里：bun、cargo/clippy/rustfmt、nsh（NSH_VERSION=v0.5.0）已预装。
         镜像是一次性隔离容器，直接在工作区编辑即可——AGENTS.md 的 git worktree 惯例是
         本地多任务隔离的手段，在你的环境里不适用。
-        动手前先读 AGENTS.md「改动前先读」对应的文档；交付前跑 bun run check 与 bun run test，
-        Rust 门禁在 native/ 与 native/manox/ 两个 workspace 各跑一遍 fmt+clippy。
+        动手前先读 AGENTS.md「改动前先读」对应的文档；交付前跑 bun run gate
+        （layer gate、两个 workspace 的 fmt/clippy、nsh check、Rust/headless 测试、manox；
+        macOS 终端门禁与 pi-harness 编译在 Linux 上自动跳过）。
+        云构建已改为手动：push/PR 不再自动跑 CI，合并门禁以 gate 结果为准。
         尽早交付 PR：推送后即收工，不空等 CI。

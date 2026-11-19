@@ -46,7 +46,7 @@ app 配置里解决的，记 `verify` 或直接从表里拿掉，放进 §8 的�
 | esctest2（符合性测试集，test-only） | `script/tasks.ts` 的 `ESCTEST2`（url/sha256/dir） | Ghostty 自带 esctest runner 的 pin：`<ghostty>/test/esctest/build.zig.zon` 的依赖版本与 sha——不一致时同步我们的 pin，并再生 `native/conformance/esctest-baseline.txt`（runbook 见其 README）与 `docs/evidence/conformance.json` |
 | manox | `native/manox/Cargo.toml` 的 `tag = "vX.Y.Z"` | `Cargo.lock` 的 rev；四个 crate 同 tag |
 | pi-harness / bun | `pi-harness/package.json` + `src/version.ts` 的台账守卫 | `.cnb.yml` 的 bun 安装与 build target |
-| Rust 工具链 | `rust-toolchain`/镜像的 rustc（`.cnb.yml` 注释） | CI 的 clippy/rustfmt 组件 |
+| Rust 工具链 | `rust-toolchain.toml` 的 channel（镜像 rustc 见 `.cnb.yml` 注释） | `bun run gate` 的 clippy/rustfmt（组件随 toolchain 一起装） |
 
 ## 3. 观察项
 

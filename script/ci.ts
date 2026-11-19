@@ -1,17 +1,25 @@
 /**
- * The CNB pipeline's stage bodies, as bun tasks: each `.cnb.yml` stage is one
- * line — `bun script/ci.ts <name>` — and the logic lives here, where it is
- * type-checked, runnable locally on macOS, and shares the nsh discovery and
- * spawn discipline with `script/tasks.ts` (script/lib/toolchain.ts).
+ * The gate bodies, as bun tasks. One implementation serves two entry points:
  *
- * Stages, in pipeline order:
+ *   bun run gate        the full local gate — what a PR must pass (macOS)
+ *   bun run gate:fast   layer gate + rustfmt + harness ledger — the pre-push hook
+ *   bun script/ci.ts <stage>   one stage, for `.cnb.yml`'s manual `ci/remote` run
+ *
+ * The CNB pipeline no longer runs automatically (docs/decisions.md Q119): the
+ * merge gate is local, and the remote run is an on-demand check for changes
+ * that only Linux can break. The local gate is deliberately *larger* than the
+ * remote one — it also compiles pi-harness for darwin and runs the AppKit
+ * terminal tests a Linux runner had to skip.
+ *
+ * Stages, in gate order:
  *   layer-gate  the sheet-module dependency gate (zero compile, seconds)
  *   lint-rust   cargo fmt + clippy, hard gate, both workspaces
  *   build       `nsh check app` with the malachite-bigint split retry
  *   test        the native workspace's Rust tests, then the app's headless
- *               suite (`ZU_SKIP_LIVE` set by the pipeline)
+ *               suite (`ZU_SKIP_LIVE=1`, the deterministic gate environment)
  *   manox       the manox hermetic gate, both files, `ZU_MANOX_GATE=1`
- *   harness     pi-harness's own version ledger + bun test
+ *   terminal    the macOS AppKit terminal gates, `ZU_TERMINAL_GATE=1`
+ *   harness     pi-harness's version ledger + bun test + (darwin-arm64) the compile
  *   conformance  the esctest2/ucs-detect report — report-only, never red
  *
  * `toolchain` is the one stage that stays inline shell in `.cnb.yml`: it
@@ -87,7 +95,10 @@ function test(): void {
   // workspace's member crates (`zu-ghostty`, the libghostty-vt wrapper) are
   // only tested by a workspace run.
   run(["cargo", "test", "--workspace"], join(ROOT, "native"));
-  run([nsh, "test", "app"], ROOT);
+  // `ZU_SKIP_LIVE=1` is the deterministic gate environment: no live model,
+  // no LSP, no real `dist/pi-acp` probe. The remote pipeline set it at the
+  // pipeline level; the local gate must not depend on that environment.
+  run([nsh, "test", "app"], ROOT, { ZU_SKIP_LIVE: "1" });
 }
 
 function manox(): void {
@@ -102,11 +113,54 @@ function manox(): void {
 }
 
 function harness(): void {
-  // No `bun run build`: the compile target pins bun-darwin-arm64, which a
-  // Linux runner cannot make; the version ledger and bun test are the gate.
   run([BUN, "install", "--frozen-lockfile"], HARNESS);
   run([BUN, "run", "check-version"], HARNESS);
   run([BUN, "test"], HARNESS);
+  // The remote pipeline could not run this: the compile target pins
+  // bun-darwin-arm64. On that host the gate builds the binary the app actually
+  // spawns — `bun test` alone never proves `bun build --compile` still works.
+  if (process.platform === "darwin" && process.arch === "arm64") {
+    run([BUN, "run", "build"], HARNESS);
+  }
+}
+
+/** The macOS gates the Linux pipeline could not run. The terminal is a real
+ * AppKit view; headless only proves the sheet mounts. `ZU_TERMINAL_GATE=1` is
+ * what makes these files assert instead of silently skip — a bare `nsh test`
+ * looks green while the PTY/resize/IME paths never ran. */
+function terminal(): void {
+  if (process.platform !== "darwin") {
+    console.log("terminal gate: skipped — the AppKit terminal tests need macOS");
+    return;
+  }
+  const nsh = nshBinary();
+  checkNsh(nsh);
+  for (const file of [
+    "app/tests/terminal.ui.test.tsx",
+    "app/tests/terminal-sheet.visual.test.tsx",
+    "app/tests/hero-terminals.ui.test.tsx",
+  ]) {
+    run([nsh, "test", file, "--target", "macos"], ROOT, { ZU_TERMINAL_GATE: "1" });
+  }
+}
+
+/** What the pre-push hook runs: the checks that answer in seconds (dependency
+ * layers, formatting, the harness version ledger), so a push cannot carry a
+ * violation the full gate would only surface later. */
+function fast(): void {
+  layerGate();
+  for (const workspace of CARGO_WORKSPACES) {
+    run(["cargo", "fmt", "--all", "--check"], join(ROOT, workspace));
+  }
+  run([BUN, "run", "check-version"], HARNESS);
+}
+
+/** The merge gate now that CI is off (docs/decisions.md Q119): everything the
+ * remote pipeline ran, plus the macOS-only terminal tests and the harness
+ * compile. Conformance stays out — report-only, a minute of work, no vote. */
+function gate(): void {
+  for (const stage of [layerGate, lintRust, build, test, manox, terminal, harness]) stage();
+  console.log("gate: all green");
 }
 
 function conformance(): void {
@@ -127,11 +181,14 @@ function conformance(): void {
 }
 
 const stages: Record<string, () => void> = {
+  gate,
+  fast,
   "layer-gate": layerGate,
   "lint-rust": lintRust,
   build,
   test,
   manox,
+  terminal,
   harness,
   conformance,
 };

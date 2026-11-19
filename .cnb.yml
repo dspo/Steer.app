@@ -1,13 +1,23 @@
-# Zu — CNB 云原生构建（参照 manox-app 的 GitHub CI 结构：lint → build → test）。
+# Zu — CNB 云原生构建（手动远程门禁 + 云原生开发环境）。
 #
-# 触发：main push + PR（创建 / 重开 / 源分支 push，即「MR 更新」）。
-# 单条流水线串行执行，任一 stage 失败即红，失败定位直接看 stage 名。
+# 自动 CI 已关闭（docs/decisions.md Q119）：合并门禁在本地，`bun run gate`
+# 全绿才开 PR；每次 push 的廉价检查由 `.githooks/pre-push`
+# （`bun run gate:fast`）承担。原因：产品只发 macOS，Linux 节点真正独有的
+# 只有 manox 的 libssl/libffi 链接与 glibc/rustc 差异，而同一套 stage 原本
+# 在 PR 与 main push 上重复跑两遍；本地 gate 反过来覆盖了 Linux 跑不了的
+# 终端 AppKit 用例与 pi-harness 的 darwin 编译（见 script/ci.ts 的 gate）。
 #
-# 除 toolchain 外，每个 stage 的 script 都是一行 `bun script/ci.ts <stage>`：
-# 逻辑在 script/ci.ts（与 script/tasks.ts 共享 nsh 发现/版本校验/spawn 纪律，
-# 见 script/lib/toolchain.ts），本地 macOS 跑同一入口即可复现。toolchain 是
-# 唯一的 inline shell 例外：它负责安装 bun 本身（apt/curl/rustup component），
-# 在它跑完之前没有 bun 可以执行任何 TS；仓库不放独立的 shell 脚本文件。
+# 远程复核入口：`git push origin HEAD:ci/remote`，只有这个分支触发下面的
+# 门禁流水线；main push 只在 NPC 镜像输入变化时重建镜像（ifModify）。
+# `$: vscode` 是云原生开发，`$` 下的 NPC 事件流水线不受影响。
+#
+# 以下环境约束仍适用于 ci/remote 与手动构建。单条流水线串行执行，任一 stage
+# 失败即红。除 toolchain 外，每个 stage 的 script 都是一行
+# `bun script/ci.ts <stage>`：逻辑在 script/ci.ts（与 script/tasks.ts 共享
+# nsh 发现/版本校验/spawn 纪律，见 script/lib/toolchain.ts），本地 macOS
+# 跑同一入口即可复现。toolchain 是唯一的 inline shell 例外：它负责安装 bun
+# 本身（apt/curl/rustup component），在它跑完之前没有 bun 可以执行任何 TS；
+# 仓库不放独立的 shell 脚本文件。
 #
 # 不含 bundle：`bun script/tasks.ts bundle` 依赖 macOS（AppKit 宿主、bun
 # --target=bun-darwin-arm64、codesign），CNB SAAS 只有 Linux 节点；
@@ -152,7 +162,8 @@
       script: bun script/ci.ts manox
 
     # ── pi-harness 自检：版本台账守卫（src/version.ts = package.json pin）+ bun 测试。
-    #    不跑 bun run build：其编译目标 pin 了 bun-darwin-arm64，Linux 上不适用。──
+    #    这里不跑 bun run build（编译目标 pin 了 bun-darwin-arm64）；本地
+    #    `bun run gate` 的 harness stage 在 darwin-arm64 上补这一次编译。──
     - name: pi-harness
       script: bun script/ci.ts harness
 
@@ -162,14 +173,17 @@
     - name: conformance (report-only)
       script: bun script/ci.ts conformance
 
+# ── NPC 运行镜像：底座 = 云原生开发环境（.ide/Dockerfile，工具链与 CI 同源），
+#    其上只叠 NPC 运行时 CLI（.ide/Dockerfile.npc）。产物供文件尾 $ 段的
+#    NPC 事件流水线引用。`ifModify` 让它在镜像输入（两个 Dockerfile）或本文件
+#    的构建命令变化时才重建，普通 push 不花钱。──
 main:
   push:
-    - *check-and-test
-
-    # ── NPC 运行镜像：底座 = 云原生开发环境（.ide/Dockerfile，工具链与 CI 同源），
-    #    其上只叠 NPC 运行时 CLI（.ide/Dockerfile.npc）。产物供文件尾 $ 段的
-    #    NPC 事件流水线引用。镜像不常变；嫌每次 push 都构建浪费，可改挂 web_trigger。──
-    - services:
+    - ifModify:
+        - .ide/Dockerfile
+        - .ide/Dockerfile.npc
+        - .cnb.yml
+      services:
         - docker
       stages:
         - name: build npc image
@@ -177,11 +191,15 @@ main:
             docker build -t zu-dev-base -f .ide/Dockerfile .
             docker build -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest -f .ide/Dockerfile.npc .
             docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest
-  pull_request:
+
+# 手动远程门禁：只有推送到 ci/remote 才触发（需要时
+# `git push origin HEAD:ci/remote`）。平时 push 与 PR 都不再花钱。
+"ci/remote":
+  push:
     - *check-and-test
 
 # ── 云原生开发（点分支页「云原生开发」按钮）：用 .ide/Dockerfile 构建镜像，
-#    把 CI 同款工具链预装进开发环境，打开即可 bun run check / test。
+#    把同一套工具链预装进开发环境，打开即可 bun run check / test。
 $:
   vscode:
     - docker:

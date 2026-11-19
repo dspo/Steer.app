@@ -1,0 +1,9 @@
+#!/bin/sh
+# The merge gate is local (docs/decisions.md Q119): this is its cheap half.
+# `bun run gate` runs in full before a PR; the hook only stops a push that
+# already breaks dependency layers, formatting, or the harness version ledger.
+#
+# Install per clone/worktree with `bun run hooks:install` (sets core.hooksPath).
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+exec bun script/ci.ts fast
