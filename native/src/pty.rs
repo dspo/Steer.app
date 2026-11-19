@@ -289,6 +289,12 @@ impl Process {
                 pixel_height: 0,
             })
             .map_err(|error| format!("cannot create a pty: {error}"))?;
+        // Declare the session's own tty to the program (issue #73): tools
+        // can redirect an explicit write at it, e.g.
+        // `printf '\033]2;t\007' > "$ZU_TTY"`.
+        if let Some(tty) = pair.master.tty_name() {
+            builder.env("ZU_TTY", tty);
+        }
         let child = pair
             .slave
             .spawn_command(builder)
@@ -553,7 +559,56 @@ impl Pty {
 
 #[cfg(test)]
 mod tests {
-    use super::Decoder;
+    use super::{Decoder, Process, PtyExit, PtyOptions};
+
+    /// The program sees its own tty as `ZU_TTY` (issue #73): a tool can
+    /// redirect an explicit title write at it, e.g.
+    /// `printf '\033]2;t\007' > "$ZU_TTY"`.
+    #[test]
+    fn the_program_sees_its_own_tty_as_zu_tty() {
+        let (chunks, reader) = std::sync::mpsc::channel::<String>();
+        let (exits, waiter) = std::sync::mpsc::channel::<PtyExit>();
+        let process = Process::spawn(
+            PtyOptions {
+                command: Some("/bin/sh".into()),
+                args: Some(vec!["-c".into(), "printf 'TTY=%s\n' \"$ZU_TTY\"".into()]),
+                cwd: None,
+                env: None,
+                cols: None,
+                rows: None,
+            },
+            move |bytes| {
+                let _ = chunks.send(String::from_utf8_lossy(bytes).into_owned());
+            },
+            move |exit: PtyExit| {
+                let _ = exits.send(exit);
+            },
+        )
+        .expect("sh starts");
+        waiter
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("sh exits");
+        // The exit can beat the last chunk off the reader thread: close
+        // the pty (which drops the sender), then drain until the channel
+        // disconnects or a deadline passes.
+        drop(process);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let mut text = String::new();
+        loop {
+            match reader.recv_timeout(std::time::Duration::from_millis(200)) {
+                Ok(chunk) => text.push_str(&chunk),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+                    if std::time::Instant::now() < deadline => {}
+                Err(_) => break,
+            }
+        }
+        let tty = text
+            .split("TTY=")
+            .nth(1)
+            .unwrap_or_else(|| panic!("no ZU_TTY in the output: {text:?}"))
+            .trim();
+        assert!(tty.starts_with("/dev/"), "tty path: {tty:?}");
+    }
 
     #[test]
     fn a_character_split_across_reads_survives() {

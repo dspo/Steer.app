@@ -775,4 +775,166 @@ mod tests {
         assert_eq!(grid(&shared), (77, 33));
         assert!(shared.lock().term.text_all().contains("hello"));
     }
+
+    // -- Titles (OSC 0/2), the program-facing half of issue #73. ----------
+
+    /// A session with its event receiver: title tests read what the
+    /// emulator reported, not just the final state.
+    fn session() -> (
+        Arc<Shared>,
+        tokio::sync::mpsc::UnboundedReceiver<TerminalSessionEvent>,
+    ) {
+        let (events, receiver) = tokio::sync::mpsc::unbounded_channel();
+        (Shared::build(events), receiver)
+    }
+
+    /// Every pending title event's payload, in arrival order.
+    fn title_texts(
+        receiver: &mut tokio::sync::mpsc::UnboundedReceiver<TerminalSessionEvent>,
+    ) -> Vec<String> {
+        let mut out = Vec::new();
+        while let Ok(event) = receiver.try_recv() {
+            if event.kind == "title" {
+                out.push(event.text.unwrap_or_default());
+            }
+        }
+        out
+    }
+
+    /// The emulator's current title.
+    fn title(shared: &Shared) -> String {
+        shared.lock().term.title().unwrap_or_default()
+    }
+
+    /// OSC 2 with the BEL terminator sets the title.
+    #[test]
+    fn osc2_with_bel_sets_the_title() {
+        let (shared, mut events) = session();
+        shared.feed(b"\x1b]2;hello\x07");
+        assert_eq!(title(&shared), "hello");
+        assert_eq!(title_texts(&mut events), vec!["hello".to_owned()]);
+    }
+
+    /// OSC 2 with the ST terminator (ESC \) sets the title.
+    #[test]
+    fn osc2_with_st_sets_the_title() {
+        let (shared, mut events) = session();
+        shared.feed(b"\x1b]2;hello\x1b\\");
+        assert_eq!(title(&shared), "hello");
+        assert_eq!(title_texts(&mut events), vec!["hello".to_owned()]);
+    }
+
+    /// OSC 2 with the C1 string terminator (0x9C) does not set the title:
+    /// in UTF-8 mode the byte is not a terminator (xterm parity), and the
+    /// kernel recovers by cancelling the open sequence — what follows
+    /// parses fresh, nothing sticks. Tools end titles with BEL or ESC \.
+    #[test]
+    fn osc2_with_the_c1_terminator_cancels_and_recovers() {
+        let (shared, _) = session();
+        shared.feed(b"\x1b]2;hello\x9c");
+        assert_eq!(title(&shared), "");
+        // The cancelled sequence leaves no residue behind.
+        shared.feed(b"\x1b]2;real\x07");
+        assert_eq!(title(&shared), "real");
+    }
+
+    /// OSC 0 (icon name + title) feeds the same single title projection:
+    /// Zu keeps one title, no icon/title split.
+    #[test]
+    fn osc0_feeds_the_same_single_title() {
+        let (shared, _) = session();
+        shared.feed(b"\x1b]0;icontitle\x07");
+        assert_eq!(title(&shared), "icontitle");
+    }
+
+    /// A title sequence split at any byte boundary reassembles: the kernel
+    /// parses a byte stream, not writes.
+    #[test]
+    fn title_reassembles_across_any_split_point() {
+        let seq = b"\x1b]2;hello\x07";
+        for split in 1..seq.len() {
+            let (shared, _) = session();
+            shared.feed(&seq[..split]);
+            shared.feed(&seq[split..]);
+            assert_eq!(title(&shared), "hello", "split at {split}");
+        }
+    }
+
+    /// A UTF-8 title split mid-character survives chunking.
+    #[test]
+    fn utf8_title_survives_mid_character_split() {
+        let mut seq = b"\x1b]2;".to_vec();
+        seq.extend_from_slice("中文标题".as_bytes());
+        seq.push(0x07);
+        // '中' is three bytes: cut after its first and its second byte, and
+        // between characters.
+        for split in [5, 6, 7] {
+            let (shared, _) = session();
+            shared.feed(&seq[..split]);
+            shared.feed(&seq[split..]);
+            assert_eq!(title(&shared), "中文标题", "split at {split}");
+        }
+    }
+
+    /// Titles set on the alt screen project the same way.
+    #[test]
+    fn title_sets_on_the_alt_screen() {
+        let (shared, _) = session();
+        shared.feed(b"\x1b[?1049h");
+        shared.feed(b"\x1b]2;alt\x07");
+        assert_eq!(title(&shared), "alt");
+    }
+
+    /// Re-setting the title reports the new value: the event payload is
+    /// the emulator's full current title, not a delta.
+    #[test]
+    fn retitle_reports_the_new_title() {
+        let (shared, mut events) = session();
+        shared.feed(b"\x1b]2;first\x07");
+        assert_eq!(title_texts(&mut events), vec!["first".to_owned()]);
+        shared.feed(b"\x1b]2;second\x07");
+        assert_eq!(title_texts(&mut events), vec!["second".to_owned()]);
+    }
+
+    /// An empty title sequence still reports: the kernel hands up the
+    /// empty string and the projection decides what it means (issue #73:
+    /// keep the session name, do not blank the tab).
+    #[test]
+    fn empty_title_sequence_reports_an_empty_title() {
+        let (shared, mut events) = session();
+        shared.feed(b"\x1b]2;\x07");
+        assert_eq!(title(&shared), "");
+        assert_eq!(title_texts(&mut events), vec![String::new()]);
+    }
+
+    /// Titles beyond the kernel's 1024-byte cap are truncated, not
+    /// dropped, and ASCII payload survives the truncation verbatim.
+    #[test]
+    fn oversize_title_is_capped_not_dropped() {
+        let (shared, mut events) = session();
+        let mut seq = b"\x1b]2;".to_vec();
+        seq.extend(std::iter::repeat_n(b'x', 2000));
+        seq.push(0x07);
+        shared.feed(&seq);
+        let got = title(&shared);
+        assert_eq!(got.len(), 1024);
+        assert!(got.chars().all(|c| c == 'x'));
+        assert_eq!(title_texts(&mut events).len(), 1);
+    }
+
+    /// The cap cuts by bytes: a multi-byte character straddling the limit
+    /// must not panic the kernel, and what comes out stays a string.
+    #[test]
+    fn oversize_title_cut_inside_a_utf8_character_stays_a_string() {
+        let (shared, _) = session();
+        let mut seq = b"\x1b]2;".to_vec();
+        seq.extend(std::iter::repeat_n(b'x', 1023));
+        seq.extend_from_slice("中".as_bytes());
+        seq.push(0x07);
+        shared.feed(&seq);
+        let got = title(&shared);
+        assert!(!got.is_empty());
+        assert!(got.starts_with("xxxx"));
+        assert_eq!(title(&shared).len(), got.len());
+    }
 }
