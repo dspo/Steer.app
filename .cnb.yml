@@ -165,6 +165,18 @@
 main:
   push:
     - *check-and-test
+
+    # ── NPC 运行镜像：底座 = 云原生开发环境（.ide/Dockerfile，工具链与 CI 同源），
+    #    其上只叠 NPC 运行时 CLI（.ide/Dockerfile.npc）。产物供文件尾 $ 段的
+    #    NPC 事件流水线引用。镜像不常变；嫌每次 push 都构建浪费，可改挂 web_trigger。──
+    - services:
+        - docker
+      stages:
+        - name: build npc image
+          script: |
+            docker build -t zu-dev-base -f .ide/Dockerfile .
+            docker build -t ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest -f .ide/Dockerfile.npc .
+            docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest
   pull_request:
     - *check-and-test
 
@@ -181,3 +193,39 @@ $:
       stages:
         - name: toolchain ready
           script: nsh --version && bun --version && cargo --version
+
+  # ── 自定义 NPC（角色定义在 .cnb/settings.yml）：运行环境 = 本仓库开发环境镜像
+  #    （bun/cargo/nsh 全套工具链），而非 cnbcool/default-npc 的裸环境。配置合并
+  #    按事件独立进行，两个事件都必须覆盖，缺一个仍走系统默认；且要合入 main
+  #    才生效（issue 事件跑默认分支，PR 事件跑目标分支）。──
+  issue.comment@npc:
+    - docker:
+        image: ${CNB_DOCKER_REGISTRY}/${CNB_NPC_SLUG_LOWERCASE}:latest
+        volumes:
+          # 复用 CI 同款缓存卷；刻意不含 /root/.nsh——NPC 镜像已把 nsh 烤进该路径，
+          # COW 卷会把它盖掉（见文件头「卷只能挂在镜像里本来是空的路径」）。
+          - /usr/local/cargo/registry
+          - /usr/local/cargo/git
+          - /root/.bun/install/cache
+          - ./app/target
+          - ./native/target
+          - /root/.cache/zu-ghostty
+          - /root/.cache/steer-conformance
+      stages:
+        - name: npc go
+          type: npc:go
+
+  pull_request.comment@npc:
+    - docker:
+        image: ${CNB_DOCKER_REGISTRY}/${CNB_NPC_SLUG_LOWERCASE}:latest
+        volumes:
+          - /usr/local/cargo/registry
+          - /usr/local/cargo/git
+          - /root/.bun/install/cache
+          - ./app/target
+          - ./native/target
+          - /root/.cache/zu-ghostty
+          - /root/.cache/steer-conformance
+      stages:
+        - name: npc go
+          type: npc:go

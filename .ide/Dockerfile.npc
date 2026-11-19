@@ -1,0 +1,12 @@
+# NPC 运行镜像：以云原生开发环境（.ide/Dockerfile，由 .cnb.yml 的 main push
+# 流水线构建为本地 tag zu-dev-base）为底座，只叠 NPC 运行时 CLI。工具链层与
+# CI/开发环境天然同源，改工具链只动 .ide/Dockerfile，本文件不重复维护。
+FROM zu-dev-base
+
+# ffmpeg：NPC 读取超限图片时压缩用（docs.cnb.cool/zh/build/npc.md）。
+# CLI 全部经 bun 全局 shim 运行——镜像无 node/npm，与 .ide/Dockerfile 同口径。
+RUN apt-get update -qq \
+  && apt-get install -y -qq --no-install-recommends ffmpeg \
+  && rm -rf /var/lib/apt/lists/* \
+  && bun install -g @cnbcool/cnb-cli skills \
+  && skills add https://cnb.cool/cnb/skills/cnb-skill.git -g -y
