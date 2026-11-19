@@ -183,11 +183,13 @@ function ContainerRow(props: { container: any }) {
         marginHorizontal: 8,
         marginVertical: 1,
         paddingVertical: 7,
-        paddingLeft: 9,
+        paddingLeft: 6,
         paddingRight: 6,
         borderRadius: 10,
         backgroundColor: active() ? token("card") : "transparent",
         boxShadow: active() ? shadowCard() : "none",
+        borderLeftWidth: 3,
+        borderLeftColor: active() ? token("primary") : "transparent",
         ...motionStyle("medium"),
       }}
     >
