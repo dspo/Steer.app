@@ -17,6 +17,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     ffi::c_void,
+    ptr::NonNull,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -30,7 +31,6 @@ use nsh_platform_macos::{ComponentContext, NativeComponent};
 use objc2::{
     AnyThread, ClassType, DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class,
     msg_send,
-    ptr::NonNull,
     rc::{Retained, Weak},
     runtime::{AnyObject, NSObjectProtocol, ProtocolObject, Sel},
     sel,
@@ -276,15 +276,15 @@ impl State {
     }
 
     /// Uploads new image generations and drops those absent from this frame.
-    fn upload_images(
-        &mut self,
+    fn upload_images<'a>(
+        images: &'a mut HashMap<(u32, u64), CFRetained<CGImage>>,
         session: &Arc<Shared>,
         placements: &[Placement],
-    ) -> Vec<(Placement, &CGImage)> {
+    ) -> Vec<(Placement, &'a CGImage)> {
         let mut uploaded = HashMap::new();
         for p in placements {
             let key = (p.image_id, p.generation);
-            if self.images.contains_key(&key) {
+            if images.contains_key(&key) {
                 continue;
             }
             let image = if let Some(image) = uploaded.get(&p.image_id) {
@@ -298,10 +298,10 @@ impl State {
                 uploaded.get(&p.image_id).unwrap()
             };
             if let Some(cg) = image.as_ref().and_then(upload_image) {
-                self.images.insert(key, cg);
+                images.insert(key, cg);
             }
         }
-        self.images.retain(|key, _| {
+        images.retain(|key, _| {
             placements
                 .iter()
                 .any(|p| (p.image_id, p.generation) == *key)
@@ -309,7 +309,7 @@ impl State {
         placements
             .iter()
             .filter_map(|p| {
-                let cg = self.images.get(&(p.image_id, p.generation))?;
+                let cg = images.get(&(p.image_id, p.generation))?;
                 Some((*p, cg.as_ref()))
             })
             .collect()
@@ -708,7 +708,6 @@ define_class!(
                 let Ok(frame) = frame else {
                     return;
                 };
-                let images = s.upload_images(&session, &frame.images);
                 let now = Instant::now();
                 if s.bells.is_some_and(|seen| seen != bells) {
                     s.clock.ring(now);
@@ -753,6 +752,7 @@ define_class!(
                     flash: s.clock.flash(now),
                     scrollbar: scrollbar(bar, s.clock.bar(now), s.clock.bar_held()),
                 };
+                let images = State::upload_images(&mut s.images, &session, &frame.images);
                 render::draw(
                     &cg,
                     (bounds.size.width, bounds.size.height),
@@ -1819,7 +1819,7 @@ fn upload_image(image: &Image) -> Option<CFRetained<CGImage>> {
         )
     }?;
     Box::leak(boxed);
-    let space = CGColorSpace::with_name(Some(&kCGColorSpaceSRGB));
+    let space = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB }));
     // SAFETY: the provider holds exactly `len` RGBA bytes and every other
     // argument describes that same buffer.
     unsafe {
@@ -1842,7 +1842,7 @@ fn upload_image(image: &Image) -> Option<CFRetained<CGImage>> {
 unsafe extern "C-unwind" fn release_rgba(_info: *mut c_void, data: NonNull<c_void>, len: usize) {
     // SAFETY: `data` and `len` are the boxed slice handed to the provider.
     unsafe {
-        drop(Box::from_raw(std::slice::from_raw_parts_mut(
+        drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
             data.as_ptr() as *mut u8,
             len,
         )));

@@ -6,7 +6,7 @@
 //! moves another cell. Shapes are cached per grapheme and style, so a frame
 //! costs a lookup and a glyph batch per run of one font and color.
 
-use std::{collections::HashMap, ptr::NonNull, rc::Rc};
+use std::{collections::HashMap, ffi::c_int, ptr::NonNull, rc::Rc};
 
 use objc2_core_foundation::{
     CFAttributedString, CFDictionary, CFRange, CFRetained, CFString, CFType, CGAffineTransform,
@@ -440,6 +440,7 @@ fn cell_colors(cell: &zu_ghostty::Cell, palette: &Palette) -> (Rgba, Option<Rgba
 
 /// Draws `frame` into `cg`, a context flipped to the view's top-left
 /// origin, over a view of `size` (width, height) points.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn draw(
     cg: &CGContext,
     size: (f64, f64),

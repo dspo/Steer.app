@@ -80,7 +80,7 @@ pub struct GhosttyColorRgb {
 }
 
 /// A NULL allocator selects the library default everywhere we call it.
-type GhosttyAllocator = c_void;
+pub type GhosttyAllocator = c_void;
 
 // ---------------------------------------------------------------------------
 // Terminal (terminal.h)

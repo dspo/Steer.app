@@ -1974,7 +1974,7 @@ pub fn install_png_decoder() {
 /// expected by ghostty's image storage and kitty f=32 payloads.
 #[cfg(target_os = "macos")]
 fn unpremultiply_rgba(pixels: &mut [u8]) {
-    for pixel in pixels.chunks_exact_mut(4) {
+    for pixel in pixels.as_chunks_mut::<4>().0 {
         let a = pixel[3] as u16;
         if a == 0 {
             pixel[0] = 0;
@@ -2022,7 +2022,7 @@ unsafe extern "C-unwind" fn decode_png(
         if ptr.is_null() {
             return false;
         }
-        let space = CGColorSpace::with_name(Some(&objc2_core_graphics::kCGColorSpaceSRGB));
+        let space = CGColorSpace::with_name(Some(objc2_core_graphics::kCGColorSpaceSRGB));
         let Some(provider) =
             CGDataProvider::with_data(std::ptr::null_mut(), ptr as *const c_void, len, None)
         else {
@@ -2046,7 +2046,7 @@ unsafe extern "C-unwind" fn decode_png(
             return false;
         };
         let Some(context) = objc2_core_graphics::CGBitmapContextCreate(
-            ptr,
+            ptr.cast::<c_void>(),
             width,
             height,
             8,
@@ -2067,7 +2067,7 @@ unsafe extern "C-unwind" fn decode_png(
         );
         // CoreGraphics wrote premultiplied RGBA; the ghostty image contract
         // is straight RGBA (f=32 payloads are stored without decoding).
-        unpremultiply_rgba(std::slice::from_raw_parts_mut(ptr as *mut u8, len));
+        unpremultiply_rgba(std::slice::from_raw_parts_mut(ptr, len));
         (*out).width = width as u32;
         (*out).height = height as u32;
         (*out).data = ptr;
@@ -2220,8 +2220,11 @@ mod image_tests {
         let frame = RenderState::new().unwrap().snapshot(&term).unwrap();
         assert_eq!(frame.images.len(), 1, "one inline placement");
         let p = frame.images[0];
-        assert_eq!((p.cols, p.rows), (2, 1));
-        assert_eq!(p.size_px, (20, 20));
+        // The pinned kernel spans cells by ceil(image_px / cell_px): a
+        // 2x2 image with 10x20 cells covers one cell and reports its
+        // native pixel size, centered inside it.
+        assert_eq!((p.cols, p.rows), (1, 1));
+        assert_eq!(p.size_px, (2, 2));
         let image = term.kitty_image(p.image_id).unwrap();
         assert_eq!((image.width, image.height), (2, 2));
         assert_eq!(
@@ -2770,9 +2773,9 @@ mod query_tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn unpremultiply_restores_straight_rgba() {
-        let mut pixels = [128, 0, 0, 128, 17, 34, 51, 0, 7, 8, 9, 255];
+        let mut pixels = [128, 0, 0, 128, 17, 34, 51, 128, 7, 8, 9, 255];
         super::unpremultiply_rgba(&mut pixels);
-        assert_eq!(pixels, [255, 0, 0, 128, 34, 68, 102, 0, 7, 8, 9, 255]);
+        assert_eq!(pixels, [255, 0, 0, 128, 34, 68, 102, 128, 7, 8, 9, 255]);
     }
 
     /// `CSI 8 t` reaches the callback and touches no grid: the embedder
