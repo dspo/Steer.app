@@ -133,7 +133,17 @@ fn configure_manox_home() {
 /// covers the kernel's startup bundle (global tokio runtime, object store,
 /// provider registry, thread store, skills/commands/plugins).
 pub(crate) fn boot() -> Result<Arc<AhpRuntime>, String> {
-    // The env must land before any kernel initialization reads it.
+    // The env must land before any kernel initialization reads it. In test
+    // builds the env reads and writes below (`configure_manox_home`, its
+    // hermetic branch, the kernel's `$HOME` provider lookup in init) are
+    // process-global facts a parallel test mutates under
+    // [`test_support::ENV_LOCK`] — take the same lock, or the home tests'
+    // redirected `HOME` gets resolved here mid-guard and their legacy root
+    // is migrated away under them (the flake this used to be). Production
+    // boots have no concurrent mutator; the lock compiles away without
+    // `cfg(test)`.
+    #[cfg(test)]
+    let _env_lock = test_support::ENV_LOCK.lock().unwrap();
     configure_manox_home();
     // The kernel must exist before the bridge fills its registry, and both
     // must precede the runtime fast path below: a boot that finds the
@@ -540,6 +550,24 @@ pub(crate) mod test_support {
     use std::path::PathBuf;
     use std::sync::OnceLock;
 
+    /// The one lock over the process-global env facts tests read and write:
+    /// `HOME`, `MANOX_HOME`, `MANOX_CLAUDE_HOME`. Rust runs a crate's tests
+    /// on parallel threads and `std::env` has no per-thread view, so a
+    /// mutator racing another test's read is a lost update — the migration
+    /// test met exactly that: a session test's boot ran its
+    /// `configure_manox_home` step against the `HOME` the guard had just
+    /// redirected (and the `MANOX_HOME` it had just removed), so two
+    /// migrations raced on the same temp root, one rename lost with ENOENT,
+    /// and the assertions fell over — poisoning every later env test with
+    /// them. Every mutator holds this lock for its whole test;
+    /// [`isolated_home`] holds it for its init writes (the OnceLock only
+    /// serializes the closure against itself, not against other tests'
+    /// reads), and [`super::boot`] holds it in test builds, because its
+    /// `configure_manox_home` step and the kernel's `$HOME` provider lookup
+    /// read the same vars on the session's thread. Lock order is
+    /// `ENV_LOCK` → the boot's own locks; nothing takes them in reverse.
+    pub(crate) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     /// The test process's isolated state root: `MANOX_HOME` (and the
     /// Claude-ecosystem root with it) point at one temp dir for the whole
     /// test process, set before the first [`super::boot`]. `HOME` is
@@ -553,6 +581,10 @@ pub(crate) mod test_support {
     pub(crate) fn isolated_home() -> PathBuf {
         static HOME: OnceLock<PathBuf> = OnceLock::new();
         HOME.get_or_init(|| {
+            // The writes land under ENV_LOCK: a parallel test may be mid-read
+            // of the same vars (the OnceLock serializes this closure against
+            // itself only).
+            let _lock = ENV_LOCK.lock().unwrap();
             let home =
                 std::env::temp_dir().join(format!("zu-manox-test-home-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&home);
@@ -658,10 +690,10 @@ mod pi_bridge_tests {
 #[cfg(test)]
 mod home_tests {
     use super::*;
+    use crate::model_catalog::pi_providers_yaml;
+    use crate::real::test_support::ENV_LOCK;
+    use std::sync::OnceLock;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::{Mutex, OnceLock};
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     struct EnvGuard {
         home: Option<std::ffi::OsString>,
