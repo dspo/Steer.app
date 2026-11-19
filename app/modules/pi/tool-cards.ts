@@ -18,6 +18,7 @@ import type { JSX } from "nsh";
 /** What a card renderer receives: the tool, its details, its state. */
 export interface ToolCardProps {
   name: string;
+  entryId?: string;
   details: unknown;
   state: "running" | "done" | "failed";
 }

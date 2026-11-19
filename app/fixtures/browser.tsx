@@ -13,6 +13,7 @@ import {
   applyBrowserNavigation,
   browserPage,
   logBrowserMessage,
+  openBrowserUrl,
   reportBrowserError,
 } from "../modules/browser/store";
 import { panelIds, visiblePanels } from "../core/dock";
@@ -34,6 +35,9 @@ registerAllModules();
 
 const CONTAINER = "pi:browser-fixture";
 const OTHER_CONTAINER = "pi:browser-fixture-2";
+
+// Written by the test host with `zu/fs` before this fixture opens.
+const FILE_URL = "file:///tmp/zu-visualize-live.html";
 
 const records = [
   {
@@ -107,6 +111,10 @@ function activeBrowserId(): string | null {
   return panelIds(layout()).find((id) => id.startsWith("webview:")) ?? null;
 }
 
+function openFilePage(): void {
+  openBrowserUrl(CONTAINER, FILE_URL);
+}
+
 function seedNavigation(): void {
   const id = activeBrowserId();
   if (!id) return;
@@ -172,6 +180,7 @@ function BrowserFixture() {
       <Workbench />
       <View class="flex-row items-center gap-1.5 px-3" style={{ height: 24 }}>
         <FixtureButton id="open-hero" label="hero" onPress={() => openHomeSheet()} />
+        <FixtureButton id="open-file-page" label="open file" onPress={openFilePage} />
         <FixtureButton id="seed-nav" label="seed nav" onPress={seedNavigation} />
         <FixtureButton id="seed-error" label="seed error" onPress={seedError} />
         <FixtureButton id="seed-message" label="seed message" onPress={seedMessage} />

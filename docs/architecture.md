@@ -199,6 +199,8 @@ App.tsx（装配点：startModules() + 跟随系统语言 + lifecycle）
 - **scratch 画布**：无 cwd/进程/注册表/持久化；提交后铸真实容器并迁移 sheet。
 - **终端是容器资源**：一个容器可多个 `terminal:{containerId}:{n}`，PTY 按资源 id 记账；归档杀全部。
 - **浏览器**：每 sheet 一个 `WebView`；不可见时卸载、按 store URL 重挂载（nsh 没有 pause API）。
+  `visualize` 的 HTML/图片产物由卡片显式传入 `file://`（`browser.open` 的 `direct`），
+  地址栏仍只允许 http/https。
 
 ### 4.3 布局与状态
 
@@ -360,6 +362,8 @@ Casing II；C8 三包布局；ACP cutover（P0–P4：distro ACP 入口、`zu/ac
 - **nsh 菜单崩溃**：pin 的 nsh 在菜单 owner 被卸载时 panic（`signal read or written after its owner was disposed`）；
   测试打日志但通过，属上游缺陷。
 - **WebView**：`target=_blank`/`window.open` 无回调（nsh 0.4.0）；深色页面可能仍用黑字。
+  `visualize` 的本地 HTML/图片走 `file://`：nsh WKWebView 接受该 scheme，但**未验证脚本/网络沙箱**；
+  v1 卡片提示“本地文件；脚本会执行”，不声称隔离，也不为此引入回环服务。
 - **LSP**：每容器×语言族一个进程；诊断只保留打开文件；全文 `didChange`；命令解析保留 rustup symlink。
 - **malachite-bigint 双版本**：生成的 `.nsh/rust/Cargo.lock` 需 `cargo update -p malachite-bigint@0.14.0 --precise 0.12.0`
   （`native/manox/Cargo.toml` 有注释）。

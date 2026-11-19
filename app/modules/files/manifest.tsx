@@ -1,5 +1,5 @@
 import { DiffBody, EditorBody, FilesBody } from "./view";
-import { diffSheetPaths, editorDocs, editorPathFor, editorSheetId, editorSheetPath, openEditorSheet, reloadEditor, saveActiveEditor } from "./editors";
+import { diffSheetId, diffSheetPaths, editorDocs, editorPathFor, editorSheetId, editorSheetPath, openDiffSheet, openEditorSheet, reloadEditor, saveActiveEditor } from "./editors";
 import { requestReveal } from "../../domains/lsp";
 import { baseName } from "../../domains/fs";
 import { activeContainerId, containers, openSheet } from "../../core/containers";
@@ -62,6 +62,16 @@ export const filesModule: SheetModule = {
       const id = editorSheetId(containerId, real);
       if (range) requestReveal(id, range as never);
       return id;
+    },
+    "diff.open": (payload) => {
+      const { containerId = null, before, path } = (payload ?? {}) as {
+        containerId?: string | null;
+        before?: string;
+        path?: string;
+      };
+      if (!containerId || !before || !path || before === path) return null;
+      openDiffSheet(containerId, before, path);
+      return diffSheetId(containerId, before, path);
     },
     "editor.saveActive": () => {
       saveActiveEditor();

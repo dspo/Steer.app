@@ -451,6 +451,11 @@ export const K = {
     open: "app.browser.open",
     view: "app.browser.view",
   },
+  visualize: {
+    open: "app.visualize.open",
+    compare: "app.visualize.compare",
+    localScripts: "app.visualize.localScripts",
+  },
   sheet: {
     problemsTitle: "app.sheet.problems.title",
     problemsNote: "app.sheet.problems.note",

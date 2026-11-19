@@ -107,17 +107,26 @@ export function nextBrowserInstance(containerId: string, ids: string[]): number 
  * container can hold several; `url`, the page it opens on. A page always
  * belongs to a container: the start page mints one for an external browser.
  */
-export function openBrowserSheet(containerId: string, url?: string): string {
+export function openBrowserSheet(containerId: string, url?: string, direct = false): string {
   const ids = [...panelIds(layout()), ...Object.keys(pages())];
   const id = browserSheetId(containerId, nextBrowserInstance(containerId, ids));
   ensureBrowserPage(id);
   // A page opened for an address (a link from another sheet) loads it at
   // mount, as an address the user typed: only what `normalizeAddress` takes.
+  // `direct` is the explicit opt-in for host-generated URLs (a visualize
+  // artifact's file:// URL); the address bar itself still refuses them.
   const address = url ? normalizeAddress(url) : null;
-  if (address?.ok) setBrowserNavigating(id, address.url);
+  if (direct && url) setBrowserNavigating(id, url);
+  else if (address?.ok) setBrowserNavigating(id, address.url);
   noteSheetOpened(id);
   setLayout(appendSheet(layout(), id));
   return id;
+}
+
+/** Opens a browser sheet at a host-generated file URL, bypassing address policy. */
+export function openBrowserUrl(containerId: string, url: string): string {
+  if (!url.startsWith("file://")) return openBrowserSheet(containerId, url);
+  return openBrowserSheet(containerId, url, true);
 }
 
 /** Mints the external container a browser page lives in when the start page

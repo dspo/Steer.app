@@ -1,24 +1,22 @@
 import { expect, open, test } from "nsh/test";
+import { Fs } from "zu/native";
 
 // M10's real-page acceptance. A target that draws the app loads the pages
 // below and the tab titles/history buttons come from the WKWebView itself:
 //
-//   nsh test browser.live.test.tsx --target macos
+//   ZU_BROWSER_LIVE=1 nsh test app/tests/browser.live.test.tsx --target macos
 //
 // The headless host draws no web view, so there the test checks the sheet's
 // default page and returns (the same command without `--target` passes
 // trivially; that is not evidence of a page). The screenshots are written to
-// docs/evidence/ by the `--target macos` run.
+// docs/evidence/ by the explicit `--target macos` run; CI's headless test
+// stage must never wait on real network pages.
 
-/** Whether this run draws the app (a screenshot exists only on a real target). */
-async function drawsTheApp(app: any): Promise<boolean> {
-  try {
-    const shot = await app.screenshot();
-    return shot.length > 0;
-  } catch {
-    return false;
-  }
-}
+const FILE_PAGE = "/tmp/zu-visualize-live.html";
+const FILE_HTML = '<!doctype html><meta charset="utf-8"><title>Zu visualize live</title><h1>Zu visualize file page</h1><script>window.postMessage("visualize-live-script")</script>';
+
+/** Only an explicit macOS live run loads network pages and writes evidence. */
+const liveBrowserTest = process.env?.["ZU_BROWSER_LIVE"] === "1" ? test : test.skip;
 
 function browserLine(app: any): string {
   return app.texts().find((text: string) => text.startsWith("webview:") && text.includes("|")) ?? "";
@@ -49,9 +47,10 @@ async function load(app: any, address: string, title: string | RegExp): Promise<
   );
 }
 
-test(
+liveBrowserTest(
   "the browser sheet loads a real page, a document page and a search, and walks history",
   async () => {
+    await Fs.write("/tmp", "zu-visualize-live.html", FILE_HTML, null, "utf-8");
     const app = await open("../fixtures/browser.tsx", {
       width: 1100,
       height: 800,
@@ -62,11 +61,20 @@ test(
     await app.press("id:open-browser");
     await app.waitFor("id:browser-address");
 
-    if (!(await drawsTheApp(app))) {
-      // Headless: nothing loads. The default page is still the sheet's state.
-      expect(app.count("id:browser-empty")).toBe(1);
-      return;
-    }
+    // The visualize host path: a file:// URL that the address bar itself
+    // refuses, opened directly from a tool-generated artifact. The title,
+    // heading and script message come from the WKWebView, not from the store.
+    await app.press("id:open-file-page");
+    await app.waitUntil(
+      () => {
+        const fields = browserLine(app).split("|");
+        return fields[2] === "Zu visualize live" && fields[3] === "idle" && fields[5] === "-";
+      },
+      { timeout: 45000 },
+    );
+    expect(app.texts()).toContain("Zu visualize file page");
+    expect(app.texts()).toContain("visualize-live-script");
+    await app.screenshot("docs/evidence/visualize-file-page.png");
 
     // A bare domain through the address bar really loads.
     await load(app, "example.com", "Example Domain");

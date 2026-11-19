@@ -66,7 +66,12 @@ export function ToolBlock(props: { entry: () => ToolEntry }) {
         const Card = renderer();
         return (
           <View testID="tool-card">
-            <Card name={entry().name ?? entry().title} details={details()} state={state()} />
+            <Card
+              name={entry().name ?? entry().title}
+              entryId={entry().id}
+              details={details()}
+              state={state()}
+            />
           </View>
         );
       }}

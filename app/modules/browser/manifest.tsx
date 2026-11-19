@@ -1,4 +1,4 @@
-import { browserTabTitle, createBrowserContainer, dropBrowserPages, openBrowserSheet } from "./store";
+import { browserTabTitle, createBrowserContainer, dropBrowserPages, openBrowserSheet, openBrowserUrl } from "./store";
 import { BrowserBody } from "./view";
 import { K, t } from "../../ui/i18n";
 import { activeContainerId, containerError } from "../../core/containers";
@@ -31,13 +31,15 @@ export const browserModule: SheetModule = {
   ],
   intents: {
     "browser.open": (payload) => {
-      const { containerId = null, url } = (payload ?? {}) as {
+      const { containerId = null, url, direct } = (payload ?? {}) as {
         containerId?: string | null;
         url?: string;
+        direct?: boolean;
       };
       // A page is a container's resource; the start page mints one for an
       // external browser. An intent without a container has nothing to open.
       if (!containerId) return null;
+      if (url && direct) return openBrowserUrl(containerId, url);
       return openBrowserSheet(containerId, url);
     },
   },

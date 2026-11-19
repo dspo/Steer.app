@@ -16,6 +16,7 @@ import {
   nextBrowserInstance,
   normalizeAddress,
   openBrowserSheet,
+  openBrowserUrl,
   parseBrowserSheetId,
   reportBrowserError,
   setBrowserNavigating,
@@ -185,4 +186,17 @@ test("a browser sheet opened for a link starts on it", () => {
   const refused = openBrowserSheet("c-link", "javascript:alert(1)");
   expect(browserPage(refused).url).toBeNull();
   dropBrowserPages("c-link");
+});
+
+test("a host-generated URL opens directly without widening the address bar", () => {
+  const id = browserSheetId("pi:visualize", 1);
+  const url = "file:///Users/me/.zu/artifacts/mockup.html";
+  openBrowserUrl("pi:visualize", url);
+  expect(browserPage(id).url).toBe(url);
+  expect(browserPage(id).loading).toBe(true);
+  // The address policy itself still refuses file URLs.
+  expect(normalizeAddress(url)).toEqual({ ok: false, reason: "unsupported" });
+  // A non-file URL cannot borrow the host-only bypass.
+  openBrowserUrl("pi:visualize", "javascript:alert(1)");
+  expect(browserPage(browserSheetId("pi:visualize", 2)).url).toBeNull();
 });

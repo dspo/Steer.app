@@ -62,6 +62,7 @@ import {
 import { replayUpdates, type ReplayEntry } from "./replay";
 import { askExtensionEntry, type AskBridge } from "../extensions/ask";
 import { todosExtensionEntry } from "../extensions/todos";
+import { visualizeExtensionEntry } from "../extensions/visualize";
 import { composeExtensions, ZU_EXTENSIONS } from "../extensions/registry";
 import { DISPATCH_RULE, promptSectionExtension } from "../extensions/prompt-section";
 import { ARTIFACTS_RULE, artifactsExtension } from "../extensions/artifacts";
@@ -470,7 +471,12 @@ class PiHarnessSession implements HarnessSession {
     // A2: the plan tools and the `_zu/todos/*` channel share one store keyed
     // by this session's id, so the entry is built per session like ask's.
     const composed = composeExtensions(
-      [...ZU_EXTENSIONS, askExtensionEntry(askBridge), todosExtensionEntry(captainId, agentDir)],
+      [
+        ...ZU_EXTENSIONS,
+        askExtensionEntry(askBridge),
+        todosExtensionEntry(captainId, agentDir),
+        visualizeExtensionEntry(),
+      ],
       zuSettings,
     );
     const todosDir = todosRoot(agentDir);

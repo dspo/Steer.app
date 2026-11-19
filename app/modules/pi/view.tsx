@@ -37,6 +37,7 @@ import {
   sessionIdsOfContainer,
 } from "./container";
 import { searchSessions } from "./search";
+import { registerVisualizeCard } from "./visualize-card";
 
 /** A subagent's status in the shell's language. */
 function statusLabel(status: string): string {
@@ -378,6 +379,7 @@ export const piModule: SheetModule = {
   id: "pi",
   capabilities: ["acp", "state"],
   initialize: () => {
+    registerVisualizeCard();
     // The restored layout asks for its visible sessions before the sidebar's
     // file scan has the path/cwd they need; hydrate again once it lands, or
     // the sheet keeps its title and draws an empty Hero.

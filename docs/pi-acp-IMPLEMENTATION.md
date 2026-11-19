@@ -1250,3 +1250,14 @@ type AskResponse =
 - plan 属于单个会话（面板显示容器第一个 session 的 plan），不做多会话共享；
 - 不做 live 推送（轮询足够，`_zu/todos/changed` 是后续接口位）；
 - 不做 plan 的归档/恢复 UI。
+
+## 24. visualize（A3，issue #15）
+
+- `pi-harness/src/extensions/visualize.ts` 注册 captain-only 的 `visualize` 工具（v1 仅
+  `type: "file"`）：路径必须相对 cwd、落在工作区内、是常规文件、不在 `.git` 下，
+  且 `realpath` 不逃逸；`before` 与 `path` 不能同名。拒绝返回 `isError` + 可读原因。
+- 成功结果：文本 `Preview: <path>`（diff 为 `Diff: <before> → <path>`）加
+  `details: { kind:"file", path, before?, caption? }`；B4 的 details 通道把它送到 UI。
+- 客户端 `app/modules/pi/visualize-card.tsx` 注册卡片：HTML/图片/browser 面板、
+  文本/editor 面板、before/diff 面板；纯引用，不渲染、不创建文件。
+- `session/load` 回放没有 details 时回落紧凑工具行，卡片不猜形状。
