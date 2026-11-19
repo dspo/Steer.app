@@ -5,8 +5,12 @@ FROM zu-dev-base
 
 # ffmpeg：NPC 读取超限图片时压缩用（docs.cnb.cool/zh/build/npc.md）。
 # CLI 全部经 bun 全局 shim 运行——镜像无 node/npm，与 .ide/Dockerfile 同口径。
+# bun -g 只做符号链接，bin 自带的 node shebang 原样保留，而镜像里没有 node；
+# 把 shim 首行改写成 bun，node 式 JS CLI（skills）才真正落回 bun 执行，
+# 否则 skills add 在此 exit 127（env: 'node'），镜像发不出去，NPC 流水线全部拉不到镜像。
 RUN apt-get update -qq \
   && apt-get install -y -qq --no-install-recommends ffmpeg \
   && rm -rf /var/lib/apt/lists/* \
   && bun install -g @cnbcool/cnb-cli skills \
+  && sed -i '1s|^#!.*|#!/usr/bin/env bun|' "$HOME/.bun/bin/skills" "$HOME/.bun/bin/add-skill" \
   && skills add https://cnb.cool/cnb/skills/cnb-skill.git -g -y
