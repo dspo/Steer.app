@@ -15,9 +15,9 @@ import {
 } from "./todos";
 import { planGroupStatus, type PlanStatus, type PlanTodo } from "./protocol";
 import { refreshSessions, releaseSession, sessionHasName, sessionTitle, viewFor } from "./sessions";
-import { sessionIdOfSheet } from "./sheets";
+import { layoutSessions, sessionIdOfSheet } from "./sheets";
 import { closeAllSessions } from "./acp/host";
-import { activeContainerId, containers } from "../../core/containers";
+import { activeContainerId, containers, layout } from "../../core/containers";
 import { dispatchIntent } from "../../core/registry";
 import { visiblePanels } from "../../core/dock";
 import { baseName } from "../../domains/fs";
@@ -350,12 +350,14 @@ export function SessionBody(props: { id: string; sheetId: string }) {
  * and an archived container closes all of them. */
 const openByContainer = new Map<string, Set<string>>();
 
-function releaseClosedSessions(ids: string[]): void {
+function releaseClosedSessions(): void {
   const containerId = activeContainerId();
   if (!containerId) return;
-  const next = new Set(
-    ids.map(sessionIdOfSheet).filter((id): id is string => !!id),
-  );
+  // The notification's ids span every canvas now (the terminal module
+  // reconciles globally). This ledger is per container — the archive path
+  // releases everything filed under it — so the diff runs on the canvas
+  // being shown; `layout` is already the edited one when a change notifies.
+  const next = new Set(layoutSessions(layout()));
   const previous = openByContainer.get(containerId) ?? new Set<string>();
   for (const old of previous) {
     if (!next.has(old)) void releaseSession(old);
@@ -389,7 +391,7 @@ export const piModule: SheetModule = {
     rememberContainerSessions(containerId);
     hydrateVisible();
   },
-  onLayoutChanged: (ids) => releaseClosedSessions(ids),
+  onLayoutChanged: () => releaseClosedSessions(),
   onContainerArchive: (containerId) => {
     for (const sessionId of openByContainer.get(containerId) ?? []) void releaseSession(sessionId);
     openByContainer.delete(containerId);

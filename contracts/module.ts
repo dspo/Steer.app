@@ -156,7 +156,8 @@ export interface SheetModule {
   /** A sheet of this module became its group's displayed tab (focus its
    * resource, hydrate it). */
   onSheetActivated?: (id: SheetId) => void;
-  /** The canvas layout changed: the ids now open (close resources whose
-   * sheet went away). */
+  /** A layout edit happened: the ids are every canvas's open sheets (close
+   * resources whose sheet went away anywhere; scope per container yourself
+   * if your ledger is per container). */
   onLayoutChanged?: (openSheetIds: SheetId[]) => void;
 }

@@ -17,6 +17,7 @@ import {
   visiblePanels,
   type DockAreaLayout,
 } from "./dock";
+import { openSheetIds } from "./projection";
 import { notifyContainerArchived, notifyContainerShown, notifyLayoutChanged, notifySheetActivated, restoreSheetIds } from "./registry";
 import { dropScratch } from "./workspace";
 
@@ -532,7 +533,10 @@ export function setLayout(next: DockAreaLayout): void {
   layout.set(next);
   if (activeContainerId() === null) scratchLayout.set(next);
   syncVisible();
-  notifyLayoutChanged(panelIds(next));
+  // A layout edit belongs to one canvas, but modules own resources across
+  // every canvas. Tell them about the held sheets too, or a parked
+  // container's terminal looks closed and gets killed (issue #22).
+  notifyLayoutChanged(openSheetIds(next, heldLayouts()));
   scheduleSave();
   // Q69: the last sheet gone leaves no place to work — including the start page's
   // own ×, which is why the last tab is closable at all.
