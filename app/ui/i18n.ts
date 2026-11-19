@@ -151,10 +151,6 @@ export const K = {
     groupActive: "app.plan.groupActive",
     groupDone: "app.plan.groupDone",
   },
-  hero: {
-    /** The empty *session* page's heading (not the start page). */
-    title: "app.hero.title",
-  },
   launcher: {
     title: "app.launcher.title",
   },

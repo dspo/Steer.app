@@ -33,7 +33,8 @@ store 与渲染合并且门禁必须同绿，故未拆成两个分支提交，�
 
 - banner：转录首行显示 `pi 1.5.0 · qwen3.8-flash · thinking high` 与
   `2 个技能 · 1 个扩展 · 1 条警告`；折叠时 warnings 常显；展开出现
-  skills/extensions/warnings 明细；Hero 不渲染 banner（`chat-hero` fixture）。
+  skills/extensions/warnings 明细；空会话不渲染 banner（`chat-empty` fixture，
+  Q121 起空会话就是同一张对话页）。
 - 用户横幅：`user-message` 整宽横幅 + `❯`；`user-copy` / `entry-copy` 存在，
   且行上**没有**「复制」文字（图标 + tooltip）。
 - 思考：settle 后折叠为 `思考 · 4.2s`；点击展开出现纯文本正文；流式尾部在

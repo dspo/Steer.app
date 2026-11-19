@@ -150,7 +150,7 @@ export function openAuxSheet(kind: "subagents"): void {
 }
 
 /** A reopened session's history must not pin the loading page forever: after
- * this long the gate self-clears and the empty-session Hero returns (the
+ * this long the gate self-clears and the conversation page returns (the
  * manox history-loading gate's 10 s). */
 const HISTORY_TIMEOUT = 10_000;
 const loadingTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -189,7 +189,8 @@ export async function hydrateSession(sessionId: string): Promise<void> {
   }
   // The restored sheet is visible but its file may not be in the sidebar's
   // scan yet: draw the loading page now, and let the scan's retry open it.
-  // The 10 s gate turns a session that never resolves back into the Hero.
+  // The 10 s gate turns a session that never resolves back into the empty
+  // conversation page.
   beginLoading(sessionId);
   const path = view?.path || sessions().find((row) => row.id === sessionId)?.path;
   if (!path) return;

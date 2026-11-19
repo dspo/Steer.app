@@ -60,7 +60,6 @@ export const zhCN: Record<string, string> = {
   "app.plan.groupPending": "待开始",
   "app.plan.groupActive": "进行中",
   "app.plan.groupDone": "已完成",
-  "app.hero.title": "开始你的对话",
   "app.launcher.title": "新建",
   "app.titlebar.showSidebar": "显示侧栏",
   "app.titlebar.hideSidebar": "隐藏侧栏",

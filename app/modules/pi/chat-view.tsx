@@ -1,5 +1,5 @@
 import { effect, List, type ListRef, signal, Text, token, View } from "nsh";
-import { SHEET_FONT, SHEET_MONO } from "../../ui/fonts";
+import { SHEET_FONT } from "../../ui/fonts";
 import { K, t } from "../../ui/i18n";
 import { viewFor } from "./sessions";
 import { transcriptRows, type Entry } from "./transcript";
@@ -20,10 +20,10 @@ import { HistoryLoading } from "./history-loading";
  * shaded text blocks, replies as Markdown — with the composer's footer as
  * the only boundary.
  *
- * An empty session is Steer's hero: the heading and the same inline
- * composer, vertically centered, with no card and no project/access/voice
- * rows. The Hero draws no banner (no pi session exists yet, so no banner
- * facts either — a settled decision, issue #20 §4.2).
+ * An empty session is the same conversation page, not a separate start
+ * page (Q121): the still-empty transcript with the composer docked at the
+ * bottom. The banner draws itself only when facts exist — a brand-new
+ * session has no pi session yet, so no banner either.
  */
 
 /**
@@ -131,36 +131,16 @@ export function Conversation(props: { id: string }) {
         <PlanBanner sessionId={props.id} />
         <AskCard sessionId={props.id} />
         <ApprovalCard sessionId={props.id} />
-        <ChatComposer sessionId={props.id} autofocus hairline />
-      </View>
-    </View>
-  );
-}
-
-/** Steer's empty-session start page: centered heading, inline composer. */
-function Hero(props: { id: string }) {
-  return (
-    <View
-      testID="session-hero"
-      class="flex-1 items-center justify-center bg-background"
-      style={{ paddingHorizontal: 24, paddingBottom: 16 }}
-    >
-      <View style={{ width: "100%", maxWidth: 720, gap: 20 }}>
-        <Text class="text-[16px] font-black text-foreground" style={{ textAlign: "center", fontFamily: SHEET_FONT }}>
-          {t(K.hero.title)}
-        </Text>
-        <AskCard sessionId={props.id} />
-        <ApprovalCard sessionId={props.id} />
         <ChatComposer sessionId={props.id} autofocus />
       </View>
     </View>
   );
 }
 
-/** One session's surface: hero while empty, transcript and footer after. */
+/** One session's surface: loading until hydrated, then the conversation —
+ * empty or not, always the same page. */
 export function ChatView(props: { id: string }) {
   const view = () => viewFor(props.id);
-  const empty = () => transcriptRows(view()?.transcript).length === 0;
   // A sheet whose session view does not exist yet is a restored session on
   // its way through hydration, not a brand-new empty one (a new session
   // patches its loaded view before its sheet opens). The "pending" sheet is
@@ -174,10 +154,7 @@ export function ChatView(props: { id: string }) {
       <If when={loading()}>
         <HistoryLoading id={props.id} />
       </If>
-      <If when={!loading() && empty()}>
-        <Hero id={props.id} />
-      </If>
-      <If when={!loading() && !empty()}>
+      <If when={!loading()}>
         <Conversation id={props.id} />
       </If>
       <ElicitationDialog sessionId={props.id} />

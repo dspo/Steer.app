@@ -258,12 +258,12 @@ Pi 会话的完整交互状态（审批卡、elicitation、命令候选、恢复
   回到底部恢复（不再被流式更新强制拉到底）。
 - **加载页**：恢复的会话在 replay 飞行时，列中画 pixel meerkat（
   `manox-app/crates/ai-elements/src/meerkat.rs` 的 12×14 Canvas 移植，6-slot
-  循环、3 slots/s）+ `正在加载对话…` + 会话标题；不画 Hero/composer。找不到
-  会话文件时 10s 自清回 Hero；`reduceMotion()` 冻结 idle 帧。精灵的棕色是
+  循环、3 slots/s）+ `正在加载对话…` + 会话标题；不画转录/composer。找不到
+  会话文件时 10s 自清回空对话页（Q121）；`reduceMotion()` 冻结 idle 帧。精灵的棕色是
   **数据色**，放在 `theme.json` 的 `meerkat-*`（TSX 不写 raw hex），浅色/深色
   各一套。testID `session-loading`。
-- **session banner**：转录 `List` 的 header，随滚动离开；**不进 Hero**（空会话时
-  pi 会话还没创建，banner 数据不存在，Hero 只把字体换成 Geist）。第一行
+- **session banner**：转录 `List` 的 header，随滚动离开；空会话不画（pi 会话
+  还没创建，banner 数据不存在）。第一行
   `pi <version> · model · thinking <level>`（model/thinking 优先读 live
   `session.info`），第二行 `N 个技能 · N 个扩展`，warnings 常显（`warn` +
   alert glyph）；展开列 skills/extensions/warnings（name + faint detail）。
@@ -342,8 +342,8 @@ Pi 会话的完整交互状态（审批卡、elicitation、命令候选、恢复
 起始页（`home:{containerId}` / `home:scratch`）在外部、项目内、容器内**长相完全一致**：
 三行可实例化对象——`[Zu] [Manox]`、`[Terminal] [Browser]`、`[Claude Code] [Codex] [GitHub Copilot] [Pi]`。
 每个 tile 每次按下都**新建一个实例**（一个 sheet），不聚焦已有实例，也不限实例数。起始页是**可复用的调色板**：新实例在旁边开 tab，调色板自己留着，连续创建不需要反复按 `+`。
-没有 composer、模型/effort 选择、项目 chip 或 harness 分段；会话页的空态 composer 是另一回事
-（第一句话的地方）。
+没有 composer、模型/effort 选择、项目 chip 或 harness 分段；会话的 composer
+是另一回事——空会话直接是对话页，composer 在它的底部（Q121，无单独空态页）。
 
 不同上下文只决定新实例的三个属性：
 

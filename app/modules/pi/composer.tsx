@@ -20,8 +20,8 @@ import { Glyph, motionStyle, shadowRaised, type GlyphName } from "../../ui/ui";
 /**
  * The composer: a bare input over one footer row, all right-aligned (DESIGN
  * §3.6). The hairline above it belongs to the composer and is exactly its
- * width (`hairline`); the message area and the composer share the page
- * background — no card, bubble or shadow around it, as in Steer.
+ * width; the message area and the composer share the page background — no
+ * card, bubble or shadow around it, as in Steer.
  *
  * The footer names the session's model, thinking level and context, then the
  * action: idle is one accent send; while a turn runs the same spot is the
@@ -458,7 +458,7 @@ function ComposerMore() {
 }
 
 /** The session composer: input and one right-aligned footer row. */
-export function ChatComposer(props: { sessionId: string; autofocus?: boolean; hairline?: boolean }) {
+export function ChatComposer(props: { sessionId: string; autofocus?: boolean }) {
   const draft = signal("");
   const view = () => viewFor(props.sessionId);
   const streaming = () => view()?.streaming ?? false;
@@ -516,9 +516,9 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean; ha
         gap: 6,
         position: "relative",
         // The divider is the composer's own, exactly as wide as it is.
-        borderTopWidth: props.hairline ? 1 : 0,
+        borderTopWidth: 1,
         borderTopColor: token("line"),
-        paddingTop: props.hairline ? 8 : 0,
+        paddingTop: 8,
       }}
     >
       {/* No models is not a dead composer: the input stays, the send waits,

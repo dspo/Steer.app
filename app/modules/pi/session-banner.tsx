@@ -8,9 +8,9 @@ import { viewFor } from "./sessions";
 /**
  * The transcript's first line (issue #20 §4.2): `pi <version> · model ·
  * thinking`, then the resource counts — warnings stay visible even folded.
- * It is the `List`'s header and scrolls away with the transcript; the empty
- * session's Hero draws none (there is no pi session yet, so no banner facts
- * either). Live `session.info` wins over the banner's first-frame values.
+ * It is the `List`'s header and scrolls away with the transcript; an empty
+ * session draws none (there is no pi session yet, so no banner facts either,
+ * Q121). Live `session.info` wins over the banner's first-frame values.
  */
 
 /** The banner's open/close, per session id (a List header recycles too). */

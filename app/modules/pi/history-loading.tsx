@@ -5,7 +5,7 @@ import { sessionTitle } from "./sessions";
 
 /**
  * The history-loading page (issue #20 follow-up): a restored session's sheet
- * draws this while its replay is in flight, never the empty-session Hero.
+ * draws this while its replay is in flight, never the conversation page.
  * The sprite is the manox app's pixel meerkat
  * (`manox-app/crates/ai-elements/src/meerkat.rs`), ported to a Canvas: the
  * same 12×14 grids, the same 6-slot loop (idle, bob, blink, bob, idle, tail

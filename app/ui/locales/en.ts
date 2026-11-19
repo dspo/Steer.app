@@ -60,7 +60,6 @@ export const en: Record<string, string> = {
   "app.plan.groupPending": "pending",
   "app.plan.groupActive": "active",
   "app.plan.groupDone": "done",
-  "app.hero.title": "Start a conversation",
   "app.launcher.title": "New",
   "app.titlebar.showSidebar": "Show sidebar",
   "app.titlebar.hideSidebar": "Hide sidebar",

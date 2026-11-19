@@ -12,34 +12,31 @@ async function shot(app: { screenshot: (path?: string | null) => Promise<Uint8Ar
   }
 }
 
-// The conversation surface: Steer's empty-session hero, the gallery's
-// Markdown reply, and the composer's idle/streaming lanes. The fixtures seed
-// a session store, so no model runs and no engine is needed.
+// The conversation surface: the empty session's conversation page, the
+// gallery's Markdown reply, and the composer's idle/streaming lanes. The
+// fixtures seed a session store, so no model runs and no engine is needed.
 
-test("an empty session is Steer's hero with one inline composer", async () => {
-  const app = await open("../fixtures/chat-hero.tsx", { width: 1200, height: 800 });
-  await app.waitFor("id:session-hero");
-  expect(app.texts()).toContain("开始你的对话");
+test("an empty session is the conversation page with one composer", async () => {
+  const app = await open("../fixtures/chat-empty.tsx", { width: 1200, height: 800 });
+  await app.waitFor("id:session-transcript");
+  // No separate start page (Q121): no heading, the composer at the footer.
+  expect(app.texts()).not.toContain("开始你的对话");
   expect(app.count("id:session-input")).toBe(1);
   expect(app.count("id:session-send")).toBe(1);
-  // No project, access or voice rows around the start page.
-  for (const word of ["项目", "访问", "语音", "外部终端"]) {
-    expect(app.texts()).not.toContain(word);
-  }
-  // Enter sends from the hero: the user's row lands optimistically.
-  await app.type("id:session-input", "hello hero");
+  // Enter sends from the empty page: the user's row lands optimistically.
+  await app.type("id:session-input", "hello there");
   await app.submit("id:session-input");
-  await app.waitUntil(() => app.texts().includes("hello hero"), { timeout: 5000 });
-  expect(app.shows("id:session-hero")).toBe(false);
+  await app.waitUntil(() => app.texts().includes("hello there"), { timeout: 5000 });
   expect(app.count("id:user-message")).toBe(1);
+  expect(app.shows("id:session-transcript")).toBe(true);
 });
 
-test("a session restoring its history draws the loading page, not the hero", async () => {
+test("a session restoring its history draws the loading page, not the conversation", async () => {
   const app = await open("../fixtures/chat-loading.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:session-loading");
-  // The loading page owns the column: no Hero and no composer while the
-  // replay is in flight.
-  expect(app.shows("id:session-hero")).toBe(false);
+  // The loading page owns the column: no conversation and no composer while
+  // the replay is in flight.
+  expect(app.shows("id:session-transcript")).toBe(false);
   expect(app.count("id:session-input")).toBe(0);
   expect(app.texts().some((text) => text.includes("正在加载对话") || text.includes("Loading conversation"))).toBe(true);
   await shot(app, "ui-transcript-loading");
@@ -169,7 +166,7 @@ test("a long transcript renders only the rows near the viewport", async () => {
 // the user's words as an integral banner, the folded thinking, the tool
 // cards per kind. The transcript fixture seeds all of it; no engine.
 
-test("the transcript opens on the session banner; the hero draws none", async () => {
+test("the transcript opens on the session banner; the empty page draws none", async () => {
   const app = await open("../fixtures/transcript.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:session-banner");
   const texts = app.texts();
@@ -188,14 +185,14 @@ test("the transcript opens on the session banner; the hero draws none", async ()
   expect(app.texts().some((text) => text.includes("cnb-api"))).toBe(true);
   expect(app.texts().some((text) => text.includes("invalid characters"))).toBe(true);
   await shot(app, "ui-transcript-light");
-  // The hero keeps its empty-session shape: no banner facts exist there.
   // The dark scheme, on the same fixture.
   await app.setColorScheme("dark");
   await sleep(150);
   await shot(app, "ui-transcript-dark");
-  const hero = await open("../fixtures/chat-hero.tsx", { width: 1200, height: 800 });
-  await hero.waitFor("id:session-hero");
-  expect(hero.shows("id:session-banner")).toBe(false);
+  // An empty session has no banner facts either: no pi session yet.
+  const empty = await open("../fixtures/chat-empty.tsx", { width: 1200, height: 800 });
+  await empty.waitFor("id:session-transcript");
+  expect(empty.shows("id:session-banner")).toBe(false);
 });
 
 test("a user message is a full-width banner with a working copy", async () => {

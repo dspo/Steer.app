@@ -382,7 +382,7 @@ export const piModule: SheetModule = {
     registerVisualizeCard();
     // The restored layout asks for its visible sessions before the sidebar's
     // file scan has the path/cwd they need; hydrate again once it lands, or
-    // the sheet keeps its title and draws an empty Hero.
+    // the sheet keeps its title and draws an empty conversation.
     void refreshSessions().then(() => hydrateVisible());
   },
   onSheetActivated: (id) => {

@@ -73,7 +73,7 @@ type SessionView = {
   interrupted: boolean;
   loaded: boolean;
   /** The restored sheet's history is in flight: draw the loading page, not
-   * the empty-session Hero (issue #20 follow-up). */
+   * the empty conversation (issue #20 follow-up, Q121). */
   loading: boolean;
   /** The model the session runs, from `session.info`. */
   model?: SessionModelInfo;

@@ -4,8 +4,8 @@ import { SessionBody } from "../modules/pi/view";
 import { visiblePanels } from "../core/dock";
 
 // A restored session whose history is still in flight: the sheet draws the
-// loading page (the pixel meerkat), not the empty-session Hero. Seeded; no
-// engine.
+// loading page (the pixel meerkat), not the empty conversation page. Seeded;
+// no engine.
 seedSession("loading", [], {
   path: "/tmp/zu-loading.jsonl",
   cwd: "/tmp/zu",
