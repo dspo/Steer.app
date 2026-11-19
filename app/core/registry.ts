@@ -79,6 +79,13 @@ export function moduleSheetTitle(id: SheetId): string | null {
   return spec ? spec.title(id) : null;
 }
 
+/** A sheet's tab-only title, when its module projects one (issue #73). */
+export function moduleSheetTabTitle(id: SheetId): string | null {
+  const spec = sheetSpec(id);
+  const tab = spec?.tabTitle?.(id);
+  return tab ? tab : null;
+}
+
 /** A sheet's glyph name, or null when no module owns its kind (or draws it). */
 export function moduleSheetGlyph(id: SheetId): string | null {
   const spec = sheetSpec(id);

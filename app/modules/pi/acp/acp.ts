@@ -39,7 +39,13 @@ export class HarnessConnection {
   /** The session id this connection's updates belong to. */
   boundSessionId: string | null = null;
 
-  constructor(options: { cwd: string; command?: string; args?: string[]; env?: Record<string, string> }) {
+  constructor(options: {
+    cwd: string;
+    command?: string;
+    args?: string[];
+    env?: Record<string, string>;
+    titleChannel?: string;
+  }) {
     // `Acp.start` spawns synchronously and throws on failure (a coded error
     // with the program's name when the harness is missing).
     this.process = Acp.start(
@@ -48,6 +54,7 @@ export class HarnessConnection {
         ...(options.command ? { command: options.command } : {}),
         ...(options.args ? { args: options.args } : {}),
         ...(options.env ? { env: options.env } : {}),
+        ...(options.titleChannel ? { titleChannel: options.titleChannel } : {}),
       },
       (line: string) => this.channel.handleLine(line, (text) => this.note(`${text}\n`)),
       (text: string) => this.note(text),
@@ -96,6 +103,9 @@ export class HarnessConnection {
     command?: string;
     args?: string[];
     env?: Record<string, string>;
+    /** The session's title channel key (issue #73): the harness inherits
+     * the channel's fd and its Bash tap feeds the title emulator. */
+    titleKey?: string;
     onPhase?: (phase: "process" | "handshake") => void;
     onSpawned?: (connection: HarnessConnection) => void;
   }): Promise<HarnessConnection> {
@@ -103,11 +113,12 @@ export class HarnessConnection {
     // The merge feeds the constructor only; the callbacks keep reading the
     // caller's options (a `options = merged` here would wipe them).
     const override: { command?: string; args?: string[]; env?: Record<string, string> } = commandOverride ?? {};
-    const merged: { cwd: string; command?: string; args?: string[]; env?: Record<string, string> } = {
+    const merged: { cwd: string; command?: string; args?: string[]; env?: Record<string, string>; titleChannel?: string } = {
       cwd: options.cwd,
       command: options.command ?? override.command,
       args: options.args ?? override.args,
       env: { ...(override.env ?? {}), ...(options.env ?? {}) },
+      titleChannel: options.titleKey,
     };
     let connection: HarnessConnection;
     try {

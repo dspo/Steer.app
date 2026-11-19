@@ -38,6 +38,10 @@ export interface SheetKindSpec {
   kind: string;
   /** The tab title; also feeds the container title. Reactive. */
   title: (id: SheetId) => string;
+  /** The dock tab's own title, when the module projects one (issue #73: an
+   * agent's program title renames its tab, never its container). Return an
+   * empty string to fall back to `title`. Reactive. */
+  tabTitle?: (id: SheetId) => string;
   /** The body. State must live in the module's store, never in this component:
    * switching tabs unmounts it. */
   body: (props: SheetProps) => JSX.Element;

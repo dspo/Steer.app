@@ -26,6 +26,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createPiServices } from "../pi/services";
+import { tappedBashTool } from "./title-tap";
 import { zuStateDir } from "../settings";
 /** The subagent surface's own vocabulary (the app has no shared wire type
  * for these; they travel over the `_zu/subagents/*` extension methods). */
@@ -365,6 +366,11 @@ export function createPiSubagentRunner(
         // Depth defence: even if a child ever loads extensions, it cannot
         // dispatch or list (the two-level rule at the tool layer).
         excludeTools: ["dispatch", "list_agents"],
+        // Same title tap as the captain's: a subagent's bash writes the
+        // session's channel too (issue #73).
+        customTools: [
+          tappedBashTool(captain.cwd, built.services.settingsManager),
+        ],
       });
       const session = created.session;
       input.attach(session);

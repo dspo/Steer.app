@@ -7,6 +7,7 @@ publish = false
 [workspace]
 
 [dependencies]
+libc = "0.2"
 # nsh 0.5.0 pinned to the `v0.5.0` tag commit (f4d68f7 = `nsh --version`).
 # The app's TS side uses 0.5.0 APIs (`Notifications`, `nsh/updater`,
 # `nsh/i18n`, `WindowModule.get`), so CI's NSH_VERSION must stay 0.5.0 too —

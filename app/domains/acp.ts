@@ -6,3 +6,4 @@
  */
 export { Acp } from "zu/native";
 export type { AcpExit, AcpOptions } from "zu/native";
+export { TitleCapture } from "zu/native";

@@ -29,6 +29,7 @@ import {
 } from "./transcript";
 import { notifySettled } from "../../core/notifications";
 import { sessionSheetId } from "./sheets";
+import { openTitleChannel, pruneTitles } from "./titles";
 import type {
   SessionBanner,
   SessionContextUsage,
@@ -1126,7 +1127,12 @@ export async function refreshSessions(): Promise<void> {
   if (sessionTransport) {
     try {
       const data = await sessionTransport("session.list", {}, 30000);
-      sessions.set((data?.sessions ?? []) as SessionMeta[]);
+      const scanned = (data?.sessions ?? []) as SessionMeta[];
+      sessions.set(scanned);
+      // A session file that left the scan is a deleted session (issue #73
+      // D4): its title store and channel go with it. Live views protect a
+      // start that has not flushed its file yet.
+      pruneTitles([...scanned.map((row) => row.id), ...Object.keys(views())]);
     } catch (failure) {
       error.set(String(failure));
     }
@@ -1149,6 +1155,11 @@ export async function refreshSessions(): Promise<void> {
       })),
     };
     sessions.set(sessionScan.sessions);
+    // Same prune as the transport branch (issue #73 D4).
+    pruneTitles([
+      ...sessionScan.sessions.map((row) => row.id),
+      ...Object.keys(views()),
+    ]);
     error.set(null);
   } catch (failure) {
     error.set(String(failure));
@@ -1397,6 +1408,9 @@ export async function createSession(
 ): Promise<string> {
   if (useAcpBranch()) {
     const key = options.sessionId ?? mintSessionId();
+    // The channel must exist before the harness spawns: its fd rides the
+    // spawn (issue #73). It outlives harness restarts and sheet closes.
+    openTitleChannel(key);
     const reportPhase = (phase: SessionStartPhase) => {
       const view = views()[key];
       if (view && view.sessionState === "starting") patchView(key, { startingPhase: phase });

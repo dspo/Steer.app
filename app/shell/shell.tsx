@@ -32,7 +32,7 @@ import {
 } from "../core/projects";
 import { ProjectDialog, openProjectDialog } from "./project-dialog";
 import { panelIds } from "../core/dock";
-import { sheetGlyph, sheetTitle } from "../canvas/sheets";
+import { sheetGlyph, sheetTabTitle, sheetTitle } from "../canvas/sheets";
 import { dispatchIntent, moduleSearch, titlebarActions, type SearchHit } from "../core/registry";
 import { setShellActions } from "../core/shell-actions";
 import { K, t } from "../ui/i18n";
@@ -647,7 +647,7 @@ function SwitcherTitle(props: { panel: string; active: boolean }) {
           color: on.interpolate({ inputRange: [0, 1], outputRange: [token("muted-foreground"), token("foreground")] }),
         }}
       >
-        {sheetTitle(props.panel)}
+        {sheetTabTitle(props.panel)}
       </Text>
     </>
   );
@@ -725,7 +725,7 @@ function Canvas() {
           <View class="bg-card" style={{ width: 144, ...switcherPill() }}>
             <Glyph name={sheetGlyph(tab.panel)} size={12} tint={token("foreground")} />
             <Text class="text-[13px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
-              {sheetTitle(tab.panel)}
+              {sheetTabTitle(tab.panel)}
             </Text>
           </View>
         )}
@@ -756,7 +756,7 @@ function Canvas() {
               <View
                 role="button"
                 testID={`tab-close-${tab.panel}`}
-                accessibilityLabel={t(K.canvas.closeSheet, { name: sheetTitle(tab.panel) })}
+                accessibilityLabel={t(K.canvas.closeSheet, { name: sheetTabTitle(tab.panel) })}
                 class="absolute right-0.5 top-[3px] size-5 items-center justify-center rounded-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-raised"
                 onPress={() => void closeSheet(tab.panel)}
               >

@@ -2,6 +2,7 @@ import { HarnessConnection, type AcpUpdate } from "./acp";
 import { JsonrpcFailure } from "./jsonrpc";
 import { askProjectTrust } from "../../../ui/trust";
 import type { SessionBanner } from "../protocol";
+import { openTitleChannel } from "../titles";
 
 /**
  * The persistent ACP session runtime (docs/pi-acp-IMPLEMENTATION.md A0):
@@ -333,12 +334,16 @@ export async function openNewSession(
   } = {},
 ): Promise<AcpSession> {
   const handleKey = options.sessionId ?? `anonymous:${++anonymousCounter}`;
+  // The channel key is the minted session id: the channel opens before the
+  // spawn and outlives harness restarts (issue #73).
+  const titleKey = options.sessionId;
   const start: { connection?: HarnessConnection; cancelled: boolean } = { cancelled: false };
   pendingStarts.set(handleKey, start);
   options.onPhase?.("process");
   try {
     const connection = await HarnessConnection.start({
       cwd,
+      ...(titleKey ? { titleKey } : {}),
       onPhase: options.onPhase,
       // The cancel handle exists from before the spawn: the moment the
       // process exists, a close that already landed can hang it up.
@@ -400,7 +405,10 @@ export async function openExistingSession(
 ): Promise<{ session: AcpSession; replay: AcpUpdate[] }> {
   const existing = sessions.get(sessionId);
   if (existing && !existing.dead) return { session: existing, replay: [] };
-  const connection = await HarnessConnection.start({ cwd });
+  // The channel reuses or opens here (issue #73): install is idempotent,
+  // so a resume reattaches this load's observer.
+  openTitleChannel(sessionId);
+  const connection = await HarnessConnection.start({ cwd, titleKey: sessionId });
   try {
     installTrustBridge(connection, cwd);
     let result: any;

@@ -1,7 +1,7 @@
 # 终端标题：捕获、解释与投影
 
-> 状态：**PR1+PR2 已落地（2026-11-19）**；捕获缝（PR3 pi / PR4 manox）与投影（PR3）待实现。本文是 issue [#73](https://cnb.cool/dspo-group/Steer.app/-/issues/73)
-> 的实现规格：PR3（pi 捕获 + 投影）、PR4（manox 捕获）按此实现；PR1 已落地的内核行为基线见 §6。
+> 状态：**PR1+PR2+PR3 已落地（2026-11-19）**；PR4（manox 捕获）待实现。PR3 的评审修正（D4 删除接线、C1 矩阵回正、D5 trim/合并限频、非阻塞 tap、补测）均已含。本文是 issue [#73](https://cnb.cool/dspo-group/Steer.app/-/issues/73)
+> 的实现规格：pi 侧的捕获（ops-tap）、会话级通道（fd 继承）与投影（tab-only）已落地；内核行为基线见 §6。
 > 上游缝：dspo/manox#1030（chunk observer）、dspo/manox#1032（工具 env，C1 后置）。
 > 讨论与三轮评审核对记录见 issue #73 评论链与 dspo/manox#1030 修订记录。
 
@@ -32,6 +32,7 @@ L2 投影：title 事件 → 该对话 sheet 的 tab 标题（tab-only）
 ```
 
 - **解释者唯一**：ghostty-vt 是终端世界的既有解释者——无自定义 scanner、无 policy 表；OSC 9/52 的扩展 = 接/不接 Emulator 既有回调（默认不接 = 默认关，OSC 52 剪贴板天然关闭）。
+- **pi 落地（PR3）**：`customTools` 两点接线（captain `pi-session.ts`、subagent `subagents.ts`，codemode 走同 registry）；通道 `title_capture.rs`（进程级 registry，`TitleCapture.open/close`）；fd 经 acp.rs 的 `pre_exec` 继承（`ZU_TITLE_FD`）；投影 store `modules/pi/titles.ts` + kind `tabTitle`。
 - **捕获选型**：ops/chunk 层 tap（`onData` Buffer 在 pi 的 stripAnsi 之前、manox 的 `BashDataCallback` 是 `&[u8]` 原始字节），宿主进程内执行不受工具子进程 seatbelt 写白名单约束。否决过：shell shim（沙箱拒写 + procsub 语法面）、AHP 帧 tap（依赖「内核不剥字节」的否定性行为 + 截断）、装饰 `BashOperations`（macOS 前台 tracked 路径绕过 ops——dspo/manox#1030 修订记录）。
 
 ## 3. 决策记录（2026-11-19 拍板）
@@ -42,13 +43,14 @@ L2 投影：title 事件 → 该对话 sheet 的 tab 标题（tab-only）
 | D2 | **并发撕序列 = 接受 + 测试**：per-session 单写队列；「并发 + 标题恰跨 tap chunk 边界」偶发丢一次标题、下一条即恢复；确定性并行用例固化；per-exec Emulator 记为后备 | per-exec Emulator 是重装备；退化面是有界的装饰性损失。注意：ghostty-vt 的跨 write 重组只对**单流**成立 |
 | D3 | **空标题回落会话名**（不保留上一个程序标题、不清空 tab） | tab 需要有身份；终端 tab 的「保留最后标题」语义不适用于对话 sheet |
 | D4 | **标题 = 会话级瞬态**：Emulator 与 title store 随会话存活，sheet 重开仍在；`releaseSession`/容器归档不清 store，删除会话才清 | sheet 关闭期间 manox 后台命令的标题不丢；pi 的 harness 重启（新 spawn）也不丢 store |
-| D5 | **标题事件的净化唯一权威在投影**：trim、超长（内核 1024 字节上限）、空标题回落（D3）；限频「合并到最新」不丢包 | 内核行为与投影策略分层；直写形态（C1）同样被投影覆盖 |
+| D5 | **标题事件的净化唯一权威在投影**：trim、超长（内核 1024 字节上限）、空标题回落（D3）；限频「合并到最新」不丢包 | 内核行为与投影策略分层；直写形态（C1）同样被投影覆盖。PR3 落地：store 写入 trim（空白视为空、同步回落）；非空标题按会话合并到最新（120ms 窗口，app 侧，最终值不丢） |
 
 ## 4. 生命周期与传输
 
 - **Emulator / title store：per session**（pi 会话 / manox AHP thread）。
 - **传输通道：会话级一对**——会话开始、首次 spawn 前创建，harness 重启**复用同一从端**，会话结束才销毁（复用窗口与泄漏都从根上移除）；销毁只随会话结束。
-- **fd 继承，不走路径 open**：pi harness 由 `std::process::Command` spawn（acp.rs:264，`CommandExt` 已在用），`pre_exec` 把 app 持有的从端 fd dup 到约定 fd 号 + env 告知 fd 号；app 先持 master 保证从端有效。失败面「原始字节注入别的表面」从根上移除（portable-pty 自身的 `CommandBuilder` 无 pre_exec 与本缝无关——harness 不走它）。
+- **fd 继承，不走路径 open**：pi harness 由 `std::process::Command` spawn（acp.rs:264，`CommandExt` 已在用），`pre_exec` 把 app 持有的从端 fd dup 到约定 fd 号（`ZU_TITLE_FD`）+ env 告知 fd 号；app 先持 master 保证从端有效，失败面「原始字节注入别的表面」从根上移除。从端以 `O_NOCTTY | O_NONBLOCK` 打开，同一环境变量下发的还有 **`ZU_TTY`（从端路径，C1 显式直写形态）**。
+- **tap 的背压取舍（PR3 评审定稿）**：从端是非阻塞 fd——缓冲满时 harness 的 tap `writeSync` 拿到 EAGAIN，**丢弃剩余**而非阻塞（阻塞会卡住 harness 的事件循环，连 ACP 帧一起）。宿主的 drain 正常时不会发生；退化面是偶发丢标题，下一条即恢复。
 - **harness 崩溃重启**：复用同一通道与 fd（重启前 re-dup 一次即可）；title store 在会话层，不丢。
 - 背压：排空循环独立线程、不与 UI 锁竞争（`pty.rs` reader 线程模式）。写满 tty 缓冲而排空停摆时写者阻塞——与真终端同一流控语义。
 
@@ -56,8 +58,8 @@ L2 投影：title 事件 → 该对话 sheet 的 tab 标题（tab-only）
 
 | 形态 | `ZU_TTY` | 纯 printf（无重定向） | 落地 PR |
 |---|---|---|---|
-| 终端 tab 直跑 | ✅ `tty_name()` 注入（PR2 **已落地**） | ✅ 原生 | PR2 |
-| pi 托管 | ✅ 会话私有通道从端 | ✅ ops-tap | PR3 |
+| 终端 tab 直跑 | ✅ `tty_name()` 注入（**已落地**） | ✅ 原生 | PR2 |
+| pi 托管 | ✅ `ZU_TTY` = 通道从端路径（**已落地**，与 `ZU_TITLE_FD` 同 spawn 注入） | ✅ ops-tap（**已落地**） | PR3 |
 | manox 托管 | ❌ 后置（dspo/manox#1032） | ✅ chunk observer | PR4 |
 
 C1 用法（可文档化给 agent 的显式形态，**已落地**）：
@@ -66,8 +68,9 @@ C1 用法（可文档化给 agent 的显式形态，**已落地**）：
 printf '\033]2;Zu: 阶段名\007' > "$ZU_TTY"
 ```
 
-- 注入点：`Process::spawn`（native/src/pty.rs）——终端 sheet 与 `Pty` 两个 PTY 消费方都声明：凡持 tty 者声明事实；托管对话（chat sheet）无 tty，不注入——托管形态以 ops-tap（纯 printf）为主，显式直写以私有通道从端为 `ZU_TTY`（PR3 起）；
-- Rust 契约：`the_program_sees_its_own_tty_as_zu_tty`（pty.rs——真实 spawn `/bin/sh`，断言回显 `/dev/…`）。
+- 注入点一：`Process::spawn`（native/src/pty.rs）——终端 sheet 与 `Pty` 两个 PTY 消费方都声明：凡持 tty 者声明事实；
+- 注入点二：`title_capture.rs` 的 `wire`——托管会话的通道从端路径作为 `ZU_TTY` 下发，与 `ZU_TITLE_FD` 同 spawn 注入；显式直写与 tap 写入进同一个 Emulator；
+- Rust 契约：`the_program_sees_its_own_tty_as_zu_tty`（pty.rs）与 `zu_tty_names_the_channel_tty_in_the_shell`（title_capture.rs）。
 
 ## 6. 内核行为基线（PR1 已锁定，`native/src/session.rs`）
 
@@ -85,11 +88,23 @@ printf '\033]2;Zu: 阶段名\007' > "$ZU_TTY"
 | 重设标题 | 事件携带完整当前标题（非增量） |
 | OSC 2 + 0x9C 终止符 | **不终止**（ghostty-vt 既有行为：UTF-8 模式 C1 字节是 payload）；内核取消该序列且无残渣——后续序列全新解析。工具应以 BEL 或 `ESC \` 结尾 |
 
-## 7. 测试矩阵（PR3/PR4 的实现验收）
+## 7. 测试矩阵（实现验收）
 
-- **投影拆分**：tab 显示程序标题；容器切换器/搜索/侧栏/通知仍是会话名；空标题回落；超长/UTF-8 边界；sheet 重开（store 不清）；`titles.test.ts` 修订。
-- **pi**：definition 保真（renderer、`shellPath`/`commandPrefix` 生效）、原始字节、captain/subagent/codemode、两个并行 bash 的确定性标题用例、abort/timeout/exit code 不变、通道 spawn 前创建、harness 崩溃重启、100 MB 输出的 tap+Emulator 开销。
-- **manox**（#1030 验收清单）：tracked 前台（**必须构造 macOS 形状**：manager + `sandbox_available = true`）、plain/persistent/subagent、`execute()` 与 `execute_with_progress` 两入口、background 三支 + `wrap_background`、`tap = None` 逐字节不变、多会话路由。
+**已落地（PR3）**：
+
+- **投影拆分**：`titles.test.ts`——tab 显示程序标题而 `containerTitle`/`sheetTitle` 保持会话名；空标题回落；按会话键；whitespace 清空同步回落；prune（删除的会话清 store 与通道，活的受保护）。
+- **native**：`title_capture.rs` 六例——从端写入出标题、`pre_exec` 继承端到端（sh `>&$ZU_TITLE_FD`）、`ZU_TTY` 在 shell 内可见且显式直写进同一 Emulator、install 复用并重挂观察者、空标题语义（首个空不上报；真标题后的空上报回落）、remove 释放。
+- **pi-harness**：`title-tap.test.ts` 六例——tap 喂原始 chunk 且 pi 流不变、经 `ZU_TITLE_FD` 端到端（真实 bash）、非零退出码透传、renderer 与 `shellPath`/`commandPrefix` 保真、**两组并行 bash 跨 chunk 标题**（确定性切分）、**100 MB 过 tap**（<10s、逐字节完整、尾部标题存活）。
+
+**PR4 验收（manox）**：
+
+- manox（#1030 验收清单）：tracked 前台（**必须构造 macOS 形状**：manager + `sandbox_available = true`）、plain/persistent/subagent、`execute()` 与 `execute_with_progress` 两入口、background 三支 + `wrap_background`、`tap = None` 逐字节不变、多会话路由。
+
+**后置（app 级 e2e，非设计缺口，随 PR5 或 PR4 后补）**：
+
+- abort/timeout 中断后 tap 不破坏（bun 侧已覆盖退出码；abort 场景需真实 harness 用例）。
+- harness 崩溃重启后通道复用与 sheet 重开标题（native `install` 复用已测；app 级重连用例待真实 harness）。
+- 端到端用例（`Acp.start` 带通道 → harness bash 写 OSC → tab 标题变）——native 与 pi 两半各自已测，串联用例需要真实 harness，随 PR4 后补。
 
 ## 8. upstream-watch（依赖 bump 时核对）
 

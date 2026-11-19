@@ -3658,6 +3658,7 @@ name = "zu-app"
 version = "0.1.0"
 dependencies = [
  "dispatch2",
+ "libc",
  "nsh-base",
  "nsh-core",
  "nsh-platform-macos",

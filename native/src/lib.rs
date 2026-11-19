@@ -30,6 +30,7 @@ mod session;
 mod state;
 #[cfg(target_os = "macos")]
 mod term_view;
+mod title_capture;
 
 /// Geist / Geist Mono, the sheet content's faces (DESIGN §3.4, issue #20
 /// §4.7): the crate ships four sans weights and three mono weights
@@ -46,6 +47,7 @@ pub use picker::Picker;
 pub use pty::{Pty, PtyExit, PtyOptions};
 pub use session::{TerminalFind, TerminalSession, TerminalSessionEvent};
 pub use state::{ScanSession, SessionScan, State, StateRead, StateWrite};
+pub use title_capture::TitleCapture;
 
 /// Extension paths the host adds to the standard pi locations (tests and
 /// development builds use it; a packaged app leaves it empty).
@@ -81,6 +83,7 @@ fn native(registry: &mut Registry) {
         .module::<Picker>()
         .module::<State>()
         .class::<Acp>()
+        .class::<TitleCapture>()
         .class::<Lsp>()
         .class::<Pty>()
         .class::<TerminalSession>();

@@ -77,6 +77,11 @@ pub struct AcpOptions {
     pub args: Option<Vec<String>>,
     /// Extra environment entries; the app's environment is inherited.
     pub env: Option<BTreeMap<String, String>>,
+    /// The session's title channel (issue #73): when set and a channel is
+    /// open under this key, the harness inherits the channel's slave fd on
+    /// `ZU_TITLE_FD`, and its Bash tool's raw output feeds the session's
+    /// title emulator.
+    pub title_channel: Option<String>,
 }
 
 /// How a harness process ended.
@@ -237,6 +242,7 @@ impl Acp {
             command,
             args,
             env,
+            title_channel,
         } = options;
         let cwd = explicit_cwd(Some(cwd.as_str()))?;
         let argv = args.unwrap_or_default();
@@ -305,6 +311,12 @@ impl Acp {
                 }
                 builder.env(name, value);
             }
+        }
+        // The title channel's slave fd rides into the harness (issue #73):
+        // `ZU_TITLE_FD` names it, the harness's Bash tap writes there. A
+        // missing channel is fine — tools then write nowhere.
+        if let Some(key) = title_channel.as_deref() {
+            crate::title_capture::wire(key, &mut builder);
         }
         let mut child = builder.spawn().map_err(|error| {
             acp_error(

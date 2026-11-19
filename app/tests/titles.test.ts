@@ -7,8 +7,15 @@ import { seedSession } from "../modules/pi/sessions";
 import { assistantEntry } from "../modules/pi/transcript";
 import { terminalInfo, terminalSheetId } from "../domains/pty";
 import { editorSheetId } from "../modules/files/editors";
-import { sheetTitle } from "../canvas/sheets";
+import { sheetTabTitle, sheetTitle } from "../canvas/sheets";
 import { containerTitle } from "../canvas/titles";
+import {
+  closeTitleChannel,
+  flushPendingTitle,
+  programTitle,
+  pruneTitles,
+  setProgramTitle,
+} from "../modules/pi/titles";
 import { registerAllModules } from "../modules/register-all";
 
 registerAllModules();
@@ -124,4 +131,79 @@ test("a workspace sheet opened first names the container", () => {
   // promotes it — its fixed title, not the captain session's.
   expect(sheetOrder().c1).toEqual([editorSheet]);
   expect(containerTitle(container)).toBe(sheetTitle(editorSheet));
+});
+
+
+// Issue #73: a hosted session's tools set OSC titles through the harness's
+// Bash tap. Decision D1 — the program title renames the session's dock tab
+// and nothing else; the container keeps the session's own name. D3 — an
+// empty title falls back to the session name. The store is keyed by
+// session: it survives sheets closing and harness restarts.
+
+test("an agent's program title renames the tab, not the container", () => {
+  seedSession("s1", [assistantEntry("fx-a", "alpha body")], { path: "/tmp/alpha.jsonl", name: "Alpha", loaded: true });
+  seedOrder([sessionSheetId("s1")]);
+  const sheet = sessionSheetId("s1");
+
+  expect(sheetTabTitle(sheet)).toBe("Alpha");
+  setProgramTitle("s1", "Zu: 阶段名");
+  flushPendingTitle();
+  expect(sheetTabTitle(sheet)).toBe("Zu: 阶段名");
+  // The container title keeps the session's own name.
+  expect(containerTitle(container)).toBe("Alpha");
+  // The sheet title (close button, container naming) also stays.
+  expect(sheetTitle(sheet)).toBe("Alpha");
+});
+
+test("an empty program title falls back to the session name", () => {
+  seedSession("s1", [assistantEntry("fx-a", "alpha body")], { path: "/tmp/alpha.jsonl", name: "Alpha", loaded: true });
+  seedOrder([sessionSheetId("s1")]);
+  const sheet = sessionSheetId("s1");
+
+  setProgramTitle("s1", "");
+  expect(sheetTabTitle(sheet)).toBe("Alpha");
+  expect(programTitle("s1")).toBe("");
+});
+
+test("the program title store is keyed by session, not by sheet", () => {
+  seedSession("s1", [assistantEntry("fx-a", "alpha body")], { path: "/tmp/alpha.jsonl", name: "Alpha", loaded: true });
+  seedOrder([sessionSheetId("s1")]);
+  const sheet = sessionSheetId("s1");
+
+  setProgramTitle("s1", "阶段");
+  setProgramTitle("s2", "另一会话");
+  flushPendingTitle();
+  expect(sheetTabTitle(sheet)).toBe("阶段");
+  expect(programTitle("s2")).toBe("另一会话");
+});
+
+test("a whitespace-only program title clears and falls back synchronously", () => {
+  seedSession("s1", [assistantEntry("fx-a", "alpha body")], { path: "/tmp/alpha.jsonl", name: "Alpha", loaded: true });
+  seedOrder([sessionSheetId("s1")]);
+  const sheet = sessionSheetId("s1");
+
+  setProgramTitle("s1", "Zu: 阶段名");
+  flushPendingTitle();
+  expect(sheetTabTitle(sheet)).toBe("Zu: 阶段名");
+  setProgramTitle("s1", "   ");
+  expect(sheetTabTitle(sheet)).toBe("Alpha");
+});
+
+test("pruning drops leftovers without a live view and keeps live sessions", () => {
+  seedSession("s1", [assistantEntry("fx-a", "alpha body")], { path: "/tmp/alpha.jsonl", name: "Alpha", loaded: true });
+  seedOrder([sessionSheetId("s1")]);
+  const sheet = sessionSheetId("s1");
+  setProgramTitle("s1", "Zu: live");
+  flushPendingTitle();
+  // A deleted session's leftover: a store entry whose session no longer
+  // exists anywhere (no view, no scan row).
+  setProgramTitle("ghost-session", "Zu: leftover");
+  flushPendingTitle();
+
+  // refreshSessions composes the live set (scan rows + live views); here
+  // s1 is live and ghost-session left everything (D4).
+  pruneTitles(["s1"]);
+  expect(programTitle("s1")).toBe("Zu: live");
+  expect(programTitle("ghost-session")).toBe("");
+  expect(sheetTabTitle(sheet)).toBe("Zu: live");
 });

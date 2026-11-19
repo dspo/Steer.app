@@ -75,6 +75,7 @@ import { PI_VERSION } from "../version";
 import type { AcpMcpServer } from "../pi/mcp";
 import type { TrustElicit } from "../pi/trust";
 import { SubagentManager, dispatchExtension, type SubagentHost, type SubagentRun } from "./subagents";
+import { tappedBashTool } from "./title-tap";
 import {
   AnswerRegistry,
   INTERACTIVE_TOOLS,
@@ -514,6 +515,12 @@ class PiHarnessSession implements HarnessSession {
     const created = await createAgentSessionFromServices({
       services: built.services,
       sessionManager: manager,
+      // The Bash tool's raw output feeds the session's title channel
+      // (issue #73); the custom definition overrides the built-in by name
+      // and keeps the user's shell settings and the renderer.
+      customTools: [
+        tappedBashTool(cwd, built.services.settingsManager),
+      ],
     });
     sessionRef.session = created.session;
     const answerRegistry = new AnswerRegistry(manager, INTERACTIVE_TOOLS, {

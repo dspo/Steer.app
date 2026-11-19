@@ -15,6 +15,7 @@ import {
 } from "./todos";
 import { planGroupStatus, type PlanStatus, type PlanTodo } from "./protocol";
 import { refreshSessions, releaseSession, sessionHasName, sessionTitle, viewFor } from "./sessions";
+import { programTitle } from "./titles";
 import { layoutSessions, sessionIdOfSheet } from "./sheets";
 import { closeAllSessions } from "./acp/host";
 import { activeContainerId, containers, layout } from "../../core/containers";
@@ -469,6 +470,12 @@ export const piModule: SheetModule = {
       title: (id) => {
         const sessionId = sessionIdOfSheet(id);
         return sessionId ? sessionTitle(sessionId) : t(K.sheet.sessionTitle);
+      },
+      // Issue #73: a tool's OSC title renames this session's tab and
+      // nothing else — the container keeps the session's own name.
+      tabTitle: (id) => {
+        const sessionId = sessionIdOfSheet(id);
+        return sessionId ? programTitle(sessionId) : "";
       },
       body: ({ id }) => {
         const sessionId = sessionIdOfSheet(id);

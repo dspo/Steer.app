@@ -1,7 +1,13 @@
 import { Text, token, View } from "nsh";
 import { visiblePanels } from "../core/dock";
 import { containerOfSheet } from "../core/containers";
-import { moduleSheetGlyph, moduleSheetTitle, sheetNamesContainer as registryNamesContainer, sheetSpec } from "../core/registry";
+import {
+  moduleSheetGlyph,
+  moduleSheetTabTitle,
+  moduleSheetTitle,
+  sheetNamesContainer as registryNamesContainer,
+  sheetSpec,
+} from "../core/registry";
 import { Glyph, type GlyphName } from "../ui/ui";
 
 /**
@@ -14,6 +20,15 @@ import { Glyph, type GlyphName } from "../ui/ui";
 /** A sheet's tab title. An unowned kind reads as its id. */
 export function sheetTitle(id: string): string {
   return moduleSheetTitle(id) ?? id;
+}
+
+/**
+ * A sheet's dock-tab title: the module's `tabTitle` (program voice) when it
+ * projects one, else the sheet title. The container's name never reads this
+ * (issue #73: an agent's title renames its tab, not its container).
+ */
+export function sheetTabTitle(id: string): string {
+  return moduleSheetTabTitle(id) ?? sheetTitle(id);
 }
 
 /** Whether a sheet may name its container. */
