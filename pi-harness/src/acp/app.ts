@@ -117,6 +117,11 @@ export interface HarnessSessionContext {
   elicit?: TrustElicit;
   /** `session/new|load` servers; the distro hands them to pi's MCP extension. */
   mcpServers?: unknown[];
+  /** The client's minted session id (`session/new` `_meta.sessionId`, issue
+   * #56): the port validates it (a UUID, unoccupied) and pi honors it, so
+   * the ACP sessionId is the client's handle from before any process
+   * exists. Absent: the harness mints, as any standard client expects. */
+  sessionId?: string;
 }
 
 /** How the method surface obtains sessions (pi in production, fakes in tests). */
@@ -180,8 +185,12 @@ export function createAcpApp(ports: HarnessPorts, log: HarnessLog = () => {}): A
 
   app.onRequest("session/new", mcpServersLenient<NewSessionRequest>, async (cx) => {
     void cx.params.additionalDirectories;
+    // Issue #56: `_meta.sessionId` is the pairing extension that carries a
+    // client-minted id; a standard client omits it and nothing changes.
+    const requestedId = clientIdOf(cx.params);
     const context: HarnessSessionContext = {
       elicit: (request) => cx.client.request("elicitation/create", request as any),
+      ...(requestedId ? { sessionId: requestedId } : {}),
       ...(cx.params.mcpServers && cx.params.mcpServers.length > 0 ? { mcpServers: cx.params.mcpServers } : {}),
     };
     const session = await withLog("session_new_failed", () => ports.createSession(cx.params.cwd, context));
@@ -457,4 +466,11 @@ function mcpServersLenient<T>(raw: unknown): T {
   const value = (raw ?? {}) as Record<string, unknown>;
   if (value.mcpServers === undefined || value.mcpServers === null) value.mcpServers = [];
   return value as T;
+}
+
+/** The client-minted session id a `session/new` `_meta` may carry (issue
+ * #56). Anything else — absent, non-string — means "the harness mints". */
+function clientIdOf(params: unknown): string | undefined {
+  const meta = (params as { _meta?: { sessionId?: unknown } | null } | undefined)?._meta;
+  return typeof meta?.sessionId === "string" && meta.sessionId.length > 0 ? meta.sessionId : undefined;
 }

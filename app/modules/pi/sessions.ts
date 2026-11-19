@@ -3,6 +3,7 @@ import { State } from "../../domains/state";
 import { K, t } from "../../ui/i18n";
 import type { AcpUpdate } from "./acp/acp";
 import {
+  cancelNewSession,
   closeReservedSession,
   closeSession as closeHostSession,
   liveSession,
@@ -15,6 +16,7 @@ import {
   type PiCommand,
   type PiConfigOption,
   type PiUsage,
+  type SessionStartPhase,
 } from "./acp/host";
 import {
   emptyTranscript,
@@ -87,6 +89,18 @@ type SessionView = {
    * the view was opened under (an ACP mint after an engine-created view). */
   piId?: string;
   error?: string;
+  /** The in-page init's stage (issue #56): set while a minted session's
+   * bind runs behind its page, cleared once ready. Undefined on every
+   * other view — it is what distinguishes a starting page from a restored
+   * session's loading face. */
+  startingPhase?: SessionStartPhase;
+  /** Why the in-page init failed; the starting face offers the retry. */
+  startingError?: string;
+  /** The error text a reconnect itself wrote (issue #54 review, P3): only
+   * this one may be cleared by a later reconnect succeeding; a turn's own
+   * error stays until its retry. Compared by identity, never by
+   * translation. */
+  reconnectError?: string;
   /** ACP protocol state: config selectors, commands, usage, approval mode. */
   configOptions: PiConfigOption[];
   commands: PiCommand[];
@@ -514,6 +528,15 @@ export function acpEnabled(): boolean {
 }
 
 /**
+ * Whether session create/open ride the ACP harness: the transports the
+ * fixtures install are the legacy seam, where `session.create` mints its
+ * own id and there is no in-page init to begin (issue #56).
+ */
+export function acpOwnsSessions(): boolean {
+  return useAcpBranch();
+}
+
+/**
  * Whether the ACP branch owns the session commands: the transport says so
  * and no fixture transport is installed (the tests' seams ride the same
  * shapes the engine did, whatever the production transport is).
@@ -603,15 +626,14 @@ function mirrorReconnectFailure(id: string): void {
 }
 
 /** Clears only the error a reconnect itself wrote; a turn's error stays
- * until its own retry (issue #64 review, P1). */
+ * until its own retry (issue #64 review, P1). The marker is the exact text
+ * the reconnect stored, so a later overwrite — a turn's failure, a process
+ * exit — is never cleared by a reconnect that did not write it (issue #54
+ * review, P3: no translation-prefix sniffing). */
 function clearReconnectError(key: string): void {
   const current = views()[key];
-  if (!current?.error) return;
-  const zh = t(K.session.reconnectFailed, { error: "", locale: "zh-CN" });
-  const en = t(K.session.reconnectFailed, { error: "", locale: "en" });
-  if (current.error.startsWith(zh) || current.error.startsWith(en)) {
-    patchView(key, { error: undefined });
-  }
+  if (!current?.reconnectError || current.error !== current.reconnectError) return;
+  patchView(key, { error: undefined, reconnectError: undefined });
 }
 
 /** One resume for a view whose process is gone. The shared leg under
@@ -641,10 +663,12 @@ function connectExisting(key: string): Promise<AcpSession | null> {
       return session;
     } catch (failure) {
       if (valid()) {
+        const detail = t(K.session.reconnectFailed, {
+          error: String(failure instanceof Error ? failure.message : failure),
+        });
         patchView(key, {
-          error: t(K.session.reconnectFailed, {
-            error: String(failure instanceof Error ? failure.message : failure),
-          }),
+          error: detail,
+          reconnectError: detail,
           sessionState: "interrupted",
           streaming: false,
         });
@@ -1025,18 +1049,39 @@ export function clearReleasedView(id: string): void {
   releasedViews.delete(key);
 }
 
-/** Releases a session's process and any request still waiting on the user. */
+/** Releases a session's process and any request still waiting on the user.
+ * A session still starting (issue #56) has its in-flight harness hung up
+ * instead, and its view — which never loaded, so it keeps nothing worth
+ * projecting — is dropped; no empty container remnant survives its sheet. */
 export async function releaseSession(id: string): Promise<void> {
   const key = viewKeyFor(id) ?? id;
   acpTurns.delete(key);
   acpQueues.delete(key);
   seededSupersedes.delete(key);
   cancelPending(key);
-  // The resume may not have registered its process yet: invalidate its
-  // generation first so it cannot adopt, then close whatever is live.
+  // The start may not have registered its process yet: hang it up by its
+  // minted-id handle first, then invalidate any resume in flight. The
+  // cancelled mark is independent of `releasedViews` — whose entry recycles
+  // below — so a start that had not even been invoked yet (the begin →
+  // record gap) still learns of the close when it runs. Only a starting
+  // view needs the store-level mark; an established session's release
+  // recycles everything and must not grow the set.
+  const starting = views()[key]?.startingPhase !== undefined;
+  cancelNewSession(key);
+  if (starting) cancelledStarts.add(key);
   reconnectGenerations.set(key, (reconnectGenerations.get(key) ?? 0) + 1);
   releasedViews.add(key);
   await closeHostSession(key);
+  // The release's guard work is done once the close settled: a resume that
+  // started before it stays invalidated by the generation bump alone, and
+  // the mark recycles instead of growing forever (issue #54 review, P3).
+  releasedViews.delete(key);
+  const view = views()[key];
+  if (view && !view.loaded) {
+    const next = { ...views() };
+    delete next[key];
+    views.set(next);
+  }
 }
 
 /** Makes `id` the session the shell's non-keyed controls act on. */
@@ -1224,16 +1269,160 @@ function piSessionIdOfPath(path: string): string | null {
 }
 
 /**
+ * The v4 UUID the app mints for a session (issue #56): the view, its sheet
+ * and the container are built from it before any process exists, and the
+ * harness is asked — over `session/new`'s `_meta` — to cast the pi session
+ * with the same id. crypto may be absent in the VM; the fallback is still
+ * v4-shaped, which is what the harness validates.
+ */
+export function mintSessionId(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return fallbackUuid();
+  }
+}
+
+/** A v4-shaped UUID without `crypto.randomUUID`. */
+function fallbackUuid(): string {
+  const hex = "0123456789abcdef";
+  const pick = () => hex[Math.floor(Math.random() * 16)];
+  const blocks = [8, 4, 4, 4, 12];
+  return blocks
+    .map((length, block) =>
+      Array.from({ length }, (_, index) => {
+        if (block === 1 && index === 0) return "4";
+        if (block === 2 && index === 0) return hex[Math.floor(Math.random() * 4) + 8];
+        return pick();
+      }).join(""),
+    )
+    .join("-");
+}
+
+/** The id shape a pi session id has — client v4 mints and pi's own v7
+ * alike. The empty-sheet rebuild and the harness's validation share it. */
+export const PI_SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Starts whose page closed before (or while) they began (issue #56): the
+ * store-level cancel mark. `releaseSession` sets it so a start that had
+ * not even been invoked yet — the begin → container-record → start gap —
+ * never spawns; `retrySessionStart` is the explicit way back. Entries the
+ * user never retries are a bounded leftover of their own actions. */
+const cancelledStarts = new Set<string>();
+
+/** Lays down a minted session's view before any process exists (issue #56):
+ * the container and its sheet are built from the id and the page shows its
+ * starting face while the harness comes up in the background. A deliberate
+ * begin is a fresh intent — an earlier cancel of the same id is retired. */
+export function beginNewSession(id: string, cwd: string): void {
+  cancelledStarts.delete(id);
+  patchView(id, {
+    id,
+    cwd,
+    loaded: false,
+    loading: false,
+    sessionState: "starting",
+    startingPhase: "process",
+    startingError: undefined,
+  });
+  activeId.set(id);
+}
+
+/** The in-flight background binds per minted id (issue #56): a double
+ * start — a retry racing the first leg — shares one. */
+const creating = new Map<string, Promise<void>>();
+
+/**
+ * The background leg of the in-page init (issue #56): spawn + handshake +
+ * `session/new` with the minted id, then the view flips ready and the
+ * banner/composer take over. A failure lands on the starting face with its
+ * reason; a page closed mid-start has released the id, and neither outcome
+ * repaints anything.
+ */
+export function startNewSession(id: string, cwd: string): Promise<void> {
+  const inFlight = creating.get(id);
+  if (inFlight) return inFlight;
+  // The page closed before this start was even invoked (the release ran in
+  // the begin → record gap): spawn nothing.
+  if (cancelledStarts.has(id)) return Promise.resolve();
+  const request = (async () => {
+    try {
+      await createSession(cwd, { sessionId: id, shouldAdopt: () => !releasedViews.has(id) });
+    } catch (failure) {
+      if (releasedViews.has(id) || !views()[id]) return;
+      patchView(id, { startingError: String(failure instanceof Error ? failure.message : failure) });
+    } finally {
+      creating.delete(id);
+    }
+  })();
+  creating.set(id, request);
+  return request;
+}
+
+/**
+ * The starting face's retry (issue #56): the same minted id tries the bind
+ * again. If the scan has since found the session's file — the rebuild
+ * raced a real file, or this was a restored sheet whose session was on
+ * disk all along — the ordinary open takes over instead of re-minting.
+ */
+export async function retrySessionStart(id: string): Promise<void> {
+  const view = views()[id];
+  if (!view?.startingError) return;
+  patchView(id, { startingError: undefined, startingPhase: "process" });
+  // The retry is the explicit way back past an earlier cancel (issue #56).
+  cancelledStarts.delete(id);
+  await refreshSessions();
+  const row = sessions().find((entry) => entry.id === id);
+  if (row) {
+    const opened = await openSession(row.path);
+    if (opened) return;
+    const detail = views()[id]?.error || t(K.session.startFailed);
+    patchView(id, { startingError: detail });
+    return;
+  }
+  await startNewSession(id, view.cwd);
+}
+
+/**
  * Creates a session in `cwd` and opens it (without a container).
  *
- * ACP mode mints the distro session at once (`session/new`), so the view key
- * is the pi session id from the start; the process stays alive between turns.
+ * ACP mode mints the session id up front (issue #56) — from the caller or
+ * here — and the harness casts the pi session with it, so the view key is
+ * the pi session id from the first frame; the process stays alive between
+ * turns. The stages advance the view's starting face while it is up.
  */
-export async function createSession(cwd: string): Promise<string> {
+export async function createSession(
+  cwd: string,
+  options: { sessionId?: string; shouldAdopt?: () => boolean } = {},
+): Promise<string> {
   if (useAcpBranch()) {
-    const session = await openNewSession(cwd);
-    const key = session.id;
-    patchView(key, { id: key, cwd, loaded: true, sessionState: "ready" });
+    const key = options.sessionId ?? mintSessionId();
+    const reportPhase = (phase: SessionStartPhase) => {
+      const view = views()[key];
+      if (view && view.sessionState === "starting") patchView(key, { startingPhase: phase });
+    };
+    const session = await openNewSession(cwd, {
+      sessionId: key,
+      onPhase: reportPhase,
+      ...(options.shouldAdopt ? { shouldAdopt: options.shouldAdopt } : {}),
+    });
+    if (cancelledStarts.has(key) || options.shouldAdopt?.() === false) {
+      // The page closed while the bind ran: the session is handed back
+      // unregistered and its process is closed here (issue #56). The store
+      // mark is the guard the host's `start.cancelled` cannot hand across:
+      // a bind that answered just before the kill and returned unregistered
+      // must not be painted into a page that is gone.
+      await closeReservedSession(session);
+      throw new Error("the session's page closed while starting");
+    }
+    patchView(key, {
+      id: key,
+      cwd,
+      loaded: true,
+      sessionState: "ready",
+      startingPhase: undefined,
+      startingError: undefined,
+    });
     attachSession(key, session);
     activeId.set(key);
     error.set(null);

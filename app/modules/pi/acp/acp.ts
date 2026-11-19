@@ -86,8 +86,22 @@ export class HarnessConnection {
     });
   }
 
-  /** Spawns and shakes hands; a silent harness is a failed start, with stderr. */
-  static async start(options: { cwd: string; command?: string; args?: string[]; env?: Record<string, string> }): Promise<HarnessConnection> {
+  /** Spawns and shakes hands; a silent harness is a failed start, with stderr.
+   * `onPhase` names the stages the starting page shows (issue #56): the
+   * process spawn, then the initialize handshake. `onSpawned` hands the
+   * connection out the moment the process exists — before the handshake
+   * answers — so a cancel that landed meanwhile has something to hang up. */
+  static async start(options: {
+    cwd: string;
+    command?: string;
+    args?: string[];
+    env?: Record<string, string>;
+    onPhase?: (phase: "process" | "handshake") => void;
+    onSpawned?: (connection: HarnessConnection) => void;
+  }): Promise<HarnessConnection> {
+    options.onPhase?.("process");
+    // The merge feeds the constructor only; the callbacks keep reading the
+    // caller's options (a `options = merged` here would wipe them).
     const override: { command?: string; args?: string[]; env?: Record<string, string> } = commandOverride ?? {};
     const merged: { cwd: string; command?: string; args?: string[]; env?: Record<string, string> } = {
       cwd: options.cwd,
@@ -95,13 +109,14 @@ export class HarnessConnection {
       args: options.args ?? override.args,
       env: { ...(override.env ?? {}), ...(options.env ?? {}) },
     };
-    options = merged;
     let connection: HarnessConnection;
     try {
-      connection = new HarnessConnection(options);
+      connection = new HarnessConnection(merged);
     } catch (failure) {
       throw new Error(`the pi harness could not start: ${describe(failure)}`);
     }
+    options.onSpawned?.(connection);
+    options.onPhase?.("handshake");
     try {
       const init = await connection.channel.request(
         "initialize",
@@ -118,10 +133,20 @@ export class HarnessConnection {
     return connection;
   }
 
-  /** `session/new` with the full response (configOptions/modes). */
-  async newSession(cwd: string): Promise<any> {
+  /** `session/new` with the full response (configOptions/modes). A client-
+   * minted id rides `_meta` (issue #56): a pairing extension a standard
+   * client omits, in which case the harness mints its own id as before. */
+  async newSession(cwd: string, options?: { sessionId?: string }): Promise<any> {
     try {
-      const created = await this.channel.request("session/new", { cwd, mcpServers: [] }, BIND_TIMEOUT_MS);
+      const created = await this.channel.request(
+        "session/new",
+        {
+          cwd,
+          mcpServers: [],
+          ...(options?.sessionId ? { _meta: { sessionId: options.sessionId } } : {}),
+        },
+        BIND_TIMEOUT_MS,
+      );
       const sessionId = String(created?.sessionId ?? "");
       if (!sessionId) throw new Error("session/new returned no sessionId");
       this.boundSessionId = sessionId;
@@ -132,7 +157,9 @@ export class HarnessConnection {
     }
   }
 
-  /** `session/resume` — reattach without replay. */
+  /** `session/resume` — reattach without replay. A coded refusal (the
+   * harness answered, it did not die) keeps the connection alive and is
+   * rethrown typed: the empty-session rebuild rides that connection. */
   async resumeSession(sessionId: string, cwd: string): Promise<any> {
     this.boundSessionId = sessionId;
     try {
@@ -142,6 +169,13 @@ export class HarnessConnection {
         BIND_TIMEOUT_MS,
       );
     } catch (failure) {
+      if (failure instanceof JsonrpcFailure) {
+        // A coded refusal is the harness answering, not dying: the
+        // connection stays usable (the session_not_found rebuild rides it,
+        // issue #56 follow-up), and the flattened text — code first, the
+        // store's error-line format — rides along.
+        throw new JsonrpcFailure(describe(failure), failure.code, failure.dataCode);
+      }
       this.kill("the session could not be resumed");
       throw new Error(withTail(describe(failure), this.stderrTail));
     }

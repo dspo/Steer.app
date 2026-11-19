@@ -1261,3 +1261,64 @@ type AskResponse =
 - 客户端 `app/modules/pi/visualize-card.tsx` 注册卡片：HTML/图片/browser 面板、
   文本/editor 面板、before/diff 面板；纯引用，不渲染、不创建文件。
 - `session/load` 回放没有 details 时回落紧凑工具行，卡片不猜形状。
+
+## 25. 先进入会话页再初始化（issue #56，2026-11-19）
+
+### 25.1 顺序反转与客户端 mint id
+
+点 [Zu]（或容器内新建）不再等 `session/new` 完成：客户端先 mint 一个 UUID（v4；pi 自铸是 v7，同形，
+`crypto.randomUUID` 缺失时落 v4 形状的回退），立刻建容器 + `session:<id>` sheet 并导航，`SessionView`
+处于 `starting`；harness bind（spawn → initialize 握手 → `session/new`）在后台跑。id 经
+`session/new` 的 **`_meta.sessionId`** 传给 harness——配对扩展（PROTOCOL §5.2.1），标准客户端不传时
+harness 自行 mint，行为不变。harness 侧 `assertFreeSessionId` 校验 UUID 格式 + 未被占用（走真实会话
+目录的 `findPiSessionFile`，防止空重建顶掉真实历史），通过后 `SessionManager.create(cwd, undefined,
+{ id })`（pi 1.5.0 的 `NewSessionOptions.id`，构造器内再过一次 pi 自己的字符集校验）。
+
+### 25.2 starting 页与失败语义
+
+`SessionStarting`（`chat-view.tsx`）只在 `startingPhase` 存在时渲染——这正是它与恢复会话的 loading
+页、Q121 的空对话页的区分。阶段文案三档（`app.session.startPhase*`：启动进程 → 握手 → 创建会话），
+不伪造进度条（skills/extensions 加载在 `session/new` 内部，没有进度事件）；project trust 照常走
+`installTrustBridge` 的弹窗，盖在 starting 页上。失败写 `startingError` 保留页面：原因 + 重试
+（`retrySessionStart`——先重扫索引，文件已存在则走普通 open，否则同一 id 重试 bind）。
+
+### 25.3 取消与残留
+
+`host.ts` 的 `pendingStarts`（minted id → 在途 start，**spawn 之前就落条目**）是关闭 sheet 的取消
+句柄：entry 带 `cancelled` 标记与连接（连接由 `onSpawned` 在进程落地的一刻挂入，握手期间也有东西可
+杀），`releaseSession` 先 `cancelNewSession`——有连接挂断进程组、无连接置位待 spawn 到来自查；entry
+在 cancel 后保留，已经**应答**的 bind 从 entry 学到取消（不依赖 `releasedViews`——它的标记会被
+release 回收，不能当迟到回复的采纳守卫）。store 侧另有 `cancelledStarts` 集合，堵住「release 落在
+begin → container-record → start 之间」的窗口（start 还没被调用，集合让它在入口静默返回；
+`retrySessionStart` 是显式的回头路，`beginNewSession` 是新意图、清标记）。未加载的视图直接丢弃——
+无孤儿进程、无空容器残留（单 sheet 容器由 Q69 的自动归档收走）。app 退出时 `closeAllSessions` 一并
+挂断在途 start。
+
+### 25.4 空会话重建（`session_not_found` 的另一面）
+
+pi 在首条 user/assistant 消息前不落会话文件，所以释放后的**空会话** resume 会得到
+`session_not_found`。`openExistingSession` 的 resume 分支捕获这个 coded failure，在**同一连接**上用
+同一 id 重新 `session/new`——视图键、sheet、容器身份不变，model/effort 菜单继续可用；其他 coded
+failure（`cwd_mismatch` 等）照旧失败，连接由外层 catch 挂断。恢复的空 sheet（无 view、无文件）在
+`hydrateSession` 里先重扫索引，仍无文件且 id 是 UUID 形状时按容器 cwd 原地重建——composer 是活的，
+不是死壳；harness 的占用检查保证真实文件永远不会被空重建顶掉。
+
+### 25.5 测试与门禁
+
+- `pi-harness/src/acp/app.test.ts`：`_meta.sessionId` 透传进 ports、响应返回同一 id；不传 `_meta`
+  时 ports 收不到 sessionId（标准 ACP 不变）。
+- `pi-harness/src/acp/pi-session.test.ts`：`assertFreeSessionId`——空闲 UUID 通过、非 UUID 拒绝、
+  已有文件的 id 拒绝。
+- `app/tests/session-start.test.ts`（stub 驱动）：press 即建容器与 starting 视图、bind 就绪后视图
+  ready 且 live session 同 id；失败保留页面 + 重试成功；关 sheet 挂断且视图/进程零残留；释放的空
+  会话重建后 model/effort 可切；被占 id 在 starting 页显示 `session_id_taken`；双 start 共享一个
+  bind。
+- `app/tests/session-start.ui.test.tsx`：app 窗口从注册表恢复空 sheet → 重建 → 模型菜单与 effort
+  菜单真实切换（UI 级）。
+- 门禁：`(cd pi-harness && bun test)`、`bun run check`、`ZU_SKIP_LIVE=1 nsh test app`。
+
+### 25.6 非目标
+
+- 不做逐项进度条（无事件源，伪造即撒谎）；
+- 不改 `session/load` / `resume` 的重放路径（有文件的会话语义不变）；
+- 不做 standard ACP 之外的新方法——`_meta` 是 ACP 预留扩展位。

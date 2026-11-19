@@ -1,7 +1,7 @@
 import { effect, List, type ListRef, signal, Text, token, View } from "nsh";
-import { SHEET_FONT } from "../../ui/fonts";
+import { SHEET_FONT, SHEET_MONO } from "../../ui/fonts";
 import { K, t } from "../../ui/i18n";
-import { viewFor } from "./sessions";
+import { retrySessionStart, viewFor } from "./sessions";
 import { transcriptRows, type Entry } from "./transcript";
 import { EntryRow, Caret } from "./entry-row";
 import { MessageRow } from "./subagent-row";
@@ -39,6 +39,70 @@ function QuietLine(props: { testID: string; glyph: "stop" | "alert"; text: strin
       <Text class="text-[11px] leading-[16px] text-faint" style={{ flex: 1, fontFamily: SHEET_FONT }}>
         {props.text}
       </Text>
+    </View>
+  );
+}
+
+/**
+ * The starting face (issue #56): a minted session's harness bind — spawn,
+ * handshake, `session/new` — runs behind its page instead of blocking the
+ * press. The stage line names what is in flight (never a fake progress
+ * bar; pi's skills/extensions load inside `session/new` with no events),
+ * project trust rides the usual dialog over this page, and a failure
+ * keeps the page with its reason and a retry.
+ */
+function SessionStarting(props: { id: string }) {
+  const view = () => viewFor(props.id);
+  const phase = () => view()?.startingPhase ?? "process";
+  const failure = () => view()?.startingError;
+  const label = () => {
+    switch (phase()) {
+      case "handshake":
+        return t(K.session.startPhaseHandshake);
+      case "session":
+        return t(K.session.startPhaseSession);
+      default:
+        return t(K.session.startPhaseProcess);
+    }
+  };
+  return (
+    <View testID="session-starting" class="flex-1 items-center justify-center bg-background" style={{ gap: 12 }}>
+      <If
+        when={!failure()}
+        else={
+          <View testID="session-starting-error" class="items-center" style={{ gap: 8, maxWidth: 460, paddingHorizontal: 24 }}>
+            <Text class="text-[13px] font-semibold text-foreground" style={{ fontFamily: SHEET_FONT }}>
+              {t(K.session.startFailed)}
+            </Text>
+            <Text class="text-center text-[11px] leading-[16px] text-faint" style={{ fontFamily: SHEET_FONT }}>
+              {failure()}
+            </Text>
+            <View
+              role="button"
+              testID="session-starting-retry"
+              accessibilityLabel={t(K.session.startRetry)}
+              class="h-7 items-center justify-center rounded-lg border border-line px-3 hover:bg-hover active:opacity-70"
+              onPress={() => void retrySessionStart(props.id)}
+            >
+              <Text class="text-[11.5px] text-foreground" style={{ fontFamily: SHEET_FONT }}>
+                {t(K.session.startRetry)}
+              </Text>
+            </View>
+          </View>
+        }
+      >
+        <View testID="session-starting-phase" class="items-center" style={{ gap: 5 }}>
+          <Glyph name="chat" size={20} tint={token("faint")} />
+          <Text class="text-[13px] text-muted-foreground" style={{ fontFamily: SHEET_FONT }}>
+            {label()}
+          </Text>
+          <If when={!!view()?.cwd}>
+            <Text class="text-[11px] text-faint" style={{ fontFamily: SHEET_MONO, numberOfLines: 1, maxWidth: 360 }}>
+              {view()?.cwd}
+            </Text>
+          </If>
+        </View>
+      </If>
     </View>
   );
 }
@@ -137,10 +201,14 @@ export function Conversation(props: { id: string }) {
   );
 }
 
-/** One session's surface: loading until hydrated, then the conversation —
- * empty or not, always the same page. */
+/** One session's surface: starting while its harness binds (issue #56),
+ * loading until a restored one hydrates, then the conversation — empty or
+ * not, always the same page. */
 export function ChatView(props: { id: string }) {
   const view = () => viewFor(props.id);
+  // The in-page init owns the page until it settles — success hands over to
+  // the conversation, failure stays with its retry (issue #56).
+  const starting = () => !!view()?.startingPhase;
   // A sheet whose session view does not exist yet is a restored session on
   // its way through hydration, not a brand-new empty one (a new session
   // patches its loaded view before its sheet opens). The "pending" sheet is
@@ -151,10 +219,13 @@ export function ChatView(props: { id: string }) {
   };
   return (
     <View class="flex-1 bg-background" style={{ minHeight: 0 }}>
-      <If when={loading()}>
+      <If when={starting()}>
+        <SessionStarting id={props.id} />
+      </If>
+      <If when={!starting() && loading()}>
         <HistoryLoading id={props.id} />
       </If>
-      <If when={!loading()}>
+      <If when={!starting() && !loading()}>
         <Conversation id={props.id} />
       </If>
       <ElicitationDialog sessionId={props.id} />

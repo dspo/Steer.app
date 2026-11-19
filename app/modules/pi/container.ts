@@ -2,6 +2,7 @@ import {
   activeContainerId,
   activeCwd,
   containers,
+  containerOfSheet,
   createContainerRecord,
   fallbackCwd,
   layout,
@@ -13,7 +14,22 @@ import {
   switchContainer,
 } from "../../core/containers";
 import { appendSheet, panelIds, visiblePanels } from "../../core/dock";
-import { clearReleasedView, createSession, ensureLiveSession, focusSession, openSession, sessions, setSessionLoading, viewFor } from "./sessions";
+import {
+  acpOwnsSessions,
+  beginNewSession,
+  clearReleasedView,
+  createSession,
+  ensureLiveSession,
+  focusSession,
+  mintSessionId,
+  openSession,
+  PI_SESSION_ID,
+  refreshSessions,
+  sessions,
+  setSessionLoading,
+  startNewSession,
+  viewFor,
+} from "./sessions";
 import { defaultLayoutForSessions, layoutSessions, sessionIdOfSheet, sessionSheetId } from "./sheets";
 
 /**
@@ -60,40 +76,74 @@ export function hostsPi(containerId: string | null): boolean {
  * Creates a pi container in `cwd` and shows it. The container id carries the
  * session id (`pi:{sessionId}`) as before, but the record itself is generic;
  * the session is this module's.
+ *
+ * Issue #56 (ACP mode): the id is minted before anything exists, so the
+ * container, the sheet and the page are built from it at once and the press
+ * lands on the starting face immediately; the harness bind runs in the
+ * background. The legacy transport (fixtures) keeps the old shape: create
+ * first, then the row — it mints its own id.
  */
 export async function createContainer(cwd?: string, projectId?: string | null): Promise<string | null> {
   // The start page resolves a folder (a project root or `__chat__/`); a
   // missing one is its error line, never a silent fallback into home.
   const target = cwd || projectCwd(projectId);
   if (!target) throw new Error("no folder to start the conversation in");
-  const sessionId = await createSession(target);
+  if (!acpOwnsSessions()) {
+    const sessionId = await createSession(target);
+    const container = await createContainerRecord({
+      id: `pi:${sessionId}`,
+      cwd: target,
+      ...(projectId !== undefined ? { projectId } : {}),
+      sheets: [sessionSheetId(sessionId)],
+    });
+    if (!container) return sessionId;
+    sessionsByContainer.set(container.id, [...new Set([...(sessionsByContainer.get(container.id) ?? []), sessionId])]);
+    focusSession(sessionId);
+    return sessionId;
+  }
+  const sessionId = mintSessionId();
+  beginNewSession(sessionId, target);
   const container = await createContainerRecord({
     id: `pi:${sessionId}`,
     cwd: target,
     ...(projectId !== undefined ? { projectId } : {}),
     sheets: [sessionSheetId(sessionId)],
   });
-  if (!container) return sessionId;
-  sessionsByContainer.set(container.id, [...new Set([...(sessionsByContainer.get(container.id) ?? []), sessionId])]);
-  focusSession(sessionId);
+  if (container) {
+    sessionsByContainer.set(container.id, [...new Set([...(sessionsByContainer.get(container.id) ?? []), sessionId])]);
+    focusSession(sessionId);
+  }
+  void startNewSession(sessionId, target);
   return sessionId;
 }
 
 /**
  * Mints a new conversation inside an existing container (`session:{id}` added
  * to its layout, beside the start page). The container's cwd is the start
- * context; no container is created.
+ * context; no container is created. ACP mode runs the bind behind the
+ * visible starting sheet, like `createContainer` (issue #56).
  */
 export async function newSessionInContainer(containerId: string): Promise<string | null> {
   const container = containers().find((row) => row.id === containerId);
   if (!container) return null;
   if (activeContainerId() !== container.id) await switchContainer(container.id);
-  const sessionId = await createSession(container.cwd);
+  if (!acpOwnsSessions()) {
+    const sessionId = await createSession(container.cwd);
+    sessionsByContainer.set(container.id, [...new Set([...knownSessionIds(container.id), sessionId])]);
+    const sheetId = sessionSheetId(sessionId);
+    noteSheetOpened(sheetId);
+    setLayout(appendSheet(layout(), sheetId));
+    focusSession(sessionId);
+    return sessionId;
+  }
+  const sessionId = mintSessionId();
+  beginNewSession(sessionId, container.cwd);
   sessionsByContainer.set(container.id, [...new Set([...knownSessionIds(container.id), sessionId])]);
   const sheetId = sessionSheetId(sessionId);
   noteSheetOpened(sheetId);
   setLayout(appendSheet(layout(), sheetId));
   focusSession(sessionId);
+  void startNewSession(sessionId, container.cwd);
   return sessionId;
 }
 
@@ -175,6 +225,40 @@ function endLoading(id: string): void {
   setSessionLoading(id, false);
 }
 
+/** A restored sheet with neither view nor scan row is an empty session: pi
+ * casts the file on the first message, so a session released before its
+ * first prompt leaves nothing to open (issue #56 follow-up). The scan runs
+ * once more first — the boot's first pass may simply not have landed yet;
+ * a still-missing file for a UUID-shaped id is rebuilt in place with the
+ * same id, so the composer is live instead of dead. The harness refuses a
+ * taken id, so a real file can never be shadowed by an empty rebuild. */
+async function rebuildEmptySession(sessionId: string): Promise<void> {
+  await refreshSessions();
+  const row = sessions().find((entry) => entry.id === sessionId);
+  if (row) {
+    try {
+      await openSession(row.path);
+    } finally {
+      endLoading(sessionId);
+    }
+    return;
+  }
+  const current = viewFor(sessionId);
+  // A starting face already owns this page (its retry is explicit); leave
+  // it be rather than reset a visible failure behind the user's back.
+  if (current?.startingPhase) {
+    endLoading(sessionId);
+    return;
+  }
+  endLoading(sessionId);
+  if (!PI_SESSION_ID.test(sessionId)) return;
+  const containerId = containerOfSheet(sessionSheetId(sessionId));
+  const cwd = containerId ? containers().find((row) => row.id === containerId)?.cwd : undefined;
+  if (!cwd) return;
+  beginNewSession(sessionId, cwd);
+  void startNewSession(sessionId, cwd);
+}
+
 /** Opens (or focuses) one session's transcript. A loaded view whose process
  * was released (sheet closed, container archived) reconnects before this
  * resolves, so the reopened sheet can act on the session (issue #54). */
@@ -193,7 +277,10 @@ export async function hydrateSession(sessionId: string): Promise<void> {
   // conversation page.
   beginLoading(sessionId);
   const path = view?.path || sessions().find((row) => row.id === sessionId)?.path;
-  if (!path) return;
+  if (!path) {
+    await rebuildEmptySession(sessionId);
+    return;
+  }
   try {
     await openSession(path);
   } finally {

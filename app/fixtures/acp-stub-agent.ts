@@ -15,7 +15,16 @@
 //   STUB_PROMPT_UPDATES=1  a prompt streams one agent chunk before settling
 //   STUB_MIDTURN_EXIT=1  the process exits instead of settling a prompt
 //   STUB_NEW_FAIL=1      session/new answers with a coded error
+//   STUB_NEW_FAIL_ONCE=1 session/new fails the first ask, succeeds after —
+//                        a retry spawns a fresh process, so it passes
+//   STUB_NEW_TAKEN=1     session/new refuses any client-minted id with
+//                        `session_id_taken` (the occupancy check's answer)
+//   STUB_NEW_DELAY=ms    session/new waits before answering (a slow bind)
+//   STUB_INIT_DELAY=ms   initialize waits before answering (a slow
+//                        handshake: the cancel-before-bind window, issue #56)
 //   STUB_RESUME_FAIL=1   session/resume answers with a coded error
+//   STUB_RESUME_NOT_FOUND=1  session/resume answers session_not_found — an
+//                        empty session has no file to resume (issue #56)
 //   STUB_RESUME_DELAY=ms session/resume waits before answering
 //   STUB_EXIT_DELAY=ms   stdin close waits before exiting (a late process)
 //   STUB_UNIQUE_SESSION=1  session/new answers a unique id (per spawn), not the fixed stub-0000-0001
@@ -51,6 +60,10 @@ const elicitationId = 9002;
 const askCreateId = 9003;
 let pending: string | null = null;
 let askRetired = false;
+// STUB_NEW_FAIL_ONCE: the first session/new of this process fails, like a
+// harness whose first bind died; a retry spawns a fresh process.
+let newFailsLeft = process.env.STUB_NEW_FAIL_ONCE ? 1 : 0;
+
 // Per-process config state: the harness is the live session, so changing one
 // selector must not reset the other (issue #64 review, P3).
 let currentModel = "p/m";
@@ -144,20 +157,38 @@ async function handle(line: string): Promise<void> {
   const sid = /"sessionId":"([^"]*)"/.exec(line)?.[1] || "stub-0000-0002";
 
   if (line.includes(`"method":"initialize"`)) {
+    const initDelay = amount("STUB_INIT_DELAY");
+    if (initDelay > 0) await new Promise((done) => setTimeout(done, initDelay));
     write(
       `{"jsonrpc":"2.0","id":${id},"result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true,"sessionCapabilities":{"resume":{},"close":{}}},"authMethods":[],"agentInfo":{"name":"acp-stub","version":"0.0.0"}}}`,
     );
   } else if (line.includes(`"method":"session/new"`)) {
-    if (on("STUB_NEW_FAIL")) {
+    if (on("STUB_NEW_FAIL") || newFailsLeft > 0) {
+      if (on("STUB_NEW_FAIL_ONCE")) newFailsLeft -= 1;
       write(`{"jsonrpc":"2.0","id":${id},"error":{"code":-32000,"message":"session_new_failed","data":{"code":"stub_refused"}}}`);
-    } else {
-      // A fixed id keeps acp.test's literal assertions working; a unique
-      // one (per spawn = per pid) lets a test mint several containers that
-      // must not collapse into one `pi:<sessionId>` registry row.
-      const newsid = on("STUB_UNIQUE_SESSION") ? `stub-${process.pid}_0001` : "stub-0000-0001";
-      write(`{"jsonrpc":"2.0","id":${id},"result":{"sessionId":"${newsid}",${configOptions()},${modes()}}}`);
-      announceCommands(newsid);
+      return;
     }
+    // A slow bind widens the starting page's window: a cancel (sheet close)
+    // can land while the answer is in flight (issue #56).
+    const newDelay = amount("STUB_NEW_DELAY");
+    if (newDelay > 0) await new Promise((done) => setTimeout(done, newDelay));
+    // Issue #56: a client-minted id rides `_meta` and is honored — a UUID,
+    // exactly what the real harness validates; a malformed one is refused.
+    // A fixed id keeps acp.test's literal assertions working; a unique one
+    // (per spawn = per pid) lets a test mint several containers that must
+    // not collapse into one `pi:<sessionId>` registry row.
+    const minted = /"_meta":\{"sessionId":"([^"]+)"\}/.exec(line)?.[1];
+    if (minted !== undefined && on("STUB_NEW_TAKEN")) {
+      write(`{"jsonrpc":"2.0","id":${id},"error":{"code":-32602,"message":"session_id_taken","data":{"code":"session_id_taken","sessionId":"${minted}"}}}`);
+      return;
+    }
+    if (minted !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(minted)) {
+      write(`{"jsonrpc":"2.0","id":${id},"error":{"code":-32602,"message":"invalid_session_id","data":{"code":"invalid_session_id"}}}`);
+      return;
+    }
+    const newsid = minted ?? (on("STUB_UNIQUE_SESSION") ? `stub-${process.pid}_0001` : "stub-0000-0001");
+    write(`{"jsonrpc":"2.0","id":${id},"result":{"sessionId":"${newsid}",${configOptions()},${modes()}}}`);
+    announceCommands(newsid);
   } else if (line.includes(`"method":"session/load"`)) {
     if (on("STUB_LOAD_REPLAY")) {
       // What the real distro does since the transcript facts (#20): the
@@ -179,6 +210,14 @@ async function handle(line: string): Promise<void> {
   } else if (line.includes(`"method":"session/resume"`)) {
     if (on("STUB_RESUME_FAIL")) {
       write(`{"jsonrpc":"2.0","id":${id},"error":{"code":-32000,"message":"resume_failed","data":{"code":"stub_refused"}}}`);
+      return;
+    }
+    // An empty session's shape (issue #56): pi casts the session file on
+    // the first message, so a released one has nothing to resume — the
+    // coded `-32002` the real harness answers, which the client rebuilds
+    // from with `session/new`.
+    if (on("STUB_RESUME_NOT_FOUND")) {
+      write(`{"jsonrpc":"2.0","id":${id},"error":{"code":-32002,"message":"session_not_found","data":{"code":"session_not_found","sessionId":"${sid}"}}}`);
       return;
     }
     // A slow resume widens the release race window (issue #64 review, P2).

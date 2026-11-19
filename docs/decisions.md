@@ -192,6 +192,7 @@
 | Q110 | 会话转录的 TUI 语言（T1） | **一套转录，不做 TUI/GUI 双模式**：对话改 agent 转录——banner（List header，不进 Hero：空会话无 pi 会话、banner 数据不存在）、用户整宽横幅（`❯` + `bg-inset` radius 6）、思考折叠（展开纯文本，中文斜体按截图验收或退化为颜色+左线）、工具卡按 ACP kind（execute 尾 12 行 + exit/duration + 展开；read 参数优先；edit diff）；线协议增量 `_meta.pi`（at/model/entryId/settled/durationMs/stopReason/error）、`_meta.zu`（工具结束帧的 durationMs/exitCode/truncation）、`_zu/session_banner`（new/load/resume 在 `available_commands_update` 后，`HarnessSession.banner?()` 可选）；客户端 `transcript.ts` 纯 reducer（live/replay 同路径、entryId 换键、16ms 批量），删 `fold.ts`；正文 Geist 400/500/600、代码面 Geist Mono 400/500，Lilex 废止。采纳 PR #6 的数据层（settle marker、entry_appended、diff 重放、replay 同词），**不采纳**其 gallery 渲染/日期分隔/图片链路/`_zu/session/navigate`/重新生成。已知缺口：回放无工具统计（pi 不持久化 details）、CJK 斜体待真机验收 | `pi-harness/src/acp/{mapping,replay,pi-session,app}.ts`、`app/modules/pi/{transcript,session-banner,thinking-block,tool-block,entry-row,subagent-row}.tsx|ts`、`app/modules/pi/{sessions,chat-view,composer,view}.tsx|ts`、`app/ui/fonts.ts`、`native/assets/fonts/`、`native/src/lib.rs`；[evidence/transcript-tui.md](evidence/transcript-tui.md) |
 | Q116 | 会话 TODO plan 的形态 | **plan 是文件，工具有不变量，纪律在技能**：每会话一份 `~/.pi/zu/todos/<sessionId>.json`，两级（loose lane + groups），全局唯一 `in_progress`；agent 用 `todo_*` 六工具、用户用 `plan:{containerId}` 面板（1500ms 轮询，不做推送），读写都经 `_zu/todos/{list,write}`（harness 唯一写者，工具与面板共享同一 store）。**入口是 composer 横幅**：plan 有未完成项时横幅显示当前 item（盲文点阵 spinner = in_progress，无则下一个 pending 静止），点击把 session sheet 向右拆分出面板；全部完成不显示横幅，本版无历史入口。**用户编辑引导模型**：编辑注入 plan note 并唤醒重读（运行中排队，settle flush）；删除先打断正在跑的 turn（防止模型继续做已删除 item）；用户手动 stop 不被 note 拉起。promote 是 loose→group 唯一路径，`todo_write` 是按 id 的 reconcile（状态保留、缺失删除、loose 不动）；`zu-todos` section 只负责「知道有这回事 + 读技能」，live list 不进 prompt（会破 cache 且会过期）；todos 内置扩展（§18 registry 的第一个真实条目）关掉时工具/技能/section 一起消失，面板读写不受影响 | `pi-harness/src/todos/{core,tools,steer}.ts`、`pi-harness/src/extensions/todos.ts`、`pi-harness/skills/todos/SKILL.md`、`pi-harness/src/acp/{app,pi-session}.ts`、`app/modules/pi/{todos,plan-banner,protocol,view,container}.ts*`、`app/core/dock.ts`；arch §5.7；Steer.app#13 |
 | Q121 | 空会话为什么没有独立起始页 | **删除 session Hero（「开始你的对话」空态页）**：点进会话——侧栏会话行、容器内新建、恢复的 sheet——直接落在对话页：同一个转录列（空时无行、无 banner）+ 底部 composer，不再有居中标题的空态页。banner 只在 facts 存在时自画（`SessionBanner` 无数据返回 null），Q110 的「banner 不进空会话」实质不变，变的只是空会话的表面：从 Hero 换成空对话页。composer 的 `hairline` 参数随之删除（唯一调用方恒为真，分割线恒画）；`app.hero.title` 双语键删除；`chat-hero` fixture 更名 `chat-empty`。**manox 不动**：它的空态仍是居中一行提示（`manox-empty`，composer 同样在底部），所以两面引擎的空会话表面暂不相同——pi 是全空的转录列，manox 多一行 hint；若要对齐，改 `app/modules/manox/conversation.tsx` 的 `empty` 分支即可。起始页（`home:` 对象实例化面板，Q116）是另一张 sheet，不受影响 | `app/modules/pi/{chat-view,composer,container,view}.tsx|ts`、`app/ui/i18n.ts`、`app/ui/locales/{en,zh-CN}.ts`、`app/fixtures/chat-empty.tsx`；DESIGN §3.9/§4.1 |
+| Q122 | 为什么先进入会话页再初始化 | **客户端 mint session id，初始化在页内完成（issue #56）**：点 [Zu]（或容器内新建）先 mint 一个 UUID（v4；pi 自铸是 v7，同形），立刻建容器 + `session:<id>` sheet 并导航，`SessionView` 处于 `starting`——阶段文案（启动进程 → initialize 握手 → session/new，不伪造进度条）、project trust 照常弹窗、失败保留页面显示原因 + 重试；harness bind 在后台跑。id 经 `session/new` 的 `_meta.sessionId`（配对扩展，标准客户端不传时 harness 自行 mint，行为不变）传给 harness：校验 UUID 格式 + 未被占用（走真实会话目录，防止空重建顶掉真实历史）后 `SessionManager.create(cwd, undefined, { id })`。关 sheet 即挂断在途连接（`pendingStarts` 句柄），视图未加载即丢弃——无孤儿进程、无空容器残留。**空会话重建（同一问题的另一面）**：pi 在首条 user/assistant 消息前不落会话文件，释放后的空会话 resume 会得到 `session_not_found`——客户端按同一 id 走 `session/new` 原地重建（视图键/容器身份不变，model/effort 菜单继续可用）；恢复的空 sheet（无 view、无文件）同样重建而非渲染死 composer | `app/modules/pi/{sessions,container,chat-view}.tsx|ts`、`app/modules/pi/acp/{acp,host}.ts`、`pi-harness/src/acp/{app,pi-session}.ts`、`app/fixtures/acp-stub-agent.ts`；PROTOCOL §5.2.1；IMPLEMENTATION §25；arch §3.2；DESIGN §3.9；dspo-group/Steer.app#56 |
 ## 已落地设计（Q108–Q110）
 
 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) 的 D1–D7 已作为 **Q108** 登记并落地：
@@ -208,7 +209,7 @@
 
 ## 决策编号说明
 
-- Q1–Q121 覆盖全部已讨论的问题，**无未决项**（Q110 见上表；T1 交付记录见 plan.md 与 evidence/transcript-tui.md）。历史横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、
+- Q1–Q122 覆盖全部已讨论的问题，**无未决项**（Q110 见上表；T1 交付记录见 plan.md 与 evidence/transcript-tui.md）。历史横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、
   文件读写归属（Q56）、git 执行与根/路径边界（Q58）、协议版本与幂等（旧 §3.3）、归档可达性（Q34）、
   浏览器能力/降级（Q61/Q62）、LSP 传输/同步（Q64）、单实例与通知（Q65/Q66）、更新源（Q67）、
   模型注册表（Q81）、容器内终端资源（Q82）、scratch 与铸容器（Q83）、动作矩阵（Q84）、容器标题（Q85）、
@@ -217,7 +218,7 @@
   三包布局（Q96）、ACP 传输（Q97）、manox 接入（Q98）、双 harness 同级（Q99）、sheet 模块（Q100）、
   native 能力域（Q101）、容器去 harness 身份（Q102）、文档治理（Q103）、模型目录共用（Q104）、
   侧栏不设 harness 分组（Q105）、sheet 模块落地（Q106）、旧 wire 删除（Q107）、Pi × ACP 运行时（Q108）、
-  Pi 官方配置 parity（Q109）、自绘 ghostty 终端（Q113）、终端原生组件（Q114）、终端会话下沉 Rust（Q115）、对象实例化起始页（Q116）、三套 home 归属与 move 迁移（Q117）、终端符合性（Q118）、本地门禁与云构建归属（Q119）、manox 宿主模型目录与会话内切换（Q120）、空会话页删除（Q121）。
+  Pi 官方配置 parity（Q109）、自绘 ghostty 终端（Q113）、终端原生组件（Q114）、终端会话下沉 Rust（Q115）、对象实例化起始页（Q116）、三套 home 归属与 move 迁移（Q117）、终端符合性（Q118）、本地门禁与云构建归属（Q119）、manox 宿主模型目录与会话内切换（Q120）、空会话页删除（Q121）、会话页内初始化与客户端 mint session id（Q122）。
 - 原 engine/ui/domain 三份文档里的 E/U 编号已废弃，统一并入本表。
 - 已完成与下一批工作见 [plan.md](plan.md)；条件性里程碑（M-arch / M-web）的触发条件也记在那里
   （M-tty 已由 Q113 落地，不再作为条件项）。

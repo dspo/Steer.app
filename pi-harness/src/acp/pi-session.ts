@@ -44,7 +44,7 @@ import type {
   SessionUpdate,
   StopReason,
 } from "@agentclientprotocol/sdk";
-import { codedError } from "./errors";
+import { codedError, JSONRPC_CODE } from "./errors";
 import {
   assistantDeltaUpdate,
   describeToolCall,
@@ -211,6 +211,9 @@ export interface PiSessionOptions {
   mcpServers?: AcpMcpServer[];
   /** A captain's decision, inherited by a subagent. */
   trusted?: boolean;
+  /** The client-minted session id (issue #56), already validated by
+   * `assertFreeSessionId`; pi casts the session file with it. */
+  sessionId?: string;
 }
 
 /** The approval-policy modes advertised through `session/set_mode`. */
@@ -433,7 +436,10 @@ class PiHarnessSession implements HarnessSession {
   }
 
   static async create(cwd: string, log: HarnessLog, options: PiSessionOptions = {}): Promise<PiHarnessSession> {
-    const manager = SessionManager.create(cwd);
+    // Issue #56: a client-minted id is honored, so the session file — cast
+    // on the first message — carries the id the client already named its
+    // view, sheet and container after. pi 1.5.0 validates the charset too.
+    const manager = SessionManager.create(cwd, undefined, options.sessionId ? { id: options.sessionId } : undefined);
     // A new session has no history; nothing to repair (B2).
     return PiHarnessSession.build(manager, cwd, log, options, false);
   }
@@ -1188,18 +1194,45 @@ export interface PiPortsOptions {
   agentDir?: string;
 }
 
+/**
+ * The id shape `session/new` `_meta.sessionId` must have (issue #56): a
+ * UUID. The app mints v4 and pi itself mints v7, so both this app's
+ * client-minted ids and a harness-minted id from an older build rebuild the
+ * same way; anything else is refused before pi sees it. The occupancy check
+ * walks the real session directory, so a client can never shadow an
+ * existing session file — including one the UI's own scan has not seen yet.
+ */
+const CLIENT_SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function assertFreeSessionId(id: string, agentDir = getAgentDir()): void {
+  if (!CLIENT_SESSION_ID.test(id)) {
+    throw codedError(JSONRPC_CODE.invalidParams, "invalid_session_id", `session id ${id} is not a UUID`);
+  }
+  if (findPiSessionFile(id, agentDir)) {
+    throw codedError(
+      JSONRPC_CODE.invalidParams,
+      "session_id_taken",
+      `session ${id} already has a session file`,
+      { sessionId: id },
+    );
+  }
+}
+
 function optionsFor(context: HarnessSessionContext | undefined, base: PiPortsOptions): PiSessionOptions {
   return {
     ...(base.agentDir ? { agentDir: base.agentDir } : {}),
     ...(context?.elicit ? { elicit: context.elicit } : {}),
     ...(context?.mcpServers ? { mcpServers: context.mcpServers as AcpMcpServer[] } : {}),
+    ...(context?.sessionId ? { sessionId: context.sessionId } : {}),
   };
 }
 
 export function createPiPorts(log: HarnessLog, base: PiPortsOptions = {}): HarnessPorts {
   return {
-    createSession: (cwd: string, context?: HarnessSessionContext) =>
-      PiHarnessSession.create(cwd, log, optionsFor(context, base)),
+    createSession: (cwd: string, context?: HarnessSessionContext) => {
+      if (context?.sessionId) assertFreeSessionId(context.sessionId, base.agentDir);
+      return PiHarnessSession.create(cwd, log, optionsFor(context, base));
+    },
     resumeSession: async (sessionId: string, cwd: string, context?: HarnessSessionContext) => {
       return createPiPorts(log, base).loadSession(sessionId, cwd, context);
     },

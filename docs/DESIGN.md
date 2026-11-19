@@ -262,6 +262,12 @@ Pi 会话的完整交互状态（审批卡、elicitation、命令候选、恢复
   会话文件时 10s 自清回空对话页（Q121）；`reduceMotion()` 冻结 idle 帧。精灵的棕色是
   **数据色**，放在 `theme.json` 的 `meerkat-*`（TSX 不写 raw hex），浅色/深色
   各一套。testID `session-loading`。
+- **starting 页**（Q122，issue #56）：新建会话的 harness bind 在页内完成——点 [Zu] 立即进入本页：
+  居中 chat glyph + 阶段文案一行（`正在启动 pi 进程…` → `正在与引擎握手…` → `正在创建会话…`，12/13px
+  muted，cwd 以 mono 11px faint 展示；只换文案、不伪造进度条）+ `session-starting-phase`；project
+  trust 弹窗盖在其上。失败切失败面：`会话启动失败`（13px semibold）+ 原因（11px faint）+ `重试`
+  chip（h-7、border-line、radius 8），testID `session-starting` / `session-starting-error` /
+  `session-starting-retry`。就绪后切 Q121 的空对话页（composer 可用），无过渡动画。
 - **session banner**：转录 `List` 的 header，随滚动离开；空会话不画（pi 会话
   还没创建，banner 数据不存在）。第一行
   `pi <version> · model · thinking <level>`（model/thinking 优先读 live

@@ -215,6 +215,8 @@ JIT entitlement 在 harness 上）；pi pin + 扩展 + 适配器同包同版本�
 
 ACP 的 chunk 形状没有给客户端转录需要的锚点，这些事实走 ACP 预留的 `_meta` 与一条私有通知，schema 与协议版本不动：
 
+**`_meta.sessionId`** — 挂在 `session/new` 请求上（issue #56）：客户端自铸的会话 id（UUID；app 铸 v4、pi 自铸 v7，同形）。配对扩展：标准客户端不传，harness 照旧自行 mint，行为不变。harness 校验 UUID 格式与「未被占用」（走真实会话目录，`session_id_taken` / `invalid_session_id` 拒绝）后 `SessionManager.create(cwd, undefined, { id })`，响应返回同一 id——视图键、sheet、容器与 pi 会话文件从第一帧起就是同一个句柄。空会话释放后 resume 得 `session_not_found`（pi 首条消息前不落文件）时，客户端用同一 id 重新 `session/new` 原地重建。
+
 **`_meta.pi`** — 挂在每条转录 chunk 上：
 
 | 字段 | 何时 |

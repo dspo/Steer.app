@@ -137,7 +137,9 @@ function modelsReasonText(reason: SessionModelsReason | undefined, error?: strin
   }
 }
 
-/** A provider's credential source, in the user's words (issue #54). */
+/** A provider's credential source, in the user's words (issue #54). An
+ * unknown source shows itself raw rather than "未配置" — the credential may
+ * well exist; only `none` means it does not (issue #54 review, P3). */
 function authSourceText(source: string | undefined, label: string | undefined): string {
   switch (source) {
     case "stored":
@@ -153,7 +155,7 @@ function authSourceText(source: string | undefined, label: string | undefined): 
     case "none":
       return t(K.session.authNone);
     default:
-      return t(K.session.authNone);
+      return source ?? "";
   }
 }
 

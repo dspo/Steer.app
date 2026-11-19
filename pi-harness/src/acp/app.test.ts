@@ -442,6 +442,33 @@ describe("method surface", () => {
     await client.close();
   });
 
+  test("session/new carries a client-minted id from `_meta` into the ports (issue #56)", async () => {
+    const minted = "dddd3333-0000-4000-8000-000000000003";
+    const { ports, spy } = fakePorts([new FakeSession({ id: minted })]);
+    const client = startClient(ports);
+    await initialize(client);
+    const response = await client.request("session/new", {
+      cwd: "/tmp/proj",
+      _meta: { sessionId: minted },
+    });
+    expect(response.error).toBeUndefined();
+    // The response names the client's id: the view key and the session file
+    // are the same handle from the first frame.
+    expect((response.result as Record<string, unknown>).sessionId).toBe(minted);
+    expect((spy.createdContexts[0] as { sessionId?: string }).sessionId).toBe(minted);
+    await client.close();
+  });
+
+  test("session/new without `_meta` leaves the mint to the ports (standard ACP)", async () => {
+    const { ports, spy } = fakePorts([new FakeSession({ id: "pi-minted-here" })]);
+    const client = startClient(ports);
+    await initialize(client);
+    const response = await client.request("session/new", { cwd: "/tmp/proj" });
+    expect(response.error).toBeUndefined();
+    expect(spy.createdContexts[0]?.sessionId).toBeUndefined();
+    await client.close();
+  });
+
   test("session/prompt streams updates in order, then settles", async () => {
     const session = new FakeSession({
       id: "pi-2",

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { ModelRuntime, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { modelMeta, PermissionGate, sessionConfigOptions, type ConfigOptionsRuntime } from "./pi-session";
+import { assertFreeSessionId, modelMeta, PermissionGate, sessionConfigOptions, type ConfigOptionsRuntime } from "./pi-session";
 
 /**
  * A1 review: the approval gate treats `ask_user_question` as read-only —
@@ -152,5 +154,33 @@ describe("sessionConfigOptions", () => {
     const model = options.find((option) => option.id === "model");
     expect(model?.options.map((option) => option.value)).toEqual(["anthropic/claude-x", "other/m2"]);
     expect(model?.options[0]._meta).toEqual({ providerName: "anthropic", authSource: "models_json_key" });
+  });
+});
+
+// The client-minted session id (issue #56): `session/new` `_meta.sessionId`
+// must be a UUID — client v4 and pi's own v7 alike — and must not collide
+// with an existing session file, so an empty rebuild can never shadow a
+// real session's history.
+
+describe("assertFreeSessionId", () => {
+  const agentDir = `/tmp/zu-session-id-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+
+  test("a free UUID passes", () => {
+    expect(() => assertFreeSessionId("eaaa1111-0000-4000-8000-00000000000a", agentDir)).not.toThrow();
+  });
+
+  test("a non-UUID is refused before pi sees it", () => {
+    expect(() => assertFreeSessionId("stub-0000-0001", agentDir)).toThrow(/is not a UUID/);
+    expect(() => assertFreeSessionId("../escape", agentDir)).toThrow(/is not a UUID/);
+  });
+
+  test("an id that already has a session file is refused", () => {
+    const id = "ebbb2222-0000-4000-8000-00000000000b";
+    mkdirSync(join(agentDir, "sessions", "--tmp-x--"), { recursive: true });
+    writeFileSync(
+      join(agentDir, "sessions", "--tmp-x--", `2026-11-19T00-00-00-000Z_${id}.jsonl`),
+      `{"type":"session","version":3,"id":"${id}"}\n`,
+    );
+    expect(() => assertFreeSessionId(id, agentDir)).toThrow(/already has a session file/);
   });
 });

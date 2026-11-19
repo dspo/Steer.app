@@ -56,6 +56,10 @@ Zu.app（nsh TSX / AppKit）
   `app/modules/pi/acp/{jsonrpc,acp}.ts` 负责 JSON-RPC id、超时与事件分派；`host.ts` 持有进程注册表。
   握手 `initialize` → `session/new|load|resume` → 多次 `session/prompt` → `session/update` 流；
   会话 sheet/容器归档/退出 app 才关闭进程。
+- **启动顺序（Q122，issue #56）**：点 [Zu] 先 mint session id（UUID）→ 建容器 + sheet + 导航
+  （starting 页）→ 后台 spawn + `initialize` + `session/new`（id 走 `_meta`，harness 校验后按它铸
+  会话）。关 sheet 挂断在途连接；释放后的空会话（首条消息前 pi 不落文件，resume 得
+  `session_not_found`）按同一 id 原地重建。
 - **崩溃 = 中断**：ACP 没有「重连」；进程意外退出让 pending turn 失败，UI 标中断，下一次用户动作
   `session/resume`，不自动重放。
 - **看门狗**：60 s 内未 ready 的 harness 视为启动失败，带 stderr 报错。

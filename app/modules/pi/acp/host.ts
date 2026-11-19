@@ -1,4 +1,5 @@
 import { HarnessConnection, type AcpUpdate } from "./acp";
+import { JsonrpcFailure } from "./jsonrpc";
 import { askProjectTrust } from "../../../ui/trust";
 import type { SessionBanner } from "../protocol";
 
@@ -292,16 +293,75 @@ function installTrustBridge(connection: HarnessConnection, cwd: string): void {
   });
 }
 
-/** Opens a fresh session (spawn + initialize + session/new). */
-export async function openNewSession(cwd: string): Promise<AcpSession> {
-  const connection = await HarnessConnection.start({ cwd });
+/** The stages of a session's in-page start (issue #56); the starting page
+ * names them in order. */
+export type SessionStartPhase = "process" | "handshake" | "session";
+
+/** Sessions still starting (issue #56): minted id → its in-flight start.
+ * The entry lands BEFORE the spawn — a sheet can close during the
+ * handshake, when there is not yet a connection to hang up — so the record
+ * carries the connection once the spawn hands it over (`onSpawned`) and a
+ * cancelled flag for the window before that. The entry stays after a
+ * cancel: a bind that already ANSWERED must learn of the cancel from it,
+ * because the release's own `releasedViews` mark recycles and cannot be
+ * the adoption guard for a late reply. */
+const pendingStarts = new Map<string, { connection?: HarnessConnection; cancelled: boolean }>();
+
+/** Cancels the in-flight start of `sessionId` (its sheet closed or its
+ * container was archived): with a connection — spawn through bind — the
+ * process group hangs up at once; before the spawn the cancelled flag is
+ * the whole handle, and `openNewSession` refuses on arrival. */
+export function cancelNewSession(sessionId: string): void {
+  const start = pendingStarts.get(sessionId);
+  if (!start) return;
+  start.cancelled = true;
+  start.connection?.kill("the session's page closed while starting");
+}
+
+/** Opens a fresh session (spawn + initialize + session/new). A client-
+ * minted `sessionId` rides the bind's `_meta` (issue #56) so the session —
+ * and, on its first message, the file — carry the id the view already
+ * uses. `shouldAdopt` hands a finished session back unregistered for the
+ * caller to close (a page that closed mid-start; the mirror of
+ * `openExistingSession`'s contract). */
+export async function openNewSession(
+  cwd: string,
+  options: {
+    sessionId?: string;
+    onPhase?: (phase: SessionStartPhase) => void;
+    shouldAdopt?: () => boolean;
+  } = {},
+): Promise<AcpSession> {
+  const handleKey = options.sessionId ?? `anonymous:${++anonymousCounter}`;
+  const start: { connection?: HarnessConnection; cancelled: boolean } = { cancelled: false };
+  pendingStarts.set(handleKey, start);
+  options.onPhase?.("process");
   try {
+    const connection = await HarnessConnection.start({
+      cwd,
+      onPhase: options.onPhase,
+      // The cancel handle exists from before the spawn: the moment the
+      // process exists, a close that already landed can hang it up.
+      onSpawned: (spawned) => {
+        start.connection = spawned;
+      },
+    });
+    // The page closed during the spawn/handshake — the flag was set before
+    // there was anything to kill.
+    if (start.cancelled) {
+      connection.kill("the session's page closed while starting");
+      throw new Error("the session's page closed while starting");
+    }
     installTrustBridge(connection, cwd);
     const early: AcpUpdate[] = [];
     connection.onUpdate((_sessionId, update) => early.push(update));
-    const result = await connection.newSession(cwd);
-    const session = adopt(new AcpSession(connection, result, cwd));
+    options.onPhase?.("session");
+    const result = await connection.newSession(cwd, options.sessionId ? { sessionId: options.sessionId } : undefined);
+    const session = new AcpSession(connection, result, cwd);
     session.absorb(early);
+    pendingStarts.delete(handleKey);
+    if (start.cancelled || options.shouldAdopt?.() === false) return session;
+    adopt(session);
     connection.onExit((exit) => {
       // A late process may outlive a newer session for the same id (a
       // cancelled resume, then a retry that adopted); only unregister our
@@ -313,10 +373,15 @@ export async function openNewSession(cwd: string): Promise<AcpSession> {
     });
     return session;
   } catch (failure) {
-    connection.kill("session/new failed");
+    pendingStarts.delete(handleKey);
+    start.connection?.kill("session/new failed");
     throw failure;
   }
 }
+
+/** The anon handles' counter: a legacy caller without a minted id still
+ * gets a cancel slot that cannot collide. */
+let anonymousCounter = 0;
 
 /**
  * Opens an existing session. `load` replays the transcript (the read face);
@@ -348,7 +413,20 @@ export async function openExistingSession(
       replay = loaded.updates;
       result = { ...result, sessionId };
     } else {
-      result = await connection.resumeSession(sessionId, cwd);
+      try {
+        result = await connection.resumeSession(sessionId, cwd);
+      } catch (failure) {
+        // An empty session has no file yet (pi casts the file on the first
+        // message), so its resume answers `session_not_found` — nothing to
+        // resume, nothing lost. Re-mint the SAME id via `session/new` on
+        // the live connection (issue #56 follow-up): the view key, the
+        // sheet and the container identity stay valid, and a released
+        // empty session keeps its model/effort menus working. The harness
+        // refuses a taken id, so a real file can never be shadowed; any
+        // other refusal is real.
+        if (!(failure instanceof JsonrpcFailure) || failure.dataCode !== "session_not_found") throw failure;
+        result = await connection.newSession(cwd, { sessionId });
+      }
       result = { ...result, sessionId };
     }
     const session = new AcpSession(connection, result, cwd);
@@ -390,8 +468,11 @@ export async function closeSession(sessionId: string): Promise<void> {
   await session.close();
 }
 
-/** Closes every session (app quit / container archive). */
+/** Closes every session (app quit / container archive). Starts still in
+ * flight have no registry entry — their connections hang up directly. */
 export async function closeAllSessions(): Promise<void> {
+  for (const start of pendingStarts.values()) start.connection?.kill("the app is closing");
+  pendingStarts.clear();
   const all = [...sessions.values()];
   sessions.clear();
   await Promise.all(all.map((session) => session.close()));
