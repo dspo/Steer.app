@@ -135,6 +135,23 @@ fn configure_manox_home() {
 pub(crate) fn boot() -> Result<Arc<AhpRuntime>, String> {
     // The env must land before any kernel initialization reads it.
     configure_manox_home();
+    // The kernel must exist before the bridge fills its registry, and both
+    // must precede the runtime fast path below: a boot that finds the
+    // runtime already up returns there without reaching any later step, and
+    // skipping the bridge with it left the registry carrying only the
+    // kernel's own providers — pi-backed sessions then fail to resolve
+    // their config model (the Hero's selection). One `Once` covers both so
+    // repeated boots skip the work and concurrent boots still serialize it:
+    // the kernel's startup bundle is not internally idempotent (its object
+    // store re-opens the database), which is exactly the serialization the
+    // boot lock used to give these steps when they ran after the fast path.
+    // The bridge itself stays an unguarded read-and-register (tests call the
+    // pieces directly); the boot guards its one call instead.
+    static KERNEL_START: std::sync::Once = std::sync::Once::new();
+    KERNEL_START.call_once(|| {
+        manox_agent::init();
+        register_pi_providers();
+    });
     // The steps below are each process singletons, but their handshake is
     // not atomic: the builder must be installed before `runtime` consumes
     // it, so two concurrent boots could race the install. One lock, and a
@@ -146,10 +163,6 @@ pub(crate) fn boot() -> Result<Arc<AhpRuntime>, String> {
     if let Some(runtime) = manox_ahp_runtime::ahp::runtime::try_runtime() {
         return Ok(runtime);
     }
-    manox_agent::init();
-    // The kernel's registry must carry pi's providers before any session
-    // resolves its config model (the Hero's selection).
-    register_pi_providers();
     let cwd = anchor_cwd();
     // The runtime half cannot construct a session runtime itself; the owner
     // of the session store installs the builder. This embedder installs it
@@ -738,6 +751,83 @@ mod home_tests {
         assert_eq!(
             std::env::var_os("MANOX_HOME").unwrap(),
             explicit.as_os_str()
+        );
+    }
+
+    /// A repeat registration is a no-op, deterministically: the same YAML
+    /// twice into one fresh registry registers the same count (the kernel's
+    /// `register_provider` replaces, never duplicates) and the composed
+    /// registration-qualified ref still resolves — what boot must guarantee
+    /// when a second call bridges again.
+    #[test]
+    fn registering_the_same_yaml_twice_resolves_the_same() {
+        let dir = std::env::temp_dir().join("zu-pi-bridge-idem");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("models.json"),
+            r#"{"providers": {"bailian": {"api": "anthropic-messages", "baseUrl": "https://x.example",
+                "models": [{"id": "qwen3.8-flash"}]}}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("auth.json"),
+            r#"{"bailian": {"type": "api_key", "key": "k"}}"#,
+        )
+        .unwrap();
+        let yaml = pi_providers_yaml(&dir).unwrap();
+        let registry = manox_harness::core::provider_registry::ProviderRegistry::new();
+        let first = manox_harness::provider::register_providers_yaml(&registry, &yaml).unwrap();
+        assert!(first > 0, "{first}");
+        let second = manox_harness::provider::register_providers_yaml(&registry, &yaml).unwrap();
+        assert_eq!(first, second, "the second registration counts the same");
+        assert!(
+            manox_harness::model_ref::resolve_model_ref(
+                &registry,
+                "bailian-anthropic/qwen3.8-flash"
+            )
+            .is_some(),
+            "the ref resolves after both registrations"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The bridge's own idempotence against the real machine: registering
+    /// this machine's pi config twice into one fresh registry keeps the
+    /// app's composed ref (`bailian-anthropic/<first model>`) resolvable and
+    /// registers the same count both times — boot may bridge again and the
+    /// registry stays servable.
+    #[test]
+    #[ignore = "reads the developer's real ~/.pi credentials"]
+    fn the_real_pi_config_registers_twice_and_still_resolves() {
+        let dir = std::path::PathBuf::from(
+            std::env::var("PI_CODING_AGENT_DIR")
+                .unwrap_or_else(|_| format!("{}/.pi/agent", std::env::var("HOME").unwrap())),
+        );
+        let yaml = pi_providers_yaml(&dir).expect("this machine's pi config bridges");
+        let registry = manox_harness::core::provider_registry::ProviderRegistry::new();
+        let first = manox_harness::provider::register_providers_yaml(&registry, &yaml).unwrap();
+        assert!(first > 0, "registered {first}");
+        let second = manox_harness::provider::register_providers_yaml(&registry, &yaml).unwrap();
+        assert_eq!(first, second, "the second registration counts the same");
+        // The composed ref the app sends: bailian-anthropic/<first model>.
+        let models: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("models.json")).unwrap())
+                .unwrap();
+        let provider = models["providers"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .next()
+            .unwrap()
+            .clone();
+        let model = models["providers"][&provider]["models"][0]["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let reference = format!("bailian-anthropic/{model}");
+        assert!(
+            manox_harness::model_ref::resolve_model_ref(&registry, &reference).is_some(),
+            "the ref {reference} resolves after both registrations"
         );
     }
 }
