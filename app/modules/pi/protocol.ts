@@ -139,6 +139,12 @@ export interface SessionModelProvider {
   id: string;
   name: string;
   models: SessionModelOption[];
+  /** The provider's credential source as pi's own word (issue #54):
+   * stored / environment / runtime / models_json_key / …, or `none` —
+   * the composer renders it in the user's words. */
+  authSource?: string;
+  /** The env variable name when the source is `environment`. */
+  authLabel?: string;
 }
 
 export type SessionModelsReasonCode = "no_catalog" | "no_credentials" | "no_models" | "unavailable";

@@ -172,7 +172,13 @@ G1（审批/扩展 UI）、G2（模型/档位/压缩）、G3（子代理）是�
 规则：
 
 - `session/new` 与 `resume` 都返回完整的 `configOptions`；任何变化发 `config_option_update`。
-- `set_config_option` 对未知 id/非法值回 `-32602`，状态不变。
+- `set_config_option` 对未知 id 回 `-32602`；`thought_level` 的值不在模型档位表内时**不报错**，
+  交给 pi 的 clamp（`setThinkingLevel` 自己钳到最近可用档，issue #54）。
+- 每个 model option 的 `_meta` 带 `{ contextWindow, providerName, authSource, authLabel }`
+  （issue #54，ACP `SessionConfigSelectOption._meta` 自由槽）：菜单的 provider 行回答
+  "这个 provider 凭什么列出来"（`authSource` 是 pi 的来源词：stored / environment /
+  runtime / models_json_key / models_json_command / fallback，未配置为 `none`），model 行
+  显示 context window——不再需要第二个模型目录进程。
 - 配置在会话/转录里持久；resume 后恢复。
 - 起始页不预选模型/档位（Q116）：新会话使用机器默认配置，进入会话页后以 `configOptions` 为准，
   切换一律走 `set_config_option`。Pi 的模型列表只有 `configOptions` 一个来源（native `PiModels`
@@ -380,12 +386,16 @@ app/modules/pi/
 
 ### 9.3 模型 / 档位 / 策略
 
-- footer 的 `模型 · 档位` 是一个菜单（两级：provider → model），数据来自 `configOptions.model`；
+- footer 的模型菜单（两级：provider → model）数据来自 `configOptions.model`；provider 行
+  另外显示凭据来源（`_meta.authSource`/`authLabel` 的本话文案），model 行显示 context。
   不可用原因来自握手/配置（无凭证、无模型）而不是空列表。
-- 档位菜单来自 `configOptions.thought_level`；模型切换后档位列表可能变化，菜单立即刷新。
+- 档位是 footer 自己的 chip + 菜单（issue #54），选项来自 `configOptions.thought_level.options`
+  ——per-model，`/thinking` 循环同表，不用固定 7 档；模型切换后档位列表可能变化，菜单立即刷新。
 - 策略（审批模式）放在 `⋯` 菜单的"权限"小节；当前值以文字显示（不只用图标）。
 - 会话中切换立即 `set_config_option`；若正在 streaming，菜单项标注"下一轮生效"（实际以 distro 为准，
   客户端在 `config_option_update` 前显示 pending 态）。
+- 会话进程被释放（关标签/归档容器）后，重开、打开菜单、换模型/档位都先 resume 再动作；
+  resume 失败落在 composer/chat 的错误行与菜单的错误行上，不静默（issue #54）。
 - 起始页不预选（Q116）；新会话使用机器默认配置，模型/档位只在会话页切换。
 
 ### 9.4 斜杆命令

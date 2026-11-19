@@ -106,10 +106,12 @@ test("the streaming composer names the model and context, and queues on Enter", 
   expect(texts).toContain("high");
   expect(texts).toContain("12.3k / 1M · 1%");
   // Running: stop is always live, the send is gone, and the other lanes
-  // fold into the ⋯ menu (visual-only, §2.2-11).
+  // fold into the ⋯ menu (visual-only, §2.2-11). The effort chip rides the
+  // same footer (issue #54); the seeded level is its label.
   expect(app.enabled("id:session-stop")).toBe(true);
   expect(app.shows("id:session-send")).toBe(false);
   expect(app.shows("id:session-more")).toBe(true);
+  expect(app.shows("id:effort-picker")).toBe(true);
   await app.press("id:session-more");
   await app.waitFor("id:session-queue");
   await shot(app, "ui-s22-11-menu");
@@ -136,6 +138,8 @@ test("the idle composer is one accent send with no stop and no lanes", async () 
   expect(idle.enabled("id:session-send")).toBe(false);
   expect(idle.shows("id:session-stop")).toBe(false);
   expect(idle.shows("id:session-more")).toBe(false);
+  // The effort chip is a footer fact, not a lane: it stays (issue #54).
+  expect(idle.shows("id:effort-picker")).toBe(true);
   await idle.type("id:session-input", "send this");
   await idle.submit("id:session-input");
   await idle.waitUntil(() => idle.texts().includes("send this"), { timeout: 5000 });

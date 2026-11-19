@@ -37,10 +37,22 @@ export function setSlashActions(next: SlashActions | null): void {
   actions = next;
 }
 
-/** The thinking levels pi cycles through, low to high. */
+/** The thinking levels pi cycles through when no session ladder is live,
+ * low to high (issue #54: a live session's own `thought_level` options —
+ * per-model, sometimes just `off` — win over this fixed ladder). */
 const THINKING_ORDER: SessionThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
-function nextThinkingLevel(level: string): SessionThinkingLevel {
+/** The next level of the session's own ladder when it has one, else pi's
+ * fixed order: a model with only `off/high/max` never lands on an
+ * unavailable value. */
+function nextThinkingLevel(sessionId: string, level: string): SessionThinkingLevel {
+  const ladder = (viewFor(sessionId)?.configOptions.find((option) => option.id === "thought_level")?.options ?? [])
+    .map((option) => option.value as SessionThinkingLevel)
+    .filter(Boolean);
+  if (ladder.length > 0) {
+    const at = ladder.indexOf(level as SessionThinkingLevel);
+    return ladder[(at + 1) % ladder.length] ?? ladder[0];
+  }
   const at = THINKING_ORDER.indexOf(level as SessionThinkingLevel);
   return THINKING_ORDER[(at + 1) % THINKING_ORDER.length];
 }
@@ -94,7 +106,7 @@ async function runLocal(sessionId: string, name: string): Promise<void> {
       return;
     case "thinking": {
       const level = viewFor(sessionId)?.thinkingLevel ?? "off";
-      void setThinkingLevel(sessionId, nextThinkingLevel(level));
+      void setThinkingLevel(sessionId, nextThinkingLevel(sessionId, level));
       return;
     }
     case "compact":

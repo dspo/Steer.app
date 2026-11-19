@@ -13,7 +13,7 @@ import {
   switchContainer,
 } from "../../core/containers";
 import { appendSheet, panelIds, visiblePanels } from "../../core/dock";
-import { createSession, focusSession, openSession, sessions, setSessionLoading, viewFor } from "./sessions";
+import { clearReleasedView, createSession, ensureLiveSession, focusSession, openSession, sessions, setSessionLoading, viewFor } from "./sessions";
 import { defaultLayoutForSessions, layoutSessions, sessionIdOfSheet, sessionSheetId } from "./sheets";
 
 /**
@@ -175,12 +175,16 @@ function endLoading(id: string): void {
   setSessionLoading(id, false);
 }
 
-/** Opens (or focuses) one session's transcript. */
+/** Opens (or focuses) one session's transcript. A loaded view whose process
+ * was released (sheet closed, container archived) reconnects before this
+ * resolves, so the reopened sheet can act on the session (issue #54). */
 export async function hydrateSession(sessionId: string): Promise<void> {
   const view = viewFor(sessionId);
   focusSession(sessionId);
   if (view?.loaded) {
     endLoading(sessionId);
+    clearReleasedView(sessionId);
+    await ensureLiveSession(sessionId);
     return;
   }
   // The restored sheet is visible but its file may not be in the sidebar's

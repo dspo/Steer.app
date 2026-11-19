@@ -3,6 +3,7 @@ import { State } from "../../domains/state";
 import { K, t } from "../../ui/i18n";
 import type { AcpUpdate } from "./acp/acp";
 import {
+  closeReservedSession,
   closeSession as closeHostSession,
   liveSession,
   openExistingSession,
@@ -579,6 +580,84 @@ function aliveSessionFor(key: string): AcpSession | undefined {
   return existing && !existing.dead ? existing : undefined;
 }
 
+/** Reconnects already in flight per view key (issue #54): a menu open, a
+ * model pick and the turn's own ensure share one resume, so a released
+ * session never spawns two processes for one click. */
+const reconnecting = new Map<string, Promise<AcpSession | null>>();
+/** Releases bump this generation: a resume that started before the sheet
+ * closed must neither adopt its harness into the live registry nor repaint
+ * the view with it (issue #64 review, P2). */
+const reconnectGenerations = new Map<string, number>();
+const releasedViews = new Set<string>();
+
+/** A pick that needed a resume but could not get one: mirror the reason
+ * into the menu so the open picker is not silent (issue #64 review, P3). */
+function mirrorReconnectFailure(id: string): void {
+  const detail = views()[id]?.error;
+  if (!detail) return;
+  patchModels(id, {
+    ...(sessionModels()[id] ?? { status: "error" as const }),
+    status: "error",
+    error: detail,
+  });
+}
+
+/** Clears only the error a reconnect itself wrote; a turn's error stays
+ * until its own retry (issue #64 review, P1). */
+function clearReconnectError(key: string): void {
+  const current = views()[key];
+  if (!current?.error) return;
+  const zh = t(K.session.reconnectFailed, { error: "", locale: "zh-CN" });
+  const en = t(K.session.reconnectFailed, { error: "", locale: "en" });
+  if (current.error.startsWith(zh) || current.error.startsWith(en)) {
+    patchView(key, { error: undefined });
+  }
+}
+
+/** One resume for a view whose process is gone. The shared leg under
+ * `ensureAcpSession`: the failure lands on the view (the chat's quiet error
+ * line), never silently. */
+function connectExisting(key: string): Promise<AcpSession | null> {
+  const inFlight = reconnecting.get(key);
+  if (inFlight) return inFlight;
+  const view = views()[key];
+  if (!view) return Promise.resolve(null);
+  releasedViews.delete(key);
+  const generation = reconnectGenerations.get(key) ?? 0;
+  const valid = () =>
+    !releasedViews.has(key) && (reconnectGenerations.get(key) ?? 0) === generation && !!views()[key];
+  const request = (async () => {
+    try {
+      const { session } = await openExistingSession(view.id, view.cwd || "/", {
+        load: false,
+        shouldAdopt: valid,
+      });
+      if (!valid()) {
+        await closeReservedSession(session);
+        return null;
+      }
+      attachSession(key, session);
+      clearReconnectError(key);
+      return session;
+    } catch (failure) {
+      if (valid()) {
+        patchView(key, {
+          error: t(K.session.reconnectFailed, {
+            error: String(failure instanceof Error ? failure.message : failure),
+          }),
+          sessionState: "interrupted",
+          streaming: false,
+        });
+      }
+      return null;
+    } finally {
+      reconnecting.delete(key);
+    }
+  })();
+  reconnecting.set(key, request);
+  return request;
+}
+
 export async function ensureAcpSession(
   key: string,
   options?: { seed?: boolean },
@@ -590,22 +669,22 @@ export async function ensureAcpSession(
     attachSession(key, existing);
     return existing;
   }
-  try {
-    const { session } = await openExistingSession(view.id, view.cwd || "/", { load: false });
-    attachSession(key, session);
-    // The previous process may have died mid-ask; the load-side repair has
-    // already acked the tail, so the asks are listable again (B2). Callers
-    // that supersede first turn seeding off and seed explicitly after.
-    if (options?.seed !== false) void seedPendingAsks(key, session);
-    return session;
-  } catch (failure) {
-    patchView(key, {
-      error: String(failure instanceof Error ? failure.message : failure),
-      sessionState: "interrupted",
-      streaming: false,
-    });
-    return null;
-  }
+  const session = await connectExisting(key);
+  if (!session) return null;
+  // The previous process may have died mid-ask; the load-side repair has
+  // already acked the tail, so the asks are listable again (B2). Callers
+  // that supersede first turn seeding off and seed explicitly after.
+  if (options?.seed !== false) void seedPendingAsks(key, session);
+  return session;
+}
+
+/** A live session for `id`, resuming a released or dead process first
+ * (issue #54): a loaded view whose sheet was closed gets its process back
+ * before the caller acts on it — reopen, model pick, effort pick. The
+ * legacy transport owns no process, so it is a no-op there. */
+export async function ensureLiveSession(id: string | null | undefined): Promise<AcpSession | null> {
+  if (!id || !useAcpBranch()) return null;
+  return ensureAcpSession(id);
 }
 
 async function runAcpTurn(key: string, text: string): Promise<void> {
@@ -780,12 +859,16 @@ function patchModels(id: string, next: SessionModelsState): void {
  * twice costs one request. `force` asks pi's auth checks again, and an empty
  * answer is never cached: once the user configures a provider, the next open
  * (or retry) finds it without a restart.
+ *
+ * ACP mode this is a pure read — the live selector wins, and a released
+ * session's stale view copy keeps the menu readable. Resuming the process is
+ * the caller's intent: the menu open and the retries go through
+ * `ensureSessionModels` (issue #54), and a plain read must never spawn.
  */
 export async function loadSessionModels(id: string, force = false): Promise<void> {
   if (!id) return;
   if (useAcpBranch()) {
-    const view = views()[id];
-    const config = liveSession(id)?.configOptions ?? view?.configOptions ?? [];
+    const config = liveSession(id)?.configOptions ?? views()[id]?.configOptions ?? [];
     const modelConfig = config.find((option) => option.id === "model");
     if (!modelConfig) {
       patchModels(id, { status: "error", error: t(K.session.modelsEmpty) });
@@ -798,10 +881,22 @@ export async function loadSessionModels(id: string, force = false): Promise<void
       const modelId = at >= 0 ? option.value.slice(at + 1) : option.value;
       let group = providers.find((entry) => entry.id === provider);
       if (!group) {
-        group = { id: provider, name: provider, models: [] };
+        group = {
+          id: provider,
+          name: option._meta?.providerName ?? provider,
+          models: [],
+          ...(option._meta?.authSource ? { authSource: option._meta.authSource } : {}),
+          ...(option._meta?.authLabel ? { authLabel: option._meta.authLabel } : {}),
+        };
         providers.push(group);
       }
-      group.models.push({ provider, id: modelId, name: option.name });
+      const window = option._meta?.contextWindow;
+      group.models.push({
+        provider,
+        id: modelId,
+        name: option.name,
+        ...(window !== undefined && Number.isFinite(window) ? { contextWindow: window } : {}),
+      });
     }
     const currentRef = modelConfig.currentValue;
     const at = currentRef.indexOf("/");
@@ -833,6 +928,31 @@ export async function loadSessionModels(id: string, force = false): Promise<void
 }
 
 /**
+ * The model menu's own ensure (issue #54): opening the menu or hitting its
+ * retry on a released (or dead) session resumes the process first, then
+ * reads the live selector. A failed resume keeps the previous list readable
+ * and names the reason — the menu shows it above the rows, with the retry.
+ */
+export async function ensureSessionModels(id: string, force = false): Promise<void> {
+  if (!id) return;
+  if (!useAcpBranch()) return loadSessionModels(id, force);
+  if (aliveSessionFor(id)) return loadSessionModels(id, force);
+  const session = await ensureAcpSession(id);
+  if (session) clearReconnectError(id);
+  if (!session) {
+    const previous = sessionModels()[id];
+    const detail = views()[id]?.error;
+    patchModels(id, {
+      ...(previous?.data ? { data: previous.data } : {}),
+      status: "error",
+      error: detail || t(K.session.reconnectFailed, { error: "unknown" }),
+    });
+    return;
+  }
+  await loadSessionModels(id, force);
+}
+
+/**
  * Switches the session's model through the engine. On success the reply's
  * `session.info` shape is folded in immediately and a fresh `session.info`
  * confirms it; on failure the reason stays with the picker's state.
@@ -840,11 +960,15 @@ export async function loadSessionModels(id: string, force = false): Promise<void
 export async function chooseSessionModel(id: string, provider: string, modelId: string): Promise<boolean> {
   if (!id || !provider || !modelId) return false;
   if (useAcpBranch()) {
-    const session = liveSession(id);
+    // Issue #54: a released session resumes first — the pick rides the
+    // process, and a failed resume lands on the view's error line instead of
+    // dying quietly in a menu that does not move.
+    const session = await ensureAcpSession(id);
     if (!session) {
-      patchView(id, { error: "the session is not running" });
+      mirrorReconnectFailure(id);
       return false;
     }
+    clearReconnectError(id);
     try {
       await session.setConfig("model", `${provider}/${modelId}`);
       syncProtocolState(id);
@@ -894,6 +1018,13 @@ export async function setSessionMode(id: string, modeId: string): Promise<boolea
   }
 }
 
+/** A new reopen/hydrate intent cancels the previous release's in-flight
+ * invalidation (issue #64 review, P2). */
+export function clearReleasedView(id: string): void {
+  const key = viewKeyFor(id) ?? id;
+  releasedViews.delete(key);
+}
+
 /** Releases a session's process and any request still waiting on the user. */
 export async function releaseSession(id: string): Promise<void> {
   const key = viewKeyFor(id) ?? id;
@@ -901,6 +1032,10 @@ export async function releaseSession(id: string): Promise<void> {
   acpQueues.delete(key);
   seededSupersedes.delete(key);
   cancelPending(key);
+  // The resume may not have registered its process yet: invalidate its
+  // generation first so it cannot adopt, then close whatever is live.
+  reconnectGenerations.set(key, (reconnectGenerations.get(key) ?? 0) + 1);
+  releasedViews.add(key);
   await closeHostSession(key);
 }
 
@@ -1003,12 +1138,32 @@ export function adoptSession(data: SessionData): SessionView {
  * ACP mode: the transcript is the `session/load` replay (history is read by
  * a process from the file, never from the wire's memory); the same process
  * stays attached for the session's later turns.
+ *
+ * A loaded view with no live process (its sheet was closed and the release
+ * closed the harness) reconnects before this resolves (issue #54), so the
+ * sheet that caused the open can act on the session — the model menu and
+ * the effort menu included — instead of “能聊、不能换模型”。
  */
 export function openSession(path: string): Promise<SessionView | undefined> {
   const existing = Object.values(views()).find((view) => view.path === path);
   if (existing?.loaded) {
     activeId.set(existing.id);
-    return Promise.resolve(existing);
+    if (!useAcpBranch() || aliveSessionFor(existing.id)) return Promise.resolve(existing);
+    const inFlight = opening.get(path);
+    if (inFlight) return inFlight;
+    releasedViews.delete(existing.id);
+    const requestOpen = (async () => {
+      try {
+        await ensureAcpSession(existing.id);
+        // The view survives a failed resume: the transcript is still the
+        // projection it was, and the quiet error line names the reason.
+        return viewFor(existing.id);
+      } finally {
+        opening.delete(path);
+      }
+    })();
+    opening.set(path, requestOpen);
+    return requestOpen;
   }
   const inFlight = opening.get(path);
   if (inFlight) return inFlight;
@@ -1238,14 +1393,16 @@ export async function stop(sessionId?: string): Promise<void> {
 }
 
 /** Sets the session's thinking level (the `/thinking` command's engine leg).
- * ACP mode: the `thought_level` config selector. */
+ * ACP mode: the `thought_level` config selector; a released session resumes
+ * first (issue #54), and pi clamps the level to the model's own ladder. */
 export async function setThinkingLevel(id: string, level: SessionThinkingLevel): Promise<boolean> {
   if (useAcpBranch()) {
-    const session = liveSession(id);
+    const session = await ensureAcpSession(id);
     if (!session) {
-      patchView(id, { error: "the session is not running" });
+      mirrorReconnectFailure(id);
       return false;
     }
+    clearReconnectError(id);
     try {
       await session.setConfig("thought_level", level);
       syncProtocolState(id);

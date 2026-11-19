@@ -93,6 +93,102 @@ import type {
 type PiAgentSession = AgentSession;
 type ThinkingLevel = Parameters<PiAgentSession["setThinkingLevel"]>[0];
 
+/** The runtime face `sessionConfigOptions` reads — pi 1.5.0's ModelRuntime,
+ * whose `getProviderAuthStatus(providerId)` is the same API the CLI uses for
+ * its auth mapping (`configured` + `source` + optional `label`). */
+export interface ConfigOptionsRuntime {
+  getAvailableSnapshot?(): readonly unknown[];
+  getProvider?(providerId: string): { name?: string } | undefined;
+  getProviderAuthStatus(providerId: string): {
+    configured: boolean;
+    source?: string;
+    label?: string;
+  };
+}
+
+/** The `_meta` a model option carries (issue #54): the display name and
+ * credential source of its provider, plus the context window when known.
+ * `authSource` is pi's own source word (stored / environment / …), `none`
+ * when the provider has no credential — the menu says so instead of
+ * leaving the user to find out at pick time. */
+export function modelMeta(
+  runtime: ConfigOptionsRuntime | undefined,
+  providerId: string,
+  contextWindow?: number,
+): { contextWindow?: number; providerName: string; authSource: string; authLabel?: string } | undefined {
+  if (!runtime) return undefined;
+  const status = runtime.getProviderAuthStatus(providerId);
+  const source = status.configured ? (status.source ?? "unknown") : "none";
+  return {
+    ...(contextWindow !== undefined && Number.isFinite(contextWindow) ? { contextWindow } : {}),
+    providerName: runtime.getProvider?.(providerId)?.name ?? providerId,
+    authSource: source,
+    ...(status?.label ? { authLabel: status.label } : {}),
+  };
+}
+
+/** The config selectors one session advertises: the model list from the
+ * runtime's availability snapshot (each option with its `_meta` facts) and
+ * the thought ladder from the session. Exported for tests — the pi glue
+ * calls it with its own pieces. */
+export function sessionConfigOptions(
+  runtime: ConfigOptionsRuntime | undefined,
+  enabledPatterns: string[] | null | undefined,
+  current: { provider: string; id: string; name?: string; contextWindow?: number } | undefined,
+  levels: readonly string[],
+  thinkingLevel: string,
+): SessionConfigOption[] {
+  const all = runtime?.getAvailableSnapshot?.() ?? [];
+  const models = enabledPatterns
+    ? all.filter((model) => modelAllowed(enabledPatterns, model as { provider: string; id: string; name?: string }))
+    : all;
+  const options = models.map((raw) => {
+    const model = raw as { provider: string; id: string; name?: string; contextWindow?: number };
+    return {
+      value: `${model.provider}/${model.id}`,
+      name: model.name ?? `${model.provider}/${model.id}`,
+      description: model.provider,
+      // Issue #54: the menu's provider rows answer "why is this provider
+      // listed" (credential source) and the model rows show the context
+      // window, without a second model-catalog process.
+      _meta: modelMeta(runtime, model.provider, model.contextWindow),
+    };
+  });
+  // The active model must stay selectable even when a scope pattern is
+  // narrower than the session's restored model.
+  if (current && !options.some((option) => option.value === `${current.provider}/${current.id}`)) {
+    options.unshift({
+      value: `${current.provider}/${current.id}`,
+      name: current.name ?? `${current.provider}/${current.id}`,
+      description: current.provider,
+      _meta: modelMeta(runtime, current.provider),
+    });
+  }
+  const levels2 = levels.map((level) => ({ value: level, name: level }));
+  const configs: SessionConfigOption[] = [];
+  if (options.length > 0) {
+    configs.push({
+      id: "model",
+      name: "Model",
+      category: "model",
+      type: "select",
+      currentValue: current ? `${current.provider}/${current.id}` : options[0].value,
+      options,
+    });
+  }
+  if (levels2.length > 0) {
+    configs.push({
+      id: "thought_level",
+      name: "Thinking",
+      category: "thought_level",
+      type: "select",
+      currentValue: thinkingLevel,
+      options: levels2,
+    });
+  }
+  return configs;
+}
+
 /** `enabledModels` patterns are fuzzy in pi; this is the conservative subset. */
 function modelAllowed(patterns: string[], model: { provider: string; id: string; name?: string }): boolean {
   const ref = `${model.provider}/${model.id}`;
@@ -555,47 +651,13 @@ class PiHarnessSession implements HarnessSession {
   }
 
   configOptions(): SessionConfigOption[] {
-    const runtime = this.session.modelRuntime;
-    const all = runtime?.getAvailableSnapshot?.() ?? [];
-    const enabled = this.settingsManager.getEnabledModels();
-    const models = enabled ? all.filter((model) => modelAllowed(enabled, model)) : all;
-    const current = this.session.model;
-    const options = models.map((model) => ({
-      value: `${model.provider}/${model.id}`,
-      name: model.name ?? `${model.provider}/${model.id}`,
-      description: model.provider,
-    }));
-    // The active model must stay selectable even when a scope pattern is
-    // narrower than the session's restored model.
-    if (current && !options.some((option) => option.value === `${current.provider}/${current.id}`)) {
-      options.unshift({ value: `${current.provider}/${current.id}`, name: current.name ?? `${current.provider}/${current.id}`, description: current.provider });
-    }
-    const levels = this.session.getAvailableThinkingLevels().map((level) => ({
-      value: level,
-      name: level,
-    }));
-    const configs: SessionConfigOption[] = [];
-    if (options.length > 0) {
-      configs.push({
-        id: "model",
-        name: "Model",
-        category: "model",
-        type: "select",
-        currentValue: current ? `${current.provider}/${current.id}` : options[0].value,
-        options,
-      });
-    }
-    if (levels.length > 0) {
-      configs.push({
-        id: "thought_level",
-        name: "Thinking",
-        category: "thought_level",
-        type: "select",
-        currentValue: this.session.thinkingLevel,
-        options: levels,
-      });
-    }
-    return configs;
+    return sessionConfigOptions(
+      this.session.modelRuntime as ConfigOptionsRuntime | undefined,
+      this.settingsManager.getEnabledModels(),
+      this.session.model,
+      this.session.getAvailableThinkingLevels(),
+      this.session.thinkingLevel,
+    );
   }
 
   availableCommands(): AvailableCommand[] {
@@ -690,10 +752,11 @@ class PiHarnessSession implements HarnessSession {
       return this.configOptions();
     }
     if (configId === "thought_level") {
-      const levels = this.session.getAvailableThinkingLevels();
-      if (!levels.includes(value as ThinkingLevel)) {
-        throw codedError(-32602, "invalid_thought_level", `unknown thinking level ${value}`);
-      }
+      // Issue #54: pi clamps the level to the model's own ladder
+      // (`getAvailableThinkingLevels`), so an off-menu value settles on the
+      // nearest supported level instead of erroring with
+      // `invalid_thought_level` — the composer's menus only offer levels the
+      // session announced, and pi owns the truth about what applies.
       this.session.setThinkingLevel(value as ThinkingLevel, { persist: false });
       this.emitConfig();
       return this.configOptions();

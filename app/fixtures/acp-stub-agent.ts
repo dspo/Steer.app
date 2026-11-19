@@ -15,6 +15,9 @@
 //   STUB_PROMPT_UPDATES=1  a prompt streams one agent chunk before settling
 //   STUB_MIDTURN_EXIT=1  the process exits instead of settling a prompt
 //   STUB_NEW_FAIL=1      session/new answers with a coded error
+//   STUB_RESUME_FAIL=1   session/resume answers with a coded error
+//   STUB_RESUME_DELAY=ms session/resume waits before answering
+//   STUB_EXIT_DELAY=ms   stdin close waits before exiting (a late process)
 //   STUB_UNIQUE_SESSION=1  session/new answers a unique id (per spawn), not the fixed stub-0000-0001
 //   STUB_ASK=1           the prompt asks the client for tool approval
 //   STUB_ELICIT=1        the prompt asks the client for structured input
@@ -48,11 +51,21 @@ const elicitationId = 9002;
 const askCreateId = 9003;
 let pending: string | null = null;
 let askRetired = false;
+// Per-process config state: the harness is the live session, so changing one
+// selector must not reset the other (issue #64 review, P3).
+let currentModel = "p/m";
+let currentThought = "high";
 
 const on = (name: string) => !!process.env[name];
+/** A numeric env knob (`0` when unset or not a number) — `on` is the
+ * boolean form, so `Number(on(...))` would always be 1. */
+const amount = (name: string) => Number(process.env[name] ?? "") || 0;
 
-function configOptions(value = "p/m"): string {
-  return `"configOptions":[{"id":"model","name":"Model","category":"model","type":"select","currentValue":"${value}","options":[{"value":"p/m","name":"p/m"},{"value":"p/other","name":"p/other"}]}]`;
+// The model options carry the harness's `_meta` facts (issue #54) and the
+// thought ladder is one of the stub's own: two levels, so a pick moves the
+// selector visibly.
+function configOptions(model = currentModel, thought = currentThought): string {
+  return `"configOptions":[{"id":"model","name":"Model","category":"model","type":"select","currentValue":"${model}","options":[{"value":"p/m","name":"p/m","_meta":{"contextWindow":1000000,"providerName":"P","authSource":"stored"}},{"value":"p/other","name":"p/other","_meta":{"contextWindow":200000,"providerName":"P","authSource":"environment","authLabel":"P_API_KEY"}}]},{"id":"thought_level","name":"Thinking","category":"thought_level","type":"select","currentValue":"${thought}","options":[{"value":"off","name":"off"},{"value":"high","name":"high"}]}]`;
 }
 
 function modes(current = "ask"): string {
@@ -125,7 +138,7 @@ function replayFileRows(sid: string): void {
   }
 }
 
-function handle(line: string): void {
+async function handle(line: string): Promise<void> {
   const id = /"id":(\d+)/.exec(line)?.[1] ?? null;
   // `${sid:=default}` in the sh treats an empty capture as unset too.
   const sid = /"sessionId":"([^"]*)"/.exec(line)?.[1] || "stub-0000-0002";
@@ -164,16 +177,26 @@ function handle(line: string): void {
     announceCommands(sid);
     write(`{"jsonrpc":"2.0","id":${id},"result":{${configOptions()},${modes()}}}`);
   } else if (line.includes(`"method":"session/resume"`)) {
+    if (on("STUB_RESUME_FAIL")) {
+      write(`{"jsonrpc":"2.0","id":${id},"error":{"code":-32000,"message":"resume_failed","data":{"code":"stub_refused"}}}`);
+      return;
+    }
+    // A slow resume widens the release race window (issue #64 review, P2).
+    const resumeDelay = amount("STUB_RESUME_DELAY");
+    if (resumeDelay > 0) await new Promise((done) => setTimeout(done, resumeDelay));
     announceCommands(sid);
     write(`{"jsonrpc":"2.0","id":${id},"result":{${configOptions()},${modes()}}}`);
   } else if (line.includes(`"method":"session/close"`)) {
     write(`{"jsonrpc":"2.0","id":${id},"result":{}}`);
   } else if (line.includes(`"method":"session/set_config_option"`)) {
     const chosen = /"value":"([^"]*)"/.exec(line)?.[1] || "p/m";
+    const configId = /"configId":"([^"]*)"/.exec(line)?.[1] || "model";
+    if (configId === "thought_level") currentThought = chosen;
+    else currentModel = chosen;
     write(
-      `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sid}","update":{"sessionUpdate":"config_option_update",${configOptions(chosen)}}}}`,
+      `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sid}","update":{"sessionUpdate":"config_option_update",${configOptions()}}}}`,
     );
-    write(`{"jsonrpc":"2.0","id":${id},"result":{${configOptions(chosen)}}}`);
+    write(`{"jsonrpc":"2.0","id":${id},"result":{${configOptions()}}}`);
   } else if (line.includes(`"method":"session/set_mode"`)) {
     const chosenMode = /"modeId":"([^"]*)"/.exec(line)?.[1] || "ask";
     write(
@@ -261,4 +284,9 @@ function handle(line: string): void {
 
 const lines = createInterface({ input: process.stdin });
 lines.on("line", handle);
-lines.on("close", () => process.exit(0));
+lines.on("close", () => {
+  // A cancelled resume's process may exit after the retry that adopted a
+  // newer session for the same id; the delay makes that ordering testable.
+  const delay = amount("STUB_EXIT_DELAY");
+  setTimeout(() => process.exit(0), delay);
+});

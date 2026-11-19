@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { PermissionGate } from "./pi-session";
+import { ModelRuntime, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { modelMeta, PermissionGate, sessionConfigOptions, type ConfigOptionsRuntime } from "./pi-session";
 
 /**
  * A1 review: the approval gate treats `ask_user_question` as read-only —
@@ -63,5 +63,94 @@ describe("the approval gate and ask_user_question", () => {
       block: true,
       reason: expect.stringContaining("read-only mode"),
     });
+  });
+});
+
+// The config selectors the harness advertises (issue #54): each model
+// option carries its provider's facts in `_meta`, so the menu answers
+// "why is this provider listed" without a second catalog process.
+
+describe("sessionConfigOptions", () => {
+  const runtime: ConfigOptionsRuntime = {
+    getAvailableSnapshot: () => [
+      { provider: "anthropic", id: "claude-x", name: "Claude X", contextWindow: 200_000 },
+      { provider: "bailian", id: "qwen-f", name: "Qwen F", contextWindow: 1_000_000 },
+    ],
+    getProvider: (id) => (id === "anthropic" ? { name: "Anthropic" } : undefined),
+    getProviderAuthStatus: (id) =>
+      id === "anthropic"
+        ? { configured: true, source: "stored" }
+        : id === "bailian"
+          ? { configured: true, source: "environment", label: "DASHSCOPE_API_KEY" }
+          : { configured: false },
+  };
+
+  test("each model option carries its provider's display name, source and context", () => {
+    const options = sessionConfigOptions(runtime, null, { provider: "anthropic", id: "claude-x" }, ["off", "high"], "off");
+    const model = options.find((option) => option.id === "model");
+    const byValue = new Map(model?.options.map((option) => [option.value, option]));
+    expect(byValue.get("anthropic/claude-x")?._meta).toEqual({
+      providerName: "Anthropic",
+      authSource: "stored",
+      contextWindow: 200_000,
+    });
+    // A provider without a registered display name keeps its id; the
+    // environment source names the variable it reads.
+    expect(byValue.get("bailian/qwen-f")?._meta).toEqual({
+      providerName: "bailian",
+      authSource: "environment",
+      authLabel: "DASHSCOPE_API_KEY",
+      contextWindow: 1_000_000,
+    });
+    expect(model?.currentValue).toBe("anthropic/claude-x");
+  });
+
+  test("pi 1.5.0's real ModelRuntime supplies the auth status the menu reads", async () => {
+    const authPath = `/tmp/zu-auth-status-${Date.now()}-${Math.floor(Math.random() * 1e6)}.json`;
+    const real = await ModelRuntime.create({ authPath, modelsPath: null, allowModelNetwork: false });
+    const runtime = real as ConfigOptionsRuntime;
+    const unconfigured = runtime.getProviderAuthStatus("definitely-not-a-provider");
+    expect(unconfigured.configured).toBe(false);
+
+    // A runtime API key is the same source the CLI's auth check sees. The
+    // menu must not report `none` for a provider that is already usable.
+    await real.setRuntimeApiKey("openai", "sk-test");
+    const configured = runtime.getProviderAuthStatus("openai");
+    expect(configured.configured).toBe(true);
+    expect(configured.source).toBe("runtime");
+    expect(modelMeta(runtime, "openai")?.authSource).toBe("runtime");
+  });
+
+  test("an unconfigured provider is listed as none, not fake-signed-in", () => {
+    const bare: ConfigOptionsRuntime = {
+      getAvailableSnapshot: () => [{ provider: "p", id: "m", name: "M", contextWindow: 8 }],
+      getProviderAuthStatus: () => ({ configured: false }),
+    };
+    const options = sessionConfigOptions(bare, null, undefined, [], "off");
+    expect(options.find((option) => option.id === "model")?.options[0]._meta).toEqual({
+      providerName: "p",
+      authSource: "none",
+      contextWindow: 8,
+    });
+    // No thought ladder, no thought_level selector.
+    expect(options.some((option) => option.id === "thought_level")).toBe(false);
+  });
+
+  test("the session's restored model stays selectable with its own _meta", () => {
+    const scoped: ConfigOptionsRuntime = {
+      getAvailableSnapshot: () => [{ provider: "other", id: "m2", name: "M2" }],
+      getProvider: () => undefined,
+      getProviderAuthStatus: () => ({ configured: true, source: "models_json_key" }),
+    };
+    const options = sessionConfigOptions(
+      scoped,
+      ["other/*"],
+      { provider: "anthropic", id: "claude-x", name: "Claude X" },
+      ["off"],
+      "off",
+    );
+    const model = options.find((option) => option.id === "model");
+    expect(model?.options.map((option) => option.value)).toEqual(["anthropic/claude-x", "other/m2"]);
+    expect(model?.options[0]._meta).toEqual({ providerName: "anthropic", authSource: "models_json_key" });
   });
 });

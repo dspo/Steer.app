@@ -19,7 +19,15 @@ export interface PiConfigOption {
   category?: string;
   type: "select";
   currentValue: string;
-  options: Array<{ value: string; name: string; description?: string }>;
+  options: Array<{
+    value: string;
+    name: string;
+    description?: string;
+    /** The harness's own facts about a model option (issue #54): its
+     * provider's display name and credential source, plus the context
+     * window. ACP `SessionConfigSelectOption._meta` is free-form. */
+    _meta?: { contextWindow?: number; providerName?: string; authSource?: string; authLabel?: string };
+  }>;
 }
 
 /** One command the distro can execute from a prompt. */
@@ -295,7 +303,10 @@ export async function openNewSession(cwd: string): Promise<AcpSession> {
     const session = adopt(new AcpSession(connection, result, cwd));
     session.absorb(early);
     connection.onExit((exit) => {
-      sessions.delete(session.id);
+      // A late process may outlive a newer session for the same id (a
+      // cancelled resume, then a retry that adopted); only unregister our
+      // own entry, never the newer one (PR #64 review).
+      if (sessions.get(session.id) === session) sessions.delete(session.id);
       session.markDead(
         `the harness exited (${exit.code === null ? String(exit.signal ?? "unknown") : exit.code})`,
       );
@@ -310,11 +321,17 @@ export async function openNewSession(cwd: string): Promise<AcpSession> {
 /**
  * Opens an existing session. `load` replays the transcript (the read face);
  * without it the session is resumed without history.
+ *
+ * `shouldAdopt` lets a caller cancel an in-flight resume (a sheet closing
+ * while the process starts): a cancelled resume still returns its session to
+ * the caller, but it is never registered as live — `closeReservedSession`
+ * owns that process and closes it the moment it lands, so no harness is
+ * leaked into app quit.
  */
 export async function openExistingSession(
   sessionId: string,
   cwd: string,
-  options: { load?: boolean } = {},
+  options: { load?: boolean; shouldAdopt?: () => boolean } = {},
 ): Promise<{ session: AcpSession; replay: AcpUpdate[] }> {
   const existing = sessions.get(sessionId);
   if (existing && !existing.dead) return { session: existing, replay: [] };
@@ -334,19 +351,30 @@ export async function openExistingSession(
       result = await connection.resumeSession(sessionId, cwd);
       result = { ...result, sessionId };
     }
-    const session = adopt(new AcpSession(connection, result, cwd));
+    const session = new AcpSession(connection, result, cwd);
     session.absorb([...replay, ...early]);
     connection.onExit((exit) => {
-      sessions.delete(session.id);
+      // A cancelled resume is never adopted; its process can exit after a
+      // retry adopted a newer session for the same id. Deleting by id would
+      // unregister that live session (PR #64 review).
+      if (sessions.get(session.id) === session) sessions.delete(session.id);
       session.markDead(
         `the harness exited (${exit.code === null ? String(exit.signal ?? "unknown") : exit.code})`,
       );
     });
+    if (options.shouldAdopt?.() !== false) adopt(session);
     return { session, replay };
   } catch (failure) {
     connection.kill("session resume failed");
     throw failure;
   }
+}
+
+/** Closes a session that a cancelled resume handed back. No-op once its
+ * harness exited on its own. */
+export async function closeReservedSession(session: AcpSession): Promise<void> {
+  if (session.dead) return;
+  await session.close();
 }
 
 /** The live session for an id, if this host owns one. */

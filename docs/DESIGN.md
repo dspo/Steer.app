@@ -198,7 +198,7 @@ Geist 无 CJK——中文回退系统字体，验收看行高不跳变；行高�
 | 项 | 值 |
 |---|---|
 | 分割线 | 只与 composer 同宽（卡片内 24pt 边距之间），**不铺满 panel** |
-| 布局 | 输入框一行；下一行右侧：`模型 · thinking`、`context%`、主按钮 |
+| 布局 | 输入框一行；下一行右侧：`模型` chip、`effort` chip（有 `thought_level` 时）、`context%`、主按钮 |
 | 主按钮 | idle：↑ 发送（`primary` 圆钮 32pt）；streaming：■ 停止（同位置、`destructive`） |
 | 权限 | 模型菜单底部的「权限」小节：Ask / Auto / Read-only，当前值带勾；切换走 `session/set_mode` |
 | 排队/引导/打断 | 运行中：输入框右上 `⋯` 菜单；排队走本地队列（`排队 N 条` 行），审批/询问时发送暂缓 |

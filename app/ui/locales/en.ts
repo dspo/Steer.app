@@ -405,9 +405,16 @@ export const en: Record<string, string> = {
   "app.project.noRoots": "No roots yet; choose at least one folder.",
   "app.external.pi": "Pi",
   "app.session.model": "Choose a model",
+  "app.session.effort": "Reasoning effort",
   "app.session.modelsLoading": "Reading models\u2026",
   "app.session.modelsEmpty": "No models are available.",
   "app.session.modelsError": "Models could not be read: %{error}",
+  "app.session.reconnectFailed": "The session process was closed; reconnecting failed: %{error}",
+  "app.session.authStored": "Saved sign-in",
+  "app.session.authEnvironment": "Env %{label}",
+  "app.session.authKey": "API key",
+  "app.session.authCommand": "Command-provided",
+  "app.session.authNone": "Not configured",
   "app.session.modelsNoCredentials":
     "pi has providers but none is signed in. Run `pi` once and log in (or add a provider to ~/.pi/agent/models.json), then try again.",
   "app.session.modelsNoCatalog":

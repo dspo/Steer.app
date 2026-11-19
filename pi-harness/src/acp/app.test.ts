@@ -714,6 +714,16 @@ describe("method surface", () => {
     expect(session.configChanges).toEqual([{ configId: "model", value: "p/other" }]);
     const options = (config.result as Record<string, unknown>).configOptions as Array<Record<string, unknown>>;
     expect(options[0].currentValue).toBe("p/other");
+    // The thought level rides the same method (issue #54: the harness does
+    // not second-guess the value — pi clamps it to the model's ladder).
+    const thought = await client.request("session/set_config_option", {
+      sessionId: "pi-8",
+      configId: "thought_level",
+      type: "select",
+      value: "max",
+    });
+    expect(thought.error).toBeUndefined();
+    expect(session.configChanges.at(-1)).toEqual({ configId: "thought_level", value: "max" });
     const mode = await client.request("session/set_mode", { sessionId: "pi-8", modeId: "auto" });
     expect(mode.error).toBeUndefined();
     expect(session.modeChanges).toEqual(["auto"]);

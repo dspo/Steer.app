@@ -1,15 +1,17 @@
 import { effect, Scroll, signal, Text, token, View } from "nsh";
 import { Input, Menu, MenuItem, Submenu } from "nsh/base";
 import { K, t } from "../../ui/i18n";
-import type { SessionModelsReason } from "./protocol";
+import type { SessionModelsReason, SessionThinkingLevel } from "./protocol";
 import { openModelMenuRequest, runSlash, slashCandidates } from "./slash";
 import {
   chooseSessionModel,
+  ensureSessionModels,
   followUp,
   loadSessionModels,
   send,
   sessionModels,
   setSessionMode,
+  setThinkingLevel,
   stop,
   viewFor,
 } from "./sessions";
@@ -109,11 +111,13 @@ function ComposerChip(props: {
 }
 
 /**
- * The model picker: the composer's `provider · id · thinking` trigger opens a
- * two-level menu (providers, then their models). The current model carries
- * the checkmark; choosing one switches the session and folds the reply's
+ * The model picker: the composer's `provider · id` trigger opens a two-level
+ * menu (providers, then their models). The current model carries the
+ * checkmark; choosing one switches the session and folds the reply's
  * `session.info` back in. The menu stays open on an error so the reason is
- * readable, and closes itself on success.
+ * readable, and closes itself on success. The provider rows name the
+ * credential source and the model rows the context window (issue #54), so
+ * "why is this provider listed" is answered in place.
  */
 
 /** Why an empty list is empty: the engine's code, in the user's words. */
@@ -133,6 +137,26 @@ function modelsReasonText(reason: SessionModelsReason | undefined, error?: strin
   }
 }
 
+/** A provider's credential source, in the user's words (issue #54). */
+function authSourceText(source: string | undefined, label: string | undefined): string {
+  switch (source) {
+    case "stored":
+      return t(K.session.authStored);
+    case "environment":
+      return t(K.session.authEnvironment, { label: label ?? "" });
+    case "models_json_command":
+      return t(K.session.authCommand);
+    case "models_json_key":
+    case "runtime":
+    case "fallback":
+      return t(K.session.authKey);
+    case "none":
+      return t(K.session.authNone);
+    default:
+      return t(K.session.authNone);
+  }
+}
+
 export function ModelPicker(props: { sessionId: string }) {
   const open = signal(false);
   // The `/model` command lands here: open once, then clear the request.
@@ -146,17 +170,15 @@ export function ModelPicker(props: { sessionId: string }) {
   const state = () => sessionModels()[props.sessionId];
   const providers = () => state()?.data?.providers ?? [];
   const current = () => view()?.model ?? state()?.data?.current;
-  const thinking = () => view()?.thinkingLevel ?? state()?.data?.thinkingLevel;
   const currentKey = () => (current() ? `${current()!.provider}/${current()!.id}` : "");
   const modes = () => view()?.modes ?? [];
   const mode = () => view()?.mode ?? "ask";
   const label = () => {
     const model = current();
     if (!model) return t(K.session.model);
-    const level = thinking();
-    return [model.provider, model.id || model.name, level && level !== "off" ? level : null]
-      .filter(Boolean)
-      .join(" · ");
+    // The effort lives in its own chip now (issue #54); the trigger names
+    // the model only.
+    return [model.provider, model.id || model.name].filter(Boolean).join(" · ");
   };
   const choose = async (provider: string, id: string) => {
     if (await chooseSessionModel(props.sessionId, provider, id)) open.set(false);
@@ -166,7 +188,8 @@ export function ModelPicker(props: { sessionId: string }) {
       open={open()}
       onOpenChange={({ open: next }) => {
         open.set(next);
-        if (next) void loadSessionModels(props.sessionId);
+        // Opening the menu is the intent that may need a resume (issue #54).
+        if (next) void ensureSessionModels(props.sessionId);
       }}
       align="start"
       offset={6}
@@ -196,10 +219,6 @@ export function ModelPicker(props: { sessionId: string }) {
             <Text class="min-w-0 text-[11px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
               {current()!.id || current()!.name}
             </Text>
-            <If when={!!thinking() && thinking() !== "off"}>
-              <Text class="text-[11px] text-faint">·</Text>
-              <Text class="text-[11px] text-muted-foreground">{thinking()}</Text>
-            </If>
           </If>
           <Glyph name="caret-down" size={8} tint={token("faint")} />
         </View>
@@ -216,7 +235,7 @@ export function ModelPicker(props: { sessionId: string }) {
           <MenuItem
             testID="model-retry"
             class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-            onSelect={() => void loadSessionModels(props.sessionId, true)}
+            onSelect={() => void ensureSessionModels(props.sessionId, true)}
           >
             <Text class="text-[12px] text-foreground">{t(K.engine.retry)}</Text>
           </MenuItem>
@@ -228,7 +247,7 @@ export function ModelPicker(props: { sessionId: string }) {
           <MenuItem
             testID="model-retry"
             class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-            onSelect={() => void loadSessionModels(props.sessionId, true)}
+            onSelect={() => void ensureSessionModels(props.sessionId, true)}
           >
             <Text class="text-[12px] text-foreground">{t(K.engine.retry)}</Text>
           </MenuItem>
@@ -249,7 +268,12 @@ export function ModelPicker(props: { sessionId: string }) {
                       {provider().name}
                     </Text>
                     <Text class="text-[10px] text-faint" style={{ numberOfLines: 1 }}>
-                      {provider().id}
+                      {[
+                        provider().id,
+                        provider().authSource ? authSourceText(provider().authSource, provider().authLabel) : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </Text>
                   </View>
                   <Glyph name="chevron-right" size={10} tint={token("faint")} />
@@ -319,6 +343,83 @@ export function ModelPicker(props: { sessionId: string }) {
   );
 }
 
+/**
+ * The reasoning-effort control (issue #54): the footer's own chip and menu,
+ * next to the model picker. The options are the session's live
+ * `thought_level` selector — pi clamps a chosen level to the model's own
+ * ladder — so a model with three levels shows three, not pi's seven. A view
+ * with a level but no selector (the legacy transport's seeds) draws the chip
+ * as a plain label: there is nothing to choose.
+ */
+function EffortControl(props: { sessionId: string }) {
+  const open = signal(false);
+  const view = () => viewFor(props.sessionId);
+  const thought = () => view()?.configOptions.find((option) => option.id === "thought_level");
+  const options = () => thought()?.options ?? [];
+  const current = () => view()?.thinkingLevel ?? thought()?.currentValue;
+  const choose = async (value: string) => {
+    if (await setThinkingLevel(props.sessionId, value as SessionThinkingLevel)) open.set(false);
+  };
+  const trigger = (
+    <>
+      <Text class="text-[11px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
+        {current() ?? "off"}
+      </Text>
+      <Glyph name="caret-down" size={8} tint={token("faint")} />
+    </>
+  );
+  if (options().length === 0) {
+    return (
+      <View
+        testID="effort-picker"
+        accessibilityLabel={t(K.session.effort)}
+        class="h-6 flex-row items-center gap-1 rounded-md px-1.5"
+      >
+        {trigger}
+      </View>
+    );
+  }
+  return (
+    <Menu
+      open={open()}
+      onOpenChange={({ open: next }) => open.set(next)}
+      align="start"
+      offset={6}
+      popupClass="rounded-xl border border-border bg-popover p-1"
+      popupStyle={{ width: 160, maxHeight: 320, boxShadow: shadowRaised() }}
+      trigger={
+        <View
+          role="button"
+          testID="effort-picker"
+          accessibilityLabel={t(K.session.effort)}
+          accessibilityState={{ expanded: open(), hasPopup: true }}
+          class="h-6 flex-row items-center gap-1 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+          style={{ ...motionStyle("fast") }}
+        >
+          {trigger}
+        </View>
+      }
+    >
+      <Each of={options()} key={(option) => option.value}>
+        {(option) => (
+          <MenuItem
+            testID={`effort-${option().value}`}
+            checked={current() === option().value}
+            role="menuitemradio"
+            closeOnSelect={false}
+            indicator={<Glyph name="check" size={11} tint={token("brand")} />}
+            indicatorClass="opacity-0 checked:opacity-100"
+            class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+            onSelect={() => void choose(option().value)}
+          >
+            <Text class="text-[12px] text-foreground">{option().name}</Text>
+          </MenuItem>
+        )}
+      </Each>
+    </Menu>
+  );
+}
+
 /** The `⋯` menu: the lanes of a running turn. */
 function ComposerMore() {
   const open = signal(false);
@@ -380,6 +481,10 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean; ha
     draft.set("");
     return text;
   };
+  // The footer's effort chip: any thinking level or live thought_level
+  // selector puts one next to the model picker (issue #54).
+  const currentEffort = () =>
+    !!(view()?.thinkingLevel ?? view()?.configOptions.find((option) => option.id === "thought_level"));
   const context = () => contextLine(view()?.contextUsage);
   // The slash popup: open while the draft is a slash draft, filtered by it.
   const slashDraft = () => {
@@ -429,7 +534,7 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean; ha
           <ComposerChip
             testID="session-no-model-retry"
             label={t(K.engine.retry)}
-            onPress={() => void loadSessionModels(props.sessionId, true)}
+            onPress={() => void ensureSessionModels(props.sessionId, true)}
           />
         </View>
       </If>
@@ -493,13 +598,17 @@ export function ChatComposer(props: { sessionId: string; autofocus?: boolean; ha
         }}
       />
       {/* One row, everything to the right (DESIGN §3.6): the model and the
-          context gauge, then the `⋯` lanes while a turn runs, then the
-          action — idle's ↑ send and streaming's ■ stop in the same spot. */}
+          effort chips, the context gauge, then the `⋯` lanes while a turn
+          runs, then the action — idle's ↑ send and streaming's ■ stop in the
+          same spot. */}
       <View class="flex-row items-center justify-end gap-2">
         <ModelPicker sessionId={props.sessionId} />
+        <If when={!!currentEffort()}>
+          <EffortControl sessionId={props.sessionId} />
+        </If>
         <If when={!!context()}>
           <>
-            <If when={!!view()?.model}>
+            <If when={!!view()?.model || !!currentEffort()}>
               <Text class="text-[11px] text-faint">·</Text>
             </If>
             <Text class="text-[11px] text-faint" accessibilityLabel={t(K.session.contextUsage)}>

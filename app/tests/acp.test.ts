@@ -125,7 +125,9 @@ test(
   "a new session adopts its config options, modes and command table",
   withStub({}, async (open) => {
     const session = await open();
-    expect(session.configOptions.map((option) => option.id)).toEqual(["model"]);
+    // The stub models the full selector set (issue #54): the model list and
+    // the session's thought ladder.
+    expect(session.configOptions.map((option) => option.id)).toEqual(["model", "thought_level"]);
     expect(session.modes.currentModeId).toBe("ask");
     await until("the command announcement", () => session.commands.length > 0);
     expect(session.commands).toEqual([{ name: "compact", description: "Compact the context." }]);
