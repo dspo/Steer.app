@@ -510,6 +510,11 @@ export const K = {
     askAnswered: "app.manox.ask.answered",
     lanesSteering: "app.manox.lanesSteering",
     lanesQueued: "app.manox.lanesQueued",
+    model: "app.manox.model",
+    modelsEmpty: "app.manox.modelsEmpty",
+    modelsRetry: "app.manox.modelsRetry",
+    effort: "app.manox.effort",
+    modelNextTurn: "app.manox.modelNextTurn",
   },
   git: {
     changesTitle: "app.git.changes.title",

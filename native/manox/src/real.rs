@@ -50,105 +50,7 @@ use serde_json::Value;
 const NO_MODEL_MESSAGE: &str = "no model is configured — add a provider in cx Settings ($MANOX_HOME/cx.providers.config.yaml) \
      and try again";
 
-/// The pi-provider bridge: registers the machine's pi providers (its
-/// `models.json`, credentials from `auth.json`) into the kernel's provider
-/// registry, so a Hero-selected pi model actually serves manox turns — the
-/// user ruling that BOTH harnesses model off pi's config, never cx's.
-///
-/// The generated document is exactly the cx shape `register_providers_yaml`
-/// eats; `apikey_source: env:ZU_PI_KEY_<ID>` resolves per request, the env
-/// value seeded here from pi's `auth.json` (`type: api_key` entries only —
-/// OAuth-style entries cannot bridge and are skipped with a log). Wire-api
-/// mapping: pi's `api` field onto the cx endpoint keys. A missing or empty
-/// pi config registers nothing (the model guard still refuses, honestly).
-fn register_pi_providers() {
-    let dir = std::env::var_os("PI_CODING_AGENT_DIR")
-        .map(std::path::PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|home| std::path::PathBuf::from(home).join(".pi/agent"))
-        });
-    let Some(dir) = dir else { return };
-    let Some(yaml) = pi_providers_yaml(&dir) else {
-        return;
-    };
-    let registry = manox_agent::provider_glue::global();
-    match manox_harness::provider::register_providers_yaml(&registry, &yaml) {
-        Ok(count) if count > 0 => {
-            tracing::info!(
-                count,
-                "registered the machine's pi providers into the manox kernel"
-            )
-        }
-        Ok(_) => {}
-        Err(error) => tracing::warn!(%error, "the pi provider bridge registered nothing"),
-    }
-}
-
-/// Builds the cx-provider YAML for pi's config, seeding one env var per
-/// credentialed provider. `None` when pi's config is absent or empty.
-fn pi_providers_yaml(dir: &std::path::Path) -> Option<String> {
-    let models: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(dir.join("models.json")).ok()?).ok()?;
-    let auth: serde_json::Value = std::fs::read_to_string(dir.join("auth.json"))
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or(serde_json::Value::Null);
-    let providers = models.get("providers")?.as_object()?;
-    let mut yaml = String::from("providers:\n");
-    let mut any = false;
-    for (id, entry) in providers {
-        let Some(api) = entry.get("api").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        let Some(wire) = wire_key(api) else { continue };
-        let Some(base) = entry.get("baseUrl").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        let Some(secret) = auth
-            .get(id)
-            .filter(|a| a.get("type").and_then(|t| t.as_str()) == Some("api_key"))
-            .and_then(|a| a.get("key").and_then(|k| k.as_str()))
-        else {
-            tracing::debug!(provider = %id, "pi provider without a bridgeable api_key: skipped");
-            continue;
-        };
-        // SAFETY: boot-time setup, before any kernel turn; the env value is
-        // the process's own secret, re-read by the kernel per request.
-        unsafe { std::env::set_var(format!("ZU_PI_KEY_{}", id.to_uppercase()), secret) };
-        yaml.push_str(&format!(
-            "  - name: {id}\n    apikey_source: env:ZU_PI_KEY_{}\n    endpoints:\n      {wire}: {base}\n    models:\n",
-            id.to_uppercase()
-        ));
-        if let Some(models) = entry.get("models").and_then(|m| m.as_array()) {
-            for model in models {
-                let Some(mid) = model.get("id").and_then(|v| v.as_str()) else {
-                    continue;
-                };
-                let context = model.get("contextWindow").and_then(|v| v.as_u64());
-                let max = model.get("maxTokens").and_then(|v| v.as_u64());
-                yaml.push_str(&format!("      {mid}:\n"));
-                if let Some(context) = context {
-                    yaml.push_str(&format!("        context: {context}\n"));
-                }
-                if let Some(max) = max {
-                    yaml.push_str(&format!("        max_tokens: {max}\n"));
-                }
-                any = true;
-            }
-        }
-    }
-    any.then_some(yaml)
-}
-
-/// pi's `api` vocabulary onto the cx endpoint wire keys.
-fn wire_key(api: &str) -> Option<&'static str> {
-    match api {
-        "anthropic-messages" | "anthropic" => Some("anthropic"),
-        "openai-completions" | "openai-chat" | "completions" => Some("completions"),
-        "openai-responses" | "responses" => Some("responses"),
-        _ => None,
-    }
-}
+pub(crate) use crate::model_catalog::register_pi_providers;
 
 /// Whether the TS side asked this process's manox host to run hermetic
 /// (`Manox.start(cb, /* hermetic */ true)` — set by the gate files before the
@@ -657,7 +559,7 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod pi_bridge_tests {
-    use super::pi_providers_yaml;
+    use crate::model_catalog::pi_providers_yaml;
 
     #[test]
     fn the_yaml_carries_the_cx_shape() {
@@ -675,14 +577,16 @@ mod pi_bridge_tests {
         )
         .unwrap();
         let yaml = pi_providers_yaml(&dir).unwrap();
-        assert!(yaml.contains("name: bailian"), "{yaml}");
+        assert!(yaml.contains("providers:"), "{yaml}");
+        assert!(yaml.contains("  - name: bailian"), "{yaml}");
         assert!(
             yaml.contains("apikey_source: env:ZU_PI_KEY_BAILIAN"),
             "{yaml}"
         );
         assert!(yaml.contains("anthropic: https://x.example"), "{yaml}");
-        assert!(yaml.contains("qwen3.8-max:"), "{yaml}");
+        assert!(yaml.contains("      qwen3.8-max:"), "{yaml}");
         assert!(yaml.contains("context: 1000000"), "{yaml}");
+        assert!(yaml.contains("max_tokens: 131072"), "{yaml}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

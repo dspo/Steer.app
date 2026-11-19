@@ -47,8 +47,9 @@ NPC 事件流水线保持不变。
 - 分层门禁：`bun script/check-layers.mjs`
 - Rust 门禁（两个 workspace **各跑一遍**）：在 `native/` 与 `native/manox/` 里分别
   `cargo fmt --all --check && cargo clippy --all-targets -- -D warnings`
-- manox 门禁（`nsh test` 只收单个路径，两条分开跑）：`ZU_MANOX_GATE=1 nsh test app/tests/manox.test.ts`
-  （折叠对账/panic 恢复）、`ZU_MANOX_GATE=1 nsh test app/tests/manox.ui.test.tsx`（sheet 门禁）—
+- manox 门禁（`nsh test` 只收单个路径，三条分开跑）：`ZU_MANOX_GATE=1 nsh test app/tests/manox.test.ts`
+  （折叠对账/panic 恢复）、`ZU_MANOX_GATE=1 nsh test app/tests/manox-models.test.ts`（宿主模型目录与
+  config 折叠）、`ZU_MANOX_GATE=1 nsh test app/tests/manox.ui.test.tsx`（sheet 门禁）—
   **不带该变量断言静默跳过**，裸跑绿 ≠ 跑过
 - 终端门禁：`ZU_TERMINAL_GATE=1 nsh test app/tests/terminal.ui.test.tsx --target macos`（另有
   `terminal-sheet.visual`、`hero-terminals.ui` 的退出用例）——终端是 AppKit 视图，headless 里是空盒子，

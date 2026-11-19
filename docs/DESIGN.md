@@ -221,6 +221,9 @@ Geist 无 CJK——中文回退系统字体，验收看行高不跳变；行高�
 输入 `/` 时弹层即过滤，Enter 对 `/` 草稿执行命令而不是发送；命令表热更新时候选就地刷新。
 会话内的模型/档位/审批走 ACP 协议（`configOptions`/`modes`），不再有 spawn env 或"ACP 下不可用"分支。
 本节描述的是 pi 面当前的 hairline composer；manox 面在自己的模块里有独立 composer（Steer 风格）。
+manox composer footer 的模型/effort 菜单（Q120）：trigger 用 h-6 的 chip（text 11），
+菜单 300pt / 160pt、radius 10、hairline 边框、hover/checked 用既有 token；分组头显示 provider 显示名
+（models.json 的 `name`，缺省为 id），行显示模型名与 context；空目录给原因与 retry，不画空列表。
 Pi 会话的完整交互状态（审批卡、elicitation、命令候选、恢复/休眠）以
 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §9 为准；视觉 token 仍取本文。
 

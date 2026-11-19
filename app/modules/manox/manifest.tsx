@@ -1,7 +1,7 @@
 import { K, t } from "../../ui/i18n";
 import { registerModule } from "../../core/registry";
 import { ManoxChatBody } from "./conversation";
-import { createManoxThread, manoxChatSheetId, parseManoxChatSheet, threadContainerId } from "./stores";
+import { createManoxThread, manoxChatSheetId, parseManoxChatSheet, manoxThreadContainerId } from "./stores";
 import { activeContainerId, createContainerRecord, layout, noteSheetOpened, setLayout, switchContainer } from "../../core/containers";
 import { appendSheet } from "../../core/dock";
 import { chatsCwd } from "../../core/workspace";
@@ -48,21 +48,18 @@ export function registerManoxModule(): void {
           if (!cwd) throw new Error("no folder to start the conversation in");
           const { threadId, chatId } = await createManoxThread({ cwd });
           const sheetId = manoxChatSheetId(threadId, chatId);
+          // A thread is a chat instance, never a container: in a container
+          // every press adds another chat sheet; outside one, the first chat
+          // mints a container that owns it. A switch during create still
+          // lands the sheet in the container the user pressed from.
           if (context.containerId) {
-            // A thread is a conversation inside the container the start page
-            // belongs to; its chat opens beside the palette (B2 brings the
-            // thread its own container projection). A switch during the
-            // thread's create still lands the sheet in the container the
-            // user pressed from, so the instance is never silently lost.
             if (activeContainerId() !== context.containerId) await switchContainer(context.containerId);
             noteSheetOpened(sheetId);
             setLayout(appendSheet(layout(), sheetId));
             return;
           }
-          // Outside a container the thread gets one, so the chat is a row of
-          // the workspace like any other conversation.
           await createContainerRecord({
-            id: threadContainerId(threadId),
+            id: manoxThreadContainerId(threadId),
             cwd,
             projectId: context.projectId,
             sheets: [sheetId],

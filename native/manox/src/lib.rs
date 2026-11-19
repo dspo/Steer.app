@@ -34,9 +34,11 @@
 //! shell uses, minus GPUI). The pump, the frame callback, the catch_unwind
 //! boundary and the whole TSX side are unchanged from T0.
 
+use model_catalog::ModelCatalog;
 use nsh_core::prelude::*;
 
 pub mod host;
+pub mod model_catalog;
 pub mod pump;
 pub mod real;
 
@@ -109,6 +111,36 @@ impl Manox {
     /// `"running"` while the pump's host session is up, `"stopped"` otherwise.
     pub fn status() -> String {
         pump::status()
+    }
+
+    /// The host's callable model directory. Drives the manox composer's model
+    /// menu; it is the same snapshot the boot registered, so every ref here
+    /// was callable for the sessions created after boot. A pi config change
+    /// is a restart fact: AHP fixes a session's provider registry at creation.
+    pub fn models() -> Result<ModelCatalog, String> {
+        if let Some(catalog) = model_catalog::boot_catalog() {
+            return Ok(catalog);
+        }
+        let dir = model_catalog::pi_catalog_dir()
+            .ok_or_else(|| "no pi agent directory to read".to_owned())?;
+        let catalog = model_catalog::model_catalog(&dir)
+            .ok_or_else(|| "no api-key model is available to manox".to_owned())?;
+        // A boot-less caller (a unit test) gets the same registration path;
+        // the boot itself already did this and cached the snapshot.
+        model_catalog::register_pi_providers();
+        Ok(model_catalog::boot_catalog().unwrap_or(catalog))
+    }
+
+    /// Points the host's catalogue at `path` (an empty string restores the
+    /// env/HOME lookup). Tests use it to seed a deterministic provider; the
+    /// packaged app never calls it.
+    pub fn set_catalog_dir(path: String) {
+        let dir = path.trim();
+        model_catalog::set_catalog_dir(if dir.is_empty() {
+            None
+        } else {
+            Some(std::path::PathBuf::from(dir))
+        });
     }
 }
 

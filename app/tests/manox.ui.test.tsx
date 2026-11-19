@@ -47,4 +47,12 @@ t("the manox sheet runs the real host loop on the workbench", async () => {
   expect(app.shows("id:manox-lanes")).toBe(false);
   expect(app.count("id:manox-error-line")).toBe(0);
   expect(app.count("id:manox-user-message")).toBe(0);
+
+  // The model picker is live in the footer: a hermetic host has no callable
+  // catalogue, so opening it must explain the empty state and offer retry
+  // rather than rendering a blank menu or a fake model.
+  await app.press("id:manox-model-picker");
+  await app.waitFor("id:manox-models-empty");
+  expect(app.shows("id:manox-model-retry")).toBe(true);
+  expect(app.shows("id:manox-effort-picker")).toBe(true);
 });

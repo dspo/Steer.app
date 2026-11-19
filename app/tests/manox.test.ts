@@ -18,6 +18,8 @@ import {
   chatResource,
   createManoxThread,
   isArchived,
+  setManoxEffort,
+  setManoxModel,
   sendManoxMessage,
   sessionResource,
 } from "../modules/manox/stores";
@@ -150,6 +152,18 @@ t("a refused dispatch rolls the optimistic state back", async () => {
   expect(normalized(effectiveState<ChatState>(chatUri))).toEqual(
     normalized(snapshot.snapshot.state),
   );
+});
+
+t("a model selection with an unregistered ref is rejected without a partial fold", async () => {
+  const before = effectiveState<SessionState>(sessionResource(threadId))?.config?.values;
+  setManoxModel(threadId, "gate-provider-anthropic/gate-model");
+  setManoxEffort(threadId, "max");
+  // The hermetic host has no registered provider: the kernel rejects the
+  // whole `session/configChanged`, so neither field may fold.
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const after = effectiveState<SessionState>(sessionResource(threadId))?.config?.values;
+  expect(after?.["model"] ?? "").toBe(before?.["model"] ?? "");
+  expect(after?.["reasoningEffort"] ?? "").toBe(before?.["reasoningEffort"] ?? "");
 });
 
 t("the archived bit is the folded IsArchived flag", () => {

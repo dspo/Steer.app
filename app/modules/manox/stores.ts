@@ -1,19 +1,20 @@
 import { signal } from "nsh";
+import { Manox, type ModelCatalog } from "../../domains/manox";
 import { ActionType, catalog, channels, createSessionOn, dispatchAction, effectiveState, ensureConnection } from "./ahp";
 import type { ChannelCell } from "./ahp";
 import type { SessionSummary } from "../../../contracts/ahp/channels-session/state";
 import type { SessionState } from "../../../contracts/ahp/channels-session/state";
 import type { ChatState } from "../../../contracts/ahp/channels-chat/state";
+import type { SessionConfigChangedAction } from "../../../contracts/ahp/channels-session/actions";
 import type { URI } from "../../../contracts/ahp/common/state";
 
 /**
- * The manox threads and chats stores (DESIGN §3.3/§4.2): a thread is a
- * manox container (`manox:{threadId}`, the sidebar's row — AHP `ahp-session`),
- * a chat is a manox session sheet (`manox-chat:{threadId}:{chatId}` — AHP
- * `ahp-chat`). Container organization rides the shell's existing mechanisms;
- * the archived bit is the `session/isArchivedChanged` action folded into the
- * session state's `IsArchived` flag — no shadow copy anywhere — so the
- * sidebar projection below just reads the fold.
+ * The manox threads and chats stores (DESIGN §3.3/§4.2): a thread is an AHP
+ * `ahp-session` (one instance created by `[Manox]`), a chat is one session
+ * sheet (`manox-chat:{threadId}:{chatId}` — AHP `ahp-chat`). A thread is NOT
+ * a container: Zu's container owns one or more chats (issue #55 / #53).
+ * The archived bit is the `session/isArchivedChanged` action folded into the
+ * session state's `IsArchived` flag — no shadow copy anywhere.
  */
 
 /** A thread row: what the sidebar shows, what the sheet opens. */
@@ -29,7 +30,7 @@ export interface ManoxThread {
 }
 
 /** The stable container id of a thread. */
-export function threadContainerId(threadId: string): string {
+export function manoxThreadContainerId(threadId: string): string {
   return `manox:${threadId}`;
 }
 
@@ -237,8 +238,62 @@ export function answerManoxInput(
   } as never);
 }
 
+/** The host's callable model directory, cached for this process (issue #55).
+ * It is a host query, not a pi module computation: the same builder feeds
+ * the kernel's provider registry, so every ref here is actually callable.
+ * One in-flight request is shared, so a composer mount cannot stack several
+ * host reads (each of which re-registers providers). */
+let modelsCache: ModelCatalog | null = null;
+let modelsPending: Promise<ModelCatalog> | null = null;
+
 /** Test seam: resets the stores' fold state (fixtures start fresh). */
 export function resetStoresForTest(): void {
   channels.set({});
   catalog.set({});
+  modelsCache = null;
+  modelsPending = null;
+}
+
+export async function manoxModels(refresh = false): Promise<ModelCatalog> {
+  if (!refresh && modelsCache) return modelsCache;
+  if (!refresh && modelsPending) return modelsPending;
+  const request = Promise.resolve()
+    .then(() => Manox.models())
+    .then((catalog) => {
+      modelsCache = catalog;
+      return catalog;
+    });
+  modelsPending = request;
+  try {
+    return await request;
+  } finally {
+    if (modelsPending === request) modelsPending = null;
+  }
+}
+
+/** The config ref of a model, from the host directory or the session's own
+ * current value (which may name a model the directory no longer lists). */
+export function currentModelRef(threadId: string): string {
+  const value = effectiveState<SessionState>(sessionResource(threadId))?.config?.values?.["model"];
+  return typeof value === "string" ? value : "";
+}
+
+/** Changes a session config field through AHP. The kernel applies the model
+ * on the next turn (AHP `SessionConfigChanged` → `apply_session_config`). */
+export function setManoxConfig(threadId: string, config: Record<string, unknown>): void {
+  const action: SessionConfigChangedAction = {
+    type: ActionType.SessionConfigChanged,
+    config,
+  };
+  dispatchAction(sessionResource(threadId), action);
+}
+
+/** Selects a model by its canonical host ref; takes effect on the next turn. */
+export function setManoxModel(threadId: string, ref: string): void {
+  setManoxConfig(threadId, { model: ref });
+}
+
+/** The host runtime's mutable effort subset is high|max (issue #55). */
+export function setManoxEffort(threadId: string, effort: "high" | "max"): void {
+  setManoxConfig(threadId, { reasoningEffort: effort });
 }

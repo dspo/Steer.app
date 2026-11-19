@@ -85,9 +85,13 @@ Zu.app（nsh TSX / AppKit）
 - **崩溃隔离不对称**：宿主半边 panic 的爆炸半径是整壳；泵边界 `catch_unwind` 把 panic 转成
   `transport-error`，UI 走 `Manox.restart` + `reconnect`。这是结构性的缓解，不是进程隔离。
 - **客户端零翻译**：`contracts/ahp/` 是 vendored 的 AHP 类型 + reducers；消息区直接绑定折叠态。
-- **模型目录共用（Q104）**：`native/manox` 的 boot 把 `~/.pi` 的 `models.json`/`auth.json` 翻译成内核的
-  provider 注册（`register_providers_yaml`），app 侧把 pi ref 组合成 registration-qualified
-  `{provider}-{wire}/{model}`；两条 harness 用同一份模型列表，不再各养一套。
+- **模型目录共用（Q104/Q120）**：`native/manox/src/model_catalog.rs` 从 `~/.pi` 的
+  `models.json`/`models-store.json`/`auth.json` 建一份宿主目录：只看 `api_key` provider，跳过 cx 不能说的 api，
+  model 级 `api`/`baseUrl` 决定 wire；同一个 builder 生成 `register_providers_yaml` 的 YAML 与 `Manox.models()`
+  暴露给 composer 的目录，canonical ref 是 `{provider}-{wire}/{model}`。boot 注册并保留同一份快照，
+  菜单读快照；改 pi 配置需重启/新会话（AHP 会话的 provider registry 在创建时固定），
+  所以「列得出」等于「可调用」。选择经 `session/configChanged` 在下一 turn 生效；
+  effort 只写宿主当前可写的 `high|max`。
 - **折叠对账门禁**：同一 chat 的「快照腿」与「journal 重放腿」喂同一份 reducer，最终状态必须相等；
   TS 与 Rust reducers 的漂移用同一组 fixtures 在两侧测试（`app/tests/manox.test.ts` + manox 仓的 reducer 测试）。
 - **范围**：「能对话」最小回路（发送 → 流式 → 工具卡 → 最小审批/elicitation → settle/取消）；

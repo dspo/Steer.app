@@ -109,6 +109,7 @@ function manox(): void {
   // the fold reconciliation, panic recovery and sheet gate never ran. The
   // paths are repo-root-relative, like the stage always ran them.
   run([nsh, "test", "app/tests/manox.test.ts"], ROOT, { ZU_MANOX_GATE: "1" });
+  run([nsh, "test", "app/tests/manox-models.test.ts"], ROOT, { ZU_MANOX_GATE: "1" });
   run([nsh, "test", "app/tests/manox.ui.test.tsx"], ROOT, { ZU_MANOX_GATE: "1" });
 }
 
