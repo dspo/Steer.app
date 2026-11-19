@@ -31,6 +31,13 @@ pub use selection::{
 };
 pub use sys::key_consts;
 
+/// The Ghostty rev the vendored libghostty-vt was built from, as the build
+/// script pinned it (`ZU_GHOSTTY_REV`). A tip kernel carries no release
+/// version, so this rev is its identity — the About surface reports it.
+pub fn pinned_rev() -> &'static str {
+    env!("ZU_GHOSTTY_REV")
+}
+
 /// A color the program set explicitly: a palette index (the UI's own palette)
 /// or a 24-bit value. `None` in a [`Cell`] means the default.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2287,6 +2294,18 @@ pub(crate) mod test_util {
 mod tests {
     use super::test_util::*;
     use super::*;
+
+    /// The build script and this assertion agree: the pinned rev is the
+    /// full 40-hex commit the vendored kernel was built from.
+    #[test]
+    fn pinned_rev_is_a_full_git_sha() {
+        let rev = pinned_rev();
+        assert_eq!(rev.len(), 40, "40 hex chars: {rev}");
+        assert!(
+            rev.chars().all(|c| c.is_ascii_hexdigit()),
+            "hex only: {rev}"
+        );
+    }
 
     #[test]
     fn writes_and_snapshots() {

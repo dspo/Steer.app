@@ -1,4 +1,5 @@
 import { nativeComponent, type NativeComponentRef } from "nsh";
+import { Ghostty } from "zu/native";
 import type { TerminalViewRef } from "./pty";
 
 /**
@@ -36,6 +37,18 @@ export interface TerminalSnapshot {
   grid: [number, number];
   focused: boolean;
   font: string;
+}
+
+/** The Ghostty kernel's version — the vendored libghostty-vt's pinned rev,
+ * shortened to 8 characters the way a rev-pinned kernel is cited. Null when
+ * the native module is not there to ask (a headless run), so the About axis
+ * can leave the row out. */
+export function ghosttyVersion(): string | null {
+  try {
+    return Ghostty.version().slice(0, 8) || null;
+  } catch {
+    return null;
+  }
 }
 
 export const TerminalSurface = nativeComponent<

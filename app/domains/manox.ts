@@ -41,3 +41,15 @@ export const Manox = {
     };
   },
 };
+
+/** The manox host's version — the build's one `tag = "v…"` pin, as the
+ * native module read it from its Cargo.toml. Null when the native module is
+ * not there to ask (a headless run, a second instance), so the About axis
+ * can leave the row out. */
+export function manoxVersion(): string | null {
+  try {
+    return value(NativeManox.version()).trim() || null;
+  } catch {
+    return null;
+  }
+}

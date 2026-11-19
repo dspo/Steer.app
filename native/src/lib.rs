@@ -20,6 +20,7 @@ mod acp;
 #[cfg(test)]
 mod conformance;
 mod fs;
+mod ghostty;
 mod git;
 mod instance;
 mod lsp;
@@ -37,6 +38,7 @@ mod term_view;
 /// them as `fonts.ts`'s `SHEET_FONT` and `SHEET_MONO`.
 pub use acp::{Acp, AcpExit, AcpOptions};
 pub use fs::{Fs, FsEntry, FsExpected, FsFile, FsStat, FsWriteResult};
+pub use ghostty::Ghostty;
 pub use git::{Git, GitBranch, GitBranches, GitChange, GitCommit, GitDiff, GitStatus};
 pub use instance::{Instance, InstanceClaim};
 pub use lsp::{Lsp, LspExit, LspOptions};
@@ -73,6 +75,7 @@ fn native(registry: &mut Registry) {
     registry
         .assets(assets!())
         .module::<Fs>()
+        .module::<Ghostty>()
         .module::<Git>()
         .module::<Instance>()
         .module::<Picker>()

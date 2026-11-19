@@ -339,6 +339,12 @@ export const K = {
     development: "app.updates.development",
     unconfigured: "app.updates.unconfigured",
   },
+  about: {
+    buildSuffix: "app.about.buildSuffix",
+    development: "app.about.development",
+    copy: "app.about.copy",
+    copied: "app.about.copied",
+  },
   files: {
     title: "app.files.title",
     root: "app.files.root",

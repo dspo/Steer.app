@@ -127,13 +127,20 @@ export function updateAvailability(env: UpdateEnv = updateEnv()): "available" | 
   return "available";
 }
 
-/** Opens the dialog and refreshes what it says about this build. */
-export function openUpdates(): void {
+/** Re-reads what the running app is, into the env signal. The updates
+ * dialog and the About dialog both open with a fresh env, so a restart's
+ * versions never lag. */
+export function refreshUpdateEnv(): void {
   try {
     updateEnv.set(service.env());
   } catch {
     updateEnv.set(readEnv());
   }
+}
+
+/** Opens the dialog and refreshes what it says about this build. */
+export function openUpdates(): void {
+  refreshUpdateEnv();
   updatesOpen.set(true);
   updateError.set(null);
   if (updateStatus() === "idle" && updateAvailability() !== "available") {

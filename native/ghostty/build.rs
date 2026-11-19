@@ -52,6 +52,10 @@ const LIB_NAME: &str = "libghostty-vt.a";
 const STAMP_NAME: &str = "ghostty-vt.stamp";
 
 fn main() {
+    // The pin as a compile-time constant, emitted before anything else: the
+    // About surface reports it (`Ghostty::version`), and a cache hit below
+    // must not be the only place that could have read the source.
+    println!("cargo:rustc-env=ZU_GHOSTTY_REV={GHOSTTY_REV}");
     println!("cargo:rerun-if-env-changed=GHOSTTY_SRC");
     println!("cargo:rerun-if-env-changed=GHOSTTY_ZIG");
     println!("cargo:rerun-if-env-changed=ZU_GHOSTTY_CACHE");

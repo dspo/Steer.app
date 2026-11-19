@@ -90,7 +90,7 @@ pi-harness/bun、lock 级 pin。
   重型集成只在 Rust native 侧，TS 侧只做协议与 UI
 - **UI 不持 fs/process**：文件只经 `zu/fs`，进程只经 native 域（`app/domains/` 是唯一 native 面）
 - **`app/nsh.json` 能力面保护的是 UI 代码，不是 agent 动作**——harness 工具以用户权限运行，别读成「agent 沙箱」；
-  剪贴板同理：`capabilities.clipboard: true` 不开，组件里的复制/OSC 52 会被能力门拒绝
+  剪贴板已开（`capabilities.clipboard: true`，About 页的复制按钮依赖它）；若关掉，组件里的复制/OSC 52 会被能力门拒绝
 - **文件是事实**：会话权威在 `~/.pi/agent/sessions/`（pi）/ `$MANOX_HOME/`（manox，默认 `~/.steer/.manox`）；Zu 状态在 `~/.steer/`，
   只由 UI 经 `zu/state` 读写（临时文件 + rename，版本拒绝 `ERR_STATE_STALE`；持久文件顶层带 `"v"`）
 - **pi → Zu 兼容最高优先**：官方 pi CLI 产生的会话必须能列出/打开/续跑；解析失败不阻塞启动

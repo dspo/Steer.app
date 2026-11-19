@@ -3,6 +3,10 @@ import { Window } from "nsh/desktop";
 import { Workbench } from "./shell/shell";
 import { AlreadyRunning, LifecycleHost } from "./shell/lifecycle-ui";
 import { lifecycleMode, startLifecycle } from "./shell/lifecycle";
+import { AboutDialog } from "./shell/about-ui";
+import { UpdatesDialog } from "./shell/updates-ui";
+import { manoxVersion } from "./domains/manox";
+import { ghosttyVersion } from "./domains/terminal";
 import { followSystemLocale } from "./ui/i18n";
 import { applyScrollbarTheme } from "./ui/ui";
 import { TrustDialog } from "./ui/trust";
@@ -47,6 +51,12 @@ function App() {
       </If>
       {/* `session/new` can ask for project trust before any sheet exists. */}
       <TrustDialog />
+      {/* The About and Updates dialogs answer the app menu; their open
+          signals only fire in the primary instance, and About receives the
+          manox and Ghostty versions here — the assembly point is where the
+          domains are allowed to be read. */}
+      <AboutDialog manoxVersion={manoxVersion()} ghosttyVersion={ghosttyVersion()} />
+      <UpdatesDialog />
       {/* The tray and the notification listeners are a desktop app's; a
           headless run (the test runner) renders neither. */}
       <If when={lifecycleMode() === "primary"}>

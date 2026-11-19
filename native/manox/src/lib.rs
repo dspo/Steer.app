@@ -42,6 +42,12 @@ pub mod model_catalog;
 pub mod pump;
 pub mod real;
 
+/// The manox host pin the build script extracted from Cargo.toml's one
+/// `tag = "…"` line (`ZU_MANOX_PIN`); the module's `version` delegates here.
+pub fn pinned_version() -> String {
+    env!("ZU_MANOX_PIN").to_owned()
+}
+
 /// One event from the pump to TSX. `kind` is one of `"frame"` (an AHP
 /// JSON-RPC text frame — opaque here, zero protocol semantics at the pump),
 /// `"transport-error"` (the host half died: a caught panic or a transport
@@ -113,6 +119,12 @@ impl Manox {
         pump::status()
     }
 
+    /// The manox host pin (`v0.12.1`), as the build script read it from
+    /// Cargo.toml's one `tag = "…"`. The About surface reports it.
+    pub fn version() -> String {
+        pinned_version()
+    }
+
     /// The host's callable model directory. Drives the manox composer's model
     /// menu; it is the same snapshot the boot registered, so every ref here
     /// was callable for the sessions created after boot. A pi config change
@@ -147,4 +159,33 @@ impl Manox {
 #[native_module("manox/native")]
 fn native(registry: &mut Registry) {
     registry.module::<Manox>();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pinned_version;
+
+    /// The build script and this scan must agree: every `tag = "…"` inside
+    /// Cargo.toml's dependency tables is the family's one pin, and the
+    /// compiled constant is it.
+    #[test]
+    fn pinned_version_is_the_cargo_toml_tag() {
+        let manifest = include_str!("../Cargo.toml");
+        let mut tags: Vec<&str> = manifest
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.starts_with('#'))
+            .filter_map(|line| {
+                let start = line.find("tag = \"")?;
+                line[start + "tag = \"".len()..].split('"').next()
+            })
+            .filter(|tag| !tag.is_empty())
+            .collect();
+        assert!(!tags.is_empty(), "no `tag = \"…\"` pin in Cargo.toml");
+        let pin = pinned_version();
+        assert!(pin.starts_with('v'), "the pin is a tag: {pin}");
+        while let Some(tag) = tags.pop() {
+            assert_eq!(pin, tag);
+        }
+    }
 }

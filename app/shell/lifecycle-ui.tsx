@@ -5,6 +5,7 @@ import { K, t } from "../ui/i18n";
 import { instanceClaim, quitApp } from "./lifecycle";
 import { hideMain, mainWindowVisible, showMain, startNotifications } from "../core/notifications";
 import { openUpdates } from "./updates";
+import { openAbout } from "./about";
 import { motionStyle, shadowRaised } from "../ui/ui";
 
 /**
@@ -44,6 +45,10 @@ export function LifecycleHost() {
     showMain();
     openUpdates();
   };
+  const about = () => {
+    showMain();
+    openAbout();
+  };
 
   effect(() => {
     Tray.set({
@@ -52,6 +57,7 @@ export function LifecycleHost() {
       onClick: () => showMain(),
       menu: [
         { label: shown() ? t(K.lifecycle.hide) : t(K.lifecycle.show), onSelect: toggle },
+        { label: t(K.lifecycle.about), onSelect: about },
         { label: t(K.lifecycle.checkUpdates), onSelect: updates },
         { type: "separator" },
         { label: t(K.lifecycle.quit), onSelect: quitApp },
@@ -70,7 +76,7 @@ export function LifecycleHost() {
       { role: "selectAll" },
     ];
     const appItems: MenuItem[] = [
-      { role: "about" },
+      { label: t(K.lifecycle.about), onSelect: about },
       { type: "separator" },
       { label: t(K.lifecycle.checkUpdates), onSelect: updates },
       { type: "separator" },
@@ -96,6 +102,7 @@ export function LifecycleHost() {
               { label: t(K.lifecycle.show), onSelect: showMain },
               { label: t(K.lifecycle.hide), onSelect: hideMain },
               { type: "separator" },
+              { label: t(K.lifecycle.about), onSelect: about },
               { label: t(K.lifecycle.checkUpdates), onSelect: updates },
               { type: "separator" },
               { label: t(K.lifecycle.quit), shortcut: "mod+q", onSelect: quitApp },

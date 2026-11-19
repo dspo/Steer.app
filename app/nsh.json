@@ -54,7 +54,6 @@
       "schemes": [
         "vscode"
       ]
-    },
-    "clipboard": true
+    }
   }
 }
