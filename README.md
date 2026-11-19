@@ -1,5 +1,7 @@
 # Zu
 
+Steer.app brings clean-room multi-agent collaboration to your desktop. Inside each clean room, participating agents share clean context and write specifications to align on work across different collaboration patterns, keeping output focused and free of context clutter.
+
 <!-- conformance-badges:start -->
 [![esctest2](https://img.shields.io/badge/esctest2-411%2F567-green?style=flat-square)](docs/evidence/conformance.json)
 [![libghostty-vt](https://img.shields.io/badge/libghostty--vt-411%2F567-orange?style=flat-square)](docs/evidence/conformance.json)
