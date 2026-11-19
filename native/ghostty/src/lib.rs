@@ -10,6 +10,8 @@
 
 #![deny(clippy::undocumented_unsafe_blocks)]
 
+#[cfg(target_os = "macos")]
+use std::sync::Once;
 use std::{
     cell::RefCell,
     ffi::{CString, c_char, c_int, c_void},
@@ -642,6 +644,95 @@ impl Terminal {
         unsafe { this.set_opt(sys::GHOSTTY_TERMINAL_OPT_USERDATA, ud) };
         this.set_xtversion("Zu");
         Ok(this)
+    }
+
+    /// Enables Kitty graphics with only inline data: file, temp-file and
+    /// shared-memory mediums stay off so the program cannot read local files.
+    pub fn set_image_limits(&self, storage_bytes: u64) {
+        let off = false;
+        // SAFETY: the storage option takes a `uint64_t*`, the file and
+        // shared-memory switches take `bool*`, and the temp-file switch
+        // takes a `GhosttyString*`; NULL disables it.
+        unsafe {
+            self.set_opt(
+                sys::GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT,
+                &storage_bytes as *const u64 as *const c_void,
+            );
+            self.set_opt(
+                sys::GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_FILE,
+                &off as *const bool as *const c_void,
+            );
+            self.set_opt(
+                sys::GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_TEMP_FILE,
+                std::ptr::null::<sys::GhosttyString>() as *const c_void,
+            );
+            self.set_opt(
+                sys::GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_SHARED_MEM,
+                &off as *const bool as *const c_void,
+            );
+        }
+    }
+
+    /// Reads one Kitty image's pixels as RGBA, expanding RGB and gray.
+    pub fn kitty_image(&self, id: u32) -> Option<Image> {
+        let mut graphics: sys::GhosttyKittyGraphics = std::ptr::null_mut();
+        // SAFETY: the handle is live and the out-pointer has the documented type.
+        if !unsafe { self.get(sys::GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS, &mut graphics) }
+            || graphics.is_null()
+        {
+            return None;
+        }
+        // SAFETY: the storage handle is live for this call; the returned
+        // image handle is used before another terminal write or lookup.
+        let image = unsafe { sys::ghostty_kitty_graphics_image(graphics, id) };
+        if image.is_null() {
+            return None;
+        }
+        let mut width: u32 = 0;
+        let mut height: u32 = 0;
+        let mut format: c_int = -1;
+        let mut ptr: *const u8 = std::ptr::null();
+        let mut len: usize = 0;
+        let mut generation: u64 = 0;
+        // SAFETY: every out-pointer has the type its data kind documents.
+        unsafe {
+            for (data, out) in [
+                (
+                    sys::GHOSTTY_KITTY_IMAGE_DATA_WIDTH,
+                    &mut width as *mut u32 as *mut c_void,
+                ),
+                (
+                    sys::GHOSTTY_KITTY_IMAGE_DATA_HEIGHT,
+                    &mut height as *mut u32 as *mut c_void,
+                ),
+                (
+                    sys::GHOSTTY_KITTY_IMAGE_DATA_FORMAT,
+                    &mut format as *mut c_int as *mut c_void,
+                ),
+                (
+                    sys::GHOSTTY_KITTY_IMAGE_DATA_DATA_PTR,
+                    &mut ptr as *mut *const u8 as *mut c_void,
+                ),
+                (
+                    sys::GHOSTTY_KITTY_IMAGE_DATA_DATA_LEN,
+                    &mut len as *mut usize as *mut c_void,
+                ),
+                (
+                    sys::GHOSTTY_KITTY_IMAGE_DATA_GENERATION,
+                    &mut generation as *mut u64 as *mut c_void,
+                ),
+            ] {
+                if sys::ghostty_kitty_graphics_image_get(image, data, out) != sys::GHOSTTY_SUCCESS {
+                    return None;
+                }
+            }
+        }
+        expand_rgba(ptr, len, width, height, format).map(|rgba| Image {
+            width,
+            height,
+            generation,
+            rgba,
+        })
     }
 
     /// # Safety
@@ -1407,11 +1498,37 @@ pub struct FrameColors {
     pub cursor: Option<Rgb>,
 }
 
+/// One visible Kitty graphics placement, in viewport and cell pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Placement {
+    pub image_id: u32,
+    pub generation: u64,
+    pub layer: c_int,
+    pub z: i32,
+    pub col: i32,
+    pub row: i32,
+    pub cols: u32,
+    pub rows: u32,
+    pub offset_px: (u32, u32),
+    pub size_px: (u32, u32),
+    pub source: (u32, u32, u32, u32),
+}
+
+/// Decoded image pixels owned by the terminal's Kitty storage.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Image {
+    pub width: u32,
+    pub height: u32,
+    pub generation: u64,
+    pub rgba: Vec<u8>,
+}
+
 pub struct Frame {
     pub cols: u16,
     pub rows: u16,
     pub colors: FrameColors,
     pub cursor: Option<CursorPos>,
+    pub images: Vec<Placement>,
     /// Exactly `rows` rows of `cols` cells.
     pub cells: Vec<Vec<Cell>>,
     /// Per row (parallel to `cells`): the terminal's active selection on
@@ -1495,6 +1612,7 @@ impl RenderState {
                     cursor: colors.cursor_has_value.then(|| colors.cursor.into()),
                 },
                 cursor: None,
+                images: Vec::new(),
                 cells: Vec::with_capacity(rows as usize),
                 selection: Vec::with_capacity(rows as usize),
             };
@@ -1528,6 +1646,28 @@ impl RenderState {
                 out.cells.push(row_cells);
             }
 
+            // SAFETY: all handles are live; the iterator is filled from
+            // the updated state and read before the next update.
+            let mut images: sys::GhosttyRenderStateImageIterator = std::ptr::null_mut();
+            if sys::ghostty_render_state_image_iterator_new(std::ptr::null(), &mut images)
+                == sys::GHOSTTY_SUCCESS
+            {
+                if check(sys::ghostty_render_state_get(
+                    self.rs,
+                    sys::GHOSTTY_RENDER_STATE_DATA_IMAGE_ITERATOR,
+                    &mut images as *mut _ as *mut c_void,
+                ))
+                .is_ok()
+                {
+                    while sys::ghostty_render_state_image_iterator_next(images) {
+                        if let Some(placement) = self.read_placement(images) {
+                            out.images.push(placement);
+                        }
+                    }
+                }
+                sys::ghostty_render_state_image_iterator_free(images);
+            }
+
             if has_cursor && cursor.viewport_has_value {
                 out.cursor = Some(CursorPos {
                     x: cursor.viewport_x,
@@ -1542,6 +1682,109 @@ impl RenderState {
             check(sys::ghostty_render_state_clean(self.rs))?;
             Ok(out)
         }
+    }
+
+    /// Reads one image placement from the iterator. Non-Kitty protocols and
+    /// placements with no drawable rectangle are skipped.
+    ///
+    /// # Safety
+    /// `images` must sit on a placement of the current update.
+    unsafe fn read_placement(
+        &self,
+        images: sys::GhosttyRenderStateImageIterator,
+    ) -> Option<Placement> {
+        let mut protocol: c_int = -1;
+        // SAFETY: the data kind writes a `GhosttyImageProtocol` C int.
+        if unsafe {
+            sys::ghostty_render_state_image_get(
+                images,
+                sys::GHOSTTY_RENDER_STATE_IMAGE_DATA_PROTOCOL,
+                &mut protocol as *mut c_int as *mut c_void,
+            )
+        } != sys::GHOSTTY_SUCCESS
+            || protocol != sys::GHOSTTY_IMAGE_PROTOCOL_KITTY
+        {
+            return None;
+        }
+        let mut p = Placement {
+            image_id: 0,
+            generation: 0,
+            layer: 0,
+            z: 0,
+            col: 0,
+            row: 0,
+            cols: 0,
+            rows: 0,
+            offset_px: (0, 0),
+            size_px: (0, 0),
+            source: (0, 0, 0, 0),
+        };
+        let (mut ox, mut oy, mut pw, mut ph) = (0u32, 0u32, 0u32, 0u32);
+        const KEYS: [c_int; 14] = [
+            sys::GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_ID,
+            sys::GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_GENERATION,
+            sys::GHOSTTY_RENDER_STATE_IMAGE_DATA_LAYER,
+            sys::GHOSTTY_RENDER_STATE_IMAGE_DATA_Z,
+            sys::GHOSTTY_RENDER_STATE_IMAGE_DATA_VIEWPORT_COL,
+            sys::GHOSTTY_RENDER_STATE_IMAGE_DATA_VIEWPORT_ROW,
+            sys::GHOSTTY_RENDER_STATE_IMAGE_DATA_GRID_COLS,
+            sys::GHOSTTY_RENDER_STATE_IMAGE_DATA_GRID_ROWS,
+            sys::GHOSTTY_RENDER_STATE_IMAGE_DATA_CELL_OFFSET_X,
+            sys::GHOSTTY_RENDER_STATE_IMAGE_DATA_CELL_OFFSET_Y,
+            sys::GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_WIDTH,
+            sys::GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_HEIGHT,
+            sys::GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_X,
+            sys::GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_Y,
+        ];
+        // SAFETY: every out-pointer has the type its data kind documents.
+        // The pinned C API has no bulk getter, so read each field separately.
+        let values: [*mut c_void; 14] = [
+            &mut p.image_id as *mut u32 as *mut c_void,
+            &mut p.generation as *mut u64 as *mut c_void,
+            &mut p.layer as *mut c_int as *mut c_void,
+            &mut p.z as *mut i32 as *mut c_void,
+            &mut p.col as *mut i32 as *mut c_void,
+            &mut p.row as *mut i32 as *mut c_void,
+            &mut p.cols as *mut u32 as *mut c_void,
+            &mut p.rows as *mut u32 as *mut c_void,
+            &mut ox as *mut u32 as *mut c_void,
+            &mut oy as *mut u32 as *mut c_void,
+            &mut pw as *mut u32 as *mut c_void,
+            &mut ph as *mut u32 as *mut c_void,
+            &mut p.source.0 as *mut u32 as *mut c_void,
+            &mut p.source.1 as *mut u32 as *mut c_void,
+        ];
+        // SAFETY: each data kind's out-pointer has the documented type.
+        if KEYS.iter().zip(values).any(|(&key, out)| unsafe {
+            sys::ghostty_render_state_image_get(images, key, out) != sys::GHOSTTY_SUCCESS
+        }) {
+            return None;
+        }
+        let (mut sw, mut sh) = (0u32, 0u32);
+        let source_values: [*mut c_void; 2] = [
+            &mut sw as *mut u32 as *mut c_void,
+            &mut sh as *mut u32 as *mut c_void,
+        ];
+        // SAFETY: both data kinds write a `uint32_t`.
+        for (&key, &out) in [
+            sys::GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_WIDTH,
+            sys::GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_HEIGHT,
+        ]
+        .iter()
+        .zip(source_values.iter())
+        {
+            // SAFETY: each data kind's out-pointer has the documented type.
+            if unsafe { sys::ghostty_render_state_image_get(images, key, out) }
+                != sys::GHOSTTY_SUCCESS
+            {
+                return None;
+            }
+        }
+        p.offset_px = (ox, oy);
+        p.size_px = (pw, ph);
+        p.source.2 = sw;
+        p.source.3 = sh;
+        (pw > 0 && ph > 0 && sw > 0 && sh > 0).then_some(p)
     }
 
     /// Cells without explicit styling report `GHOSTTY_INVALID_VALUE` for
@@ -1653,6 +1896,184 @@ impl Drop for RenderState {
 
 fn check(rc: c_int) -> Result<(), c_int> {
     (rc == sys::GHOSTTY_SUCCESS).then_some(()).ok_or(rc)
+}
+
+fn expand_rgba(
+    ptr: *const u8,
+    len: usize,
+    width: u32,
+    height: u32,
+    format: c_int,
+) -> Option<Vec<u8>> {
+    if ptr.is_null() || width == 0 || height == 0 {
+        return None;
+    }
+    // SAFETY: the image handle is live and the library reports `len` bytes.
+    let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
+    let pixels = (width as usize).checked_mul(height as usize)?;
+    let rgba = match format as c_int {
+        sys::GHOSTTY_KITTY_IMAGE_FORMAT_RGBA => {
+            (bytes.len() == pixels * 4).then(|| bytes.to_vec())?
+        }
+        sys::GHOSTTY_KITTY_IMAGE_FORMAT_RGB | sys::GHOSTTY_KITTY_IMAGE_FORMAT_GRAY => {
+            let bpp = if format == sys::GHOSTTY_KITTY_IMAGE_FORMAT_RGB {
+                3
+            } else {
+                1
+            };
+            (bytes.len() == pixels * bpp).then(|| {
+                let mut out = Vec::with_capacity(pixels * 4);
+                for pixel in bytes.chunks_exact(bpp) {
+                    if bpp == 3 {
+                        out.extend_from_slice(&[pixel[0], pixel[1], pixel[2], 255]);
+                    } else {
+                        out.extend_from_slice(&[pixel[0], pixel[0], pixel[0], 255]);
+                    }
+                }
+                out
+            })?
+        }
+        _ => return None,
+    };
+    Some(rgba)
+}
+
+/// Installs the process-wide PNG decoder. Non-macOS builds reject `f=100`.
+#[cfg(not(target_os = "macos"))]
+pub fn install_png_decoder() {}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C-unwind" fn sys_decode_png(
+    userdata: *mut c_void,
+    allocator: *const sys::GhosttyAllocator,
+    data: *const u8,
+    data_len: usize,
+    out: *mut sys::GhosttySysImage,
+) -> bool {
+    // SAFETY: forwards the library's callback with the same contract.
+    unsafe { decode_png(userdata, allocator, data, data_len, out) }
+}
+
+/// Installs the process-wide PNG decoder once. Without it libghostty-vt
+/// rejects `f=100` Kitty payloads.
+#[cfg(target_os = "macos")]
+pub fn install_png_decoder() {
+    static INSTALL: Once = Once::new();
+    INSTALL.call_once(|| {
+        // SAFETY: the option takes a `GhosttySysDecodePngFn` function pointer.
+        unsafe {
+            sys::ghostty_sys_set(
+                sys::GHOSTTY_SYS_OPT_DECODE_PNG,
+                sys_decode_png as *const c_void,
+            );
+        }
+    });
+}
+
+/// Converts CoreGraphics' premultiplied RGBA into the straight RGBA
+/// expected by ghostty's image storage and kitty f=32 payloads.
+#[cfg(target_os = "macos")]
+fn unpremultiply_rgba(pixels: &mut [u8]) {
+    for pixel in pixels.chunks_exact_mut(4) {
+        let a = pixel[3] as u16;
+        if a == 0 {
+            pixel[0] = 0;
+            pixel[1] = 0;
+            pixel[2] = 0;
+        } else if a < 255 {
+            for c in &mut pixel[..3] {
+                *c = ((*c as u16 * 255 + a / 2) / a) as u8;
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C-unwind" fn decode_png(
+    _userdata: *mut c_void,
+    allocator: *const sys::GhosttyAllocator,
+    data: *const u8,
+    data_len: usize,
+    out: *mut sys::GhosttySysImage,
+) -> bool {
+    use objc2_core_foundation::{CFData, CGPoint, CGRect, CGSize};
+    use objc2_core_graphics::{
+        CGBitmapInfo, CGColorRenderingIntent, CGColorSpace, CGContext, CGDataProvider, CGImage,
+        CGImageAlphaInfo,
+    };
+    use objc2_image_io::CGImageSource;
+    // SAFETY: all CoreGraphics and library calls below keep the same
+    // allocator and never outlive the callback's borrowed inputs.
+    unsafe {
+        let bytes = std::slice::from_raw_parts(data, data_len);
+        let cf_data = CFData::from_bytes(bytes);
+        let Some(source) = CGImageSource::with_data(&cf_data, None) else {
+            return false;
+        };
+        let Some(image) = source.image_at_index(0, None) else {
+            return false;
+        };
+        let width = CGImage::width(Some(&image));
+        let height = CGImage::height(Some(&image));
+        let Some(len) = width.checked_mul(height).and_then(|n| n.checked_mul(4)) else {
+            return false;
+        };
+        let ptr = sys::ghostty_alloc(allocator, len);
+        if ptr.is_null() {
+            return false;
+        }
+        let space = CGColorSpace::with_name(Some(&objc2_core_graphics::kCGColorSpaceSRGB));
+        let Some(provider) =
+            CGDataProvider::with_data(std::ptr::null_mut(), ptr as *const c_void, len, None)
+        else {
+            sys::ghostty_free(allocator, ptr, len);
+            return false;
+        };
+        let Some(rgba) = CGImage::new(
+            width,
+            height,
+            8,
+            32,
+            width * 4,
+            space.as_deref(),
+            CGBitmapInfo(CGImageAlphaInfo::PremultipliedLast.0),
+            Some(&provider),
+            std::ptr::null(),
+            true,
+            CGColorRenderingIntent::RenderingIntentDefault,
+        ) else {
+            sys::ghostty_free(allocator, ptr, len);
+            return false;
+        };
+        let Some(context) = objc2_core_graphics::CGBitmapContextCreate(
+            ptr,
+            width,
+            height,
+            8,
+            width * 4,
+            space.as_deref(),
+            CGImageAlphaInfo::PremultipliedLast.0,
+        ) else {
+            sys::ghostty_free(allocator, ptr, len);
+            return false;
+        };
+        CGContext::draw_image(
+            Some(&context),
+            CGRect::new(
+                CGPoint::new(0.0, 0.0),
+                CGSize::new(width as f64, height as f64),
+            ),
+            Some(&rgba),
+        );
+        // CoreGraphics wrote premultiplied RGBA; the ghostty image contract
+        // is straight RGBA (f=32 payloads are stored without decoding).
+        unpremultiply_rgba(std::slice::from_raw_parts_mut(ptr as *mut u8, len));
+        (*out).width = width as u32;
+        (*out).height = height as u32;
+        (*out).data = ptr;
+        (*out).data_len = len;
+        true
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1775,6 +2196,60 @@ fn style_color(c: sys::GhosttyStyleColor) -> Option<Color> {
             Some(Color::Rgb(rgb.r, rgb.g, rgb.b))
         }
         _ => None,
+    }
+}
+
+// Image storage is wired to the process-wide system callbacks, which the
+// headless Linux CI runner does not install. Keep these integration cases on
+// macOS, where the terminal view sets up the PNG decoder and allocator.
+#[cfg(all(test, target_os = "macos"))]
+mod image_tests {
+    use super::*;
+
+    fn upload(term: &Terminal) {
+        let cmd = b"\x1b_Ga=T,f=32,s=2,v=2,q=2;/wAA//8AAP//AAD//wAA/w==\x1b\\";
+        term.write(cmd);
+    }
+
+    #[test]
+    fn an_inline_image_is_placed_and_read_back() {
+        let term = Terminal::new(8, 4).unwrap();
+        term.set_image_limits(1 << 20);
+        term.resize(8, 4, 10, 20).unwrap();
+        upload(&term);
+        let frame = RenderState::new().unwrap().snapshot(&term).unwrap();
+        assert_eq!(frame.images.len(), 1, "one inline placement");
+        let p = frame.images[0];
+        assert_eq!((p.cols, p.rows), (2, 1));
+        assert_eq!(p.size_px, (20, 20));
+        let image = term.kitty_image(p.image_id).unwrap();
+        assert_eq!((image.width, image.height), (2, 2));
+        assert_eq!(
+            image.rgba,
+            vec![
+                255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255
+            ]
+        );
+    }
+
+    #[test]
+    fn a_zero_storage_limit_rejects_the_image() {
+        let term = Terminal::new(8, 4).unwrap();
+        term.set_image_limits(0);
+        term.resize(8, 4, 10, 20).unwrap();
+        upload(&term);
+        let frame = RenderState::new().unwrap().snapshot(&term).unwrap();
+        assert!(frame.images.is_empty());
+    }
+
+    #[test]
+    fn a_file_medium_is_rejected() {
+        let term = Terminal::new(8, 4).unwrap();
+        term.set_image_limits(1 << 20);
+        term.resize(8, 4, 10, 20).unwrap();
+        term.write(b"\x1b_Ga=T,f=32,t=f,s=2,v=2,q=2;/wAA//8AAP//AAD//wAA/w==\x1b\\");
+        let frame = RenderState::new().unwrap().snapshot(&term).unwrap();
+        assert!(frame.images.is_empty());
     }
 }
 
@@ -2265,7 +2740,7 @@ mod query_tests {
     /// describe, and stays silent when disabled.
     #[test]
     fn decrqcra_reports_a_checksum_when_enabled() {
-        let (mut term, replies) = with_replies(80, 25);
+        let (term, replies) = with_replies(80, 25);
         term.write(b"ab");
         term.set_xt_checksum_extension(XtChecksumFlags {
             positive: true,
@@ -2290,6 +2765,14 @@ mod query_tests {
         term.write(b"\x1b[2;1;1;1;1;2*y");
         let again = String::from_utf8_lossy(&*replies.lock().unwrap()).into_owned();
         assert_eq!(answered, again, "the checksum is deterministic");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn unpremultiply_restores_straight_rgba() {
+        let mut pixels = [128, 0, 0, 128, 17, 34, 51, 0, 7, 8, 9, 255];
+        super::unpremultiply_rgba(&mut pixels);
+        assert_eq!(pixels, [255, 0, 0, 128, 34, 68, 102, 0, 7, 8, 9, 255]);
     }
 
     /// `CSI 8 t` reaches the callback and touches no grid: the embedder

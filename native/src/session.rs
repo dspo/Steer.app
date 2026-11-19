@@ -294,6 +294,9 @@ impl Emulator {
     fn new(shared: Weak<Shared>, dark: Arc<AtomicBool>) -> Self {
         let mut term = Ghostty::new(80, 24).expect("libghostty-vt makes a terminal");
         term.set_scrollback_lines(SCROLLBACK);
+        // Kitty graphics: 256 MiB of inline storage, no local file mediums.
+        // The PNG decoder is installed process-wide on session open.
+        term.set_image_limits(256 << 20);
         let effects = Arc::new(Mutex::new(Effects::default()));
         let pending_resize = Arc::new(Mutex::new(None));
 
@@ -541,6 +544,7 @@ impl TerminalSession {
         #[args(event)] on_event: Callback<TerminalSessionEvent>,
         cx: CallCx<'_>,
     ) -> Result<TerminalSession, String> {
+        zu_ghostty::install_png_decoder();
         let (events, mut received) = tokio::sync::mpsc::unbounded_channel();
         let shared = Shared::build(events.clone());
         let feeder = shared.clone();

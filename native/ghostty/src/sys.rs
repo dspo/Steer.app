@@ -28,6 +28,9 @@ pub type GhosttyTerminal = *mut c_void;
 pub type GhosttyRenderState = *mut c_void;
 pub type GhosttyRenderStateRowIterator = *mut c_void;
 pub type GhosttyRenderStateRowCells = *mut c_void;
+pub type GhosttyRenderStateImageIterator = *mut c_void;
+pub type GhosttyKittyGraphics = *mut c_void;
+pub type GhosttyKittyGraphicsImage = *mut c_void;
 pub type GhosttyKeyEncoder = *mut c_void;
 pub type GhosttyKeyEvent = *mut c_void;
 
@@ -109,6 +112,10 @@ pub const GHOSTTY_TERMINAL_OPT_SEMANTIC_PROMPT: c_int = 42;
 pub const GHOSTTY_TERMINAL_OPT_XT_CHECKSUM_REPORT: c_int = 44;
 pub const GHOSTTY_TERMINAL_OPT_XT_CHECKSUM_EXTENSION: c_int = 45;
 pub const GHOSTTY_TERMINAL_OPT_RESIZE_WINDOW: c_int = 47;
+pub const GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT: c_int = 15;
+pub const GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_FILE: c_int = 16;
+pub const GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_TEMP_FILE: c_int = 17;
+pub const GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_SHARED_MEM: c_int = 18;
 
 /// `GHOSTTY_TERMINAL_DATA_*`
 pub const GHOSTTY_TERMINAL_DATA_COLS: c_int = 1;
@@ -125,6 +132,11 @@ pub const GHOSTTY_TERMINAL_DATA_COLOR_PALETTE_DEFAULT: c_int = 25;
 pub const GHOSTTY_TERMINAL_DATA_SELECTION: c_int = 31;
 pub const GHOSTTY_TERMINAL_DATA_VIEWPORT_ACTIVE: c_int = 32;
 pub const GHOSTTY_TERMINAL_DATA_CURSOR_AT_PROMPT: c_int = 39;
+pub const GHOSTTY_TERMINAL_DATA_KITTY_IMAGE_STORAGE_LIMIT: c_int = 26;
+pub const GHOSTTY_TERMINAL_DATA_KITTY_IMAGE_MEDIUM_FILE: c_int = 27;
+pub const GHOSTTY_TERMINAL_DATA_KITTY_IMAGE_MEDIUM_TEMP_FILE: c_int = 28;
+pub const GHOSTTY_TERMINAL_DATA_KITTY_IMAGE_MEDIUM_SHARED_MEM: c_int = 29;
+pub const GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS: c_int = 30;
 
 /// `GHOSTTY_SCROLL_VIEWPORT_*`
 pub const GHOSTTY_SCROLL_VIEWPORT_TOP: c_int = 0;
@@ -219,6 +231,46 @@ unsafe extern "C" {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Allocator (allocator.h)
+// ---------------------------------------------------------------------------
+
+unsafe extern "C" {
+    pub fn ghostty_alloc(allocator: *const GhosttyAllocator, len: usize) -> *mut u8;
+    pub fn ghostty_free(allocator: *const GhosttyAllocator, ptr: *mut u8, len: usize);
+}
+
+// ---------------------------------------------------------------------------
+// System callbacks (sys.h)
+// ---------------------------------------------------------------------------
+
+/// `GhosttySysImage`: 8-bit RGBA rows from the top left, no row padding.
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct GhosttySysImage {
+    pub width: u32,
+    pub height: u32,
+    pub data: *mut u8,
+    pub data_len: usize,
+}
+
+/// `GhosttySysDecodePngFn`: the library owns `out.data` on success.
+pub type GhosttySysDecodePngFn = unsafe extern "C-unwind" fn(
+    userdata: *mut c_void,
+    allocator: *const GhosttyAllocator,
+    data: *const u8,
+    data_len: usize,
+    out: *mut GhosttySysImage,
+) -> bool;
+
+/// `GHOSTTY_SYS_OPT_*`
+pub const GHOSTTY_SYS_OPT_USERDATA: c_int = 0;
+pub const GHOSTTY_SYS_OPT_DECODE_PNG: c_int = 1;
+
+unsafe extern "C" {
+    pub fn ghostty_sys_set(option: c_int, value: *const c_void) -> c_int;
+}
+
 // --- paste (paste.h) ---
 
 pub const GHOSTTY_CLIPBOARD_LOCATION_STANDARD: c_int = 0;
@@ -288,6 +340,35 @@ pub const GHOSTTY_RENDER_STATE_DATA_COLOR_CURSOR_HAS_VALUE: c_int = 8;
 pub const GHOSTTY_RENDER_STATE_DATA_COLOR_PALETTE: c_int = 9;
 pub const GHOSTTY_RENDER_STATE_DATA_CURSOR: c_int = 18;
 pub const GHOSTTY_RENDER_STATE_DATA_COLORS: c_int = 19;
+pub const GHOSTTY_RENDER_STATE_DATA_IMAGE_ITERATOR: c_int = 22;
+pub const GHOSTTY_RENDER_STATE_DATA_IMAGE_PLACEMENTS_GENERATION: c_int = 23;
+
+/// `GHOSTTY_IMAGE_PROTOCOL_*`
+pub const GHOSTTY_IMAGE_PROTOCOL_KITTY: c_int = 0;
+
+/// `GHOSTTY_RENDER_STATE_IMAGE_LAYER_*`
+pub const GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_BACKGROUND: c_int = 0;
+pub const GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_TEXT: c_int = 1;
+pub const GHOSTTY_RENDER_STATE_IMAGE_LAYER_ABOVE_TEXT: c_int = 2;
+
+/// `GHOSTTY_RENDER_STATE_IMAGE_DATA_*`
+pub const GHOSTTY_RENDER_STATE_IMAGE_DATA_PROTOCOL: c_int = 1;
+pub const GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_ID: c_int = 2;
+pub const GHOSTTY_RENDER_STATE_IMAGE_DATA_IMAGE_GENERATION: c_int = 3;
+pub const GHOSTTY_RENDER_STATE_IMAGE_DATA_LAYER: c_int = 4;
+pub const GHOSTTY_RENDER_STATE_IMAGE_DATA_Z: c_int = 5;
+pub const GHOSTTY_RENDER_STATE_IMAGE_DATA_VIEWPORT_COL: c_int = 6;
+pub const GHOSTTY_RENDER_STATE_IMAGE_DATA_VIEWPORT_ROW: c_int = 7;
+pub const GHOSTTY_RENDER_STATE_IMAGE_DATA_GRID_COLS: c_int = 8;
+pub const GHOSTTY_RENDER_STATE_IMAGE_DATA_GRID_ROWS: c_int = 9;
+pub const GHOSTTY_RENDER_STATE_IMAGE_DATA_CELL_OFFSET_X: c_int = 10;
+pub const GHOSTTY_RENDER_STATE_IMAGE_DATA_CELL_OFFSET_Y: c_int = 11;
+pub const GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_WIDTH: c_int = 12;
+pub const GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_HEIGHT: c_int = 13;
+pub const GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_X: c_int = 14;
+pub const GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_Y: c_int = 15;
+pub const GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_WIDTH: c_int = 16;
+pub const GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_HEIGHT: c_int = 17;
 
 /// `GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_*`
 pub const GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BAR: c_int = 0;
@@ -414,6 +495,56 @@ unsafe extern "C" {
     pub fn ghostty_render_state_row_cells_next(cells: GhosttyRenderStateRowCells) -> bool;
     pub fn ghostty_render_state_row_cells_get(
         cells: GhosttyRenderStateRowCells,
+        data: c_int,
+        out: *mut c_void,
+    ) -> c_int;
+    pub fn ghostty_render_state_image_iterator_new(
+        allocator: *const GhosttyAllocator,
+        out_iterator: *mut GhosttyRenderStateImageIterator,
+    ) -> c_int;
+    pub fn ghostty_render_state_image_iterator_free(iterator: GhosttyRenderStateImageIterator);
+    pub fn ghostty_render_state_image_iterator_next(
+        iterator: GhosttyRenderStateImageIterator,
+    ) -> bool;
+    pub fn ghostty_render_state_image_get(
+        iterator: GhosttyRenderStateImageIterator,
+        data: c_int,
+        out: *mut c_void,
+    ) -> c_int;
+}
+
+// ---------------------------------------------------------------------------
+// Kitty graphics (kitty_graphics.h)
+// ---------------------------------------------------------------------------
+
+/// `GHOSTTY_KITTY_IMAGE_FORMAT_*`. PNG payloads reach storage as RGBA.
+pub const GHOSTTY_KITTY_IMAGE_FORMAT_RGB: c_int = 0;
+pub const GHOSTTY_KITTY_IMAGE_FORMAT_RGBA: c_int = 1;
+pub const GHOSTTY_KITTY_IMAGE_FORMAT_PNG: c_int = 2;
+pub const GHOSTTY_KITTY_IMAGE_FORMAT_GRAY_ALPHA: c_int = 3;
+pub const GHOSTTY_KITTY_IMAGE_FORMAT_GRAY: c_int = 4;
+
+/// `GHOSTTY_KITTY_IMAGE_DATA_*`
+pub const GHOSTTY_KITTY_IMAGE_DATA_ID: c_int = 1;
+pub const GHOSTTY_KITTY_IMAGE_DATA_WIDTH: c_int = 3;
+pub const GHOSTTY_KITTY_IMAGE_DATA_HEIGHT: c_int = 4;
+pub const GHOSTTY_KITTY_IMAGE_DATA_FORMAT: c_int = 5;
+pub const GHOSTTY_KITTY_IMAGE_DATA_DATA_PTR: c_int = 7;
+pub const GHOSTTY_KITTY_IMAGE_DATA_DATA_LEN: c_int = 8;
+pub const GHOSTTY_KITTY_IMAGE_DATA_GENERATION: c_int = 9;
+
+unsafe extern "C" {
+    pub fn ghostty_kitty_graphics_get(
+        graphics: GhosttyKittyGraphics,
+        data: c_int,
+        out: *mut c_void,
+    ) -> c_int;
+    pub fn ghostty_kitty_graphics_image(
+        graphics: GhosttyKittyGraphics,
+        image_id: u32,
+    ) -> GhosttyKittyGraphicsImage;
+    pub fn ghostty_kitty_graphics_image_get(
+        image: GhosttyKittyGraphicsImage,
         data: c_int,
         out: *mut c_void,
     ) -> c_int;

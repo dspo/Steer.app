@@ -15,6 +15,8 @@
 
 use std::{
     cell::RefCell,
+    collections::HashMap,
+    ffi::c_void,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -28,6 +30,7 @@ use nsh_platform_macos::{ComponentContext, NativeComponent};
 use objc2::{
     AnyThread, ClassType, DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class,
     msg_send,
+    ptr::NonNull,
     rc::{Retained, Weak},
     runtime::{AnyObject, NSObjectProtocol, ProtocolObject, Sel},
     sel,
@@ -38,14 +41,20 @@ use objc2_app_kit::{
     NSPasteboardTypeString, NSResponder, NSTextInputClient, NSTrackingArea, NSTrackingAreaOptions,
     NSView,
 };
+use objc2_core_foundation::CFRetained;
+use objc2_core_graphics::{
+    CGBitmapInfo, CGColorRenderingIntent, CGColorSpace, CGDataProvider, CGImage, CGImageAlphaInfo,
+    kCGColorSpaceSRGB,
+};
 use objc2_foundation::{
     NSArray, NSAttributedString, NSAttributedStringKey, NSNotFound, NSObject, NSPoint, NSRange,
     NSRect, NSSize, NSString, NSUInteger, NSURL,
 };
 use serde_json::json;
 use zu_ghostty::{
-    Autoscroll, CursorStyle, GestureGeometry, KeyAction, KeyEncoder, MouseAction, MouseButton,
-    MouseEncoder, MouseGeometry, Pointer, Press, RenderState, SelectionGesture, focus_encode,
+    Autoscroll, CursorStyle, GestureGeometry, Image, KeyAction, KeyEncoder, MouseAction,
+    MouseButton, MouseEncoder, MouseGeometry, Placement, Pointer, Press, RenderState,
+    SelectionGesture, focus_encode,
     sys::{GHOSTTY_CELL_WIDE_SPACER_TAIL, GHOSTTY_TERMINAL_SCREEN_PRIMARY},
 };
 
@@ -146,6 +155,8 @@ pub(crate) struct State {
     /// The pointer of a selecting drag, kept for autoscroll ticks.
     selecting: Option<NSPoint>,
     hover: Option<Hover>,
+    /// Uploaded bitmaps by image identity, kept until they leave a frame.
+    images: HashMap<(u32, u64), CFRetained<CGImage>>,
     /// Each viewport row's graphemes by column, as last drawn: where plain
     /// URLs are looked for.
     rows_text: Vec<Vec<(u16, String)>>,
@@ -190,6 +201,7 @@ impl State {
             reported: None,
             selecting: None,
             hover: None,
+            images: HashMap::new(),
             rows_text: Vec::new(),
         }
     }
@@ -261,6 +273,46 @@ impl State {
         self.fonts = Fonts::new(&self.family, self.font_size);
         self.metrics = self.fonts.metrics(self.line_height, self.scale);
         (self.cols, self.rows) = (0, 0);
+    }
+
+    /// Uploads new image generations and drops those absent from this frame.
+    fn upload_images(
+        &mut self,
+        session: &Arc<Shared>,
+        placements: &[Placement],
+    ) -> Vec<(Placement, &CGImage)> {
+        let mut uploaded = HashMap::new();
+        for p in placements {
+            let key = (p.image_id, p.generation);
+            if self.images.contains_key(&key) {
+                continue;
+            }
+            let image = if let Some(image) = uploaded.get(&p.image_id) {
+                image
+            } else {
+                let image = {
+                    let emulator = session.lock();
+                    emulator.term.kitty_image(p.image_id)
+                };
+                uploaded.insert(p.image_id, image);
+                uploaded.get(&p.image_id).unwrap()
+            };
+            if let Some(cg) = image.as_ref().and_then(upload_image) {
+                self.images.insert(key, cg);
+            }
+        }
+        self.images.retain(|key, _| {
+            placements
+                .iter()
+                .any(|p| (p.image_id, p.generation) == *key)
+        });
+        placements
+            .iter()
+            .filter_map(|p| {
+                let cg = self.images.get(&(p.image_id, p.generation))?;
+                Some((*p, cg.as_ref()))
+            })
+            .collect()
     }
 
     /// One cell in device pixels, whole: the unit the encoders and the
@@ -656,6 +708,7 @@ define_class!(
                 let Ok(frame) = frame else {
                     return;
                 };
+                let images = s.upload_images(&session, &frame.images);
                 let now = Instant::now();
                 if s.bells.is_some_and(|seen| seen != bells) {
                     s.clock.ring(now);
@@ -708,6 +761,7 @@ define_class!(
                     &s.palette,
                     &frame,
                     &overlay,
+                    &images,
                 );
                 let next = s.clock.next(now, blinking);
                 // A search still running over the history shows its matches
@@ -1737,5 +1791,60 @@ impl NativeComponent for Component {
             _ => return,
         }
         self.view.setNeedsDisplay(true);
+    }
+}
+
+/// Turns RGBA bytes into a sRGB CoreGraphics bitmap. The provider retains
+/// the vector's allocation; the release callback frees it when CG is done.
+fn upload_image(image: &Image) -> Option<CFRetained<CGImage>> {
+    if image.width == 0 || image.height == 0 {
+        return None;
+    }
+    let len = (image.width as usize)
+        .checked_mul(image.height as usize)?
+        .checked_mul(4)?;
+    if image.rgba.len() != len {
+        return None;
+    }
+    let boxed = image.rgba.clone().into_boxed_slice();
+    let (ptr, len) = (boxed.as_ptr(), boxed.len());
+    // SAFETY: `boxed` is leaked here and freed by the provider's release
+    // callback once CoreGraphics no longer needs the bytes.
+    let provider = unsafe {
+        CGDataProvider::with_data(
+            std::ptr::null_mut(),
+            ptr as *const c_void,
+            len,
+            Some(release_rgba),
+        )
+    }?;
+    Box::leak(boxed);
+    let space = CGColorSpace::with_name(Some(&kCGColorSpaceSRGB));
+    // SAFETY: the provider holds exactly `len` RGBA bytes and every other
+    // argument describes that same buffer.
+    unsafe {
+        CGImage::new(
+            image.width as usize,
+            image.height as usize,
+            8,
+            32,
+            image.width as usize * 4,
+            space.as_deref(),
+            CGBitmapInfo(CGImageAlphaInfo::Last.0),
+            Some(&provider),
+            std::ptr::null(),
+            true,
+            CGColorRenderingIntent::RenderingIntentDefault,
+        )
+    }
+}
+
+unsafe extern "C-unwind" fn release_rgba(_info: *mut c_void, data: NonNull<c_void>, len: usize) {
+    // SAFETY: `data` and `len` are the boxed slice handed to the provider.
+    unsafe {
+        drop(Box::from_raw(std::slice::from_raw_parts_mut(
+            data.as_ptr() as *mut u8,
+            len,
+        )));
     }
 }

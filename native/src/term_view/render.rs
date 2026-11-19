@@ -12,16 +12,19 @@ use objc2_core_foundation::{
     CFAttributedString, CFDictionary, CFRange, CFRetained, CFString, CFType, CGAffineTransform,
     CGPoint, CGRect, CGSize,
 };
-use objc2_core_graphics::{CGColor, CGContext, CGGlyph, CGPath};
+use objc2_core_graphics::{CGColor, CGContext, CGGlyph, CGImage, CGPath};
 use objc2_core_text::{
     CTFont, CTFontOrientation, CTFontSymbolicTraits, CTLine, CTRun, kCTFontAttributeName,
 };
 use zu_ghostty::{
-    Frame, Rgb,
+    Frame, Placement, Rgb,
     sys::{
         GHOSTTY_CELL_WIDE_SPACER_TAIL, GHOSTTY_CELL_WIDE_WIDE,
         GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BAR,
-        GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_UNDERLINE, GHOSTTY_SGR_UNDERLINE_NONE,
+        GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_UNDERLINE,
+        GHOSTTY_RENDER_STATE_IMAGE_LAYER_ABOVE_TEXT,
+        GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_BACKGROUND,
+        GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_TEXT, GHOSTTY_SGR_UNDERLINE_NONE,
     },
 };
 
@@ -445,6 +448,7 @@ pub(crate) fn draw(
     palette: &Palette,
     frame: &Frame,
     overlay: &Overlay,
+    images: &[(Placement, &CGImage)],
 ) {
     let height = size.1;
     // Every box sits on device pixels, so neighbors share edges exactly.
@@ -457,6 +461,26 @@ pub(crate) fn draw(
         .as_ref()
         .filter(|c| c.visible && c.x < frame.cols && c.y < frame.rows)
         .filter(|c| !(overlay.focused && c.blinking && !overlay.cursor_on));
+    // Ghostty's iterator order is not drawing order: placements must be
+    // sorted by layer, then z, within each layer.
+    let mut ordered: Vec<_> = images.iter().collect();
+    ordered.sort_by_key(|(p, _)| (p.layer, p.z));
+    let drawing_layer = |layer: c_int| {
+        ordered
+            .iter()
+            .copied()
+            .filter(move |(p, _)| p.layer == layer)
+    };
+    let viewport = Rect {
+        x: 0.0,
+        y: 0.0,
+        width: size.0,
+        height,
+    };
+    for (p, image) in drawing_layer(GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_BACKGROUND) {
+        image_layer(cg, metrics, pixels.scale(), viewport, p, image);
+    }
+
     let block = cursor.is_some_and(|c| {
         overlay.focused
             && overlay.preedit.is_empty()
@@ -498,6 +522,9 @@ pub(crate) fn draw(
     {
         let span = if c.wide_tail { 2 } else { 1 };
         fill(cg, cell_box(c.x, c.y, span), palette.cursor);
+    }
+    for (p, image) in drawing_layer(GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_TEXT) {
+        image_layer(cg, metrics, pixels.scale(), viewport, p, image);
     }
 
     // Sprites draw outside the glyphs' transform, in the view's flipped
@@ -584,6 +611,9 @@ pub(crate) fn draw(
     for (rect, color) in decorations {
         fill(cg, pixels.snap(rect), color);
     }
+    for (p, image) in drawing_layer(GHOSTTY_RENDER_STATE_IMAGE_LAYER_ABOVE_TEXT) {
+        image_layer(cg, metrics, pixels.scale(), viewport, p, image);
+    }
     if let Some(c) = cursor
         && overlay.preedit.is_empty()
     {
@@ -648,6 +678,52 @@ pub(crate) fn draw(
         };
         fill(cg, all, palette.foreground.with_alpha(0.12 * overlay.flash));
     }
+}
+
+/// Draws one placement: the bitmap is cropped to its source rectangle and
+/// stretched into the placement's pixel rectangle, flipped into the view's
+/// top-left coordinate space.
+fn image_layer(
+    cg: &CGContext,
+    metrics: Metrics,
+    scale: f64,
+    viewport: Rect,
+    p: &Placement,
+    image: &CGImage,
+) {
+    let scale = if scale > 0.0 { scale } else { 1.0 };
+    let crop = CGRect::new(
+        CGPoint::new(p.source.0 as f64, p.source.1 as f64),
+        CGSize::new(p.source.2 as f64, p.source.3 as f64),
+    );
+    let Some(cropped) = CGImage::with_image_in_rect(Some(image), crop) else {
+        return;
+    };
+    let x = p.col as f64 * metrics.cell_width + p.offset_px.0 as f64 / scale;
+    let y = p.row as f64 * metrics.line_height + p.offset_px.1 as f64 / scale;
+    let width = p.size_px.0 as f64 / scale;
+    let height = p.size_px.1 as f64 / scale;
+    // Placements may start above or left of the viewport, or extend past
+    // its edges. CoreGraphics clips the destination for us.
+    if x >= viewport.x + viewport.width
+        || y >= viewport.y + viewport.height
+        || x + width <= viewport.x
+        || y + height <= viewport.y
+    {
+        return;
+    }
+    CGContext::save_g_state(Some(cg));
+    CGContext::begin_path(Some(cg));
+    CGContext::add_rect(Some(cg), cg_rect(viewport));
+    CGContext::clip(Some(cg));
+    CGContext::translate_ctm(Some(cg), x, y + height);
+    CGContext::scale_ctm(Some(cg), 1.0, -1.0);
+    CGContext::draw_image(
+        Some(cg),
+        CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(width, height)),
+        Some(&cropped),
+    );
+    CGContext::restore_g_state(Some(cg));
 }
 
 /// The scrollbar's thumb over a view `width` × `height`, rounded.

@@ -33,3 +33,25 @@ test("the terminal's look: sprites, colors, scrollbar, find marks", async () => 
   await app.wait(400);
   await app.screenshot("/tmp/zu-look-4-find.png");
 }, 90000);
+
+// A Kitty graphics placement paints the four red pixels at the cursor.
+test("the terminal's look: inline Kitty image", async () => {
+  const app = await open("../fixtures/terminal.tsx", {
+    width: 1200,
+    height: 800,
+  });
+  await app.waitFor("id:terminal-screen");
+  await app.wait(1200);
+  await typeKeys(
+    app,
+    "clear; printf '\\033_Ga=T,f=32,s=2,v=2,q=2;/wAA//8AAP//AAD//wAA/w==\\033\\\\'; echo IMAGE_END",
+  );
+  await app.keyboard.press("enter");
+  await app.waitUntil(
+    () => app.texts().some((text) => text.includes("IMAGE_END")),
+    {
+      timeout: 10000,
+    },
+  );
+  await app.screenshot("/tmp/zu-look-5-image.png");
+}, 90000);

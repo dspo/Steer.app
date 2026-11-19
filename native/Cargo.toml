@@ -33,7 +33,7 @@ dispatch2 = "0.3.1"
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSAttributedString", "NSGeometry", "NSObjCRuntime", "NSRange", "NSString", "NSURL", "NSDictionary"] }
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "objc2-core-foundation", "objc2-core-graphics", "NSAccessibilityConstants", "NSAttributedString", "NSCursor", "NSDragging", "NSEvent", "NSGraphicsContext", "NSMenu", "NSMenuItem", "NSPasteboard", "NSResponder", "NSTextInputClient", "NSTextInputContext", "NSTrackingArea", "NSView", "NSWindow"] }
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFArray", "CFAttributedString", "CFCGTypes", "CFDictionary", "CFString"] }
-objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "CGColor", "CGContext", "CGFont", "CGPath"] }
+objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "CGColor", "CGColorSpace", "CGContext", "CGDataProvider", "CGFont", "CGImage", "CGPath"] }
 objc2-core-text = { version = "0.3.2", default-features = false, features = ["std", "objc2-core-graphics", "CTFont", "CTFontDescriptor", "CTFontTraits", "CTLine", "CTRun", "CTStringAttributes"] }
 
 [dev-dependencies]
