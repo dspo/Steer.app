@@ -1,6 +1,7 @@
 import { signal } from "nsh";
 import { Manox, type ModelCatalog } from "../../domains/manox";
 import { ActionType, catalog, channels, createSessionOn, dispatchAction, effectiveState, ensureConnection } from "./ahp";
+import { openTitleBridge } from "./titles";
 import type { ChannelCell } from "./ahp";
 import type { SessionSummary } from "../../../contracts/ahp/channels-session/state";
 import type { SessionState } from "../../../contracts/ahp/channels-session/state";
@@ -130,6 +131,9 @@ export async function createManoxThread(
   options: { cwd?: string | null; model?: string | null; effort?: string | null } = {},
 ): Promise<{ threadId: string; chatId: string }> {
   const threadId = mintId();
+  // The thread's title bridge opens with the id, before the kernel session
+  // runs its first bash (issue #73).
+  openTitleBridge(threadId);
   await ensureConnection();
   // The Hero's context rides createSession: the project's primary root as the
   // working directory (none for Chats — the kernel anchors on home), and the

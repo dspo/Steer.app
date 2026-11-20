@@ -17,6 +17,12 @@ import {
   setProgramTitle,
 } from "../modules/pi/titles";
 import { registerAllModules } from "../modules/register-all";
+import {
+  flushPendingTitle as flushManoxPendingTitle,
+  openTitleBridge,
+  programTitle as manoxProgramTitle,
+  setProgramTitle as setManoxProgramTitle,
+} from "../modules/manox/titles";
 
 registerAllModules();
 
@@ -206,4 +212,38 @@ test("pruning drops leftovers without a live view and keeps live sessions", () =
   expect(programTitle("s1")).toBe("Zu: live");
   expect(programTitle("ghost-session")).toBe("");
   expect(sheetTabTitle(sheet)).toBe("Zu: live");
+});
+
+// Issue #73, the manox half: a thread's tools set OSC titles through the
+// kernel's bash tap; the projection is the same tab-only split as pi's.
+// (The kernel-to-bridge leg is covered by the Rust bridge tests and the
+// kernel's own acceptance tests; this asserts the projection split.)
+
+test("a manox thread's program title renames the chat tab, not the container", () => {
+  const threadId = "11111111-1111-4111-8111-111111111111";
+  const chatId = "22222222-2222-4222-8222-222222222222";
+  const sheet = `manox-chat:${threadId}:${chatId}`;
+  const container = {
+    id: "mc1",
+    cwd: "/tmp/manox",
+    archived: false,
+    createdAt: 1,
+    updatedAt: 1,
+    sessions: [],
+  };
+  containers.set([container]);
+  activeContainerId.set("mc1");
+  sheetOrder.set({ mc1: [sheet] });
+
+  // No program title yet: the tab reads the chat's own title (here the
+  // module's fallback label), and so does the container.
+  const chatTitle = containerTitle(container);
+  expect(sheetTabTitle(sheet)).toBe(chatTitle);
+
+  // The program title renames the tab and nothing else.
+  setManoxProgramTitle(threadId, "Zu: 阶段名");
+  flushManoxPendingTitle();
+  expect(sheetTabTitle(sheet)).toBe("Zu: 阶段名");
+  expect(containerTitle(container)).toBe(chatTitle);
+  expect(manoxProgramTitle(threadId)).toBe("Zu: 阶段名");
 });
