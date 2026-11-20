@@ -5,8 +5,16 @@
  * Only `app/domains/` may import `manox/native` (docs/sheet-module-ARCHITECTURE.md
  * §5).
  */
-import { Manox as NativeManox } from "manox/native";
+import { Manox as NativeManox, TitleBridge as NativeTitleBridge } from "manox/native";
 export type { ManoxFrame } from "manox/native";
+
+/**
+ * The session's title bridge (issue #73): the kernel's bash tap feeds a
+ * thread-scoped headless emulator; `open` posts each new OSC title. The
+ * manox module's titles store reads it.
+ */
+export const TitleBridge = NativeTitleBridge;
+export type TitleBridgeHandle = ReturnType<typeof NativeTitleBridge.open>;
 export type { ModelCatalog, CatalogProvider, CatalogModel } from "manox/native";
 
 /** nsh exposes JSObject fields as getters; normalise once for app consumers. */

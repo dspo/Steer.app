@@ -41,6 +41,8 @@ pub mod host;
 pub mod model_catalog;
 pub mod pump;
 pub mod real;
+pub mod title_bridge;
+pub use title_bridge::TitleBridge;
 
 /// The manox host pin the build script extracted from Cargo.toml's one
 /// `tag = "…"` line (`ZU_MANOX_PIN`); the module's `version` delegates here.
@@ -81,6 +83,9 @@ impl Manox {
         hermetic: bool,
         cx: CallCx<'_>,
     ) -> Result<(), String> {
+        // The bash output tap must precede the first session (issue #73):
+        // one install per process, restarts reuse it.
+        title_bridge::ensure_tap_installed()?;
         crate::real::HERMETIC.store(hermetic, std::sync::atomic::Ordering::Release);
         pump::start(on_frame, cx)
     }
@@ -159,6 +164,7 @@ impl Manox {
 #[native_module("manox/native")]
 fn native(registry: &mut Registry) {
     registry.module::<Manox>();
+    registry.class::<TitleBridge>();
 }
 
 #[cfg(test)]

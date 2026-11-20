@@ -2,6 +2,7 @@ import { K, t } from "../../ui/i18n";
 import { registerModule } from "../../core/registry";
 import { ManoxChatBody } from "./conversation";
 import { createManoxThread, manoxChatSheetId, parseManoxChatSheet, manoxThreadContainerId } from "./stores";
+import { programTitle } from "./titles";
 import { activeContainerId, createContainerRecord, layout, noteSheetOpened, setLayout, switchContainer } from "../../core/containers";
 import { appendSheet } from "../../core/dock";
 import { chatsCwd } from "../../core/workspace";
@@ -31,6 +32,12 @@ export function registerManoxModule(): void {
         kind: "manox-chat",
         glyph: "chat",
         title: manoxChatTitle,
+        // Issue #73: a tool's OSC title renames this chat's tab and
+        // nothing else — the container keeps the session's own name.
+        tabTitle: (id) => {
+          const parsed = parseManoxChatSheet(id);
+          return parsed ? programTitle(parsed.threadId) : "";
+        },
         body: ({ id }) => <ManoxChatBody id={id} />,
         parse: (id) => parseManoxChatSheet(id),
       },

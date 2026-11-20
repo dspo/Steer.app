@@ -19,6 +19,7 @@ import {
 } from "../../ui/chat";
 import { effectiveState, ensureConnection } from "./ahp";
 import type { SessionState } from "../../../contracts/ahp/channels-session/state";
+import { openTitleBridge } from "./titles";
 import {
   answerManoxInput,
   chatOf,
@@ -575,6 +576,11 @@ export function ManoxChatBody(props: { id: string }) {
     );
   }
   const chatUri = () => chatResource(parsed.chatId);
+  // The sheet mounts: the thread's title bridge reattaches (issue #73 —
+  // a thread restored on this run gets its channel here; idempotent).
+  effect(() => {
+    openTitleBridge(parsed.threadId);
+  });
   // The sheet mounts: the connection subscribes (snapshot → immediate render;
   // the journal legs reconcile behind it, §3.5). The metrics extension face
   // rides along: it carries the settled runs' timing rows the thinking

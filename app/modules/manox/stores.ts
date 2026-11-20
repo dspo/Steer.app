@@ -1,6 +1,7 @@
-import { signal } from "nsh";
+import { effect, signal } from "nsh";
 import { Manox, type ModelCatalog } from "../../domains/manox";
 import { ActionType, catalog, channels, createSessionOn, dispatchAction, effectiveState, ensureConnection } from "./ahp";
+import { openTitleBridge, pruneTitles, titleTtyPath } from "./titles";
 import type { ChannelCell } from "./ahp";
 import type { ReasoningTiming, XManoxState } from "./ext";
 import type { SessionSummary } from "../../../contracts/ahp/channels-session/state";
@@ -63,6 +64,19 @@ export function sessionResource(threadId: string): URI {
 export function metricsResource(chatId: string): URI {
   return `x-manox-metrics:/${chatId}`;
 }
+
+// Issue #73 D4, the manox wiring: the catalog is the thread list — a
+// thread that left it is a deleted thread, and its title bridge closes.
+// Threads are durable AHP sessions, so in practice this fires on explicit
+// disposal; archiving never shrinks the catalog.
+//
+// The prune writes the titles signal, so it must run **outside** this
+// reactive effect: writing a signal the effect (transitively) reads would
+// re-enter it. The read stays here (tracked); the write is deferred.
+effect(() => {
+  const live = threads().map((thread) => thread.threadId);
+  setTimeout(() => pruneTitles(live), 0);
+});
 
 /** The chat id a chat URI names. */
 function chatIdOf(uri: URI): string {
@@ -177,12 +191,19 @@ export async function createManoxThread(
   options: { cwd?: string | null; model?: string | null; effort?: string | null } = {},
 ): Promise<{ threadId: string; chatId: string }> {
   const threadId = mintId();
+  // The thread's title bridge opens with the id, before the kernel session
+  // runs its first bash (issue #73). Its tty path rides the session's
+  // tool_env: tools can redirect an explicit title write at it (C1).
+  openTitleBridge(threadId);
+  const ttyPath = titleTtyPath(threadId);
   await ensureConnection();
   // The Hero's context rides createSession: the project's primary root as the
   // working directory (none for Chats — the kernel anchors on home), and the
   // selected model as the session config (the machine's pi list, not cx's).
   await createSessionOn(sessionResource(threadId), {
     ...(options.cwd ? { workingDirectories: [`file://${options.cwd}`] } : {}),
+    // Issue #73 C1: the tool's explicit redirect target.
+    ...(ttyPath ? { toolEnv: { ZU_TTY: ttyPath } } : {}),
     ...((options.model || options.effort) && {
       config: {
         ...(options.model ? { model: options.model } : {}),
