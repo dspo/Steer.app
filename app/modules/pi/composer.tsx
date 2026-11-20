@@ -1,5 +1,5 @@
 import { effect, Scroll, signal, Text, token, View } from "nsh";
-import { Input, Menu, MenuItem, Submenu } from "nsh/base";
+import { Dialog, Input, Menu, MenuItem } from "nsh/base";
 import { K, t } from "../../ui/i18n";
 import type { SessionModelsReason, SessionThinkingLevel } from "./protocol";
 import { openModelMenuRequest, runSlash, slashCandidates } from "./slash";
@@ -15,7 +15,7 @@ import {
   stop,
   viewFor,
 } from "./sessions";
-import { Glyph, motionStyle, shadowRaised, type GlyphName } from "../../ui/ui";
+import { Glyph, motionStyle, shadowDialog, shadowRaised, type GlyphName } from "../../ui/ui";
 
 /**
  * The composer: a bare input over one footer row, all right-aligned (DESIGN
@@ -186,162 +186,175 @@ export function ModelPicker(props: { sessionId: string }) {
     if (await chooseSessionModel(props.sessionId, provider, id)) open.set(false);
   };
   return (
-    <Menu
-      open={open()}
-      onOpenChange={({ open: next }) => {
-        open.set(next);
-        // Opening the menu is the intent that may need a resume (issue #54).
-        if (next) void ensureSessionModels(props.sessionId);
-      }}
-      align="start"
-      offset={6}
-      popupClass="rounded-xl border border-border bg-popover p-1"
-      popupStyle={{ width: 310, maxHeight: 420, boxShadow: shadowRaised() }}
-      trigger={
-        <View
-          role="button"
-          testID="model-picker"
-          accessibilityLabel={label()}
-          accessibilityState={{ expanded: open(), hasPopup: true }}
-          class="h-6 min-w-0 flex-row items-center gap-1 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
-          style={{ ...motionStyle("fast") }}
+    <View>
+      <View
+        role="button"
+        testID="model-picker"
+        accessibilityLabel={label()}
+        accessibilityState={{ expanded: open(), hasPopup: true }}
+        class="h-6 min-w-0 flex-row items-center gap-1 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+        style={{ ...motionStyle("fast") }}
+        onPress={() => {
+          open.set(true);
+          // Opening the picker is the intent that may need a resume (issue #54).
+          void ensureSessionModels(props.sessionId);
+        }}
+      >
+        <If
+          when={!!current()}
+          else={
+            <Text class="min-w-0 text-[11px] text-muted-foreground" style={{ numberOfLines: 1 }}>
+              {t(K.session.model)}
+            </Text>
+          }
         >
-          <If
-            when={!!current()}
-            else={
-              <Text class="min-w-0 text-[11px] text-muted-foreground" style={{ numberOfLines: 1 }}>
-                {t(K.session.model)}
-              </Text>
-            }
-          >
-            <Text class="text-[11px] text-muted-foreground" style={{ numberOfLines: 1 }}>
-              {current()!.provider}
-            </Text>
-            <Text class="text-[11px] text-faint">·</Text>
-            <Text class="min-w-0 text-[11px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
-              {current()!.id || current()!.name}
-            </Text>
+          <Text class="text-[11px] text-muted-foreground" style={{ numberOfLines: 1 }}>
+            {current()!.provider}
+          </Text>
+          <Text class="text-[11px] text-faint">·</Text>
+          <Text class="min-w-0 text-[11px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
+            {current()!.id || current()!.name}
+          </Text>
+        </If>
+        <Glyph name="caret-down" size={8} tint={token("faint")} />
+      </View>
+      {/* The picker is a dialog, not a menu anchored over the composer: the
+          composer lives inside the sheet host's translated frame, and a
+          popup anchored under that transform hears no press or hover on the
+          desktops (NSH-OVERLAY-TRANSFORM-HIT). A dialog is a modal root of
+          its own, outside the sheet's frame — and the flat cascade reads
+          better than a two-level menu (manox-app's composer picker). */}
+      <Dialog
+        testID="model-dialog"
+        open={open()}
+        animation="fade"
+        class="m-auto w-[340px] gap-1 rounded-xl border border-border bg-card p-2"
+        style={{ boxShadow: shadowDialog() }}
+        backdropClass="bg-scrim"
+        onCancel={() => open.set(false)}
+      >
+        <Text class="px-1 pb-0.5 text-[11px] font-semibold uppercase tracking-wide text-faint">
+          {t(K.session.model)}
+        </Text>
+        <Scroll style={{ maxHeight: 380 }} contentStyle={{ gap: 1 }}>
+          <If when={state()?.status === "loading"}>
+            <Text class="px-2 py-2 text-[11.5px] text-faint">{t(K.session.modelsLoading)}</Text>
           </If>
-          <Glyph name="caret-down" size={8} tint={token("faint")} />
-        </View>
-      }
-    >
-      <Scroll style={{ maxHeight: 380 }} contentStyle={{ gap: 1 }}>
-        <If when={state()?.status === "loading"}>
-          <Text class="px-2 py-2 text-[11.5px] text-faint">{t(K.session.modelsLoading)}</Text>
-        </If>
-        <If when={state()?.status === "error"}>
-          <Text class="px-2 py-1.5 text-[11px] text-destructive" style={{ numberOfLines: 2 }}>
-            {t(K.session.modelsError, { error: state()?.error ?? "" })}
-          </Text>
-          <MenuItem
-            testID="model-retry"
-            class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-            onSelect={() => void ensureSessionModels(props.sessionId, true)}
-          >
-            <Text class="text-[12px] text-foreground">{t(K.engine.retry)}</Text>
-          </MenuItem>
-        </If>
-        <If when={state()?.status === "ready" && providers().length === 0}>
-          <Text testID="model-reason" class="px-2 py-2 text-[11.5px] leading-[16px] text-faint">
-            {modelsReasonText(state()?.data?.reason)}
-          </Text>
-          <MenuItem
-            testID="model-retry"
-            class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-            onSelect={() => void ensureSessionModels(props.sessionId, true)}
-          >
-            <Text class="text-[12px] text-foreground">{t(K.engine.retry)}</Text>
-          </MenuItem>
-        </If>
-        <Each of={providers()} key={(provider) => provider.id}>
-          {(provider) => (
-            <Submenu
-              trigger={
+          <If when={state()?.status === "error"}>
+            <Text class="px-2 py-1.5 text-[11px] text-destructive" style={{ numberOfLines: 2 }}>
+              {t(K.session.modelsError, { error: state()?.error ?? "" })}
+            </Text>
+            <PickerRow
+              testID="model-retry"
+              label={t(K.engine.retry)}
+              onPress={() => void ensureSessionModels(props.sessionId, true)}
+            />
+          </If>
+          <If when={state()?.status === "ready" && providers().length === 0}>
+            <Text testID="model-reason" class="px-2 py-2 text-[11.5px] leading-[16px] text-faint">
+              {modelsReasonText(state()?.data?.reason)}
+            </Text>
+            <PickerRow
+              testID="model-retry"
+              label={t(K.engine.retry)}
+              onPress={() => void ensureSessionModels(props.sessionId, true)}
+            />
+          </If>
+          <Each of={providers()} key={(provider) => provider.id}>
+            {(provider) => (
+              <>
                 <View
-                  role="button"
                   testID={`model-provider-${provider().id}`}
                   accessibilityLabel={provider().name}
-                  class="flex-row items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-                  style={{ ...motionStyle("fast") }}
+                  class="flex-row items-baseline gap-2 px-2 pb-0.5 pt-1.5"
                 >
-                  <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-                    <Text class="text-[12px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
-                      {provider().name}
-                    </Text>
-                    <Text class="text-[10px] text-faint" style={{ numberOfLines: 1 }}>
-                      {[
-                        provider().id,
-                        provider().authSource ? authSourceText(provider().authSource, provider().authLabel) : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </Text>
-                  </View>
-                  <Glyph name="chevron-right" size={10} tint={token("faint")} />
-                </View>
-              }
-            >
-              <Each of={provider().models} key={(model) => `${model.provider}/${model.id}`}>
-                {(model) => (
-                  <MenuItem
-                    testID={`model-${model().provider}-${model().id}`}
-                    checked={currentKey() === `${model().provider}/${model().id}`}
-                    role="menuitemradio"
-                    closeOnSelect={false}
-                    indicator={<Glyph name="check" size={11} tint={token("brand")} />}
-                    indicatorClass="opacity-0 checked:opacity-100"
-                    class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-                    onSelect={() => void choose(model().provider, model().id)}
-                  >
-                    <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-                      <Text class="text-[12px] font-medium text-foreground" style={{ numberOfLines: 1 }}>
-                        {model().name}
-                      </Text>
-                      <Text class="text-[10px] text-faint" style={{ numberOfLines: 1 }}>
-                        {model().id}
-                        {model().contextWindow ? ` · ${formatTokens(model().contextWindow!)}` : ""}
-                      </Text>
-                    </View>
-                  </MenuItem>
-                )}
-              </Each>
-            </Submenu>
-          )}
-        </Each>
-        <If when={modes().length > 0}>
-          <View class="my-1 h-px bg-line" />
-          <Text class="px-2.5 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-faint">
-            {t(K.session.permissions)}
-          </Text>
-          <Each of={modes()} key={(entry) => entry.id}>
-            {(entry) => (
-              <MenuItem
-                testID={`session-mode-${entry().id}`}
-                checked={mode() === entry().id}
-                role="menuitemradio"
-                closeOnSelect={false}
-                indicator={<Glyph name="check" size={11} tint={token("brand")} />}
-                indicatorClass="opacity-0 checked:opacity-100"
-                class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
-                onSelect={() => void setSessionMode(props.sessionId, entry().id)}
-              >
-                <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-                  <Text class="text-[12px] text-foreground" style={{ numberOfLines: 1 }}>
-                    {entry().name}
+                  <Text class="text-[11px] font-semibold text-foreground" style={{ numberOfLines: 1 }}>
+                    {provider().name}
                   </Text>
-                  <If when={!!entry().description}>
-                    <Text class="text-[10px] text-faint" style={{ numberOfLines: 2 }}>
-                      {entry().description ?? ""}
-                    </Text>
-                  </If>
+                  <Text class="min-w-0 flex-1 text-[10px] text-faint" style={{ numberOfLines: 1 }}>
+                    {[
+                      provider().id,
+                      provider().authSource ? authSourceText(provider().authSource, provider().authLabel) : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </Text>
                 </View>
-              </MenuItem>
+                <Each of={provider().models} key={(model) => `${model.provider}/${model.id}`}>
+                  {(model) => (
+                    <PickerRow
+                      testID={`model-${model().provider}-${model().id}`}
+                      label={model().name}
+                      checked={currentKey() === `${model().provider}/${model().id}`}
+                      note={
+                        model().id +
+                        (model().contextWindow ? ` · ${formatTokens(model().contextWindow!)}` : "")
+                      }
+                      onPress={() => void choose(model().provider, model().id)}
+                    />
+                  )}
+                </Each>
+              </>
             )}
           </Each>
+        </Scroll>
+        <If when={modes().length > 0}>
+          <View class="my-1 h-px bg-line" />
+          <Text class="px-2 pb-0.5 text-[11px] font-semibold uppercase tracking-wide text-faint">
+            {t(K.session.permissions)}
+          </Text>
+          <Scroll style={{ maxHeight: 150 }} contentStyle={{ gap: 1 }}>
+            <Each of={modes()} key={(entry) => entry.id}>
+              {(entry) => (
+                <PickerRow
+                  testID={`session-mode-${entry().id}`}
+                  label={entry().name}
+                  checked={mode() === entry().id}
+                  note={entry().description ?? undefined}
+                  onPress={() => void setSessionMode(props.sessionId, entry().id)}
+                />
+              )}
+            </Each>
+          </Scroll>
         </If>
-      </Scroll>
-    </Menu>
+      </Dialog>
+    </View>
+  );
+}
+
+/** One pickable line of the model dialog: the check, the label and a faint
+ * note at the end (an id, a context window, a policy's description). */
+function PickerRow(props: {
+  testID: string;
+  label: string;
+  note?: string;
+  checked?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <View
+      role="menuitemradio"
+      testID={props.testID}
+      accessibilityLabel={props.label}
+      accessibilityState={{ checked: !!props.checked }}
+      class="flex-row items-center gap-2 rounded-md px-2 py-1 hover:bg-hover active:bg-accent focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+      style={{ ...motionStyle("fast") }}
+      onPress={props.onPress}
+    >
+      <View style={{ width: 11 }}>
+        <If when={!!props.checked}>
+          <Glyph name="check" size={11} tint={token("brand")} />
+        </If>
+      </View>
+      <Text class="min-w-0 text-[12px] text-foreground" style={{ numberOfLines: 1 }}>
+        {props.label}
+      </Text>
+      <If when={!!props.note}>
+        <Text class="min-w-0 flex-1 text-right text-[10px] text-faint" style={{ numberOfLines: 1 }}>
+          {props.note ?? ""}
+        </Text>
+      </If>
+    </View>
   );
 }
 
