@@ -74,8 +74,16 @@ fn report_new(reports: &Reports, title: &str) {
 /// The FIFO path for one thread: `$TMPDIR/zu-title-{key}.fifo`. The thread
 /// id is a minted uuid, so paths do not collide across runs; a stale FIFO
 /// from a crashed run is replaced.
-fn fifo_path(key: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("zu-title-{key}.fifo"))
+fn fifo_path(key: &str) -> Result<PathBuf, String> {
+    // The key is a path component: only uuid-safe characters are accepted
+    // so no caller (today's app, tomorrow's) can traverse out of the
+    // directory.
+    if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(format!(
+            "invalid title channel key {key:?}: only [A-Za-z0-9-] is accepted"
+        ));
+    }
+    Ok(std::env::temp_dir().join(format!("zu-title-{key}.fifo")))
 }
 
 /// Installs the process-level bash output tap. Called once at pump start,
@@ -116,7 +124,7 @@ pub(crate) fn install(key: &str, reports: Box<dyn Fn(String) + Send + Sync>) -> 
         }
         return Ok(());
     }
-    let path = fifo_path(key);
+    let path = fifo_path(key)?;
     // A stale FIFO from a crashed run is replaced: the old drain died with
     // that run, and its write end is gone.
     let _ = std::fs::remove_file(&path);
@@ -390,27 +398,63 @@ mod tests {
         );
     }
 
-    /// A flood bigger than the FIFO buffer is dropped by design (Q125);
-    /// the drain survives and a later title still reports.
+    /// 100 MB through the channel: the overflow is dropped by design
+    /// (Q125), the drain survives, and a title written after the flood
+    /// still reports.
     #[test]
     fn a_flood_drops_but_the_channel_survives() {
         let (_path, receiver) = installed("thread-flood");
-        // Far more than the FIFO buffer holds; non-blocking writes drop
-        // the overflow instead of stalling the caller.
-        let chunk = vec![b'x'; 256 * 1024];
-        for _ in 0..64 {
+        let chunk = vec![b'x'; 1024 * 1024];
+        let started = std::time::Instant::now();
+        for _ in 0..100 {
             feed("thread-flood", &chunk);
         }
         std::thread::sleep(std::time::Duration::from_millis(300));
         feed("thread-flood", b"\x1b]2;after the flood\x07");
-        let started = std::time::Instant::now();
         let got = receiver
             .recv_timeout(std::time::Duration::from_secs(30))
             .expect("the title is reported");
         println!(
-            "FLOOD: title reported after {}ms",
+            "FLOOD: 100 MB fed in {}ms; title reported",
             started.elapsed().as_millis()
         );
         assert_eq!(got, "after the flood");
+    }
+
+    /// The channel key names a file under `$TMPDIR`: traversal and empty
+    /// keys are refused at install.
+    #[test]
+    fn invalid_keys_are_refused() {
+        for key in ["", "../escape", "a/b", "a b"] {
+            let error = install(key, Box::new(|_| {})).expect_err("an unsafe key must be refused");
+            assert!(
+                error.contains("invalid title channel key"),
+                "unexpected error: {error}"
+            );
+            assert!(path_for(key).is_none());
+        }
+        // A safe key still installs.
+        install("safe-key-1", Box::new(|_| {})).expect("a safe key installs");
+        assert!(path_for("safe-key-1").is_some());
+    }
+
+    /// The process tap is installed exactly once; a second install is
+    /// refused loudly (`AlreadyInstalled`), and restarts reuse it.
+    #[test]
+    fn the_tap_is_a_process_singleton() {
+        // Either this is the first install (Ok — and any further install
+        // must be refused), or a tap already exists (Err). The invariant:
+        // at most one tap per process, and it is never replaced.
+        let first = install_bash_output_tap(Arc::new(|_id: BashOutputTapId, _bytes: &[u8]| {}));
+        if first.is_ok() {
+            let second =
+                install_bash_output_tap(Arc::new(|_id: BashOutputTapId, _bytes: &[u8]| {}));
+            assert!(second.is_err(), "a second install must be refused");
+        } else {
+            assert!(matches!(
+                first,
+                Err(manox_harness::InstallError::AlreadyInstalled)
+            ));
+        }
     }
 }
