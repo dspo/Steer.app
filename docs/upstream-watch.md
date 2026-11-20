@@ -41,7 +41,7 @@ app 配置里解决的，记 `verify` 或直接从表里拿掉，放进 §8 的�
 
 | 依赖 | 版本写在哪 | 同版本必须同步 |
 |---|---|---|
-| nsh | `native/Cargo.toml`（`nsh-core`/`nsh-base` 的 rev）、`.cnb.yml` 的 `NSH_VERSION`、`script/tasks.ts` 读 CNB | 生成的 `app/.nsh/rust` workspace（nsh CLI 重写）；`nsh --version` 必须与 pin 一致 |
+| nsh | `native/Cargo.toml`（`nsh-core`/`nsh-base` 的 rev）、`.cnb.yml` 的 `NSH_VERSION`、`script/lib/toolchain.ts` 读后者 | 生成的 `app/.nsh/rust` workspace（nsh CLI 重写）；`nsh --version` 必须与 pin 一致 |
 | Ghostty | `native/ghostty/build.rs` 的 `GHOSTTY_REV`、`GHOSTTY_TARBALL_SHA256`、`ZIG_VERSION` 与各 host zig sha | `native/ghostty/src/sys.rs`（手写转写，diff `include/ghostty/vt/*.h`）；`build.rs` 的 `TRANSLATE_C_*`/`AROCC_*` 本地化常量（见下）；构建缓存 stamp 会因 rev 变化自动失效 |
 | esctest2（符合性测试集，test-only） | `script/tasks.ts` 的 `ESCTEST2`（url/sha256/dir） | Ghostty 自带 esctest runner 的 pin：`<ghostty>/test/esctest/build.zig.zon` 的依赖版本与 sha——不一致时同步我们的 pin，并再生 `native/conformance/esctest-baseline.txt`（runbook 见其 README）与 `docs/evidence/conformance.json` |
 | manox | `native/manox/Cargo.toml` 的 `tag = "vX.Y.Z"` | `Cargo.lock` 的 rev；四个 crate 同 tag |

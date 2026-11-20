@@ -1,6 +1,6 @@
 # 终端标题：捕获、解释与投影
 
-> 状态：**PR1+PR2+PR3 已落地（2026-11-19）**；PR4（manox 捕获）待实现。PR3 的评审修正（D4 删除接线、C1 矩阵回正、D5 trim/合并限频、非阻塞 tap、补测）均已含。本文是 issue [#73](https://cnb.cool/dspo-group/Steer.app/-/issues/73)
+> 状态：**PR1+PR2+PR3 已落地（2026-11-19）**；PR4（manox 捕获）待实现。PR3 的评审修正（D4 删除接线、C1 矩阵回正、D5 trim/合并限频、非阻塞 tap、补测）均已含。本文是云侧 issue #73
 > 的实现规格：pi 侧的捕获（ops-tap）、会话级通道（fd 继承）与投影（tab-only）已落地；内核行为基线见 §6。
 > 上游缝：dspo/manox#1030（chunk observer）、dspo/manox#1032（工具 env，C1 后置）。
 > 讨论与三轮评审核对记录见 issue #73 评论链与 dspo/manox#1030 修订记录。
