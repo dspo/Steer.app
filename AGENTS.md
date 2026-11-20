@@ -35,7 +35,7 @@ nsh 版本必须等于 `.cnb.yml` 的 `NSH_VERSION`，Rust 版本由 `rust-toolc
 （1.99.1 + clippy/rustfmt）。CI（`.cnb.yml` toolchain stage 与 GitHub Linux 腿）自带
 工具链安装，不经 `ensureToolchain()`。
 
-**门禁在本地**（Q119）：合并门禁仍是 `bun run gate`。GitHub（remote `gh`，dspo/Steer.app）
+**门禁在本地**（Q119）：合并门禁仍是 `bun run gate`。GitHub（remote `origin`，dspo/Steer.app）
 跑自动复核（`.github/workflows/ci.yml`，Q123）：Linux 腿复刻 CNB stage 清单，macOS 腿补
 AppKit 终端门禁与 pi-harness darwin 编译，`checks_pass` 是唯一 required check；main 禁止
 直接 push（分支保护），一律走 PR。CNB origin 保留手动 `ci/remote` 复核与 NPC 流水线
