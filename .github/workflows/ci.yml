@@ -1,12 +1,12 @@
 name: ci
 
 # GitHub 承接自动复核（docs/decisions.md Q123）。合并门禁仍是本地
-# `bun run gate`（Q119），这里跑同一套 stage（script/ci.ts，与 CNB 的
-# `ci/remote` 手动门禁共享实现），拆成两条互补的腿 + 一条 fan-in：
+# `bun run gate`（Q119），这里跑同一套 stage（script/ci.ts，与云侧
+# 手动门禁共享实现），拆成两条互补的腿 + 一条 fan-in：
 #
 #   verify (linux amd64, ubuntu-24.04):  layer-gate → lint-rust → build →
 #                                        test → manox → harness
-#     原 CNB 流水线的完整内容；Linux 独有价值是 manox 的 libssl/libffi
+#     云侧流水线的完整内容；Linux 独有价值是 manox 的 libssl/libffi
 #     链接与 glibc/rustc 差异（Q119 的理由不变），外加 GTK 版 nsh runtime
 #     的编译路径。
 #   verify (macOS arm64, macos-15):      terminal → harness（含 darwin 编译）
@@ -48,7 +48,7 @@ env:
   # 每条腿都是一次冷构建，增量状态纯属磁盘开销。
   CARGO_INCREMENTAL: "0"
   # 确定性门禁环境：跳过 live 模型/LSP 与 acp-load-probe（README「完整门禁」
-  # 口径，原 CNB 流水线也是流水线级设置）。
+  # 口径，云侧流水线也是流水线级设置）。
   ZU_SKIP_LIVE: "1"
 
 jobs:
@@ -65,7 +65,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: System dependencies
-        # 与 CNB toolchain 同源：libgtk-4/libgstreamer 给 nsh 的 Linux
+        # 与云侧 toolchain 同源：libgtk-4/libgstreamer 给 nsh 的 Linux
         # runtime（noble 的 GTK 4.14 ≥ nsh 要求的 4.14），libssl/libffi 给
         # manox（openssl-sys 未开 vendored；libffi-sys 的 system feature）。
         run: |

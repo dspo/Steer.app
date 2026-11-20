@@ -58,7 +58,7 @@ ZU_SKIP_LIVE=1 nsh test terminal.ui.test.tsx --target macos --filter "reflows|sc
 ZU_SKIP_LIVE=1 nsh test .
   236 tests: 222 passed, 0 failed, 14 skipped（1m23s，ZU_SKIP_LIVE）
 
-CNB PR #27
+云侧 PR #27
   check-and-test: success（8m03s；Linux amd64 冷构建：toolchain → lint(layer) →
   lint(rust，含 libghostty-vt zig 构建) → build(nsh check) → test → manox → pi-harness）
 ```

@@ -16,7 +16,7 @@ export const BANNER: SessionBanner = {
   thinkingLevel: "high",
   skills: [
     { name: "nsh", description: "the repo's own skill", source: "project" },
-    { name: "cnb-api", description: "CNB 的 API 语义", source: "user" },
+    { name: "docs-api", description: "仓库文档的 API 语义", source: "user" },
   ],
   extensions: [{ name: "ghostex-session", path: "/x/ghostex-session.ts", source: "user" }],
   warnings: [{ severity: "warning", source: "skill", message: "auto (user) ~/.agents/skills/surge/SKILL.md: name contains invalid characters" }],
