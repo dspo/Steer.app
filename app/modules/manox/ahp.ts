@@ -1,4 +1,4 @@
-import { signal } from "nsh";
+import { signal, untracked } from "nsh";
 import { Manox, type ManoxFrame } from "../../domains/manox";
 import {
   rootReducer,
@@ -190,11 +190,15 @@ export function startConnection(): void {
 export async function ensureConnection(subscribeUris: URI[] = []): Promise<void> {
   if (connectionSeam) return connectionSeam();
   startConnection();
-  const wanted = subscribeUris.filter((uri) => !channels()[uri]);
-  if (connectionStatus() === "ready" && wanted.length === 0) return;
+  // The handshake is a command, not a derivation: its reads are untracked, so
+  // a caller inside an effect (a sheet mount) is not subscribed to the state
+  // it consults — a tracked read here would let this function's own status
+  // writes re-trigger the caller into a handshake loop.
+  const wanted = untracked(() => subscribeUris.filter((uri) => !channels()[uri]));
+  if (untracked(() => connectionStatus()) === "ready" && wanted.length === 0) return;
   if (!clientId) clientId = newId();
+  noteStatus("connecting");
   try {
-    noteStatus("connecting");
     // The root channel is always subscribed: the catalogue notifications
     // (`root/sessionAdded` and friends) fan out to root subscribers only.
     // The stub era broadcast them unconditionally; the real host filters by
