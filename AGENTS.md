@@ -26,9 +26,14 @@ Zu（祖冲之）是 coding agent 的 macOS 桌面工作台：nsh（TSX/AppKit�
 
 ## 命令
 
-统一入口 `script/tasks.ts`（需要 bun、cargo、nsh CLI 三套工具链）。前置：nsh 版本必须等于
-`.cnb.yml` 的 `NSH_VERSION`（tasks.ts 会校验；`NSH=/path/to/nsh` 可覆盖），Rust 版本由
-`rust-toolchain.toml` 钉住（1.99.1 + clippy/rustfmt）。
+统一入口 `script/tasks.ts`。唯一前置是 bun 工具链；缺失的 nsh CLI 与 cargo 会在任务开始时
+自动安装（`script/lib/toolchain.ts` 的 `ensureToolchain()`：nsh 装钉版 release，Rust 走
+rustup + `rust-toolchain.toml` 的钉版 channel，首次在仓库根用 cargo 时自动补装
+1.99.1 + clippy/rustfmt）。已装但版本不对仍是手动错误（`checkNsh` 报错；升级会覆盖
+用户自己的 nsh，不代劳）；`NSH=/path/to/nsh` 指向不存在的路径也报错，不会绕过用户改环境。
+nsh 版本必须等于 `.cnb.yml` 的 `NSH_VERSION`，Rust 版本由 `rust-toolchain.toml` 钉住
+（1.99.1 + clippy/rustfmt）。CI（`.cnb.yml` toolchain stage 与 GitHub Linux 腿）自带
+工具链安装，不经 `ensureToolchain()`。
 
 **门禁在本地**（Q119）：合并门禁仍是 `bun run gate`。GitHub（remote `gh`，dspo/Steer.app）
 跑自动复核（`.github/workflows/ci.yml`，Q123）：Linux 腿复刻 CNB stage 清单，macOS 腿补

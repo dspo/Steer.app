@@ -8,7 +8,10 @@
  *
  * What every task does first, because doing it wrong is invisible:
  *
- *  - the `nsh` CLI must be the version `.cnb.yml` pins (script/lib/toolchain.ts).
+ *  - the toolchain is provisioned, not just checked (script/lib/toolchain.ts):
+ *    a missing nsh CLI installs the pinned release, a missing cargo installs
+ *    rustup (whose shim then picks up the rust-toolchain.toml channel), and
+ *    only then the pinned-version gate runs. Bun is the one real prerequisite.
  *  - a worktree carries no `pi-harness/dist` and no `node_modules` (both
  *    gitignored): the app spawns `pi-acp`, so the harness is built here. A
  *    `node_modules` that is a symlink to another checkout cannot be
@@ -20,7 +23,7 @@
 import { copyFileSync, cpSync as fsCopy, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { APP, BUN, checkNsh, fail, HARNESS, nshBinary, run, ROOT } from "./lib/toolchain.ts";
+import { APP, BUN, ensureToolchain, fail, HARNESS, run, ROOT } from "./lib/toolchain.ts";
 
 const HARNESS_BIN = join(HARNESS, "dist", "pi-acp");
 
@@ -357,8 +360,7 @@ function bundle(outDir: string, installResult: boolean, openResult: boolean): vo
         "and dmg are codesign/hdiutil. The CI pipeline (script/ci.ts) is Linux-only.",
     );
   }
-  const nsh = nshBinary();
-  checkNsh(nsh);
+  const nsh = ensureToolchain();
   const app = join(outDir, "Zu.app");
   const dmg = join(outDir, "Zu.dmg");
 
@@ -519,8 +521,7 @@ const task = process.argv[2] ?? "dev";
 // always did (it only needed $NSH, and defaulted it without looking).
 switch (task) {
   case "dev": {
-    const nsh = nshBinary();
-    checkNsh(nsh);
+    const nsh = ensureToolchain();
     ensureHarness();
     // The installed Zu owns `~/.steer`'s lock and manox home; dev gets its
     // own roots so both run at once. `ZU_STATE_DIR` still wins when set
@@ -534,20 +535,17 @@ switch (task) {
     break;
   }
   case "check": {
-    const nsh = nshBinary();
-    checkNsh(nsh);
+    const nsh = ensureToolchain();
     run([nsh, "check", "app"], ROOT);
     break;
   }
   case "test": {
-    const nsh = nshBinary();
-    checkNsh(nsh);
+    const nsh = ensureToolchain();
     run([nsh, "test", "."], APP);
     break;
   }
   case "evidence": {
-    const nsh = nshBinary();
-    checkNsh(nsh);
+    const nsh = ensureToolchain();
     mkdirSync(join(APP, "docs", "evidence"), { recursive: true });
     run([nsh, "test", "tests/containers.ui.test.tsx", "--target", "macos", "--filter", "containers switch"], APP);
     break;
