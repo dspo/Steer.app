@@ -62,7 +62,7 @@ L2 投影：title 事件 → 该对话 sheet 的 tab 标题（tab-only）
 |---|---|---|---|
 | 终端 tab 直跑 | ✅ `tty_name()` 注入（**已落地**） | ✅ 原生 | PR2 |
 | pi 托管 | ✅ `ZU_TTY` = 通道从端路径（**已落地**，与 `ZU_TITLE_FD` 同 spawn 注入） | ✅ ops-tap（**已落地**） | PR3 |
-| manox 托管 | ✅ `ZU_TTY` = 桥从端路径，经 `SessionIntent.tool_env` 注入（v0.13.0 的 #1032；**已落地**） | ✅ chunk observer（**已落地**） | PR4 |
+| manox 托管 | ✅ `ZU_TTY` = 桥从端路径（FIFO），经 `SessionIntent.tool_env` 注入（**已落地**）。边界：`tool_env` 是内存态——泵重启/重开的已存线程不重注入，C1 退化为 C2（内核无 per-session env 更新动作，需缝，见 dspo/manox#1032 follow-up） | ✅ chunk observer（**已落地**） | PR4 |
 
 C1 用法（可文档化给 agent 的显式形态，**已落地**）：
 
