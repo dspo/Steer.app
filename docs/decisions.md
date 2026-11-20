@@ -84,6 +84,9 @@
 | Q53 | PTY 归谁、何时清理 | **native module 的资源，按 external 容器持 handle**：`terminals.ts` 一容器一个 `Pty`；sheet 只 attach sink，切容器/隐藏标签不杀 shell；`container.archive` 成功后显式 `closeTerminal`；JS handle `dispose()`/GC 时 Rust `Drop` 兜底 kill。应用重启不恢复 PTY（§5.5），按布局新开 | `src/pty.rs`、`terminals.ts`、`containers.ts`；arch §3.6/§5.4 |
 | Q54 | M7 的 nsh 版本 | 发布版 0.4.0 **没有** `nsh/base Terminal`；`nsh-core`/`nsh-base` 改为 git pin `506b5392`（仍是 0.4.0），CLI 把生成的 hosts 也指到同一 checkout。不 fork、不 vendor | `Cargo.toml`、`Cargo.lock`；arch §6 |
 | Q55 | 非可见终端 sheet 的降级 | `Terminal` 始终挂载：alt screen 与 scrollback 必须留在 emulator 里；DockArea 只画当前 tab，隐藏标签不产生额外绘制。切容器才卸载 sheet，PTY 留在 store，用 replay buffer 重建（>512 KiB 丢头部并 reset）。**没有**「保留 emulator、跳过绘制」的受支持钩子，因此不另做暂停 | `sheets.tsx`、`terminals.ts`；arch §4.3/§5.4 |
+| Q123 | 托管会话的标题通道怎么建 | **捕获-解释-投影三层**：harness 的 Bash tap 出原始字节（纯观察者，不落盘）→ 每会话/线程的 headless ghostty 是唯一解释者（内核行为单测锁基线）→ `tabTitle` 只进 dock tab。manox 经内核 tap（#1030，v0.13.0）in-proc 直喂；C1 显式直写经 `ZU_TTY`（pi 通道从端 / manox 桥从端 + `tool_env`） | [title-capture.md](title-capture.md)；issue #73；上游 dspo/manox#1030/#1032 |
+| Q124 | 程序标题投到哪 | **tab-only**：只改名 dock tab 与关闭按钮 a11y；`containerTitle`/侧栏/通知保持会话名——agent 的标题不命名容器。空标题回落会话名；标题是会话级瞬态（sheet 重开仍在，删除会话才清） | `canvas/sheets.tsx`（`sheetTabTitle`）；`modules/pi/titles.ts`、`modules/manox/titles.ts`、`core/title-store.ts` |
+| Q125 | 并发与限频的取舍 | tap 写从端为非阻塞，缓冲满**丢剩余**而非阻塞工具/harness（标题是装饰性信号）；store 写入按会话**合并到最新**（120ms 窗口，最终值不丢）；并发下偶发撕一次标题是文档化的接受损失 | title-capture.md §4/§6；`core/title-store.ts` |
 
 ## 文件与编辑器（M8）
 

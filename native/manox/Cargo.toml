@@ -10,6 +10,11 @@ publish = false
 # Same pin as `zu-app`'s (`native/Cargo.toml`): one core for the app, so the
 # generated hosts, the runner and both crates share one engine API.
 nsh-core = { git = "https://github.com/longbridge/nsh.git", rev = "f4d68f7f9f31eb7b3ecc8a4cbc31096d5c6238a1" }
+# The title bridge's interpreter (issue #73): the same kernel zu-app's
+# terminal and title channels use — one emulator family across the app.
+zu-ghostty = { path = "../ghostty" }
+# The title bridge's FIFO channel (issue #73): mkfifo/open flags.
+libc = "0.2"
 serde_json = "1"
 tokio = { version = "1", default-features = false, features = ["sync", "rt", "time", "macros"] }
 # The SessionRuntime decorator below implements the kernel's async trait.
@@ -18,11 +23,11 @@ async-trait = "0.1"
 # The real manox AHP host (M1: the T0 stub is gone). One tag for the whole
 # crate family — the kernel's crates share one version — pinned like
 # manox-app pins it (`tag = "vX.Y.Z"`, the Cargo.lock records the rev).
-manox-ahp = { git = "https://github.com/dspo/manox.git", tag = "v0.12.1" }
-manox-ahp-runtime = { git = "https://github.com/dspo/manox.git", tag = "v0.12.1" }
-manox-session-core = { git = "https://github.com/dspo/manox.git", tag = "v0.12.1" }
-manox-agent = { git = "https://github.com/dspo/manox.git", tag = "v0.12.1" }
-manox-harness = { git = "https://github.com/dspo/manox.git", tag = "v0.12.1" }
+manox-ahp = { git = "https://github.com/dspo/manox.git", tag = "v0.13.0" }
+manox-ahp-runtime = { git = "https://github.com/dspo/manox.git", tag = "v0.13.0" }
+manox-session-core = { git = "https://github.com/dspo/manox.git", tag = "v0.13.0" }
+manox-agent = { git = "https://github.com/dspo/manox.git", tag = "v0.13.0" }
+manox-harness = { git = "https://github.com/dspo/manox.git", tag = "v0.13.0" }
 tracing = "0.1"
 # The wire message type our Sink/Source impls name. `=1.0.0` is the same pin
 # the manox workspace carries, so both resolve to one copy.

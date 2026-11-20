@@ -3,6 +3,7 @@ import { Input, TextView } from "nsh/base";
 import { K, t } from "../../ui/i18n";
 import { Glyph, motionStyle, type GlyphName } from "../../ui/ui";
 import { connectionStatus, ensureConnection } from "./ahp";
+import { openTitleBridge } from "./titles";
 import {
   answerManoxInput,
   chatOf,
@@ -354,6 +355,11 @@ export function ManoxChatBody(props: { id: string }) {
     );
   }
   const chatUri = () => chatResource(parsed.chatId);
+  // The sheet mounts: the thread's title bridge reattaches (issue #73 —
+  // a thread restored on this run gets its channel here; idempotent).
+  effect(() => {
+    openTitleBridge(parsed.threadId);
+  });
   // The sheet mounts: the connection subscribes (snapshot → immediate render;
   // the journal legs reconcile behind it, §3.5).
   effect(() => {
