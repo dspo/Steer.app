@@ -61,7 +61,7 @@ L2 投影：title 事件 → 该对话 sheet 的 tab 标题（tab-only）
 |---|---|---|---|
 | 终端 tab 直跑 | ✅ `tty_name()` 注入（**已落地**） | ✅ 原生 | PR2 |
 | pi 托管 | ✅ `ZU_TTY` = 通道从端路径（**已落地**，与 `ZU_TITLE_FD` 同 spawn 注入） | ✅ ops-tap（**已落地**） | PR3 |
-| manox 托管 | ❌ 后置（dspo/manox#1032——`tool_env` 未随 v0.13.0 交付；无从端路径可声明） | ✅ chunk observer（**已落地**） | PR4 |
+| manox 托管 | ❌ 后置（#1032 的 `tool_env` **已随 v0.13.0 交付**；未接线的原因是标题桥 in-proc 直喂、无从端路径可声明——桥 PTY 化后即可接） | ✅ chunk observer（**已落地**） | PR4 |
 
 C1 用法（可文档化给 agent 的显式形态，**已落地**）：
 
