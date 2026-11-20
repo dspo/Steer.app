@@ -37,6 +37,19 @@ export const openTitleBridge = store.openChannel;
 /** Drops the thread's bridge and its title: only a thread's deletion. */
 export const closeTitleBridge = store.closeChannel;
 
+/**
+ * The thread's title tty (C1's explicit redirect target); null before the
+ * bridge is opened. The manox module passes it to `createSession` as
+ * `toolEnv.ZU_TTY` so tools can `printf … > "$ZU_TTY"` (issue #73 C1).
+ */
+export function titleTtyPath(threadId: string): string | null {
+  try {
+    return TitleBridge.ttyPath(threadId);
+  } catch {
+    return null;
+  }
+}
+
 /** D4's prune: drops bridges and titles for threads that left the catalog. */
 export const pruneTitles = store.pruneTitles;
 

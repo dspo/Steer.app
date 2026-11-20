@@ -1,7 +1,7 @@
 import { effect, signal } from "nsh";
 import { Manox, type ModelCatalog } from "../../domains/manox";
 import { ActionType, catalog, channels, createSessionOn, dispatchAction, effectiveState, ensureConnection } from "./ahp";
-import { openTitleBridge, pruneTitles } from "./titles";
+import { openTitleBridge, pruneTitles, titleTtyPath } from "./titles";
 import type { ChannelCell } from "./ahp";
 import type { SessionSummary } from "../../../contracts/ahp/channels-session/state";
 import type { SessionState } from "../../../contracts/ahp/channels-session/state";
@@ -145,14 +145,18 @@ export async function createManoxThread(
 ): Promise<{ threadId: string; chatId: string }> {
   const threadId = mintId();
   // The thread's title bridge opens with the id, before the kernel session
-  // runs its first bash (issue #73).
+  // runs its first bash (issue #73). Its tty path rides the session's
+  // tool_env: tools can redirect an explicit title write at it (C1).
   openTitleBridge(threadId);
+  const ttyPath = titleTtyPath(threadId);
   await ensureConnection();
   // The Hero's context rides createSession: the project's primary root as the
   // working directory (none for Chats — the kernel anchors on home), and the
   // selected model as the session config (the machine's pi list, not cx's).
   await createSessionOn(sessionResource(threadId), {
     ...(options.cwd ? { workingDirectories: [`file://${options.cwd}`] } : {}),
+    // Issue #73 C1: the tool's explicit redirect target.
+    ...(ttyPath ? { toolEnv: { ZU_TTY: ttyPath } } : {}),
     ...((options.model || options.effort) && {
       config: {
         ...(options.model ? { model: options.model } : {}),
