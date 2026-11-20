@@ -48,8 +48,8 @@
       ]
     },
     "notifications": true,
-    "clipboard": true,
     "statusBar": true,
+    "clipboard": true,
     "openUrl": {
       "schemes": [
         "vscode"

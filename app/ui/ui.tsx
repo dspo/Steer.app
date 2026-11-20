@@ -41,7 +41,8 @@ export type GlyphName =
   | "shield"
   | "shield-alert"
   | "shield-check"
-  | "square";
+  | "square"
+  | "spark";
 
 type Draw = (c: CanvasRenderingContext2D) => void;
 
@@ -346,6 +347,10 @@ const glyphs: Record<GlyphName, Draw> = {
   },
   check: (c) => line(c, [5, 10.5, 8.5, 14, 15, 6.5]),
   // Two sheets: the front one whole, the back one's free edges behind it.
+  // A four-point spark: the assistant identity tile's mark.
+  spark: (c) => {
+    line(c, [10, 2.5, 11.9, 8.1, 17.5, 10, 11.9, 11.9, 10, 17.5, 8.1, 11.9, 2.5, 10, 8.1, 8.1, 10, 2.5]);
+  },
   copy: (c) => {
     rect(c, 7.5, 7.5, 9, 9, 1.8);
     line(c, [12.5, 4.5, 4.5, 4.5, 4.5, 12.5]);
