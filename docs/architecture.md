@@ -350,6 +350,11 @@ Casing II；C8 三包布局；ACP cutover（P0–P4：distro ACP 入口、`zu/ac
 内核受限 114 例），report-only 不拦合并；ucs-detect（记录制）同入口 `-- ucs`。数字与证据：
 [evidence/esctest-20261118.md](evidence/esctest-20261118.md)、[evidence/ucs-detect-20261118.md](evidence/ucs-detect-20261118.md)。
 
+**标题管线（issue #73，2026-11-19，Q123–Q125）**：托管会话的 Bash 工具输出经内核 tap（manox v0.13.0）
+或 `customTools` ops（pi）捕获原始字节，喂每会话/线程的 headless ghostty——内核是唯一解释者；OSC 0/2
+标题只改名 dock tab（`tabTitle`；容器名/侧栏/通知保持会话名），空标题回落、限频合并到最新；显式直写
+形态经 `ZU_TTY`（pi 通道从端 / manox 桥从端 + `tool_env`）。设计与基线：[title-capture.md](title-capture.md)。
+
 **待做**：
 
 1. **打包产物真机启动**：脚本已绿；发布前跑一轮真实 turn。
