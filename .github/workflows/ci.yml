@@ -18,8 +18,9 @@ name: ci
 # docs/evidence/（issue #46 §五）。bundle 不进 CI：依赖 macOS 本机的
 # AppKit 宿主与 codesign，冒烟留在本地（README「Run it」）。
 #
-# checks_pass 是分支保护唯一要求的 check：always() fan-in，skipped 算绿，
-# 之后加腿、拆腿、改名都不用动仓库设置。
+# checks_pass 是分支保护要求的 check 之一：always() fan-in，skipped 算绿，
+# 之后加腿、拆腿、改名都不用动仓库设置。另一条 required check 是独立的
+# no-coauthor.yml（事件集不同，见它的头注释）。
 #
 # 版本 pin（AGENTS.md 硬性清单，bump 走 docs/upstream-watch.md 台账）：
 #   Rust 1.99.1  = rust-toolchain.toml 的 channel（两腿一致）；

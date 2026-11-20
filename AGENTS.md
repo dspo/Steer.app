@@ -35,6 +35,8 @@ Zu（祖冲之）是 coding agent 的 macOS 桌面工作台：nsh（TSX/AppKit�
 AppKit 终端门禁与 pi-harness darwin 编译，`checks_pass` 是唯一 required check；main 禁止
 直接 push（分支保护），一律走 PR。CNB origin 保留手动 `ci/remote` 复核与 NPC 流水线
 （main push 仅在 NPC 镜像输入 `.ide/Dockerfile*` / `.cnb.yml` 变化时 `ifModify` 重建镜像）。
+分支保护要求两条 check：`checks_pass` 与 `no-coauthor`（拒绝 Co-Authored-By 尾注，clean-room
+仓库的贡献归属纪律）。
 
 - `bun run gate` — **本地完整门禁，合并前必须绿**：layer gate → rustfmt/clippy（两个 workspace）→
   `nsh check app` → native `cargo test` + headless → manox 门禁 → macOS 终端门禁 → pi-harness

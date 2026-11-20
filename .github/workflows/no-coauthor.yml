@@ -1,0 +1,54 @@
+name: no-coauthor
+
+# 提交卫生的独立门禁（manox-app 同款）：PR 里任何提交不得携带
+# Co-Authored-By: 尾注。Zu 是 clean-room 多 agent 协作仓库——贡献归属以
+# 提交作者与 commit message 正文为准，agent 不进 trailer（README「为什么
+# 是 Zu」）。manifest 级约束见 AGENTS.md 的提交惯例。
+#
+# 之所以是第二个独立 workflow 而不是 ci.yml 里的 job：事件集不同——它只
+# 认 PR（opened/synchronize/reopened），拿得到 base.sha/head.sha；ci.yml
+# 还跑 push 与 workflow_dispatch，没有 PR 上下文可比。因此它作为分支保护
+# 的另一条 required check 单独存在，不能并成 checks_pass 的 needs。
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  reject-co-author:
+    name: Reject Co-Authored-By trailers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 逐提交查 trailer：要拿到 PR 的完整历史。
+          fetch-depth: 0
+
+      - name: Fail if any commit carries a Co-Authored-By trailer
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          found=0
+          shas=$(git rev-list --no-merges "$BASE_SHA..$HEAD_SHA")
+          if [ -z "$shas" ]; then
+            echo "No commits to check."
+            exit 0
+          fi
+          for sha in $shas; do
+            msg=$(git log -1 --format=%B "$sha")
+            if printf '%s' "$msg" | grep -qiE '^Co-Authored-By:[[:space:]]*.+'; then
+              echo "::error::Commit $sha contains a forbidden 'Co-Authored-By:' trailer"
+              git log -1 --format='    %h %s' "$sha"
+              found=1
+            else
+              echo "OK: $sha has no Co-Authored-By trailer"
+            fi
+          done
+          exit $found
