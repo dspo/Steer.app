@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, expect, open, test } from "nsh/test";
 import { Fs, State } from "zu/native";
-import { setWorkspaceDir } from "../domains/state";
+import { readState, setWorkspaceDir } from "../domains/state";
 import { copy } from "../ui/copy";
 
 // The shell's external-container path: the start page's tool tile creates a
@@ -43,8 +43,18 @@ test("the start page opens an external terminal container without a composer", a
   // and the row are titled by the kind alone.
   await app.waitFor("id:terminal-view", { timeout: 15000 });
   expect(app.count("id:session-send")).toBe(0);
-  const title = copy("终端", "Terminal");
-  expect(app.texts()).toContain(title);
+  // The tab is titled by the kind alone only until the shell names itself
+  // (OSC 0/2): Ubuntu's stock prompt titles every shell `user@host: cwd`,
+  // so the program title may replace "Terminal" at any moment. The row is
+  // found by its stable testID instead — the container id comes from the
+  // registry fold this test pointed State at.
+  const externalId = async (): Promise<string> => {
+    const registry = await readState<{ containers?: { id: string }[] }>("registry.json", true);
+    return registry?.containers?.[0]?.id ?? "";
+  };
+  let containerId = "";
+  for (let waited = 0; waited < 10000 && (containerId = await externalId()) === ""; waited += 100) await sleep(100);
+  expect(containerId).not.toBe("");
   // Its workspace is a folder of the test's own workspace, not the home
   // folder and not /tmp.
   const scratchEntries = async (): Promise<string[]> => {
@@ -58,7 +68,7 @@ test("the start page opens an external terminal container without a composer", a
 
   // Archiving the external container closes its PTY, removes the row, and
   // deletes its scratch workspace with it.
-  await app.press(`label:${copy("归档容器", "Archive container")} ${title}`);
+  await app.press(`id:archive-${containerId}`);
   await app.waitUntil(() => !app.shows("id:terminal-view"), { timeout: 10000 });
   expect(app.shows("id:terminal-view")).toBe(false);
   for (let waited = 0; waited < 5000 && (await scratchEntries()).length > 0; waited += 100) await sleep(100);

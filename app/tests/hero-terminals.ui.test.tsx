@@ -41,9 +41,13 @@ test("a container's start page opens its terminals inside that container", async
 
   // Archiving the container takes both PTYs with it. The row is named by its
   // earliest sheet (S2): the shell terminal that replaced the start page.
-  // The fixture mounts the shell without the app's startup, so its copy
-  // is the source language (zh-CN) on every machine.
-  await app.press("label:归档容器 终端 · tmp");
+  // The row is named by its earliest sheet (S2): the shell terminal that
+  // replaced the start page — but the shell may have renamed itself by then
+  // (OSC 0/2: Ubuntu's stock prompt titles every shell `user@host: cwd`),
+  // so press the archive control by its stable testID. The fixture mounts
+  // the shell without the app's startup, so its copy is the source
+  // language (zh-CN) on every machine.
+  await app.press("id:archive-c1");
   await app.waitUntil(() => stateOf(app).pty === 0, { timeout: 20000 });
   expect(stateOf(app).containers).toBe(0);
   expect(app.shows("id:terminal-view")).toBe(false);
