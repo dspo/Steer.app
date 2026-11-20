@@ -30,10 +30,12 @@ Zu（祖冲之）是 coding agent 的 macOS 桌面工作台：nsh（TSX/AppKit�
 `.cnb.yml` 的 `NSH_VERSION`（tasks.ts 会校验；`NSH=/path/to/nsh` 可覆盖），Rust 版本由
 `rust-toolchain.toml` 钉住（1.99.1 + clippy/rustfmt）。
 
-**门禁在本地**（Q119）：cnb 的 check-and-test 不再随 push/PR 自动跑，只在
-`git push origin HEAD:ci/remote` 时执行一遍 Linux 复核；main push 仅在 NPC 镜像输入
-（`.ide/Dockerfile*` 或 `.cnb.yml`）变化时用 `ifModify` 重建 NPC 镜像。`$` 下的
-NPC 事件流水线保持不变。
+**门禁在本地**（Q119）：合并门禁仍是 `bun run gate`。GitHub（remote `origin`）跑自动复核
+（`.github/workflows/ci.yml`，Q123）：Linux 腿跑 layer-gate、lint-rust、build、test、manox、
+harness；macOS 腿补 AppKit 终端门禁与 pi-harness darwin 编译；main 禁止直接 push（分支保护），
+一律走 PR，required checks 为 `checks_pass` 与 `no-coauthor`（拒绝 Co-Authored-By 尾注，
+clean-room 仓库的贡献归属纪律）。另有备用的云侧托管（remote `cnb`），其流水线、手动复核与
+事件自动化的入口和细节只收敛在 `.cnb.yml` / `.cnb/` 自身的注释里。`origin/main` 即 PR 目标。
 
 - `bun run gate` — **本地完整门禁，合并前必须绿**：layer gate → rustfmt/clippy（两个 workspace）→
   `nsh check app` → native `cargo test` + headless → manox 门禁 → macOS 终端门禁 → pi-harness

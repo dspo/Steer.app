@@ -5,7 +5,7 @@
  *   bun run gate:fast   layer gate + rustfmt + harness ledger — the pre-push hook
  *   bun script/ci.ts <stage>   one stage, for `.cnb.yml`'s manual `ci/remote` run
  *
- * The CNB pipeline no longer runs automatically (docs/decisions.md Q119): the
+ * The cloud-side pipeline no longer runs automatically (docs/decisions.md Q119): the
  * merge gate is local, and the remote run is an on-demand check for changes
  * that only Linux can break. The local gate is deliberately *larger* than the
  * remote one — it also compiles pi-harness for darwin and runs the AppKit

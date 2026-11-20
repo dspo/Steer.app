@@ -178,8 +178,10 @@ test("the ref scrolls through history and a selection reads it", async () => {
 test("wide characters and emoji stay in the grid", async () => {
   const app = await open("../fixtures/terminal.tsx", { width: 1200, height: 800 });
   await app.waitFor("id:terminal-screen");
-  // A keyboard types no CJK: the shell's printf spells it out.
-  await typeKeys(app, "printf 'CJK\\u4e2d\\u6587\\U0001F642END\\n'");
+  // A keyboard types no CJK: the shell's printf spells it out — as UTF-8
+  // octal bytes, because stock bash 3.2 (macOS, CI images) predates the
+  // \u escape and would print the literals instead.
+  await typeKeys(app, "printf 'CJK\\344\\270\\255\\346\\226\\207\\360\\237\\231\\202END\\n'");
   await app.keyboard.press("enter");
   await app.waitUntil(
     () => app.texts().some((text) => text.includes("CJK中文🙂END")),

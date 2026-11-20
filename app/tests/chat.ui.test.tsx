@@ -182,7 +182,7 @@ test("the transcript opens on the session banner; the empty page draws none", as
   // Expanding names the resources and the warning.
   await app.press("id:session-banner-toggle");
   await app.waitFor("id:session-banner-skills");
-  expect(app.texts().some((text) => text.includes("cnb-api"))).toBe(true);
+  expect(app.texts().some((text) => text.includes("docs-api"))).toBe(true);
   expect(app.texts().some((text) => text.includes("invalid characters"))).toBe(true);
   await shot(app, "ui-transcript-light");
   // The dark scheme, on the same fixture.

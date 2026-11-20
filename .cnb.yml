@@ -7,7 +7,7 @@
 # 在 PR 与 main push 上重复跑两遍；本地 gate 反过来覆盖了 Linux 跑不了的
 # 终端 AppKit 用例与 pi-harness 的 darwin 编译（见 script/ci.ts 的 gate）。
 #
-# 远程复核入口：`git push origin HEAD:ci/remote`，只有这个分支触发下面的
+# 远程复核入口：`git push cnb HEAD:ci/remote`，只有这个分支触发下面的
 # 门禁流水线；main push 只在 NPC 镜像输入变化时重建镜像（ifModify）。
 # `$: vscode` 是云原生开发，`$` 下的 NPC 事件流水线不受影响。
 #
@@ -193,7 +193,7 @@ main:
             docker push ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}:latest
 
 # 手动远程门禁：只有推送到 ci/remote 才触发（需要时
-# `git push origin HEAD:ci/remote`）。平时 push 与 PR 都不再花钱。
+# `git push cnb HEAD:ci/remote`）。平时 push 与 PR 都不再花钱。
 "ci/remote":
   push:
     - *check-and-test

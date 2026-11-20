@@ -1,0 +1,214 @@
+name: ci
+
+# GitHub 承接自动复核（docs/decisions.md Q123）。合并门禁仍是本地
+# `bun run gate`（Q119），这里跑同一套 stage（script/ci.ts，与云侧
+# 手动门禁共享实现），拆成两条互补的腿 + 一条 fan-in：
+#
+#   verify (linux amd64, ubuntu-24.04):  layer-gate → lint-rust → build →
+#                                        test → manox → harness
+#     云侧流水线的完整内容；Linux 独有价值是 manox 的 libssl/libffi
+#     链接与 glibc/rustc 差异（Q119 的理由不变），外加 GTK 版 nsh runtime
+#     的编译路径。
+#   verify (macOS arm64, macos-15):      terminal → harness（含 darwin 编译）
+#     原本只有本地 gate 能跑的两条腿（AppKit 终端门禁与 bun-darwin-arm64
+#     编译）；公共仓库的 macOS runner 免费，远端复核不再缺这两块。
+#
+# 两腿不重复任何 stage：fmt/clippy/全量测试在 Linux 腿全跑过，开发者本地
+# （macOS）跑完整 gate。conformance 不进 CI：report-only，数字只进日志与
+# docs/evidence/（issue #46 §五）。bundle 不进 CI：依赖 macOS 本机的
+# AppKit 宿主与 codesign，冒烟留在本地（README「Run it」）。
+#
+# checks_pass 是分支保护要求的 check 之一：always() fan-in，skipped 算绿，
+# 之后加腿、拆腿、改名都不用动仓库设置。另一条 required check 是独立的
+# no-coauthor.yml（事件集不同，见它的头注释）。
+#
+# 版本 pin（AGENTS.md 硬性清单，bump 走 docs/upstream-watch.md 台账）：
+#   Rust 1.99.1  = rust-toolchain.toml 的 channel（两腿一致）；
+#   nsh v0.5.0   现场从 .cnb.yml 的 NSH_VERSION 提取——script/lib/toolchain.ts
+#                校验的也是它，workflow 不会与仓库 pin 漂移；
+#   bun 1.3.14   pi-harness 的运行时（bun.lock 由它写出）。
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # 不推 commit 就地测量一次 CI 改动。
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# PR 的过时 push 留着一个没人读结果的 runner；main push 是大家真正读的。
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # 每条腿都是一次冷构建，增量状态纯属磁盘开销。
+  CARGO_INCREMENTAL: "0"
+  # 确定性门禁环境：跳过 live 模型/LSP 与 acp-load-probe（README「完整门禁」
+  # 口径，云侧流水线也是流水线级设置）。
+  ZU_SKIP_LIVE: "1"
+
+jobs:
+  verify_linux:
+    name: verify (linux amd64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      # ghostty 的 build cache（zig 工具链 + libghostty-vt 静态库 + stamp），
+      # 下面的 cache step 按 (Ghostty rev, zig) 复用，冷构建省 ~4 分钟。
+      ZU_GHOSTTY_CACHE: /home/runner/.cache/zu-ghostty
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: System dependencies
+        # 与云侧 toolchain 同源：libgtk-4/libgstreamer 给 nsh 的 Linux
+        # runtime（noble 的 GTK 4.14 ≥ nsh 要求的 4.14），libssl/libffi 给
+        # manox（openssl-sys 未开 vendored；libffi-sys 的 system feature）。
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            pkg-config clang \
+            libgtk-4-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            libssl-dev libffi-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+          components: clippy, rustfmt
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install nsh (pinned by .cnb.yml)
+        # 先落盘再执行；安装脚本把发行版放 ~/.nsh（toolchain.ts 的查找位置），
+        # 并链接 CLI 到 ~/.local/bin（非登录 shell 不带该目录，补进 PATH）。
+        run: |
+          nsh_version=$(sed -nE 's/^[[:space:]]+NSH_VERSION:[[:space:]]+"?v?([0-9.]+)"?.*/\1/p' .cnb.yml | head -1)
+          [[ -n "${nsh_version}" ]] || { echo "::error::.cnb.yml has no NSH_VERSION"; exit 1; }
+          echo "nsh pin: v${nsh_version}"
+          curl -fsSL https://nsh.dev/install.sh -o /tmp/nsh-install.sh
+          NSH_VERSION="v${nsh_version}" sh /tmp/nsh-install.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          nsh --version
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('native/Cargo.lock', 'native/manox/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Cache ghostty-vt
+        uses: actions/cache@v4
+        with:
+          # build.rs 里的 stamp 记录 (Ghostty rev, zig identity)，不匹配时
+          # 自行重建，所以 key 粗到 build.rs 的哈希即可。
+          path: /home/runner/.cache/zu-ghostty
+          key: ${{ runner.os }}-ghostty-vt-${{ hashFiles('native/ghostty/build.rs') }}
+
+      - name: layer gate
+        run: bun script/ci.ts layer-gate
+
+      - name: rust gate (fmt + clippy, both workspaces)
+        run: bun script/ci.ts lint-rust
+
+      - name: build (nsh check)
+        run: bun script/ci.ts build
+
+      - name: test (cargo test + nsh test)
+        run: bun script/ci.ts test
+
+      - name: test (manox hermetic gate)
+        run: bun script/ci.ts manox
+
+      - name: pi-harness (ledger + bun test)
+        run: bun script/ci.ts harness
+
+  verify_macos:
+    name: verify (macOS arm64)
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      ZU_GHOSTTY_CACHE: /Users/runner/.cache/zu-ghostty
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          # 与 Linux 腿同版；rust-toolchain.toml 会在首次 cargo 调用时补齐
+          # clippy/rustfmt 组件（macOS 腿不直接跑 lint，仅保证工具链一致）。
+          toolchain: "1.99.1"
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install htop
+        # terminal.ui 的 htop 用例在终端里拉起真实的全屏 TUI；runner 镜像不带它。
+        run: brew install htop
+
+      - name: Install nsh (pinned by .cnb.yml)
+        run: |
+          nsh_version=$(sed -nE 's/^[[:space:]]+NSH_VERSION:[[:space:]]+"?v?([0-9.]+)"?.*/\1/p' .cnb.yml | head -1)
+          [[ -n "${nsh_version}" ]] || { echo "::error::.cnb.yml has no NSH_VERSION"; exit 1; }
+          echo "nsh pin: v${nsh_version}"
+          curl -fsSL https://nsh.dev/install.sh -o /tmp/nsh-install.sh
+          NSH_VERSION="v${nsh_version}" sh /tmp/nsh-install.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          nsh --version
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('native/Cargo.lock', 'native/manox/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Cache ghostty-vt
+        uses: actions/cache@v4
+        with:
+          path: /Users/runner/.cache/zu-ghostty
+          key: ${{ runner.os }}-ghostty-vt-${{ hashFiles('native/ghostty/build.rs') }}
+
+      - name: terminal gate (AppKit)
+        # `--target macos` 构建真实 app（含 native 组件与 libghostty-vt）；
+        # ZU_TERMINAL_GATE=1 让断言生效（不带则静默跳过、假绿）。
+        run: bun script/ci.ts terminal
+
+      - name: pi-harness (ledger + bun test + darwin compile)
+        # darwin-arm64 上 harness stage 额外跑 `bun run build`——编译 app
+        # 真正 spawn 的 dist/pi-acp（bun test 证明不了 compile 还活着）。
+        run: bun script/ci.ts harness
+
+  # 唯一的 required check：always() 保证上游失败/取消时也红；skipped 算绿。
+  # 用 toJSON(needs) 遍历而不是点名，以后加腿不会被静默漏掉。
+  checks_pass:
+    name: checks_pass
+    needs: [verify_linux, verify_macos]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every leg succeeded or was skipped
+        shell: bash
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          echo "${NEEDS}" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "${NEEDS}" | jq -e \
+            'to_entries | all(.value.result == "success" or .value.result == "skipped")'

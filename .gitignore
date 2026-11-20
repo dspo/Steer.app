@@ -11,3 +11,8 @@ skills-lock.json
 
 # Packaged artifacts from bun script/tasks.ts bundle
 build/
+
+# Local IDE & agent-session state (never publish)
+.idea/
+.zcode/
+worktrees/

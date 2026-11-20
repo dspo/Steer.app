@@ -1,8 +1,8 @@
 # 终端标题：捕获、解释与投影
 
 > 状态：**PR1–PR4 已落地；本文档已入册（decisions.md Q123–Q125、architecture.md 标题管线段），2026-11-20**。上游：dspo/manox `v0.13.0`——#1030 的 chunk observer 与 #1032 的 `tool_env` 均已交付（bump 台账见 upstream-watch）。
-> PR3 的评审修正（D4 删除接线、C1 矩阵回正、D5 trim/合并限频、非阻塞 tap、补测）与 PR4 的桥 PTY 化均已含。本文是 issue [#73](https://cnb.cool/dspo-group/Steer.app/-/issues/73)
-> 的实现规格：捕获（pi = ops-tap 跨进程 + fd 继承；manox = 内核 tap in-proc）、会话/线程级通道与投影（tab-only）已落地；内核行为基线见 §6。
+> PR3 的评审修正（D4 删除接线、C1 矩阵回正、D5 trim/合并限频、非阻塞 tap、补测）与 PR4 的桥 FIFO 化均已含。本文是 issue #73（云侧 dspo/Steer.app、码侧 dspo-group/Steer.app）
+> 的实现规格：捕获（pi = ops-tap 跨进程 + fd 继承；manox = 内核 tap in-proc 直喂 FIFO 通道）、会话/线程级通道与投影（tab-only）已落地；内核行为基线见 §6。
 > 上游缝：dspo/manox#1030（tap）、dspo/manox#1032（`tool_env`）——均已交付。
 > 讨论与评审核对记录见 issue #73 评论链、dspo/manox#1030 修订记录、GitHub dspo/Steer.app#1/#2。
 
