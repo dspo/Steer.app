@@ -37,6 +37,10 @@ export const openTitleBridge = store.openChannel;
 /** Drops the thread's bridge and its title: only a thread's deletion. */
 export const closeTitleBridge = store.closeChannel;
 
+/** D4's prune: drops bridges and titles for threads that left the catalog. */
+export const pruneTitles = store.pruneTitles;
+
+
 /** The store write (issue #73): trimmed; whitespace-only clears (D3). */
 export const setProgramTitle = store.setProgramTitle;
 

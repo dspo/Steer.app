@@ -33,7 +33,7 @@ L2 投影：title 事件 → 该对话 sheet 的 tab 标题（tab-only）
 
 - **解释者唯一**：ghostty-vt 是终端世界的既有解释者——无自定义 scanner、无 policy 表；OSC 9/52 的扩展 = 接/不接 Emulator 既有回调（默认不接 = 默认关，OSC 52 剪贴板天然关闭）。
 - **pi 落地（PR3）**：`customTools` 两点接线（captain `pi-session.ts`、subagent `subagents.ts`，codemode 走同 registry）；通道 `title_capture.rs`（进程级 registry，`TitleCapture.open/close`）；fd 经 acp.rs 的 `pre_exec` 继承（`ZU_TITLE_FD`）；投影 store `modules/pi/titles.ts` + kind `tabTitle`。
-- **manox 落地（PR4）**：内核 tap 在泵启动时安装（`Manox::start` → `ensure_tap_installed`，restart 复用）；`title_bridge.rs` 持有每线程的 headless ghostty，tap 按 `session_id`（= Zu 的 thread id）路由字节，**in-proc 直喂**（无 PTY 传输）；TSX `TitleBridge` 经 domains 边界由 manox 模块的 titles store 消费（与 pi 共用 `core/title-store.ts` 的 D3/D4/D5 语义）；manox-chat kind 的 `tabTitle` = 线程的程序标题。
+- **manox 落地（PR4，评审后 PTY 化）**：内核 tap 在泵启动时安装（`Manox::start` → `ensure_tap_installed`，restart 复用）；`title_bridge.rs` 持有每线程的 PTY 对 + headless ghostty——tap 按 `session_id`（= Zu 的 thread id）写从端 fd，drain 线程读主端喂 Emulator（解析在工具路径之外，与 pi 同构）；从端以 `O_NOCTTY | O_NONBLOCK` 打开（满则丢，不卡内核 chunk 路径）。TSX `TitleBridge` 经 domains 边界由 manox 模块的 titles store 消费（与 pi 共用 `core/title-store.ts` 的 D3/D4/D5 语义）；manox-chat kind 的 `tabTitle` = 线程的程序标题；同一线程的多个 chat 共享线程标题（一个 AHP thread 是一个程序）。
 - **捕获选型**：ops/chunk 层 tap（`onData` Buffer 在 pi 的 stripAnsi 之前、manox 的 `BashDataCallback` 是 `&[u8]` 原始字节），宿主进程内执行不受工具子进程 seatbelt 写白名单约束。否决过：shell shim（沙箱拒写 + procsub 语法面）、AHP 帧 tap（依赖「内核不剥字节」的否定性行为 + 截断）、装饰 `BashOperations`（macOS 前台 tracked 路径绕过 ops——dspo/manox#1030 修订记录）。
 
 ## 3. 决策记录（2026-11-19 拍板）
@@ -61,7 +61,7 @@ L2 投影：title 事件 → 该对话 sheet 的 tab 标题（tab-only）
 |---|---|---|---|
 | 终端 tab 直跑 | ✅ `tty_name()` 注入（**已落地**） | ✅ 原生 | PR2 |
 | pi 托管 | ✅ `ZU_TTY` = 通道从端路径（**已落地**，与 `ZU_TITLE_FD` 同 spawn 注入） | ✅ ops-tap（**已落地**） | PR3 |
-| manox 托管 | ❌ 后置（#1032 的 `tool_env` **已随 v0.13.0 交付**；未接线的原因是标题桥 in-proc 直喂、无从端路径可声明——桥 PTY 化后即可接） | ✅ chunk observer（**已落地**） | PR4 |
+| manox 托管 | ✅ `ZU_TTY` = 桥从端路径，经 `SessionIntent.tool_env` 注入（v0.13.0 的 #1032；**已落地**） | ✅ chunk observer（**已落地**） | PR4 |
 
 C1 用法（可文档化给 agent 的显式形态，**已落地**）：
 
@@ -99,11 +99,12 @@ printf '\033]2;Zu: 阶段名\007' > "$ZU_TTY"
 
 **已落地（PR4）**：
 
-- **native**：`title_bridge.rs` 四例——桥内 feed 出标题、按 session 路由且互不串、空标题语义（同通道）、remove 后丢弃；内核 tap 的**进程单例与 restart 复用**有断言；四条 bash 路径（tracked/plain/persistent/subagent/background）的覆盖由内核 v0.13.0 的 acceptance 测试交付（tap.rs 的 test_support + 内核测试）。
+- **native**：`title_bridge.rs` 四例——从端 tty 直写出标题（**C1 端到端**：路径 open → pty → Emulator）、按线程路由互不串 + remove 丢弃、空标题语义、内核 tap 的进程单例断言；四条 bash 路径（tracked/plain/persistent/subagent/background）的覆盖由内核 v0.13.0 的 acceptance 测试交付（tap.rs 的 test_support + 内核测试）。
+- **app**：`title-store.test.ts` 三例（trim/whitespace 回落、按会话合并、prune——**no-title 通道也被 prune**、pending 在 prune 后不落地、close 清标题）；`titles.test.ts` manox 投影例（tab 改名/容器不变）。
 
-**后置/上游项**：
+**后置（app 级 e2e，随 ZU_MANOX_GATE 门禁补，非设计缺口）**：
 
-- `ZU_MANOX_GATE` app 级用例（真实泵 + 真实 bash 跑一轮 → tab 标题变）：需要模型回合，随 ZU_MANOX_GATE 的既有门禁补；内核侧四路径覆盖已由 v0.13.0 acceptance 测试交付。
+- 真实泵 + 模型回合里跑 bash → dock tab 标题变（需要模型回合；内核侧四路径覆盖已由 v0.13.0 acceptance 测试交付，TSX 投影已由 titles.test.ts 覆盖，缺的是两端串联）。
 
 **后置（app 级 e2e，非设计缺口，随 PR5 或 PR4 后补）**：
 

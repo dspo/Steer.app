@@ -1,7 +1,7 @@
-import { signal } from "nsh";
+import { effect, signal } from "nsh";
 import { Manox, type ModelCatalog } from "../../domains/manox";
 import { ActionType, catalog, channels, createSessionOn, dispatchAction, effectiveState, ensureConnection } from "./ahp";
-import { openTitleBridge } from "./titles";
+import { openTitleBridge, pruneTitles } from "./titles";
 import type { ChannelCell } from "./ahp";
 import type { SessionSummary } from "../../../contracts/ahp/channels-session/state";
 import type { SessionState } from "../../../contracts/ahp/channels-session/state";
@@ -58,6 +58,19 @@ export function chatResource(chatId: string): URI {
 export function sessionResource(threadId: string): URI {
   return `ahp-session:/${threadId}`;
 }
+
+// Issue #73 D4, the manox wiring: the catalog is the thread list — a
+// thread that left it is a deleted thread, and its title bridge closes.
+// Threads are durable AHP sessions, so in practice this fires on explicit
+// disposal; archiving never shrinks the catalog.
+//
+// The prune writes the titles signal, so it must run **outside** this
+// reactive effect: writing a signal the effect (transitively) reads would
+// re-enter it. The read stays here (tracked); the write is deferred.
+effect(() => {
+  const live = threads().map((thread) => thread.threadId);
+  setTimeout(() => pruneTitles(live), 0);
+});
 
 /** The chat id a chat URI names. */
 function chatIdOf(uri: URI): string {

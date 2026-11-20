@@ -39,9 +39,10 @@ export interface TitleStore {
   /** Drops the channel and the title: only a session's deletion. */
   closeChannel(sessionId: string): void;
   /**
-   * D4's prune: drops store entries and channels for ids that are neither
-   * in the session list nor have a live view. The caller composes the live
-   * set (scan rows + live views); `refreshSessions` is the wiring.
+   * D4's prune: drops channels, entries and pending writes for ids that
+   * are neither in the session list nor have a live view. The caller
+   * composes the live set (scan rows + live views); `refreshSessions` is
+   * the wiring.
    */
   pruneTitles(liveIds: string[]): void;
 }
@@ -54,7 +55,10 @@ export function createTitleStore(hooks: TitleStoreHooks): TitleStore {
   /// **per session**, so two sessions retitling in the same window both
   /// land (only a session's own intermediate titles collapse).
   const pending = new Map<string, string>();
-  let flushScheduled = false;
+  /// Sessions with an open channel — the prune's other half: a channel
+  /// exists even when no title was ever set, and D4 closes it too.
+  const opened = new Set<string>();
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
   function commit(sessionId: string, title: string): void {
     titles.set({ ...titles(), [sessionId]: title });
@@ -71,26 +75,31 @@ export function createTitleStore(hooks: TitleStoreHooks): TitleStore {
         // A clear is rare and must be synchronous: the tab falls back to
         // the session name right away.
         commit(sessionId, "");
+        pending.delete(sessionId);
         return;
       }
       pending.set(sessionId, cleaned);
-      if (flushScheduled) return;
-      flushScheduled = true;
-      setTimeout(() => {
-        flushScheduled = false;
+      if (flushTimer) return;
+      flushTimer = setTimeout(() => {
+        flushTimer = null;
         for (const [sessionId, title] of [...pending]) commit(sessionId, title);
         pending.clear();
       }, FLUSH_MS);
     },
 
     flushPendingTitle() {
-      if (pending.size === 0) return;
+      if (pending.size === 0 && flushTimer === null) return;
       const entries = [...pending];
       pending.clear();
       for (const [sessionId, title] of entries) commit(sessionId, title);
+      if (flushTimer !== null) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
+      }
     },
 
     openChannel(sessionId) {
+      opened.add(sessionId);
       // The observer lands in the store through the coalesced write.
       try {
         hooks.open(sessionId, (title) => store.setProgramTitle(sessionId, title));
@@ -102,17 +111,18 @@ export function createTitleStore(hooks: TitleStoreHooks): TitleStore {
 
     closeChannel(sessionId) {
       hooks.close(sessionId);
+      opened.delete(sessionId);
+      pending.delete(sessionId);
+      commit(sessionId, "");
     },
 
     pruneTitles(liveIds) {
       const live = new Set(liveIds);
-      for (const sessionId of Object.keys(titles())) {
-        if (!live.has(sessionId)) {
-          titles.set(
-            Object.fromEntries(Object.entries(titles()).filter(([id]) => id !== sessionId)),
-          );
-          hooks.close(sessionId);
-        }
+      // A live session's pending title lands first; a deleted session's is
+      // dropped by the sweep below (never committed after deletion).
+      store.flushPendingTitle();
+      for (const sessionId of new Set([...opened, ...Object.keys(titles())])) {
+        if (!live.has(sessionId)) store.closeChannel(sessionId);
       }
     },
   };

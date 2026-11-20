@@ -19,7 +19,6 @@ import {
 import { registerAllModules } from "../modules/register-all";
 import {
   flushPendingTitle as flushManoxPendingTitle,
-  openTitleBridge,
   programTitle as manoxProgramTitle,
   setProgramTitle as setManoxProgramTitle,
 } from "../modules/manox/titles";
