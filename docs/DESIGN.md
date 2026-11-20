@@ -229,9 +229,9 @@ Pi 会话的完整交互状态（审批卡、elicitation、命令候选、恢复
 
 ### 3.6a Manox composer（ZCode 卡片）
 
-manox sheet 自己的 composer（Q116）：与 ZCode 同款的圆角输入卡；pi 面保持 §3.6 的 hairline composer，
-等它自己的设计。数据全部来自 AHP——会话信道的 `config.schema`/`config.values` 与根信道的模型表，
-不碰 harness 与 native crate。
+manox sheet 自己的 composer（Q124）：与 ZCode 同款的圆角输入卡；pi 面保持 §3.6 的 hairline composer，
+等它自己的设计。数据全部来自 AHP 与宿主目录——会话信道的 `config.schema`/`config.values` 与
+`Manox.models()` 的内核模型目录（Q120，app 侧 `manoxModels()` 缓存），不碰 harness 与 native crate。
 
 | 项 | 值 |
 |---|---|
@@ -240,7 +240,7 @@ manox sheet 自己的 composer（Q116）：与 ZCode 同款的圆角输入卡；
 | 输入 | 透明底、无边框、14/21、`padding: 0`、`minHeight: 44`；随内容长高（`onContentSizeChange` 钳在 [44, 176]，提交后回到 44；**无高度动画**）；caret `primary`、选区 `brand`、占位 `faint`；回合运行中 Enter 仍排队（`chat/pendingMessageSet{queued}`） |
 | 占位 | 空聊天：`给 manox 发消息…`；有已完成回合：`提出后续修改要求`；流式：`继续输入以排队后续修改` |
 | footer 左 | 禁用 `+` 占位（28×28、`rounded-lg`、plus 14pt、`opacity-40`、tooltip「添加附件 · 附件暂不支持。」；附件能力由 [dspo-group/Steer.app#5](https://cnb.cool/dspo-group/Steer.app/issues/5) 跟踪——manox harness 已建模附件，app 还没有 picker/上传路径）→ 权限模式开关（`session/configChanged`）：shield 15pt + 本地化标签 12pt/500 + caret，图标与标签同 tint；`sandbox` = `shield-check` + `info`「沙盒」，`full-access` = `shield-alert` + `warn`「完全访问」；菜单置顶弹出，行 = 名称 + 说明 + 行尾勾选（`menuitemradio`），选项来自 schema 的 `accessMode.enum`（缺省 `["sandbox","full-access"]`） |
-| footer 右 | 上下文环（只读，有数才出现）：**上一轮**的用量——最近回合的 `inputTokens + cacheReadTokens`（活动回合带 usage 用它，否则最后一个已完成回合的）/ 根模型 `maxPromptTokens`（fallback `maxContextWindow`）。28×28 触达区，Canvas 14×14、1.5pt 描边——整圈 25% alpha + 进度弧 70% alpha，-90° 起、圆头、`muted-foreground`；tooltip/label `上下文（上一轮） · 12.3k / 1M · 1%`。**不是** pi 面的 live gauge，命名里写明「上一轮」→ 模型触发（**显示名**，无 provider 前缀；tooltip = 完整 ref）；两级 provider→model 菜单来自 `usableModels()`（与 pi 共用的 `~/.pi` 目录），选中发 `session/configChanged` 的 `model` = manox kernel 的 `{provider}-{wire}/{id}` ref → 推理强度（schema 的 `reasoningEffort.enum`，可写值 `high`/`max`；当前值在枚举外时留在触发器上，菜单顶部加一行禁用的「当前」），选中发 `session/configChanged` → 动作钮（一个位置）：idle ↑ 发送（28×28 `rounded-lg` `bg-primary`，arrow-up 14pt `primary-foreground`；禁用 `bg-muted opacity-40`）；streaming ■ 停止（`bg-secondary` 中性，填充圆角方 12pt；**非 destructive**；绝不被草稿禁用） |
+| footer 右 | 上下文环（只读，有数才出现）：**上一轮**的用量——最近回合的 `inputTokens + cacheReadTokens`（活动回合带 usage 用它，否则最后一个已完成回合的）/ 目录模型的 `contextWindow`（内核目录里没有单独的 prompt 预算）。28×28 触达区，Canvas 14×14、1.5pt 描边——整圈 25% alpha + 进度弧 70% alpha，-90° 起、圆头、`muted-foreground`；tooltip/label `上下文（上一轮） · 12.3k / 1M · 1%`。**不是** pi 面的 live gauge，命名里写明「上一轮」→ 模型触发（h-6 chip，文字 = `provider · id`，caret；tooltip = 完整 ref）；菜单来自宿主目录 `Manox.models()`（Q120，provider 分组头 + 模型行名与 context，空目录给原因与 retry），选中发 `session/configChanged` 的 `model` = manox kernel 的 `{provider}-{wire}/{id}` ref → 推理强度（h-6 chip；宿主可写 `high`/`max`，当前值在可写集外时触发器照名原值、菜单只列可写值），选中发 `session/configChanged` → 动作钮（一个位置）：idle ↑ 发送（28×28 `rounded-lg` `bg-primary`，arrow-up 14pt `primary-foreground`；禁用 `bg-muted opacity-40`）；streaming ■ 停止（`bg-secondary` 中性，填充圆角方 12pt；**非 destructive**；绝不被草稿禁用） |
 
 **项目信任对话框**（`app/ui/trust.tsx`，挂在 App 根部，不属于任何 sheet）：
 

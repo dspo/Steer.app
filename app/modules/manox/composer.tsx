@@ -1,7 +1,7 @@
-import { signal, Text, token, View } from "nsh";
-import { Input } from "nsh/base";
+import { effect, signal, Text, token, View } from "nsh";
+import { Input, Menu, MenuItem, MenuSeparator } from "nsh/base";
 import { K, t } from "../../ui/i18n";
-import { Glyph, motionStyle } from "../../ui/ui";
+import { Glyph, motionStyle, shadowRaised, type GlyphName } from "../../ui/ui";
 import {
   ActionType,
   connectionError,
@@ -10,51 +10,84 @@ import {
   effectiveState,
   reconnect,
 } from "./ahp";
-import { cancelManoxTurn, chatResource, latestChatUsage, manoxModelRefOf, sendManoxMessage } from "./stores";
+import {
+  cancelManoxTurn,
+  chatResource,
+  currentModelRef,
+  latestChatUsage,
+  manoxModels,
+  sendManoxMessage,
+  sessionResource,
+  setManoxEffort,
+  setManoxModel,
+} from "./stores";
 import {
   ManoxAction,
   ManoxContextRing,
   ManoxMode,
-  ManoxModel,
   ManoxPlus,
-  ManoxThinking,
   contextMaxTokens,
   contextUsedTokens,
 } from "./composer-controls";
 import { MessageKind, PendingMessageKind } from "../../../contracts/ahp/channels-chat/state";
 import type { ChatState, Message } from "../../../contracts/ahp/channels-chat/state";
+import type { SessionState } from "../../../contracts/ahp/channels-session/state";
+import type { ModelCatalog } from "../../domains/manox";
 
 /**
- * The manox composer (DESIGN §3.6a, Q110): ZCode's rounded input card — the
+ * The manox composer (DESIGN §3.6a, Q124): ZCode's rounded input card — the
  * input on top, one footer row under it (left: the disabled `+` and the
  * access mode; right: the context ring, the model, the reasoning effort and
  * the one action), and the manox lanes / transport-error lines above the
  * card, not inside it. No hairline: the card's own border is the boundary,
  * answering hover and focus-within. This file owns the shell, the input and
- * the submit; the footer's controls live in `composer-controls.tsx`.
+ * the submit; the footer's model/effort pickers are the kernel-catalogue
+ * menus (issue #55) kept from main's hairline composer, and the card's other
+ * controls live in `composer-controls.tsx`.
  */
 
-/**
- * One footer action beside the card (the reconnect). Chips are the status
- * line's scale: h-6, text 11, tight radius — a step under the footer's
- * triggers, which are the card's controls.
- */
+/** One footer action. Chips are the footer's scale: h-6, text 11. */
 function ComposerChip(props: {
   testID: string;
   label: string;
+  glyph?: GlyphName;
+  primary?: boolean;
+  danger?: boolean;
+  disabled?: boolean;
   onPress: () => void;
 }) {
+  const disabled = () => props.disabled ?? false;
+  const look = () =>
+    disabled()
+      ? "bg-muted opacity-40"
+      : props.primary
+        ? "bg-primary hover:bg-primary/90 active:opacity-80"
+        : "border border-line hover:bg-hover active:opacity-70";
+  const ink = () =>
+    disabled()
+      ? token("faint")
+      : props.primary
+        ? token("primary-foreground")
+        : props.danger
+          ? token("destructive")
+          : token("foreground");
   return (
     <View
       role="button"
       testID={props.testID}
       accessibilityLabel={props.label}
       tooltip={props.label}
-      class="h-6 flex-row items-center justify-center gap-1 rounded-md border border-line px-2 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+      disabled={disabled()}
+      class={`h-6 flex-row items-center justify-center gap-1 rounded-md px-2 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1 ${look()}`}
       style={{ ...motionStyle("fast") }}
-      onPress={props.onPress}
+      onPress={() => {
+        if (!disabled()) props.onPress();
+      }}
     >
-      <Text class="text-[11px] font-medium text-foreground">{props.label}</Text>
+      {props.glyph ? <Glyph name={props.glyph} size={11} tint={ink()} /> : null}
+      <Text class="text-[11px] font-medium" style={{ color: ink() }}>
+        {props.label}
+      </Text>
     </View>
   );
 }
@@ -80,21 +113,197 @@ function LanesLine(props: { chat: ChatState }) {
   );
 }
 
+/** `1M`, `128k`: one glance at a model's context window. */
+function shortTokens(value: number): string {
+  if (!value) return "—";
+  return value >= 1_000_000 ? `${Math.round(value / 100_000) / 10}M` : `${Math.round(value / 1000)}k`;
+}
+
+const EFFORTS = ["high", "max"] as const;
+
+/** The model/effort pickers live in the card's footer (issue #55). They
+ * read the host's callable catalogue and the folded session config; a
+ * selection dispatches `session/configChanged`, applied on the next turn. */
+function ManoxModelPicker(props: { threadId: string }) {
+  const open = signal(false);
+  const catalog = signal<ModelCatalog | null>(null);
+  const error = signal<string | null>(null);
+  const current = () => currentModelRef(props.threadId);
+  const label = () => {
+    const ref = current();
+    if (!ref) return t(K.manox.model);
+    const model = (catalog()?.providers ?? []).flatMap((p) => p.models).find((m) => m.reference === ref);
+    return model ? `${model.provider} · ${model.id}` : ref;
+  };
+  // Warm the footer label on first paint: the selector should name the model
+  // before the menu is opened once. The failure is the menu's empty state,
+  // never an unhandled rejection (a machine without a callable catalogue).
+  effect(() => {
+    void (async () => {
+      try {
+        catalog.set(await manoxModels());
+      } catch (failure) {
+        error.set(failure instanceof Error ? failure.message : String(failure));
+      }
+    })();
+  });
+  const load = async () => {
+    try {
+      error.set(null);
+      catalog.set(await manoxModels(true));
+    } catch (failure) {
+      error.set(failure instanceof Error ? failure.message : String(failure));
+    }
+  };
+  return (
+    <Menu
+      open={open()}
+      onOpenChange={({ open: next }) => {
+        open.set(next);
+        if (next) void load();
+      }}
+      align="start"
+      offset={6}
+      popupClass="rounded-xl border border-border bg-popover p-1"
+      popupStyle={{ width: 300, maxHeight: 420, boxShadow: shadowRaised() }}
+      trigger={
+        <View
+          role="button"
+          testID="manox-model-picker"
+          accessibilityLabel={t(K.manox.model)}
+          class="h-6 flex-row items-center gap-1 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+          style={{ ...motionStyle("fast") }}
+        >
+          <Text class="text-[11px] font-medium text-foreground" style={{ numberOfLines: 1 }}>{label()}</Text>
+          <Glyph name="caret-down" size={8} tint={token("faint")} />
+        </View>
+      }
+    >
+      <If when={error() || (catalog() && catalog()!.providers.length === 0)}>
+        <View class="px-2 py-2">
+          <Text testID="manox-models-empty" class="text-[11px] text-faint">
+            {error() ?? t(K.manox.modelsEmpty)}
+          </Text>
+          <MenuItem
+            testID="manox-model-retry"
+            class="rounded-lg px-2.5 py-1.5 hover:bg-hover"
+            onSelect={() => void load()}
+          >
+            <Text class="text-[12px] text-foreground">{t(K.manox.modelsRetry)}</Text>
+          </MenuItem>
+        </View>
+      </If>
+      <Each of={catalog()?.providers ?? []} key={(provider) => provider.id}>
+        {(provider) => (
+          <View>
+            <View class="px-2 py-1"><Text class="text-[10.5px] text-faint">{provider().name}</Text></View>
+            <Each of={provider().models} key={(model) => model.reference}>
+              {(model) => (
+                <MenuItem
+                  testID={`manox-model-${model().provider}-${model().reference}`}
+                  checked={current() === model().reference}
+                  role="menuitemradio"
+                  closeOnSelect={false}
+                  indicator={<Glyph name="check" size={11} tint={token("brand")} />}
+                  indicatorClass="opacity-0 checked:opacity-100"
+                  class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+                  onSelect={() => {
+                    setManoxModel(props.threadId, model().reference);
+                    open.set(false);
+                  }}
+                >
+                  <View>
+                    <Text class="text-[12px] text-foreground">{model().name}</Text>
+                    <Text class="text-[10.5px] text-faint">{model().id} · {shortTokens(model().contextWindow)}</Text>
+                  </View>
+                </MenuItem>
+              )}
+            </Each>
+          </View>
+        )}
+      </Each>
+      <MenuSeparator class="my-1 h-px bg-line" />
+      <View class="px-2 py-1"><Text class="text-[10.5px] text-faint">{t(K.manox.modelNextTurn)}</Text></View>
+    </Menu>
+  );
+}
+
+function ManoxEffortPicker(props: { threadId: string }) {
+  const open = signal(false);
+  const current = (): string => {
+    const value = effectiveState<SessionState>(sessionResource(props.threadId))?.config?.values?.["reasoningEffort"];
+    return typeof value === "string" ? value : "off";
+  };
+  return (
+    <Menu
+      open={open()}
+      onOpenChange={({ open: next }) => open.set(next)}
+      align="start"
+      offset={6}
+      popupClass="rounded-xl border border-border bg-popover p-1"
+      popupStyle={{ width: 160, boxShadow: shadowRaised() }}
+      trigger={
+        <View
+          role="button"
+          testID="manox-effort-picker"
+          accessibilityLabel={t(K.manox.effort)}
+          class="h-6 flex-row items-center gap-1 rounded-md px-1.5 hover:bg-hover active:opacity-70 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
+          style={{ ...motionStyle("fast") }}
+        >
+          <Text class="text-[11px] font-medium text-foreground">{current()}</Text>
+          <Glyph name="caret-down" size={8} tint={token("faint")} />
+        </View>
+      }
+    >
+      <Each of={EFFORTS} key={(effort) => effort}>
+        {(effort) => (
+          <MenuItem
+            testID={`manox-effort-${effort()}`}
+            checked={current() === effort()}
+            role="menuitemradio"
+            closeOnSelect={false}
+            indicator={<Glyph name="check" size={11} tint={token("brand")} />}
+            indicatorClass="opacity-0 checked:opacity-100"
+            class="rounded-lg px-2.5 py-1.5 hover:bg-hover focus:bg-hover active:bg-accent"
+            onSelect={() => {
+              setManoxEffort(props.threadId, effort());
+              open.set(false);
+            }}
+          >
+            <Text class="text-[12px] text-foreground">{effort()}</Text>
+          </MenuItem>
+        )}
+      </Each>
+    </Menu>
+  );
+}
+
 /** The manox composer: the state lines, then the input card. */
 export function ManoxComposer(props: { threadId: string; chatId: string; autofocus?: boolean }) {
   const draft = signal("");
   /** The input's grown height; the clamp lives where the content reports it. */
   const inputHeight = signal(44);
+  /** The kernel catalogue, warmed once for the ring (the pickers load their own). */
+  const catalog = signal<ModelCatalog | null>(null);
+  effect(() => {
+    void (async () => {
+      try {
+        catalog.set(await manoxModels());
+      } catch {
+        // No catalogue, no ring; the model picker's menu carries the reason.
+      }
+    })();
+  });
   const chatUri = () => chatResource(props.chatId);
   const chat = () => effectiveState<ChatState>(chatUri());
   const streaming = () => chat()?.activeTurn != null;
   const hasTurns = () => (chat()?.turns.length ?? 0) > 0;
   const canSubmit = () => draft().trim().length > 0;
   const status = () => connectionStatus();
-  // The ring reads the last turn's usage over the root model's prompt budget;
-  // it stays quiet (no visible dial) until both sides of the ratio exist.
+  // The ring reads the last turn's usage over the current model's context
+  // window in the kernel catalogue; it stays quiet until both sides exist.
   const ringUsed = () => contextUsedTokens(latestChatUsage(props.chatId));
-  const ringMax = () => contextMaxTokens(manoxModelRefOf(props.threadId));
+  const ringMax = () => contextMaxTokens(currentModelRef(props.threadId), catalog());
   const take = () => {
     const text = draft();
     draft.set("");
@@ -150,6 +359,9 @@ export function ManoxComposer(props: { threadId: string; chatId: string; autofoc
           />
         </View>
       </If>
+      <If when={status() === "connecting"}>
+        <Text class="text-[11px] text-faint">{t(K.manox.connecting)}</Text>
+      </If>
       {/* The card: a flat surface, one border, no shadow. The border answers
           hover and focus-within — the input inside stays bare. */}
       <View
@@ -183,8 +395,8 @@ export function ManoxComposer(props: { threadId: string; chatId: string; autofoc
           }}
         />
         {/* One footer row, two clusters (DESIGN §3.6a): left the `+` and the
-            access mode, right the gauge, model, effort and the action —
-            idle's ↑ send and streaming's ■ stop in the same spot. */}
+            access mode, right the gauge, the model/effort pickers and the
+            action — idle's ↑ send and streaming's ■ stop in the same spot. */}
         <View class="flex-row items-center justify-between" style={{ gap: 8 }}>
           <View class="flex-row items-center" style={{ gap: 4, flexShrink: 0 }}>
             <ManoxPlus />
@@ -192,8 +404,8 @@ export function ManoxComposer(props: { threadId: string; chatId: string; autofoc
           </View>
           <View class="flex-row items-center" style={{ gap: 4, flexShrink: 1, minWidth: 0 }}>
             <ManoxContextRing used={ringUsed} max={ringMax} />
-            <ManoxModel threadId={props.threadId} />
-            <ManoxThinking threadId={props.threadId} />
+            <ManoxModelPicker threadId={props.threadId} />
+            <ManoxEffortPicker threadId={props.threadId} />
             {/* Stop is absolute: never gated by the draft. */}
             <ManoxAction
               streaming={streaming()}

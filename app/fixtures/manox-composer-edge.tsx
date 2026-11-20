@@ -1,19 +1,22 @@
 import { mount, View } from "nsh";
-import { channels, setManoxFrameSink } from "../modules/manox/ahp";
-import { ManoxModel, ManoxThinking } from "../modules/manox/composer-controls";
-import { setPiModelsTransport } from "../domains/pimodels";
+import { channels, connectionStatus, setManoxFrameSink } from "../modules/manox/ahp";
+import { ManoxComposer } from "../modules/manox/composer";
+import { Manox } from "../domains/manox";
+import type { ModelCatalog } from "../domains/manox";
 import type { SessionState } from "../../contracts/ahp/channels-session/state";
 
 /**
- * The manox footer's edge states, deterministic: the model catalogue fails
- * and the session's current effort is outside the host's writable enum. The
- * controls mount directly (no host), so the test reads exactly the menu the
+ * The manox card's edge states, deterministic: the model catalogue fails and
+ * the session's current effort is outside the host's writable subset. The
+ * card mounts directly (no host), so the test reads exactly the footer the
  * user would see on those states.
  */
 
-setPiModelsTransport(async () => {
+// The kernel catalogue read fails the way a machine without a callable
+// directory would; the menu must name the reason, not hang.
+(Manox as { models: () => Promise<ModelCatalog> }).models = async () => {
   throw new Error("boom");
-});
+};
 // A no-op sink: dispatching must never reach the native pump here.
 setManoxFrameSink(() => {});
 
@@ -52,10 +55,10 @@ const SESSION = {
 channels.set({
   "ahp-session:/thread": { uri: "ahp-session:/thread", serverSeq: 0, state: SESSION, pending: [] },
 });
+connectionStatus.set("ready");
 
 mount(() => (
-  <View class="bg-background" style={{ padding: 16 }}>
-    <ManoxModel threadId="thread" />
-    <ManoxThinking threadId="thread" />
+  <View class="bg-background" style={{ padding: 16, justifyContent: "flex-end" }}>
+    <ManoxComposer threadId="thread" chatId="chat" />
   </View>
 ));

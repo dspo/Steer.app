@@ -23,10 +23,10 @@ function framesOfType(app: { storage(): Record<string, string> }, type: string):
 }
 
 /**
- * The manox composer's ZCode card (DESIGN §3.6a, Q116), on the deterministic
- * fixture: channels seeded by hand, models off the transport seam, every
- * dispatch captured by the frame sink. Ungated — no host, no native pump,
- * no credentials; the real-host gate stays in `manox.ui.test.tsx`.
+ * The manox composer's ZCode card (DESIGN §3.6a, Q124), on the deterministic
+ * fixture: channels seeded by hand, the kernel catalogue stood in by the
+ * fixture, every dispatch captured by the frame sink. Ungated — no host, no
+ * native pump, no credentials; the real-host gate stays in `manox.ui.test.tsx`.
  */
 
 test("the idle card shows every control with its name and a disabled +", async () => {
@@ -34,8 +34,8 @@ test("the idle card shows every control with its name and a disabled +", async (
   await app.waitFor("id:manox-input");
   await shot(app, "ui-manox-composer-idle");
   // Every control is on the card: the disabled `+`, the access mode, the
-  // ring, the model, the effort and the one action.
-  for (const id of ["manox-attach", "manox-mode", "manox-context", "manox-model", "manox-thinking", "manox-send"]) {
+  // ring, the model/effort pickers and the one action.
+  for (const id of ["manox-attach", "manox-mode", "manox-context", "manox-model-picker", "manox-effort-picker", "manox-send"]) {
     expect(app.shows(`id:${id}`)).toBe(true);
   }
   // The `+` is a deliberate placeholder: present, named, not live.
@@ -44,12 +44,12 @@ test("the idle card shows every control with its name and a disabled +", async (
   // The trigger names the current access mode in the shell's words.
   expect(app.texts()).toContain("完全访问");
   expect(app.count("label:权限模式：完全访问")).toBe(1);
-  // The model trigger carries the display name; its label is the same name.
-  expect(app.texts()).toContain("Qwen3.8 Flash");
-  expect(app.count("label:Qwen3.8 Flash")).toBe(1);
-  // The effort picker localizes the level.
-  expect(app.texts()).toContain("最高");
-  expect(app.count("label:推理强度：最高")).toBe(1);
+  // The model trigger names the catalogue's provider and model id.
+  expect(app.texts()).toContain("bailian · qwen3.8-flash");
+  expect(app.count("label:模型")).toBe(1);
+  // The effort trigger carries the fold's raw value.
+  expect(app.texts()).toContain("max");
+  expect(app.count("label:推理强度")).toBe(1);
   // The ring is honest about being last-turn context.
   expect(app.count("label:上下文（上一轮） · 12.3k / 1M · 1%")).toBe(1);
   // Idle with an empty draft: the send waits.
@@ -94,33 +94,35 @@ test("the access-mode switch dispatches session/configChanged", async () => {
   expect(frame.params.action.config.accessMode).toBe("sandbox");
 });
 
-test("the model menu lists the provider's models and dispatches the ref", async () => {
+test("the model menu lists the catalogue's models and dispatches the ref", async () => {
   const app = await open("../fixtures/manox-composer.tsx", { width: 1200, height: 800 });
-  await app.waitFor("id:manox-model");
-  await app.press("id:manox-model");
-  await app.waitFor("id:manox-model-provider-bailian");
+  await app.waitFor("id:manox-model-picker");
+  await app.press("id:manox-model-picker");
+  await app.waitFor("id:manox-model-bailian-bailian-anthropic/qwen3.8-plus");
   await shot(app, "ui-manox-composer-model");
-  await app.press("id:manox-model-provider-bailian");
-  await app.waitFor("id:manox-model-bailian-qwen3.8-plus");
-  await app.press("id:manox-model-bailian-qwen3.8-plus");
-  await app.waitUntil(() => !app.shows("id:manox-model-bailian-qwen3.8-plus"), { timeout: 5000 });
-  // The trigger shows the display name, not the registration-qualified ref.
+  // The rows are the catalogue's: the model's name over its id and window.
   expect(app.texts()).toContain("Qwen3.8 Plus");
+  expect(app.texts()).toContain("qwen3.8-plus · 1M");
+  await app.press("id:manox-model-bailian-bailian-anthropic/qwen3.8-plus");
+  await app.waitUntil(() => !app.shows("id:manox-model-bailian-bailian-anthropic/qwen3.8-plus"), { timeout: 5000 });
+  // The trigger follows the optimistic fold: provider · id of the new ref.
+  await app.waitUntil(() => app.texts().includes("bailian · qwen3.8-plus"), { timeout: 5000 });
   await app.waitUntil(() => framesOfType(app, "session/configChanged").length === 1, { timeout: 5000 });
   const frame = framesOfType(app, "session/configChanged")[0];
   expect(frame.params.action.config.model).toBe("bailian-anthropic/qwen3.8-plus");
 });
 
-test("the effort picker dispatches the writable enum value", async () => {
+test("the effort picker dispatches the writable value", async () => {
   const app = await open("../fixtures/manox-composer.tsx", { width: 1200, height: 800 });
-  await app.waitFor("id:manox-thinking");
-  await app.press("id:manox-thinking");
-  await app.waitFor("id:manox-thinking-high");
-  await shot(app, "ui-manox-composer-thinking");
-  await app.press("id:manox-thinking-high");
-  await app.waitUntil(() => !app.shows("id:manox-thinking-high"), { timeout: 5000 });
-  expect(app.texts()).toContain("高");
-  expect(app.count("label:推理强度：高")).toBe(1);
+  await app.waitFor("id:manox-effort-picker");
+  await app.press("id:manox-effort-picker");
+  await app.waitFor("id:manox-effort-high");
+  await shot(app, "ui-manox-composer-effort");
+  await app.press("id:manox-effort-high");
+  await app.waitUntil(() => !app.shows("id:manox-effort-high"), { timeout: 5000 });
+  // The trigger follows the fold to the picked raw value.
+  await app.waitUntil(() => app.texts().includes("high"), { timeout: 5000 });
+  expect(app.count("label:推理强度")).toBe(1);
   await app.waitUntil(() => framesOfType(app, "session/configChanged").length === 1, { timeout: 5000 });
   const frame = framesOfType(app, "session/configChanged")[0];
   expect(frame.params.action.config.reasoningEffort).toBe("high");
@@ -131,7 +133,7 @@ test("the card holds at the minimum window", async () => {
   await app.waitFor("id:manox-input");
   // The footer's two clusters share the card at 900pt: nothing folds away
   // and the model name gives way before the action does.
-  for (const id of ["manox-attach", "manox-mode", "manox-context", "manox-model", "manox-thinking", "manox-send"]) {
+  for (const id of ["manox-attach", "manox-mode", "manox-context", "manox-model-picker", "manox-effort-picker", "manox-send"]) {
     expect(app.shows(`id:${id}`)).toBe(true);
   }
   await shot(app, "ui-manox-composer-narrow");

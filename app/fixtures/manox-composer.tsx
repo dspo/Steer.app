@@ -1,9 +1,8 @@
 import { mount, Storage, View } from "nsh";
 import { channels, connectionStatus, setManoxFrameSink } from "../modules/manox/ahp";
 import { ManoxComposer } from "../modules/manox/composer";
-import { setPiModelsTransport } from "../domains/pimodels";
-import type { PiProvider } from "../domains/pimodels";
-import type { RootState } from "../../contracts/ahp/channels-root/state";
+import { Manox } from "../domains/manox";
+import type { ModelCatalog } from "../domains/manox";
 import type { SessionState } from "../../contracts/ahp/channels-session/state";
 import type { ChatState } from "../../contracts/ahp/channels-chat/state";
 
@@ -11,10 +10,11 @@ import type { ChatState } from "../../contracts/ahp/channels-chat/state";
  * The manox composer's deterministic fixture (no host, no native pump): the
  * card mounts DIRECTLY (not `ManoxChatBody`, so no `ensureConnection`), its
  * channels are seeded by hand, and every outgoing frame lands in a captured
- * array instead of the pump (`setManoxFrameSink`). The models ride the
- * `setPiModelsTransport` seam, so the picker lists two bailian models
- * without the machine's `~/.pi`. No engine, no model run — everything the
- * UI test asserts is on screen or in the captured frames.
+ * array instead of the pump (`setManoxFrameSink`). The kernel catalogue is
+ * stood in by the fixture itself (`Manox.models`), so the pickers list two
+ * bailian models and the ring reads their context window without the host.
+ * No engine, no model run — everything the UI test asserts is on screen or
+ * in the captured frames.
  */
 
 /** The dispatches the composer made, parsed back from the wire frames. */
@@ -26,48 +26,43 @@ setManoxFrameSink((frame) => {
   void Storage.setItem("manox-frames", JSON.stringify(frames));
 });
 
-// The model catalogue without the host: one provider, two models, both
-// anthropic-messages so their manox refs are `bailian-anthropic/<id>`.
-setPiModelsTransport(async () =>
-  [
+// The kernel model catalogue without the host (Q120): one provider, two
+// models; the canonical refs are `bailian-anthropic/<id>` and the context
+// window is what the ring divides the last turn's usage by.
+const CATALOG: ModelCatalog = {
+  providers: [
     {
       id: "bailian",
       name: "百炼",
-      hasAuth: true,
-      api: "anthropic-messages",
-      models: [
-        { id: "qwen3.8-flash", name: "Qwen3.8 Flash", contextWindow: 1_000_000 },
-        { id: "qwen3.8-plus", name: "Qwen3.8 Plus", contextWindow: 1_000_000 },
-      ],
-    },
-  ] as PiProvider[],
-);
-
-// The root channel: the agent's model catalogue, with the prompt budget the
-// context ring divides by.
-const ROOT: RootState = {
-  agents: [
-    {
-      provider: "bailian-anthropic",
-      displayName: "百炼",
-      description: "",
       models: [
         {
           id: "qwen3.8-flash",
-          provider: "bailian-anthropic",
           name: "Qwen3.8 Flash",
-          maxPromptTokens: 1_000_000,
+          provider: "bailian",
+          reference: "bailian-anthropic/qwen3.8-flash",
+          contextWindow: 1_000_000,
+          maxTokens: 64_000,
+          reasoning: true,
+          efforts: ["high", "max"],
         },
         {
           id: "qwen3.8-plus",
-          provider: "bailian-anthropic",
           name: "Qwen3.8 Plus",
-          maxPromptTokens: 1_000_000,
+          provider: "bailian",
+          reference: "bailian-anthropic/qwen3.8-plus",
+          contextWindow: 1_000_000,
+          maxTokens: 64_000,
+          reasoning: true,
+          efforts: ["high", "max"],
         },
       ],
     },
   ],
 };
+
+// The fixture owns the models query: Manox.models is the only door the
+// stores open to the host, and replacing it keeps the whole surface hermetic.
+(Manox as { models: () => Promise<ModelCatalog> }).models = async () => CATALOG;
 
 // The session channel: the config schema the host would advertise (the
 // writable enums) and the current values the fold carries.
@@ -129,7 +124,6 @@ const CHAT: ChatState = {
 } as unknown as ChatState;
 
 channels.set({
-  "ahp-root://": { uri: "ahp-root://", serverSeq: 0, state: ROOT, pending: [] },
   "ahp-session:/thread": { uri: "ahp-session:/thread", serverSeq: 0, state: SESSION, pending: [] },
   "ahp-chat:/chat": { uri: "ahp-chat:/chat", serverSeq: 0, state: CHAT, pending: [] },
 });

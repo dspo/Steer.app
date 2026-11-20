@@ -4,7 +4,6 @@ import { ActionType, catalog, channels, createSessionOn, dispatchAction, effecti
 import type { ChannelCell } from "./ahp";
 import type { SessionSummary } from "../../../contracts/ahp/channels-session/state";
 import type { SessionState } from "../../../contracts/ahp/channels-session/state";
-import type { RootState, SessionModelInfo } from "../../../contracts/ahp/channels-root/state";
 import type { ChatState } from "../../../contracts/ahp/channels-chat/state";
 import type { SessionConfigChangedAction } from "../../../contracts/ahp/channels-session/actions";
 import type { URI, UsageInfo } from "../../../contracts/ahp/common/state";
@@ -125,25 +124,6 @@ export function sessionConfigValue(threadId: string, key: string): unknown {
   const config = sessionOf(threadId)?.config;
   if (!config) return undefined;
   return key in config.values ? config.values[key] : config.schema.properties[key]?.default;
-}
-
-/** The thread's raw config model ref (the kernel's `{provider}-{wire}/{model}`). */
-export function manoxModelRefOf(threadId: string): string {
-  const value = sessionConfigValue(threadId, "model");
-  return typeof value === "string" ? value : "";
-}
-
-/** The root catalogue's model info matching a config ref exactly
- * (`{provider}/{model}`), so the composer can read the context window off it. */
-export function rootModelOf(ref: string): SessionModelInfo | null {
-  if (!ref) return null;
-  const root = effectiveState<RootState>("ahp-root://");
-  for (const agent of root?.agents ?? []) {
-    for (const model of agent.models) {
-      if (`${model.provider}/${model.id}` === ref) return model;
-    }
-  }
-  return null;
 }
 
 /**

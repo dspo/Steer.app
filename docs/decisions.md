@@ -200,9 +200,9 @@
 
 | # | 问题 | 裁决 | 落点 |
 |---|---|---|---|
-| Q116 | ZCode 卡片 composer 属于哪个 sheet | **卡片属于 manox**：manox sheet 的 composer 换成 ZCode 同款圆角输入卡（`rounded-xl border border-border bg-card`，12pt 表面半径、padding 12、**无阴影**；hover `border-input`、`focus-within:border-ring`），输入在卡片顶、自动长高（钳 [44,176]，无高度动画），lane/传输错误行在卡片上方；**pi 面回到 hairline composer，等它自己的设计**（曾落地的 pi 卡片已归档在 tag `pi-composer-zcode-archive`，不再复活）。数据全部来自 AHP，不改 harness/native：权限模式 = `session/configChanged` 的 `accessMode`（`sandbox`/`full-access`，schema 缺省 `sandbox`；`sandbox` `info`、`full-access` `warn`）；模型 = `config.values.model`（manox kernel ref `{provider}-{wire}/{id}`），菜单来自与 pi 共用的 `usableModels()`（Q104 的单一模型目录），触发器显示**显示名**、tooltip 全 ref；推理强度 = `reasoningEffort`（可写枚举 `high`/`max`，当前值在枚举外时保留在触发器并加禁用「当前」行）；上下文环**只读**且诚实命名「上下文（上一轮）」：最近回合 `inputTokens+cacheReadTokens` / 根模型 `maxPromptTokens`（fallback `maxContextWindow`）——**不是** pi 的 live `session.info` gauge。footer 左侧 `+` 是禁用占位：manox AHP 已建模附件，但 app 没有 picker/上传/预览路径，由 issue [dspo-group/Steer.app#5](https://cnb.cool/dspo-group/Steer.app/issues/5) 跟踪（同时覆盖 pi ACP）。测试缝：`setManoxFrameSink`（frames 捕获）与 `setPiModelsTransport`（模型目录替身），宿主/hermetic 门禁不变 | `app/modules/manox/composer.tsx`、`app/modules/manox/composer-controls.tsx`、`app/modules/manox/stores.ts`、`app/modules/manox/ahp.ts`、`app/domains/pimodels.ts`、`app/ui/ui.tsx`、`app/ui/i18n.ts`；DESIGN §3.6a |
+| Q125 | ZCode 卡片 composer 属于哪个 sheet | **卡片属于 manox**：manox sheet 的 composer 换成 ZCode 同款圆角输入卡（`rounded-xl border border-border bg-card`，12pt 表面半径、padding 12、**无阴影**；hover `border-input`、`focus-within:border-ring`），输入在卡片顶、自动长高（钳 [44,176]，无高度动画），lane/传输错误行在卡片上方；**pi 面回到 hairline composer，等它自己的设计**（曾落地的 pi 卡片已归档在 tag `pi-composer-zcode-archive`，不再复活）。数据全部来自 AHP，不改 harness/native：权限模式 = `session/configChanged` 的 `accessMode`（`sandbox`/`full-access`，schema 缺省 `sandbox`；`sandbox` `info`、`full-access` `warn`）；模型 = `config.values.model`（manox kernel ref `{provider}-{wire}/{id}`），菜单来自宿主目录 `Manox.models()`（Q120 的内核目录，app 侧 `manoxModels()` 缓存），触发器显示 `provider · id`、tooltip 全 ref；推理强度 = `reasoningEffort`（宿主可写 `high`/`max`，当前值在可写集外时触发器照名原值、菜单只列可写值）；上下文环**只读**且诚实命名「上下文（上一轮）」：最近回合 `inputTokens+cacheReadTokens` / 目录模型的 `contextWindow`——**不是** pi 的 live `session.info` gauge。footer 左侧 `+` 是禁用占位：manox AHP 已建模附件，但 app 没有 picker/上传/预览路径，由 issue [dspo-group/Steer.app#5](https://cnb.cool/dspo-group/Steer.app/issues/5) 跟踪（同时覆盖 pi ACP）。测试缝：`setManoxFrameSink`（frames 捕获）与 fixture 直替 `Manox.models`（无 host 的目录替身），宿主/hermetic 门禁不变 | `app/modules/manox/composer.tsx`、`app/modules/manox/composer-controls.tsx`、`app/modules/manox/stores.ts`、`app/modules/manox/ahp.ts`、`app/ui/ui.tsx`、`app/ui/i18n.ts`；DESIGN §3.6a |
 
-## 已落地设计（Q108–Q109）
+## 已落地设计（Q108–Q110）
 
 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) 的 D1–D7 已作为 **Q108** 登记并落地：
 
@@ -218,7 +218,7 @@
 
 ## 决策编号说明
 
-- Q1–Q123 覆盖全部已讨论的问题，**无未决项**（Q110 见上表；T1 交付记录见 plan.md 与 evidence/transcript-tui.md）。历史横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、
+- Q1–Q125 覆盖全部已讨论的问题，**无未决项**（Q110 见上表；T1 交付记录见 plan.md 与 evidence/transcript-tui.md）。历史横切面已在 architecture 落成决策：扩展宿主契约与 project trust（§4.5）、
   文件读写归属（Q56）、git 执行与根/路径边界（Q58）、协议版本与幂等（旧 §3.3）、归档可达性（Q34）、
   浏览器能力/降级（Q61/Q62）、LSP 传输/同步（Q64）、单实例与通知（Q65/Q66）、更新源（Q67）、
   模型注册表（Q81）、容器内终端资源（Q82）、scratch 与铸容器（Q83）、动作矩阵（Q84）、容器标题（Q85）、
@@ -227,7 +227,7 @@
   三包布局（Q96）、ACP 传输（Q97）、manox 接入（Q98）、双 harness 同级（Q99）、sheet 模块（Q100）、
   native 能力域（Q101）、容器去 harness 身份（Q102）、文档治理（Q103）、模型目录共用（Q104）、
   侧栏不设 harness 分组（Q105）、sheet 模块落地（Q106）、旧 wire 删除（Q107）、Pi × ACP 运行时（Q108）、
-  Pi 官方配置 parity（Q109）、自绘 ghostty 终端（Q113）、终端原生组件（Q114）、终端会话下沉 Rust（Q115）、对象实例化起始页（Q116）、三套 home 归属与 move 迁移（Q117）、终端符合性（Q118）、本地门禁与云构建归属（Q119）、manox 宿主模型目录与会话内切换（Q120）、空会话页删除（Q121）、会话页内初始化与客户端 mint session id（Q122）、GitHub 托管迁移与 CI 归属（Q123）。
+  Pi 官方配置 parity（Q109）、自绘 ghostty 终端（Q113）、终端原生组件（Q114）、终端会话下沉 Rust（Q115）、对象实例化起始页（Q116）、三套 home 归属与 move 迁移（Q117）、终端符合性（Q118）、本地门禁与云构建归属（Q119）、manox 宿主模型目录与会话内切换（Q120）、空会话页删除（Q121）、会话页内初始化与客户端 mint session id（Q122）、GitHub 托管迁移与 CI 归属（Q123）、ZCode 卡片 composer（Q125）。
 - 原 engine/ui/domain 三份文档里的 E/U 编号已废弃，统一并入本表。
 - 已完成与下一批工作见 [plan.md](plan.md)；条件性里程碑（M-arch / M-web）的触发条件也记在那里
   （M-tty 已由 Q113 落地，不再作为条件项）。
