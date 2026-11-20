@@ -18,7 +18,6 @@ import {
   type ToolCardStatus,
 } from "../../ui/chat";
 import { effectiveState, ensureConnection } from "./ahp";
-import { loadPiModels, modelLabel, usableModels } from "../../domains/pimodels";
 import type { SessionState } from "../../../contracts/ahp/channels-session/state";
 import {
   answerManoxInput,
@@ -59,9 +58,6 @@ import type {
 
 // --- rows -------------------------------------------------------------------
 
-/** Whether the pi model catalogue was asked for (one read per app run). */
-let catalogRequested = false;
-
 /** One displayed row: a day line, a user message, a response part, or the
  * reply's action footer. */
 type Row =
@@ -82,18 +78,6 @@ interface DisplayTurn {
 /** The reply's model name: the turn's own selection first, else the thread's
  * configured model ref, resolved against the pi catalogue (the gallery shows
  * the model beside the assistant's avatar). */
-const modelLabels = new Map<string, string>();
-
-function labelForRef(ref: string): string {
-  const cached = modelLabels.get(ref);
-  if (cached !== undefined) return cached;
-  const id = ref.includes("/") ? ref.slice(ref.lastIndexOf("/") + 1) : ref;
-  const row = usableModels().find((candidate) => candidate.model.id === id);
-  const label = row ? modelLabel(row) : id;
-  modelLabels.set(ref, label);
-  return label;
-}
-
 function modelLabelOf(turn: DisplayTurn, threadId: string): string {
   const explicit = turn.message.model?.id;
   let ref = typeof explicit === "string" ? explicit : "";
@@ -102,7 +86,11 @@ function modelLabelOf(turn: DisplayTurn, threadId: string): string {
     const value = state?.config?.values?.["model"] ?? state?.config?.schema?.properties?.["model"]?.default;
     if (typeof value === "string") ref = value;
   }
-  return ref ? labelForRef(ref) : "";
+  if (!ref) return "";
+  // The kernel's refs are `{provider}-{wire}/{id}`; the identity row shows the
+  // model's own id (the catalogue the shell once read is gone with the start
+  // page's model picker).
+  return ref.includes("/") ? ref.slice(ref.lastIndexOf("/") + 1) : ref;
 }
 
 const dayKey = (at: number) => {
@@ -596,13 +584,6 @@ export function ManoxChatBody(props: { id: string }) {
     // the sheet's error status, never an unhandled rejection.
     void ensureConnection([sessionResource(parsed.threadId), chatUri(), metricsResource(parsed.chatId)]).catch(() => {});
   });
-  // The model catalogue is a one-shot read, never part of the reactive
-  // effect below: that effect re-runs on every channel envelope, and a
-  // catalogue reload per delta re-renders the whole list.
-  if (!catalogRequested) {
-    catalogRequested = true;
-    void loadPiModels();
-  }
   const chat = () => chatOf(parsed.chatId);
   const rows = () => rowsOf(chat(), parsed.chatId, parsed.threadId);
   const streaming = () => chat()?.activeTurn != null;
