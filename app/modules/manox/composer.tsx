@@ -14,34 +14,36 @@ import {
   cancelManoxTurn,
   chatResource,
   currentModelRef,
+  latestChatUsage,
   manoxModels,
   sendManoxMessage,
   sessionResource,
   setManoxEffort,
   setManoxModel,
 } from "./stores";
+import {
+  ManoxAction,
+  ManoxContextRing,
+  ManoxMode,
+  ManoxPlus,
+  contextMaxTokens,
+  contextUsedTokens,
+} from "./composer-controls";
 import { MessageKind, PendingMessageKind } from "../../../contracts/ahp/channels-chat/state";
 import type { ChatState, Message } from "../../../contracts/ahp/channels-chat/state";
 import type { SessionState } from "../../../contracts/ahp/channels-session/state";
 import type { ModelCatalog } from "../../domains/manox";
 
 /**
- * The manox composer (the pack's `composer-hairline`, DESIGN §3.2/§4.2).
- *
- * **Copied** from `app/sheets/composer.tsx`'s `ChatComposer` — the hairline
- * design already matched Steer, so migration rather than a rewrite — and
- * adapted to the manox pack; the pi original stays put (the pi composer
- * redesign is another batch):
- * - the footer's model picker, context gauge and slash palette are pi
- *   session semantics and are gone; the hairline over the bare input, the
- *   single right-aligned footer row, and the idle-send / streaming-stop
- *   spots are kept verbatim;
- * - the lanes line (§4.2: steering/queued) reads the chat's pending
- *   messages straight off the vendored reducer's fold;
- * - send dispatches `chat/turnStarted`; while a turn runs, Enter queues
- *   (`chat/pendingMessageSet{queued}`) — the host starts it as its own turn;
- * - a transport error (§3.4: a caught host-half panic) shows inline with the
- *   reconnect path beside it.
+ * The manox composer (DESIGN §3.6a, Q124): ZCode's rounded input card — the
+ * input on top, one footer row under it (left: the disabled `+` and the
+ * access mode; right: the context ring, the model, the reasoning effort and
+ * the one action), and the manox lanes / transport-error lines above the
+ * card, not inside it. No hairline: the card's own border is the boundary,
+ * answering hover and focus-within. This file owns the shell, the input and
+ * the submit; the footer's model/effort pickers are the kernel-catalogue
+ * menus (issue #55) kept from main's hairline composer, and the card's other
+ * controls live in `composer-controls.tsx`.
  */
 
 /** One footer action. Chips are the footer's scale: h-6, text 11. */
@@ -119,7 +121,7 @@ function shortTokens(value: number): string {
 
 const EFFORTS = ["high", "max"] as const;
 
-/** The model/effort pickers live in the composer's footer (issue #55). They
+/** The model/effort pickers live in the card's footer (issue #55). They
  * read the host's callable catalogue and the folded session config; a
  * selection dispatches `session/configChanged`, applied on the next turn. */
 function ManoxModelPicker(props: { threadId: string }) {
@@ -276,17 +278,42 @@ function ManoxEffortPicker(props: { threadId: string }) {
   );
 }
 
-/** The manox composer: the hairline input and one right-aligned footer row. */
-export function ManoxComposer(props: { threadId: string; chatId: string; autofocus?: boolean }) {
+/** The manox composer: the state lines, then the input card. */
+export function ManoxComposer(props: {
+  threadId: string;
+  chatId: string;
+  autofocus?: boolean;
+  /** The message went out (or queued): the conversation scrolls to it. */
+  onSend?: () => void;
+}) {
   const draft = signal("");
+  /** The input's grown height; the clamp lives where the content reports it. */
+  const inputHeight = signal(44);
+  /** The kernel catalogue, warmed once for the ring (the pickers load their own). */
+  const catalog = signal<ModelCatalog | null>(null);
+  effect(() => {
+    void (async () => {
+      try {
+        catalog.set(await manoxModels());
+      } catch {
+        // No catalogue, no ring; the model picker's menu carries the reason.
+      }
+    })();
+  });
   const chatUri = () => chatResource(props.chatId);
   const chat = () => effectiveState<ChatState>(chatUri());
   const streaming = () => chat()?.activeTurn != null;
+  const hasTurns = () => (chat()?.turns.length ?? 0) > 0;
   const canSubmit = () => draft().trim().length > 0;
   const status = () => connectionStatus();
+  // The ring reads the last turn's usage over the current model's context
+  // window in the kernel catalogue; it stays quiet until both sides exist.
+  const ringUsed = () => contextUsedTokens(latestChatUsage(props.chatId));
+  const ringMax = () => contextMaxTokens(currentModelRef(props.threadId), catalog());
   const take = () => {
     const text = draft();
     draft.set("");
+    inputHeight.set(44);
     return text.trim();
   };
   const submit = () => {
@@ -302,22 +329,26 @@ export function ManoxComposer(props: { threadId: string; chatId: string; autofoc
         id: `queued-${Date.now()}`,
         message,
       } as never);
+      props.onSend?.();
       return;
     }
     void sendManoxMessage(props.threadId, props.chatId, text);
+    props.onSend?.();
   };
+  const placeholder = () =>
+    streaming()
+      ? t(K.manox.placeholderStreaming)
+      : hasTurns()
+        ? t(K.manox.placeholderFollowUp)
+        : t(K.manox.placeholder);
   return (
     <View
       style={{
         width: "100%",
         maxWidth: 820,
         alignSelf: "center",
-        gap: 6,
+        gap: 8,
         position: "relative",
-        // The divider is the composer's own, exactly as wide as it is.
-        borderTopWidth: 1,
-        borderTopColor: token("line"),
-        paddingTop: 8,
       }}
     >
       <If when={chat()}>
@@ -336,60 +367,62 @@ export function ManoxComposer(props: { threadId: string; chatId: string; autofoc
           />
         </View>
       </If>
-      <Input
-        testID="manox-input"
-        value={draft()}
-        onChange={({ value }) => draft.set(value)}
-        multiline
-        submitBehavior="submit"
-        autoFocus={props.autofocus ?? false}
-        placeholder={streaming() ? t(K.manox.placeholderStreaming) : t(K.manox.placeholder)}
-        onSubmit={submit}
-        style={{
-          minHeight: 44,
-          paddingHorizontal: 2,
-          paddingVertical: 4,
-          fontSize: 14,
-          lineHeight: 21,
-          color: token("foreground"),
-          placeholderColor: token("faint"),
-          caretColor: token("primary"),
-          selectionColor: token("brand"),
-          backgroundColor: "transparent",
-          borderWidth: 0,
-        }}
-      />
-      <View class="flex-row items-center justify-between gap-2">
-        <View class="flex-row items-center gap-2">
-          <ManoxModelPicker threadId={props.threadId} />
-          <ManoxEffortPicker threadId={props.threadId} />
-        </View>
-        <If when={status() === "connecting"}>
-          <Text class="text-[11px] text-faint">{t(K.manox.connecting)}</Text>
-        </If>
-        <If
-          when={streaming()}
-          else={
-            <ComposerChip
-              testID="manox-send"
-              label={t(K.session.send)}
-              glyph="send"
-              primary
+      <If when={status() === "connecting"}>
+        <Text class="text-[11px] text-faint">{t(K.manox.connecting)}</Text>
+      </If>
+      {/* The card: a flat surface, one border, no shadow. The border answers
+          hover and focus-within — the input inside stays bare. */}
+      <View
+        class="rounded-xl border border-border bg-card hover:border-input focus-within:border-ring"
+        style={{ padding: 12, gap: 12, ...motionStyle("fast") }}
+      >
+        <Input
+          testID="manox-input"
+          value={draft()}
+          onChange={({ value }) => draft.set(value)}
+          multiline
+          submitBehavior="submit"
+          autoFocus={props.autofocus ?? false}
+          placeholder={placeholder()}
+          onSubmit={submit}
+          onContentSizeChange={({ size }) => {
+            inputHeight.set(Math.min(176, Math.max(44, size.height)));
+          }}
+          style={{
+            height: inputHeight(),
+            minHeight: 44,
+            padding: 0,
+            fontSize: 14,
+            lineHeight: 21,
+            color: token("foreground"),
+            placeholderColor: token("faint"),
+            caretColor: token("primary"),
+            selectionColor: token("brand"),
+            backgroundColor: "transparent",
+            borderWidth: 0,
+          }}
+        />
+        {/* One footer row, two clusters (DESIGN §3.6a): left the `+` and the
+            access mode, right the gauge, the model/effort pickers and the
+            action — idle's ↑ send and streaming's ■ stop in the same spot. */}
+        <View class="flex-row items-center justify-between" style={{ gap: 8 }}>
+          <View class="flex-row items-center" style={{ gap: 4, flexShrink: 0 }}>
+            <ManoxPlus />
+            <ManoxMode threadId={props.threadId} />
+          </View>
+          <View class="flex-row items-center" style={{ gap: 4, flexShrink: 1, minWidth: 0 }}>
+            <ManoxContextRing used={ringUsed} max={ringMax} />
+            <ManoxModelPicker threadId={props.threadId} />
+            <ManoxEffortPicker threadId={props.threadId} />
+            {/* Stop is absolute: never gated by the draft. */}
+            <ManoxAction
+              streaming={streaming()}
               disabled={!canSubmit()}
-              onPress={submit}
+              onSubmit={submit}
+              onStop={() => void cancelManoxTurn(props.chatId)}
             />
-          }
-        >
-          {/* Stop is absolute: never gated by the draft. */}
-          <ComposerChip
-            testID="manox-stop"
-            label={t(K.session.stop)}
-            glyph="stop"
-            danger
-            disabled={false}
-            onPress={() => void cancelManoxTurn(props.chatId)}
-          />
-        </If>
+          </View>
+        </View>
       </View>
     </View>
   );

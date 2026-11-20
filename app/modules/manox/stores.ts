@@ -3,11 +3,12 @@ import { Manox, type ModelCatalog } from "../../domains/manox";
 import { ActionType, catalog, channels, createSessionOn, dispatchAction, effectiveState, ensureConnection } from "./ahp";
 import { openTitleBridge, pruneTitles, titleTtyPath } from "./titles";
 import type { ChannelCell } from "./ahp";
+import type { ReasoningTiming, XManoxState } from "./ext";
 import type { SessionSummary } from "../../../contracts/ahp/channels-session/state";
 import type { SessionState } from "../../../contracts/ahp/channels-session/state";
 import type { ChatState } from "../../../contracts/ahp/channels-chat/state";
 import type { SessionConfigChangedAction } from "../../../contracts/ahp/channels-session/actions";
-import type { URI } from "../../../contracts/ahp/common/state";
+import type { URI, UsageInfo } from "../../../contracts/ahp/common/state";
 
 /**
  * The manox threads and chats stores (DESIGN §3.3/§4.2): a thread is an AHP
@@ -57,6 +58,11 @@ export function chatResource(chatId: string): URI {
 /** The AHP session URI of a thread id. */
 export function sessionResource(threadId: string): URI {
   return `ahp-session:/${threadId}`;
+}
+
+/** The metrics extension channel of a chat (the kernel's `x-manox` face). */
+export function metricsResource(chatId: string): URI {
+  return `x-manox-metrics:/${chatId}`;
 }
 
 // Issue #73 D4, the manox wiring: the catalog is the thread list — a
@@ -122,6 +128,47 @@ export function threadOf(threadId: string): ManoxThread | null {
 /** The folded chat state of a chat id, optimistic layer included. */
 export function chatOf(chatId: string): ChatState | null {
   return effectiveState<ChatState>(chatResource(chatId));
+}
+
+/** The folded session state of a thread (null before its snapshot). */
+export function sessionOf(threadId: string): SessionState | null {
+  return effectiveState<SessionState>(sessionResource(threadId));
+}
+
+/**
+ * One session config value: the fold's explicit value when it has one, else
+ * the schema's default (the schema is what the host advertises the property
+ * with; an absent value means the default is in force).
+ */
+export function sessionConfigValue(threadId: string, key: string): unknown {
+  const config = sessionOf(threadId)?.config;
+  if (!config) return undefined;
+  return key in config.values ? config.values[key] : config.schema.properties[key]?.default;
+}
+
+/**
+ * The usage the context ring shows: the active turn's when one runs, else the
+ * last completed turn's. It is last-turn context — a settled accounting, not
+ * pi's live `session.info` gauge.
+ */
+export function latestChatUsage(chatId: string): UsageInfo | null {
+  const chat = chatOf(chatId);
+  if (!chat) return null;
+  if (chat.activeTurn?.usage) return chat.activeTurn.usage;
+  for (let index = chat.turns.length - 1; index >= 0; index--) {
+    const usage = chat.turns[index]?.usage;
+    if (usage) return usage;
+  }
+  return null;
+}
+
+/** One reasoning part's settled timing, from the chat's metrics channel.
+ * Null when the kernel carries no row — a part that predates the anchor, or
+ * a kernel without the face — and the label stays durationless rather than
+ * guessed. */
+export function reasoningTimingOf(chatId: string, partId: string): ReasoningTiming | null {
+  const state = effectiveState<XManoxState>(metricsResource(chatId));
+  return state?.reasoningTimings?.[partId] ?? null;
 }
 
 /** Mints a client-side uuid (the protocol hands channel minting to clients). */
@@ -317,4 +364,18 @@ export function setManoxModel(threadId: string, ref: string): void {
 /** The host runtime's mutable effort subset is high|max (issue #55). */
 export function setManoxEffort(threadId: string, effort: "high" | "max"): void {
   setManoxConfig(threadId, { reasoningEffort: effort });
+}
+
+/** Test seam: puts one chat's folded state in the channel map, so a fixture
+ * renders a conversation without a host (see `setEnsureConnectionForTest`). */
+export function seedChatForTest(chatId: string, state: ChatState): void {
+  const uri = chatResource(chatId);
+  channels.set({ ...channels(), [uri]: { uri, serverSeq: 1, state, pending: [] } });
+}
+
+/** Test seam: puts one chat's metrics cell in the channel map (the same
+ * no-host trick, for the extension face's timing rows). */
+export function seedMetricsForTest(chatId: string, state: XManoxState): void {
+  const uri = metricsResource(chatId);
+  channels.set({ ...channels(), [uri]: { uri, serverSeq: 1, state, pending: [] } });
 }

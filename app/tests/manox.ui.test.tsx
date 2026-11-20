@@ -43,6 +43,10 @@ t("the manox sheet runs the real host loop on the workbench", async () => {
     () => app.shows("id:manox-send") && app.count("id:manox-user-message") === 0,
     { timeout: 30000 },
   );
+  // The composer is the ZCode card (DESIGN §3.6a): the `+` placeholder sits
+  // on the footer, disabled, and the idle action is the send.
+  expect(app.shows("id:manox-attach")).toBe(true);
+  expect(app.enabled("id:manox-attach")).toBe(false);
   expect(app.shows("id:manox-stop")).toBe(false);
   expect(app.shows("id:manox-lanes")).toBe(false);
   expect(app.count("id:manox-error-line")).toBe(0);

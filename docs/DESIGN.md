@@ -220,12 +220,36 @@ Geist 无 CJK——中文回退系统字体，验收看行高不跳变；行高�
 
 输入 `/` 时弹层即过滤，Enter 对 `/` 草稿执行命令而不是发送；命令表热更新时候选就地刷新。
 会话内的模型/档位/审批走 ACP 协议（`configOptions`/`modes`），不再有 spawn env 或"ACP 下不可用"分支。
-本节描述的是 pi 面当前的 hairline composer；manox 面在自己的模块里有独立 composer（Steer 风格）。
+本节描述的是 pi 面当前的 hairline composer；manox 面在自己的模块里有 ZCode 卡片 composer（§3.6a）。
 manox composer footer 的模型/effort 菜单（Q120）：trigger 用 h-6 的 chip（text 11），
 菜单 300pt / 160pt、radius 10、hairline 边框、hover/checked 用既有 token；分组头显示 provider 显示名
 （models.json 的 `name`，缺省为 id），行显示模型名与 context；空目录给原因与 retry，不画空列表。
 Pi 会话的完整交互状态（审批卡、elicitation、命令候选、恢复/休眠）以
 [pi-acp-IMPLEMENTATION.md](pi-acp-IMPLEMENTATION.md) §9 为准；视觉 token 仍取本文。
+
+### 3.6a Manox composer（ZCode 卡片）
+
+manox sheet 自己的 composer（Q125）：与 ZCode 同款的圆角输入卡；pi 面保持 §3.6 的 hairline composer，
+等它自己的设计。数据全部来自 AHP 与宿主目录——会话信道的 `config.schema`/`config.values` 与
+`Manox.models()` 的内核模型目录（Q120，app 侧 `manoxModels()` 缓存），不碰 harness 与 native crate。
+
+| 项 | 值 |
+|---|---|
+| 外层 | `width: 100%`、`maxWidth: 820`、居中、gap 8；**无 `borderTop`**；lane 行（引导/排队，`manox-lanes`）与传输错误行（`manox-transport-error` + 重连）在卡片**上方**；conversation 外壳底部留 16pt |
+| 卡片 | `rounded-xl border border-border bg-card`，内边距 12、gap 12，`motionStyle("fast")`；`hover:border-input`、`focus-within:border-ring`（边框色过渡）；**无阴影** |
+| 输入 | 透明底、无边框、14/21、`padding: 0`、`minHeight: 44`；随内容长高（`onContentSizeChange` 钳在 [44, 176]，提交后回到 44；**无高度动画**）；caret `primary`、选区 `brand`、占位 `faint`；回合运行中 Enter 仍排队（`chat/pendingMessageSet{queued}`） |
+| 占位 | 空聊天：`给 manox 发消息…`；有已完成回合：`提出后续修改要求`；流式：`继续输入以排队后续修改` |
+| footer 左 | 禁用 `+` 占位（28×28、`rounded-lg`、plus 14pt、`opacity-40`、tooltip「添加附件 · 附件暂不支持。」；附件能力由 [dspo-group/Steer.app#5](https://cnb.cool/dspo-group/Steer.app/issues/5) 跟踪——manox harness 已建模附件，app 还没有 picker/上传路径）→ 权限模式开关（`session/configChanged`）：shield 15pt + 本地化标签 12pt/500 + caret，图标与标签同 tint；`sandbox` = `shield-check` + `info`「沙盒」，`full-access` = `shield-alert` + `warn`「完全访问」；菜单置顶弹出，行 = 名称 + 说明 + 行尾勾选（`menuitemradio`），选项来自 schema 的 `accessMode.enum`（缺省 `["sandbox","full-access"]`） |
+| footer 右 | 上下文环（只读，有数才出现）：**上一轮**的用量——最近回合的 `inputTokens + cacheReadTokens`（活动回合带 usage 用它，否则最后一个已完成回合的）/ 目录模型的 `contextWindow`（内核目录里没有单独的 prompt 预算）。28×28 触达区，Canvas 14×14、1.5pt 描边——整圈 25% alpha + 进度弧 70% alpha，-90° 起、圆头、`muted-foreground`；tooltip/label `上下文（上一轮） · 12.3k / 1M · 1%`。**不是** pi 面的 live gauge，命名里写明「上一轮」→ 模型触发（h-6 chip，文字 = `provider · id`，caret；tooltip = 完整 ref）；菜单来自宿主目录 `Manox.models()`（Q120，provider 分组头 + 模型行名与 context，空目录给原因与 retry），选中发 `session/configChanged` 的 `model` = manox kernel 的 `{provider}-{wire}/{id}` ref → 推理强度（h-6 chip；宿主可写 `high`/`max`，当前值在可写集外时触发器照名原值、菜单只列可写值），选中发 `session/configChanged` → 动作钮（一个位置）：idle ↑ 发送（28×28 `rounded-lg` `bg-primary`，arrow-up 14pt `primary-foreground`；禁用 `bg-muted opacity-40`）；streaming ■ 停止（`bg-secondary` 中性，填充圆角方 12pt；**非 destructive**；绝不被草稿禁用） |
+### 3.6b Manox 对话（gallery 部件）
+
+**manox 对话（`app/modules/manox/conversation.tsx` + `app/ui/chat.tsx`）**：正文 15/22（标题 20/17/15），
+部件取 gallery 的形状——助手身份行（头像 + 模型名）、思考折叠（14pt 标签 + 旋转 caret + 左侧 2px
+hairline 的 14/20 正文；流式中展开、落定收起，耗时来自 `x-manox/reasoningTiming`）、工具卡（32pt
+图标块 + 14 标题 / 13 详情 + 状态 chip + inset 正文 + `Output` 结果行）、回复动作行（36pt 图标；
+AHP 无 retry/fork）、跨天日期分隔、回到底部按钮。转录用 `Scroll` 全量挂载（投影按完成轮次数组与
+metrics 状态缓存，流式只重建尾部），无滚动条。
+
 
 **项目信任对话框**（`app/ui/trust.tsx`，挂在 App 根部，不属于任何 sheet）：
 
@@ -380,9 +404,11 @@ Pi 会话的完整交互状态（审批卡、elicitation、命令候选、恢复
   键盘路径上。
 - **页签**：`bg-inset` 条上，活动页签是白 pill（半径 8 + 软阴影 + primary 2pt 下划线）；
   非活动 hover `bg-hover`；pressed 整体 0.8 透明度。
-- **Composer**：外层 `border-t + line`，卡片 `bg-card`、`border-border`、半径 12、
-  `shadowCard()`；输入区无边框，焦点用 caret 表达；footer 左侧 10.5pt 提示，右侧 30pt
-  圆形发送（primary / destructive / muted 三态）。
+- **Composer**：pi 保持 hairline（外层 `border-t + line`，输入区无边框，焦点用 caret 表达；
+  footer 左 10.5pt 提示、右 30pt 圆形发送，primary / destructive / muted 三态）；manox 用 ZCode
+  卡片（§3.6a）：`bg-card`、`border-border`、半径 12、无阴影，hover `border-input`、
+  `focus-within:border-ring`（`fast` 边框色过渡）；footer 右侧 28pt 圆角发送（primary /
+  muted 两态），streaming 是中性 `bg-secondary` 停止（`destructive` 只留给真正危险的动作）。
 - **起始页 tile**：一组安静的药丸——半径 8、`border-line`、`bg-card`、12.5pt 标签，
   hover `bg-hover`、pressed 透明度 70；不放卡片阴影。项目/菜单沿用 Menu 表面。
 - **项目对话框**：白卡：半径 12、`border-border`、20pt 内边距、15pt 标题、12pt 标签、
@@ -400,12 +426,12 @@ Pi 会话的完整交互状态（审批卡、elicitation、命令候选、恢复
 
 | 状态 | 行 | 页签 | 按钮（顶栏/表单） | Composer 发送 |
 |---|---|---|---|---|
-| Rest | 透明 | 透明 | ghost / outline / primary | muted 圆 |
-| Hover | `bg-hover` | `bg-hover` | `bg-hover` / `bg-primary/90` | `opacity-90`（可用时） |
+| Rest | 透明 | 透明 | ghost / outline / primary | pi muted 圆；manox 28pt `bg-primary` 圆角方，streaming `bg-secondary` |
+| Hover | `bg-hover` | `bg-hover` | `bg-hover` / `bg-primary/90` | pi `opacity-90`（可用时）；manox `bg-primary/90`、停止 `bg-muted` |
 | Pressed | `bg-accent/60` | `opacity-80` | `opacity-70` | `opacity-70` |
 | Focus-visible | 2pt `outline-ring` | 2pt `outline-ring` | 2pt `outline-ring` | 2pt `outline-ring` |
 | Selected | 白卡 + 软阴影 + 600 | 白 pill + primary 下划线 | — | — |
-| Disabled | — | — | 无 hover/pressed | 无 hover/pressed |
+| Disabled | — | — | 无 hover/pressed | 无 hover/pressed；manox 禁用态 `bg-muted opacity-40` |
 | Loading | — | — | 引擎阶段文字 | streaming 时变 Stop |
 
 每个可点元素都有 hover 与 pressed；行用颜色，不用缩放；图标按钮用 0.6–0.8 透明度。
@@ -428,6 +454,13 @@ focus 用 outline 而不是 ring，因为选中行的 `boxShadow` 是内联 styl
 | 页签 hover | `bg-hover`，`medium` 180ms | 立即 | 实现 |
 | 页签选中切换 | 白 pill 背景 + 阴影，`medium`；无滑动选择条 | 立即 | 真实截图（选中态） |
 | 页签 pressed | 整体 `opacity-80` | 立即 | 实现 |
+| manox 卡片 hover / focus-within | 边框色 `border-input` / `border-ring`，`fast` 120ms | 立即 | 行为测试 + 真机截图（idle/narrow） |
+| manox 输入长高 | `onContentSizeChange` 即时钳高，无高度动画 | — | 行为测试（提交回到 44） |
+| manox `+` 占位 | disabled：`opacity-40`、无 hover/pressed | — | 行为测试（enabled=false）+ 截图（idle 左侧） |
+| manox 模式/模型/强度触发 hover / open | `bg-hover` / `bg-accent`，`fast` | 立即 | 真机截图（三个菜单的 open 态） |
+| manox 权限开关标签随模式切换 | 文字与 icon tint 即时替换，无过渡 | — | 行为测试（选沙盒后标签变） |
+| manox 上下文环重画 | 无动画：usage 更新经 animated value 即时重画弧 | — | 行为测试（环 tooltip 文案） |
+| manox send ↔ stop | `If` 换位：glyph 与底色 `fast` | 立即 | 行为测试（提交后 stop 上场） |
 | Composer send ↔ stop | glyph 立即切换；按钮底色 `fast` | 立即 | 实现；需要流式回合才能截到 |
 | Composer 输入焦点 | caret primary，无过渡 | — | 实现 |
 | 发送可用/不可用 | 背景 + glyph tint，`fast` | 立即 | 真实截图（禁用态） |
