@@ -1,6 +1,7 @@
-import { mount } from "nsh";
+import { mount, View } from "nsh";
 import { seedSession } from "../modules/pi/sessions";
 import { SessionBody } from "../modules/pi/view";
+import { ModelMenuLayer } from "../modules/pi/model-menu";
 import { visiblePanels } from "../core/dock";
 import { installModelTransport, MODEL_SEED } from "./chat-models-data";
 
@@ -12,4 +13,9 @@ installModelTransport();
 seedSession("models", [], MODEL_SEED);
 visiblePanels.set(["session:models"]);
 
-mount(() => <SessionBody id="models" sheetId="session:models" />);
+mount(() => (
+  <View style={{ flex: 1 }}>
+    <SessionBody id="models" sheetId="session:models" />
+    <ModelMenuLayer />
+  </View>
+));

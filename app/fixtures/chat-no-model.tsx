@@ -1,6 +1,7 @@
-import { mount } from "nsh";
+import { mount, View } from "nsh";
 import { seedSession, setModelTransport } from "../modules/pi/sessions";
 import { SessionBody } from "../modules/pi/view";
+import { ModelMenuLayer } from "../modules/pi/model-menu";
 import { visiblePanels } from "../core/dock";
 
 // A session on a machine with no usable model: `session.info` carries no
@@ -53,4 +54,9 @@ setModelTransport(async (type, payload: any = {}) => {
 seedSession("no-model", [], { path: "/tmp/zu-no-model.jsonl", cwd: "/tmp/zu" });
 visiblePanels.set(["session:no-model"]);
 
-mount(() => <SessionBody id="no-model" sheetId="session:no-model" />);
+mount(() => (
+  <View style={{ flex: 1 }}>
+    <SessionBody id="no-model" sheetId="session:no-model" />
+    <ModelMenuLayer />
+  </View>
+));

@@ -39,8 +39,8 @@ test("a restored empty sheet rebuilds, then model and effort switching work", as
     // the session in place — the composer arrives live, not dead.
     await app.waitFor("id:model-picker", { timeout: 60000 });
 
-    // The model menu acts on the rebuilt session: pick p/other, the trigger
-    // carries it, the menu closes on success.
+    // The model menu acts on the rebuilt session: p, then p/other; the
+    // trigger carries it and the menu closes on success.
     await app.press("id:model-picker");
     await app.waitFor("id:model-provider-p");
     await app.press("id:model-provider-p");
