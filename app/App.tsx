@@ -11,6 +11,7 @@ import { followSystemLocale } from "./ui/i18n";
 import { applyScrollbarTheme } from "./ui/ui";
 import { TrustDialog } from "./ui/trust";
 import { startModules } from "./modules/register-all";
+import { ModelMenuLayer } from "./modules/pi/model-menu";
 
 /** The app: claim the state directory, boot the engine once, then render the workbench. */
 let booted = false;
@@ -51,6 +52,9 @@ function App() {
       </If>
       {/* `session/new` can ask for project trust before any sheet exists. */}
       <TrustDialog />
+      {/* The model menu is hosted here, outside the sheets: a popup anchored
+          inside a sheet's frame does not hear presses at its rows. */}
+      <ModelMenuLayer />
       {/* The About and Updates dialogs answer the app menu; their open
           signals only fire in the primary instance, and About receives the
           manox and Ghostty versions here — the assembly point is where the
