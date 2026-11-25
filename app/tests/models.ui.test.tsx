@@ -14,17 +14,19 @@ test("the hero composer's model menu lists providers and switches a model", asyn
   expect(before).toContain("high");
 
   await app.press("id:model-picker");
-  // The picker is one flat dialog: provider headers, then every model row.
+  // The provider opens its own level; the model rows carry their ids.
   await app.waitFor("id:model-provider-anthropic");
   await app.waitFor("id:model-provider-bailian");
+  await app.press("id:model-provider-anthropic");
+  await app.waitFor("id:model-anthropic-claude-sonnet-4");
   await app.press("id:model-anthropic-claude-sonnet-4");
 
-  // The reply's model lands in the trigger, and the dialog closed on success.
+  // The reply's model lands in the trigger, and the menu closed on success.
   await app.waitUntil(() => app.texts().includes("claude-sonnet-4"), { timeout: 5000 });
   const after = app.texts();
   expect(after).toContain("anthropic");
   expect(after).toContain("high");
-  expect(app.shows("id:model-anthropic-claude-sonnet-4")).toBe(false);
+  expect(app.shows("id:model-provider-anthropic")).toBe(false);
 });
 
 test("the conversation composer carries the same model menu", async () => {
@@ -33,6 +35,8 @@ test("the conversation composer carries the same model menu", async () => {
   expect(app.count("id:model-picker")).toBe(1);
   expect(app.texts()).toContain("bailian");
   await app.press("id:model-picker");
+  await app.waitFor("id:model-provider-bailian");
+  await app.press("id:model-provider-bailian");
   await app.waitFor("id:model-bailian-qwen3.8-plus");
   await app.press("id:model-bailian-qwen3.8-plus");
   await app.waitUntil(() => app.texts().includes("qwen3.8-plus"), { timeout: 5000 });
@@ -83,6 +87,8 @@ test("no models is an explained composer, not a dead one", async () => {
   await app.waitUntil(() => !app.shows("id:session-no-model"), { timeout: 5000 });
   expect(app.shows("id:session-input")).toBe(true);
   await app.press("id:model-picker");
+  await app.waitFor("id:model-provider-bailian");
+  await app.press("id:model-provider-bailian");
   await app.waitFor("id:model-bailian-qwen3.8-flash");
   await app.press("id:model-bailian-qwen3.8-flash");
   await app.waitUntil(() => app.texts().includes("qwen3.8-flash"), { timeout: 5000 });
