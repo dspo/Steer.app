@@ -326,13 +326,14 @@ function PickerItem(props: {
   keepOpen?: boolean;
   onSelect: () => void;
 }) {
+  const checkable = props.checked !== undefined;
   return (
     <MenuItem
       testID={props.testID}
       checked={props.checked}
-      role="menuitemradio"
+      role={checkable ? "menuitemradio" : undefined}
       closeOnSelect={!props.keepOpen}
-      indicator={<Glyph name="check" size={11} tint={token("brand")} />}
+      indicator={checkable ? <Glyph name="check" size={11} tint={token("brand")} /> : undefined}
       indicatorClass="opacity-0 checked:opacity-100"
       class="flex-row items-center gap-2 rounded-md px-2 py-1 hover:bg-hover focus:bg-hover active:bg-accent"
       onSelect={props.onSelect}
